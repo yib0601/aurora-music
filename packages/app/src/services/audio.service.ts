@@ -1,6 +1,7 @@
 import { Howl, Howler } from 'howler'
 import type { Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
+import { useLibraryStore } from '@/stores/libraryStore'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
@@ -79,6 +80,14 @@ export function playTrack(track: Track): void {
         audioContext.resume()
       }
       startTick(howl)
+
+      const current = usePlayerStore.getState().currentTrack
+      if (current) {
+        useLibraryStore.getState().updateTrack(current.id, {
+          lastPlayedAt: Date.now(),
+          playCount: (current.playCount || 0) + 1,
+        })
+      }
     },
     onpause: () => {
       usePlayerStore.getState().setIsPlaying(false)

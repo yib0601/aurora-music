@@ -2,6 +2,9 @@
   "name": "@aurora/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Aurora Music - 跨平台优雅音乐播放器",
+  "author": "Aurora Music <aurora-music@example.com>",
+  "homepage": "https://github.com/aurora-music/aurora-music",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c blue,green \"cd ../app && npx vite --host\" \"wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .\"",
@@ -33,6 +36,7 @@
     "directories": {
       "output": "release"
     },
+    "artifactName": "Aurora-Music-${version}.${ext}",
     "files": [
       "dist-electron/**/*",
       "../app/dist/**/*",
@@ -44,10 +48,12 @@
     "linux": {
       "target": [
         { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] }
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "rpm", "arch": ["x64"] }
       ],
       "category": "AudioVideo",
       "icon": "resources/icon.png",
+      "maintainer": "Aurora Music <aurora-music@example.com>",
       "desktop": {
         "Name": "Aurora Music",
         "Comment": "An elegant cross-platform music player",

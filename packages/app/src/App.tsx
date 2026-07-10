@@ -19,11 +19,14 @@ import {
   stopPlayback,
   seekTo as audioSeekTo,
 } from '@/services/audio.service'
+import { useThemeColor } from '@/hooks/useThemeColor'
 import type { Track } from '@/types'
 
 function AppLayout() {
   const playerState = usePlayerStore()
   const { theme, glassMode } = useLibraryStore()
+
+  useThemeColor(playerState.currentTrack?.coverPath)
 
   useEffect(() => {
     initAudioAnalyser()
@@ -105,6 +108,12 @@ function AppLayout() {
     <div className="h-screen w-screen flex flex-col overflow-hidden relative">
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-background to-pink-900/20 animate-bg-shift pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.08),transparent_60%)] pointer-events-none" />
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: playerState.currentTrack?.coverPath
+          ? 'radial-gradient(ellipse 80% 50% at 50% -20%, var(--accent-from-color, rgba(139,92,246,0.15)), transparent 70%)'
+          : 'none',
+        transition: 'background 0.8s ease',
+      }} />
 
       <TitleBar />
 
