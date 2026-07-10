@@ -29,8 +29,16 @@ import { isDesktop, formatTime, cn } from '@/lib/utils'
 import type { Track } from '@/types'
 
 export function LibraryPage() {
-  const { tracks, viewMode, setViewMode, isScanning, scanProgress, toggleLike, likedTracks } = useLibraryStore()
-  const { playlists, createPlaylist, addTracksToPlaylist } = usePlaylistStore()
+  const tracks = useLibraryStore((s) => s.tracks)
+  const viewMode = useLibraryStore((s) => s.viewMode)
+  const setViewMode = useLibraryStore((s) => s.setViewMode)
+  const isScanning = useLibraryStore((s) => s.isScanning)
+  const scanProgress = useLibraryStore((s) => s.scanProgress)
+  const toggleLike = useLibraryStore((s) => s.toggleLike)
+  const likedTracks = useLibraryStore((s) => s.likedTracks)
+  const playlists = usePlaylistStore((s) => s.playlists)
+  const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
+  const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   const [localQuery, setLocalQuery] = useState('')
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
   const [newPlName, setNewPlName] = useState('')

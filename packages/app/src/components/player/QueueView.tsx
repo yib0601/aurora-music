@@ -5,8 +5,11 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn, formatTime } from '@/lib/utils'
 
 export function QueueView() {
-  const { queue, currentIndex, currentTrack } = usePlayerStore()
-  const { showQueuePanel, setQueuePanel } = usePlaylistStore()
+  const queue = usePlayerStore((s) => s.queue)
+  const currentIndex = usePlayerStore((s) => s.currentIndex)
+  const currentTrack = usePlayerStore((s) => s.currentTrack)
+  const showQueuePanel = usePlaylistStore((s) => s.showQueuePanel)
+  const setQueuePanel = usePlaylistStore((s) => s.setQueuePanel)
 
   if (!showQueuePanel) return null
 

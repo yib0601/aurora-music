@@ -1,13 +1,17 @@
+import { useMemo } from 'react'
 import { Clock } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { formatTime } from '@/lib/utils'
 
 export function RecentPage() {
-  const tracks = useLibraryStore((s) =>
-    [...s.tracks]
-      .filter((t) => t.lastPlayedAt)
-      .sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0))
+  const allTracks = useLibraryStore((s) => s.tracks)
+  const tracks = useMemo(
+    () =>
+      [...allTracks]
+        .filter((t) => t.lastPlayedAt)
+        .sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0)),
+    [allTracks]
   )
 
   const handlePlay = (track: typeof tracks[0], idx: number) => {

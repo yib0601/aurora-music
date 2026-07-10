@@ -30,7 +30,10 @@ const navItems = [
 
 export function Sidebar() {
   const navigate = useNavigate()
-  const { playlists, createPlaylist, deletePlaylist, renamePlaylist } = usePlaylistStore()
+  const playlists = usePlaylistStore((s) => s.playlists)
+  const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
+  const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist)
+  const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)

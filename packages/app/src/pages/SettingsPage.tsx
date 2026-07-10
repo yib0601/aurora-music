@@ -17,7 +17,12 @@ const themeOptions = [
 ]
 
 export function SettingsPage() {
-  const { theme, setTheme, glassMode, setGlassMode, scanFolders, removeScanFolder } = useLibraryStore()
+  const theme = useLibraryStore((s) => s.theme)
+  const setTheme = useLibraryStore((s) => s.setTheme)
+  const glassMode = useLibraryStore((s) => s.glassMode)
+  const setGlassMode = useLibraryStore((s) => s.setGlassMode)
+  const scanFolders = useLibraryStore((s) => s.scanFolders)
+  const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
   const api = (window as any).electronAPI
 
   const handlePickFolder = async () => {

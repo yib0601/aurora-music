@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -23,10 +24,21 @@ import { useThemeColor } from '@/hooks/useThemeColor'
 import type { Track } from '@/types'
 
 function AppLayout() {
-  const playerState = usePlayerStore()
-  const { theme, glassMode } = useLibraryStore()
+  const { currentTrack, isPlaying, progress, duration, volume, muted, repeatMode, shuffleMode } =
+    usePlayerStore(useShallow((s) => ({
+      currentTrack: s.currentTrack,
+      isPlaying: s.isPlaying,
+      progress: s.progress,
+      duration: s.duration,
+      volume: s.volume,
+      muted: s.muted,
+      repeatMode: s.repeatMode,
+      shuffleMode: s.shuffleMode,
+    })))
+  const theme = useLibraryStore((s) => s.theme)
+  const glassMode = useLibraryStore((s) => s.glassMode)
 
-  useThemeColor(playerState.currentTrack?.coverPath)
+  useThemeColor(currentTrack?.coverPath)
 
   useEffect(() => {
     initAudioAnalyser()
@@ -109,7 +121,7 @@ function AppLayout() {
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-background to-pink-900/20 animate-bg-shift pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.08),transparent_60%)] pointer-events-none" />
       <div className="absolute inset-0 pointer-events-none" style={{
-        background: playerState.currentTrack?.coverPath
+        background: currentTrack?.coverPath
           ? 'radial-gradient(ellipse 80% 50% at 50% -20%, var(--accent-from-color, rgba(139,92,246,0.15)), transparent 70%)'
           : 'none',
         transition: 'background 0.8s ease',
@@ -134,22 +146,22 @@ function AppLayout() {
               </Routes>
             </div>
 
-            {playerState.currentTrack && (
+            {currentTrack && (
               <div className="w-80 flex-shrink-0 p-4 hidden lg:flex flex-col">
                 <div className="glass rounded-xl p-4 mb-4">
                   <div className="aspect-square rounded-lg overflow-hidden bg-gradient-to-br from-purple-500/20 to-pink-500/20 mb-3 flex items-center justify-center">
-                    {playerState.currentTrack.coverPath ? (
+                    {currentTrack.coverPath ? (
                       <img
-                        src={`file://${playerState.currentTrack.coverPath}`}
-                        alt={playerState.currentTrack.title}
+                        src={`file://${currentTrack.coverPath}`}
+                        alt={currentTrack.title}
                         className="w-full h-full object-cover"
                       />
                     ) : (
                       <div className="text-4xl opacity-30">🎵</div>
                     )}
                   </div>
-                  <p className="font-semibold truncate">{playerState.currentTrack.title}</p>
-                  <p className="text-sm text-foreground/50 truncate">{playerState.currentTrack.artist}</p>
+                  <p className="font-semibold truncate">{currentTrack.title}</p>
+                  <p className="text-sm text-foreground/50 truncate">{currentTrack.artist}</p>
                 </div>
 
                 <div className="glass rounded-xl p-4 h-32 mb-4">
@@ -171,14 +183,14 @@ function AppLayout() {
           <QueueView />
 
           <PlayerBar
-            currentTrack={playerState.currentTrack}
-            isPlaying={playerState.isPlaying}
-            progress={playerState.progress}
-            duration={playerState.duration}
-            volume={playerState.volume}
-            muted={playerState.muted}
-            repeatMode={playerState.repeatMode}
-            shuffleMode={playerState.shuffleMode}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            progress={progress}
+            duration={duration}
+            volume={volume}
+            muted={muted}
+            repeatMode={repeatMode}
+            shuffleMode={shuffleMode}
             onTogglePlay={handleTogglePlay}
             onNext={handleNext}
             onPrevious={handlePrevious}
