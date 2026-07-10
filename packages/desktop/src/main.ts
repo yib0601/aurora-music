@@ -36,7 +36,7 @@ function createWindow() {
     win.loadURL('http://localhost:5173')
     win.webContents.openDevTools({ mode: 'detach' })
   } else {
-    const htmlPath = path.join(__dirname, '../../app/dist/index.html')
+    const htmlPath = path.join(__dirname, '../app-dist/index.html')
     win.loadFile(htmlPath)
   }
 
