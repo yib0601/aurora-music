@@ -18,8 +18,11 @@ import type { Track } from '@/types'
 
 export function SearchPage() {
   const [query, setQuery] = useState('')
-  const { tracks, toggleLike, likedTracks } = useLibraryStore()
-  const { playlists, addTracksToPlaylist } = usePlaylistStore()
+  const tracks = useLibraryStore((s) => s.tracks)
+  const toggleLike = useLibraryStore((s) => s.toggleLike)
+  const likedTracks = useLibraryStore((s) => s.likedTracks)
+  const playlists = usePlaylistStore((s) => s.playlists)
+  const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()

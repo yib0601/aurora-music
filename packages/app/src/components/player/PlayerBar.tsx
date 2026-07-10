@@ -46,7 +46,8 @@ export function PlayerBar({
   const [seekValue, setSeekValue] = useState(0)
   const [seekingVolume, setSeekingVolume] = useState(false)
   const [volumeValue, setVolumeValue] = useState(0)
-  const { showQueuePanel, toggleQueuePanel } = usePlaylistStore()
+  const showQueuePanel = usePlaylistStore((s) => s.showQueuePanel)
+  const toggleQueuePanel = usePlaylistStore((s) => s.toggleQueuePanel)
 
   const displayedProgress = seeking ? seekValue : progress
   const displayedVolume = seekingVolume ? volumeValue : (muted ? 0 : volume)

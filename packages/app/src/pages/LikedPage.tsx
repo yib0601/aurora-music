@@ -1,11 +1,13 @@
+import { useMemo } from 'react'
 import { Heart } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { formatTime, cn } from '@/lib/utils'
 
 export function LikedPage() {
-  const tracks = useLibraryStore((s) => s.tracks.filter((t) => t.liked))
+  const allTracks = useLibraryStore((s) => s.tracks)
   const toggleLiked = useLibraryStore((s) => s.toggleLiked)
+  const tracks = useMemo(() => allTracks.filter((t) => t.liked), [allTracks])
 
   const handlePlay = (track: typeof tracks[0], idx: number) => {
     usePlayerStore.getState().playQueue(tracks, idx)

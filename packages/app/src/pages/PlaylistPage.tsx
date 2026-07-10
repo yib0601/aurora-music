@@ -29,9 +29,16 @@ import {
 export function PlaylistPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { playlists, removeTrackFromPlaylist, deletePlaylist } = usePlaylistStore()
-  const { tracks, toggleLike, likedTracks } = useLibraryStore()
-  const { currentTrack, isPlaying, playTrack, addToQueue } = usePlayerStore()
+  const playlists = usePlaylistStore((s) => s.playlists)
+  const removeTrackFromPlaylist = usePlaylistStore((s) => s.removeTrackFromPlaylist)
+  const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist)
+  const tracks = useLibraryStore((s) => s.tracks)
+  const toggleLike = useLibraryStore((s) => s.toggleLike)
+  const likedTracks = useLibraryStore((s) => s.likedTracks)
+  const currentTrack = usePlayerStore((s) => s.currentTrack)
+  const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const playTrack = usePlayerStore((s) => s.playTrack)
+  const addToQueue = usePlayerStore((s) => s.addToQueue)
 
   const playlist = playlists.find((p) => p.id === id)
 
