@@ -43,6 +43,11 @@ function AppLayout() {
   useEffect(() => {
     initAudioAnalyser()
     const api = (window as any).electronAPI
+    if (api?.getAllTracks) {
+      api.getAllTracks().then((tracks: Track[]) => {
+        useLibraryStore.getState().setTracks(tracks)
+      })
+    }
     if (api?.onTracksScanned) {
       api.onTracksScanned((scannedTracks: Track[]) => {
         useLibraryStore.getState().setTracks(scannedTracks)
@@ -52,6 +57,10 @@ function AppLayout() {
         useLibraryStore.getState().setScanProgress(progress)
         useLibraryStore.getState().setIsScanning(true)
       })
+    }
+    const scanFolders = useLibraryStore.getState().scanFolders
+    if (api?.scanFolder && scanFolders.length > 0) {
+      scanFolders.forEach((folder) => api.scanFolder(folder))
     }
 
     return () => {
@@ -117,24 +126,27 @@ function AppLayout() {
   }, [])
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden relative">
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-background to-pink-900/20 animate-bg-shift pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.08),transparent_60%)] pointer-events-none" />
+    <div className="h-screen w-screen flex flex-col overflow-hidden relative" style={{ background: 'transparent' }}>
+      {/* 主背景层：半透明深色，让桌面壁纸透过来形成毛玻璃基底 */}
+      <div className="absolute inset-0 pointer-events-none dark:bg-[rgba(10,12,20,0.55)] bg-[rgba(250,250,252,0.5)]" />
+      {/* 动态光晕层 */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,var(--glow-color),transparent_40%),radial-gradient(circle_at_80%_80%,rgba(139,92,246,0.12),transparent_40%)] animate-bg-shift pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.08),transparent_55%)] pointer-events-none" />
       <div className="absolute inset-0 pointer-events-none" style={{
         background: currentTrack?.coverPath
-          ? 'radial-gradient(ellipse 80% 50% at 50% -20%, var(--accent-from-color, rgba(139,92,246,0.15)), transparent 70%)'
+          ? 'radial-gradient(ellipse 70% 45% at 50% -15%, var(--accent-from-color, rgba(59,130,246,0.18)), transparent 70%)'
           : 'none',
         transition: 'background 0.8s ease',
       }} />
 
       <TitleBar />
 
-      <div className="flex-1 flex overflow-hidden relative z-10">
+      <div className="flex-1 flex overflow-hidden relative z-10 gap-3 p-3 pt-0">
         <Sidebar />
 
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl glass">
           <div className="flex-1 flex overflow-hidden">
-            <div className="flex-1 overflow-y-auto scrollbar-thin p-0">
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
               <Routes>
                 <Route path="/" element={<Navigate to="/library" replace />} />
                 <Route path="/library" element={<LibraryPage />} />
@@ -147,29 +159,30 @@ function AppLayout() {
             </div>
 
             {currentTrack && (
-              <div className="w-80 flex-shrink-0 p-4 hidden lg:flex flex-col">
-                <div className="glass rounded-xl p-4 mb-4">
-                  <div className="aspect-square rounded-lg overflow-hidden bg-gradient-to-br from-purple-500/20 to-pink-500/20 mb-3 flex items-center justify-center">
-                    {currentTrack.coverPath ? (
-                      <img
-                        src={`file://${currentTrack.coverPath}`}
-                        alt={currentTrack.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="text-4xl opacity-30">🎵</div>
-                    )}
-                  </div>
-                  <p className="font-semibold truncate">{currentTrack.title}</p>
+              <div className="w-80 flex-shrink-0 p-5 hidden lg:flex flex-col gap-4 border-l border-border/30">
+                <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-primary/15 to-primary/5 border border-border/30 aspect-square flex items-center justify-center shadow-lg shadow-black/5">
+                  {currentTrack.coverPath ? (
+                    <img
+                      src={`file://${currentTrack.coverPath}`}
+                      alt={currentTrack.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-4xl opacity-30">🎵</div>
+                  )}
+                </div>
+
+                <div className="text-center px-1">
+                  <p className="font-semibold truncate text-lg">{currentTrack.title}</p>
                   <p className="text-sm text-foreground/50 truncate">{currentTrack.artist}</p>
                 </div>
 
-                <div className="glass rounded-xl p-4 h-32 mb-4">
+                <div className="rounded-2xl bg-foreground/5 border border-border/30 h-28 p-3 overflow-hidden">
                   <Visualizer mode="bars" />
                 </div>
 
-                <div className="glass rounded-xl flex-1 overflow-hidden flex flex-col min-h-0">
-                  <div className="px-4 pt-4 pb-2 text-xs font-semibold text-foreground/40 uppercase tracking-wider">
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0 rounded-2xl bg-foreground/5 border border-border/30">
+                  <div className="px-4 pt-4 pb-2 text-xs font-medium text-foreground/40 uppercase tracking-wider">
                     歌词
                   </div>
                   <div className="flex-1 min-h-0">
@@ -182,24 +195,26 @@ function AppLayout() {
 
           <QueueView />
 
-          <PlayerBar
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            progress={progress}
-            duration={duration}
-            volume={volume}
-            muted={muted}
-            repeatMode={repeatMode}
-            shuffleMode={shuffleMode}
-            onTogglePlay={handleTogglePlay}
-            onNext={handleNext}
-            onPrevious={handlePrevious}
-            onSeek={handleSeek}
-            onVolumeChange={handleVolumeChange}
-            onToggleMute={handleToggleMute}
-            onToggleShuffle={handleToggleShuffle}
-            onCycleRepeat={handleCycleRepeat}
-          />
+          <div className="px-5 pb-4 pt-2">
+            <PlayerBar
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              progress={progress}
+              duration={duration}
+              volume={volume}
+              muted={muted}
+              repeatMode={repeatMode}
+              shuffleMode={shuffleMode}
+              onTogglePlay={handleTogglePlay}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+              onSeek={handleSeek}
+              onVolumeChange={handleVolumeChange}
+              onToggleMute={handleToggleMute}
+              onToggleShuffle={handleToggleShuffle}
+              onCycleRepeat={handleCycleRepeat}
+            />
+          </div>
         </main>
       </div>
     </div>

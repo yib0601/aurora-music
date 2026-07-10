@@ -57,19 +57,19 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
   return (
     <div
       ref={containerRef}
-      className={cn('overflow-y-auto scrollbar-hide px-4 py-8 space-y-4 text-center', className)}
-      style={{ maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)' }}
+      className={cn('overflow-y-auto scrollbar-hide px-4 py-8 space-y-5 text-center', className)}
+      style={{ maskImage: 'linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)' }}
     >
       {lyrics.map((line, idx) => (
         <p
           key={`${line.time}-${idx}`}
           className={cn(
-            'transition-all duration-300 cursor-pointer',
+            'transition-all duration-500 cursor-pointer leading-relaxed',
             idx === activeIdx
-              ? 'text-foreground text-xl font-semibold scale-105'
+              ? 'text-foreground text-lg font-semibold scale-105'
               : Math.abs(idx - activeIdx) <= 2
-              ? 'text-foreground/60 text-lg'
-              : 'text-foreground/30 text-base'
+              ? 'text-foreground/55 text-base'
+              : 'text-foreground/30 text-sm'
           )}
           onClick={() => onLineClick?.(line.time)}
         >
