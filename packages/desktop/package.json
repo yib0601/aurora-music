@@ -10,8 +10,8 @@
     "dev": "concurrently -k -n vite,electron -c blue,green \"cd ../app && npx vite --host\" \"wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .\"",
     "dev:vite": "cd ../app && npx vite --host",
     "dev:electron": "wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .",
-    "build": "cd ../app && npx vite build && npx tsc -p tsconfig.electron.json && npx electron-builder",
-    "build:dir": "cd ../app && npx vite build && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
+    "build": "cd ../app && npx vite build && cd ../desktop && rm -rf app-dist && cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder",
+    "build:dir": "cd ../app && npx vite build && cd ../desktop && rm -rf app-dist && cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
     "typecheck": "tsc --noEmit -p tsconfig.electron.json"
   },
   "dependencies": {
@@ -39,8 +39,7 @@
     "artifactName": "Aurora-Music-${version}.${ext}",
     "files": [
       "dist-electron/**/*",
-      "../app/dist/**/*",
-      "!node_modules/**/*"
+      "app-dist/**/*"
     ],
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**"
