@@ -1,0 +1,65 @@
+{
+  "name": "@aurora/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron -c blue,green \"cd ../app && npx vite --host\" \"wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .\"",
+    "dev:vite": "cd ../app && npx vite --host",
+    "dev:electron": "wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .",
+    "build": "cd ../app && npx vite build && npx tsc -p tsconfig.electron.json && npx electron-builder",
+    "build:dir": "cd ../app && npx vite build && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
+    "typecheck": "tsc --noEmit -p tsconfig.electron.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "iconv-lite": "^0.6.3",
+    "music-metadata": "^10.5.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.0",
+    "@types/uuid": "^10.0.0",
+    "concurrently": "^9.0.1",
+    "electron": "^33.0.2",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.6.3",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.aurora.music",
+    "productName": "Aurora Music",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "../app/dist/**/*",
+      "!node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "category": "AudioVideo",
+      "icon": "resources/icon.png",
+      "desktop": {
+        "Name": "Aurora Music",
+        "Comment": "An elegant cross-platform music player",
+        "Categories": "AudioVideo;Audio;"
+      }
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "resources/icon.ico"
+    }
+  }
+}
