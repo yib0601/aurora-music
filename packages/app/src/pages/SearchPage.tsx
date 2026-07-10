@@ -49,62 +49,66 @@ export function SearchPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-4">搜索</h1>
-        <div className="relative max-w-xl">
+      <div className="mb-8 px-1">
+        <h1 className="text-2xl font-bold tracking-tight mb-4">搜索</h1>
+        <div className="relative max-w-2xl">
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-foreground/40" />
           <input
             type="text"
             placeholder="搜索歌曲、艺术家、专辑..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="glass rounded-xl w-full pl-12 pr-4 py-3 text-base outline-none focus:ring-2 focus:ring-primary/50"
+            className="glass rounded-2xl w-full pl-12 pr-4 py-3.5 text-base outline-none focus:ring-2 focus:ring-primary/30 bg-transparent placeholder:text-foreground/35"
             autoFocus
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2">
+      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         {!query.trim() ? (
-          <div className="flex flex-col items-center justify-center py-20 text-foreground/30">
-            <SearchIcon className="h-14 w-14 mb-3 opacity-20" />
-            <p className="text-sm">输入关键词搜索你的音乐库</p>
+          <div className="flex flex-col items-center justify-center py-24 text-foreground/30">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center mb-5">
+              <SearchIcon className="h-10 w-10 text-primary/70" />
+            </div>
+            <p className="text-sm text-foreground/45">输入关键词搜索你的音乐库</p>
           </div>
         ) : results.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-foreground/30">
-            <Music2 className="h-14 w-14 mb-3 opacity-20" />
-            <p className="text-sm">未找到 "{query}" 的相关结果</p>
+          <div className="flex flex-col items-center justify-center py-24 text-foreground/30">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center mb-5">
+              <Music2 className="h-10 w-10 text-primary/70" />
+            </div>
+            <p className="text-sm text-foreground/45">未找到 "{query}" 的相关结果</p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-5">
             <section>
-              <h2 className="text-sm font-semibold text-foreground/50 uppercase tracking-wider mb-2 px-1">
+              <h2 className="text-xs font-medium text-foreground/45 uppercase tracking-wider mb-3 px-1">
                 歌曲 ({results.length})
               </h2>
-              <div className="glass rounded-xl overflow-hidden">
+              <div className="rounded-2xl border border-border/30 overflow-hidden bg-foreground/[0.02]">
                 {results.slice(0, 30).map((track, idx) => (
                   <ContextMenu key={track.id}>
                     <ContextMenuTrigger asChild>
                       <div
-                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-foreground/5 cursor-pointer group transition-colors"
+                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-foreground/[0.04] cursor-pointer group transition-colors border-b border-border/20 last:border-0"
                         onDoubleClick={() => handlePlayTrack(track, idx, results)}
                       >
                         <span className="text-xs text-foreground/40 w-5 text-right group-hover:hidden">
                           {idx + 1}
                         </span>
                         <Play className="w-3.5 h-3.5 hidden group-hover:block text-foreground/60" />
-                        <div className="w-10 h-10 rounded bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/15 to-primary/5 border border-border/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
                           {track.coverPath ? (
                             <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover" />
                           ) : (
-                            <Music2 className="h-4 w-4 opacity-40" />
+                            <Music2 className="h-4 w-4 opacity-35" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{track.title}</p>
-                          <p className="text-xs text-foreground/50 truncate">{track.artist}</p>
+                          <p className="text-xs text-foreground/45 truncate">{track.artist}</p>
                         </div>
-                        <span className="text-xs text-foreground/40 truncate max-w-32 hidden md:block">
+                        <span className="text-xs text-foreground/45 truncate max-w-32 hidden md:block">
                           {track.album}
                         </span>
                         <span className="text-xs text-foreground/40 tabular-nums w-10 text-right">
@@ -115,7 +119,7 @@ export function SearchPage() {
                             e.stopPropagation()
                             toggleLike(track.id)
                           }}
-                          className="p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-foreground/10 rounded"
                         >
                           <Heart className={cn('h-4 w-4', likedTracks.has(track.id) ? 'text-red-500 fill-red-500' : 'text-foreground/40')} />
                         </button>

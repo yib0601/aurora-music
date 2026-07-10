@@ -83,9 +83,9 @@ export function PlayerBar({
   }
 
   return (
-    <div className="glass-strong rounded-xl mx-3 mb-3 p-3 flex items-center gap-4">
-      <div className="flex items-center gap-3 min-w-0 w-56 flex-shrink-0">
-        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500/30 to-pink-500/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div className="glass-strong rounded-2xl px-5 py-3 flex items-center gap-5">
+      <div className="flex items-center gap-3 min-w-0 w-52 flex-shrink-0">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
           {currentTrack?.coverPath ? (
             <img
               src={`file://${currentTrack.coverPath}`}
@@ -96,62 +96,62 @@ export function PlayerBar({
               }}
             />
           ) : (
-            <Music2 className="h-6 w-6 text-foreground/40" />
+            <Music2 className="h-5 w-5 text-foreground/35" />
           )}
         </div>
         <div className="min-w-0">
           <p className="text-sm font-medium truncate">
             {currentTrack?.title || '未在播放'}
           </p>
-          <p className="text-xs text-foreground/50 truncate">
+          <p className="text-xs text-foreground/45 truncate">
             {currentTrack?.artist || '选择一首歌曲开始'}
           </p>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center gap-1 max-w-2xl">
-        <div className="flex items-center gap-2">
+      <div className="flex-1 flex flex-col items-center gap-1.5 max-w-2xl">
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 rounded-full text-foreground/50 hover:text-foreground hover:bg-foreground/10"
             onClick={onToggleShuffle}
           >
-            <Shuffle className={cn('h-4 w-4', shuffleMode === 'on' ? 'text-primary' : 'text-foreground/50')} />
+            <Shuffle className={cn('h-4 w-4', shuffleMode === 'on' ? 'text-primary' : '')} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onPrevious}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-foreground/10" onClick={onPrevious}>
             <SkipBack className="h-5 w-5" />
           </Button>
           <Button
             variant="default"
             size="icon"
-            className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90"
+            className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 mx-1"
             onClick={onTogglePlay}
             disabled={!currentTrack}
           >
             {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNext} disabled={!currentTrack}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-foreground/10" onClick={onNext} disabled={!currentTrack}>
             <SkipForward className="h-5 w-5" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 rounded-full text-foreground/50 hover:text-foreground hover:bg-foreground/10"
             onClick={onCycleRepeat}
           >
             {repeatMode === 'one' ? (
               <Repeat1 className="h-4 w-4 text-primary" />
             ) : (
-              <Repeat className={cn('h-4 w-4', repeatMode === 'all' ? 'text-primary' : 'text-foreground/50')} />
+              <Repeat className={cn('h-4 w-4', repeatMode === 'all' ? 'text-primary' : '')} />
             )}
           </Button>
         </div>
-        <div className="flex items-center gap-2 w-full">
-          <span className="text-xs text-foreground/50 w-10 text-right tabular-nums">
+        <div className="flex items-center gap-3 w-full">
+          <span className="text-[11px] text-foreground/45 w-9 text-right tabular-nums">
             {formatTime(displayedProgress)}
           </span>
-          <div className="flex-1 relative group">
+          <div className="flex-1 relative group h-3 flex items-center">
             <input
               type="range"
               min={0}
@@ -165,13 +165,13 @@ export function PlayerBar({
               onMouseUp={handleSeekCommit}
               onTouchEnd={handleSeekCommit}
               onMouseLeave={() => seeking && handleSeekCommit()}
-              className="w-full disabled:opacity-50"
+              className="w-full disabled:opacity-40"
               style={{
-                background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${progressPercent}%, hsl(var(--muted)) ${progressPercent}%, hsl(var(--muted)) 100%)`,
+                background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${progressPercent}%, hsl(var(--muted-foreground) / 0.18) ${progressPercent}%, hsl(var(--muted-foreground) / 0.18) 100%)`,
               }}
             />
           </div>
-          <span className="text-xs text-foreground/50 w-10 tabular-nums">
+          <span className="text-[11px] text-foreground/45 w-9 tabular-nums">
             {formatTime(duration)}
           </span>
         </div>
@@ -181,19 +181,19 @@ export function PlayerBar({
         <Button
           variant="ghost"
           size="icon"
-          className={cn('h-8 w-8', showQueuePanel && 'text-primary')}
+          className={cn('h-8 w-8 rounded-full hover:bg-foreground/10', showQueuePanel && 'text-primary bg-primary/10')}
           onClick={toggleQueuePanel}
         >
           <ListMusic className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleMute}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-foreground/10" onClick={onToggleMute}>
           {muted || volume === 0 ? (
-            <VolumeX className="h-4 w-4 text-foreground/50" />
+            <VolumeX className="h-4 w-4 text-foreground/45" />
           ) : (
             <Volume2 className="h-4 w-4" />
           )}
         </Button>
-        <div className="flex-1 relative max-w-24">
+        <div className="flex-1 relative max-w-24 h-3 flex items-center">
           <input
             type="range"
             min={0}
@@ -208,7 +208,7 @@ export function PlayerBar({
             onMouseLeave={() => seekingVolume && handleVolumeCommit()}
             className="w-full"
             style={{
-              background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${volumePercent}%, hsl(var(--muted)) ${volumePercent}%, hsl(var(--muted)) 100%)`,
+              background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${volumePercent}%, hsl(var(--muted-foreground) / 0.18) ${volumePercent}%, hsl(var(--muted-foreground) / 0.18) 100%)`,
             }}
           />
         </div>

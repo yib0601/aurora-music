@@ -56,14 +56,12 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-64 flex-shrink-0 flex flex-col p-3 gap-1">
-      <div className="flex items-center gap-2 px-3 py-2 mb-2">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-          <Music className="h-5 w-5 text-white" />
+    <aside className="w-56 flex-shrink-0 flex flex-col p-2 gap-2">
+      <div className="flex items-center gap-2.5 px-3 py-3">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center shadow-lg shadow-primary/20">
+          <Music className="h-4 w-4 text-white" />
         </div>
-        <span className="font-bold text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-          Aurora
-        </span>
+        <span className="font-semibold text-lg tracking-tight text-foreground">Aurora</span>
       </div>
 
       <nav className="flex flex-col gap-0.5">
@@ -73,36 +71,36 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all',
+                'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all',
                 isActive
-                  ? 'bg-foreground/10 text-foreground'
-                  : 'text-foreground/60 hover:text-foreground hover:bg-foreground/5'
+                  ? 'bg-foreground/10 text-foreground shadow-sm'
+                  : 'text-foreground/55 hover:text-foreground hover:bg-foreground/5'
               )
             }
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-[18px] w-[18px]" />
             {label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="mt-4 flex-1 overflow-y-auto scrollbar-thin">
+      <div className="mt-2 flex-1 overflow-y-auto scrollbar-thin min-h-0">
         <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-xs font-semibold text-foreground/40 uppercase tracking-wider">
+          <span className="text-xs font-medium text-foreground/35 uppercase tracking-wider">
             播放列表
           </span>
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-foreground/40 hover:text-foreground"
+            className="h-6 w-6 text-foreground/35 hover:text-foreground hover:bg-foreground/10"
             onClick={() => setShowCreateDialog(true)}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <div className="flex flex-col gap-0.5 text-sm">
+        <div className="flex flex-col gap-0.5 text-sm pr-1">
           {playlists.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-foreground/30">暂无播放列表</p>
+            <p className="px-3 py-2 text-xs text-foreground/25">暂无播放列表</p>
           ) : (
             playlists.map((pl) => (
               <div key={pl.id} className="group flex items-center gap-1">
@@ -116,21 +114,21 @@ export function Sidebar() {
                       if (e.key === 'Enter') handleRename(pl.id)
                       if (e.key === 'Escape') { setEditingId(null); setEditingName('') }
                     }}
-                    className="h-7 text-sm px-2 py-1 flex-1"
+                    className="h-7 text-sm px-2 py-1 flex-1 bg-transparent"
                   />
                 ) : (
                   <NavLink
                     to={`/playlist/${pl.id}`}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center gap-2 px-3 py-1.5 rounded-lg flex-1 min-w-0 transition-colors',
-                        isActive ? 'bg-foreground/10 text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-foreground/5'
+                        'flex items-center gap-2.5 px-3 py-1.5 rounded-xl flex-1 min-w-0 transition-all',
+                        isActive ? 'bg-foreground/10 text-foreground shadow-sm' : 'text-foreground/55 hover:text-foreground hover:bg-foreground/5'
                       )
                     }
                   >
-                    <ListMusic className="h-4 w-4 flex-shrink-0" />
+                    <ListMusic className="h-4 w-4 flex-shrink-0 opacity-70" />
                     <span className="truncate">{pl.name}</span>
-                    <span className="text-xs text-foreground/30 ml-auto">{pl.trackIds.length}</span>
+                    <span className="text-[10px] text-foreground/30 ml-auto tabular-nums">{pl.trackIds.length}</span>
                   </NavLink>
                 )}
                 <DropdownMenu>
@@ -138,7 +136,7 @@ export function Sidebar() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 text-foreground/40 hover:text-foreground flex-shrink-0"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 text-foreground/35 hover:text-foreground hover:bg-foreground/10 flex-shrink-0"
                     >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </Button>
@@ -170,7 +168,7 @@ export function Sidebar() {
       </div>
 
       <div className="mt-auto px-3 py-2">
-        <p className="text-xs text-foreground/30">Aurora Music v0.1.0</p>
+        <p className="text-[10px] text-foreground/25">Aurora Music v0.1.0</p>
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
