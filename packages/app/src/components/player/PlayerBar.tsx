@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn, formatTime } from '@/lib/utils'
@@ -42,9 +42,44 @@ export function PlayerBar({
   onToggleShuffle,
   onCycleRepeat,
 }: PlayerBarProps) {
-  const progressPercent = duration > 0 ? (progress / duration) * 100 : 0
-  const effectiveVolume = muted ? 0 : volume
+  const [seeking, setSeeking] = useState(false)
+  const [seekValue, setSeekValue] = useState(0)
+  const [seekingVolume, setSeekingVolume] = useState(false)
+  const [volumeValue, setVolumeValue] = useState(0)
   const { showQueuePanel, toggleQueuePanel } = usePlaylistStore()
+
+  const displayedProgress = seeking ? seekValue : progress
+  const displayedVolume = seekingVolume ? volumeValue : (muted ? 0 : volume)
+  const progressPercent = duration > 0 ? (displayedProgress / duration) * 100 : 0
+  const volumePercent = displayedVolume * 100
+
+  const handleSeekStart = () => {
+    setSeeking(true)
+    setSeekValue(progress)
+  }
+
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSeekValue(parseFloat(e.target.value))
+  }
+
+  const handleSeekCommit = () => {
+    setSeeking(false)
+    onSeek(seekValue)
+  }
+
+  const handleVolumeStart = () => {
+    setSeekingVolume(true)
+    setVolumeValue(muted ? 0 : volume)
+  }
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setVolumeValue(parseFloat(e.target.value))
+  }
+
+  const handleVolumeCommit = () => {
+    setSeekingVolume(false)
+    onVolumeChange(volumeValue)
+  }
 
   return (
     <div className="glass-strong rounded-xl mx-3 mb-3 p-3 flex items-center gap-4">
@@ -91,10 +126,11 @@ export function PlayerBar({
             size="icon"
             className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90"
             onClick={onTogglePlay}
+            disabled={!currentTrack}
           >
             {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNext}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNext} disabled={!currentTrack}>
             <SkipForward className="h-5 w-5" />
           </Button>
           <Button
@@ -112,21 +148,25 @@ export function PlayerBar({
         </div>
         <div className="flex items-center gap-2 w-full">
           <span className="text-xs text-foreground/50 w-10 text-right tabular-nums">
-            {formatTime(progress)}
+            {formatTime(displayedProgress)}
           </span>
           <div className="flex-1 relative group">
             <input
               type="range"
               min={0}
               max={duration || 100}
-              value={progress}
+              value={displayedProgress}
               step={0.1}
-              onChange={(e) => onSeek(parseFloat(e.target.value))}
-              className="w-full"
+              disabled={!currentTrack}
+              onMouseDown={handleSeekStart}
+              onTouchStart={handleSeekStart}
+              onChange={handleSeekChange}
+              onMouseUp={handleSeekCommit}
+              onTouchEnd={handleSeekCommit}
+              onMouseLeave={() => seeking && handleSeekCommit()}
+              className="w-full disabled:opacity-50"
               style={{
                 background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${progressPercent}%, hsl(var(--muted)) ${progressPercent}%, hsl(var(--muted)) 100%)`,
-                borderRadius: '2px',
-                height: '4px',
               }}
             />
           </div>
@@ -158,13 +198,16 @@ export function PlayerBar({
             min={0}
             max={1}
             step={0.01}
-            value={effectiveVolume}
-            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+            value={displayedVolume}
+            onMouseDown={handleVolumeStart}
+            onTouchStart={handleVolumeStart}
+            onChange={handleVolumeChange}
+            onMouseUp={handleVolumeCommit}
+            onTouchEnd={handleVolumeCommit}
+            onMouseLeave={() => seekingVolume && handleVolumeCommit()}
             className="w-full"
             style={{
-              background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${effectiveVolume * 100}%, hsl(var(--muted)) ${effectiveVolume * 100}%, hsl(var(--muted)) 100%)`,
-              borderRadius: '2px',
-              height: '4px',
+              background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${volumePercent}%, hsl(var(--muted)) ${volumePercent}%, hsl(var(--muted)) 100%)`,
             }}
           />
         </div>

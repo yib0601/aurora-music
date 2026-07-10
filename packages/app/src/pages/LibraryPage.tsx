@@ -5,6 +5,14 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -18,7 +26,6 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, formatTime, cn } from '@/lib/utils'
-import { playTrack as audioPlayTrack } from '@/services/audio.service'
 import type { Track } from '@/types'
 
 export function LibraryPage() {
@@ -324,6 +331,29 @@ export function LibraryPage() {
           </div>
         </div>
       )}
+
+      <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>新建播放列表</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            placeholder="播放列表名称"
+            value={newPlName}
+            onChange={(e) => setNewPlName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreateAndAdd()
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewPlaylistDialog(false)}>
+              取消
+            </Button>
+            <Button onClick={handleCreateAndAdd}>创建并添加</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
