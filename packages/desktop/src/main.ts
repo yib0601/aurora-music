@@ -72,6 +72,7 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,UseOzonePlatform')
+// Electron 43+ 默认启用 Wayland，且修复了 frameless 窗口在 Wayland 下的渲染问题
+// 仅保留 GPU 视频解码和光栅化加速
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
 app.commandLine.appendSwitch('enable-gpu-rasterization')
-app.commandLine.appendSwitch('ozone-platform', 'wayland')
