@@ -90,7 +90,7 @@ export function PlaylistPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-end gap-6">
-          <div className="w-44 h-44 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center shadow-xl flex-shrink-0">
+          <div className="w-44 h-44 rounded-2xl glass-card flex items-center justify-center shadow-xl flex-shrink-0">
             <ListMusic className="h-20 w-20 text-foreground/30" />
           </div>
           <div className="flex-1 pb-2">
@@ -147,15 +147,15 @@ export function PlaylistPage() {
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         {playlistTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-foreground/30">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center mb-5">
-              <Music2 className="h-10 w-10 text-primary/70" />
-            </div>
+            <div className="w-20 h-20 rounded-2xl glass-card flex items-center justify-center mb-5">
+            <Music2 className="h-10 w-10 text-primary/70" />
+          </div>
             <p className="text-sm text-foreground/45">播放列表为空</p>
             <p className="text-xs mt-1 text-foreground/35">从音乐库中添加歌曲</p>
           </div>
         ) : (
-          <div className="rounded-2xl border border-border/30 overflow-hidden bg-foreground/[0.02]">
-            <div className="grid grid-cols-[40px_1fr_auto_auto] gap-3 px-4 py-2.5 text-xs font-medium text-foreground/45 uppercase tracking-wider border-b border-border/30 bg-foreground/[0.02]">
+          <div className="glass-table">
+            <div className="grid grid-cols-[40px_1fr_auto_auto] gap-3 px-4 py-2.5 text-xs font-medium text-foreground/45 uppercase tracking-wider border-b border-border/30">
               <span>#</span>
               <span>标题</span>
               <span>

@@ -16,7 +16,7 @@ export function TitleBar() {
   const handleClose = () => api.windowControls.close()
 
   return (
-    <div className="titlebar-drag h-10 flex items-center justify-between px-4 select-none">
+    <div className="titlebar-drag h-10 flex items-center justify-between px-4 select-none glass-strong rounded-none border-0">
       <div className="flex items-center gap-2 titlebar-no-drag">
         <span className="text-sm font-medium text-foreground/60">Aurora Music</span>
       </div>

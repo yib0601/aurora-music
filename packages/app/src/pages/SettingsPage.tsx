@@ -37,7 +37,7 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-5 mb-8 px-1">
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center shadow-lg shadow-primary/10">
+        <div className="w-20 h-20 rounded-2xl glass-card flex items-center justify-center shadow-lg shadow-primary/10">
           <SettingsIcon className="h-9 w-9 text-primary" />
         </div>
         <div>
@@ -47,7 +47,7 @@ export function SettingsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2 space-y-5 max-w-2xl">
-        <section className="rounded-2xl border border-border/30 bg-foreground/[0.02] p-5">
+        <section className="glass-card p-5">
           <h2 className="text-lg font-semibold mb-5">外观</h2>
           <div className="space-y-5">
             <div>
@@ -103,7 +103,7 @@ export function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border/30 bg-foreground/[0.02] p-5">
+        <section className="glass-card p-5">
           <h2 className="text-lg font-semibold mb-4">音乐库</h2>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -123,7 +123,7 @@ export function SettingsPage() {
             ) : (
               <div className="space-y-2">
                 {scanFolders.map((folder) => (
-                  <div key={folder} className="flex items-center justify-between bg-foreground/[0.04] rounded-xl px-3 py-2.5 border border-border/20">
+                  <div key={folder} className="flex items-center justify-between glass rounded-xl px-3 py-2.5">
                     <span className="text-sm truncate flex-1 mr-2">{folder}</span>
                     <Button
                       variant="ghost"
@@ -140,7 +140,7 @@ export function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border/30 bg-foreground/[0.02] p-5">
+        <section className="glass-card p-5">
           <h2 className="text-lg font-semibold mb-2">关于</h2>
           <p className="text-sm text-foreground/60">Aurora Music v0.1.0</p>
           <p className="text-xs text-foreground/40 mt-1">一个优雅的跨平台音乐播放器</p>

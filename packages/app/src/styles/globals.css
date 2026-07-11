@@ -25,20 +25,42 @@
     --ring: 220 90% 56%;
     --radius: 0.875rem;
 
-    --glass-bg: rgba(255, 255, 255, 0.28);
-    --glass-border: rgba(255, 255, 255, 0.45);
-    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
-    --glass-blur: 30px;
+    /* 强化玻璃变量 */
+    --glass-bg: rgba(255, 255, 255, 0.18);
+    --glass-border: rgba(255, 255, 255, 0.62);
+    --glass-border-subtle: rgba(255, 255, 255, 0.35);
+    --glass-shadow:
+      0 18px 56px rgba(0, 0, 0, 0.1),
+      0 1.5px 0 rgba(255, 255, 255, 0.55) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.05) inset;
+    --glass-blur: 80px;
+    --glass-saturate: 220%;
+
+    --glass-strong-bg: rgba(255, 255, 255, 0.32);
+    --glass-strong-border: rgba(255, 255, 255, 0.75);
+    --glass-strong-shadow:
+      0 26px 72px rgba(0, 0, 0, 0.14),
+      0 1.5px 0 rgba(255, 255, 255, 0.6) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.06) inset;
+    --glass-strong-blur: 100px;
+
     --accent-hue: 220;
     --accent-saturation: 90%;
     --accent-lightness: 56%;
 
-    --surface-elevated: rgba(255, 255, 255, 0.45);
-    --glow-color: rgba(59, 130, 246, 0.15);
+    --surface-elevated: rgba(255, 255, 255, 0.48);
+    --surface-hover: rgba(255, 255, 255, 0.62);
+    --surface-subtle: rgba(255, 255, 255, 0.18);
+
+    --glow-color: rgba(59, 130, 246, 0.16);
+    --glow-color-2: rgba(139, 92, 246, 0.12);
+    --glow-color-3: rgba(14, 165, 233, 0.08);
+
+    --noise-opacity: 0.025;
   }
 
   .dark {
-    --background: 220 18% 6%;
+    --background: 220 18% 5%;
     --foreground: 220 14% 96%;
     --card: 220 18% 8%;
     --card-foreground: 220 14% 96%;
@@ -58,16 +80,37 @@
     --input: 220 14% 18%;
     --ring: 217 92% 62%;
 
-    --glass-bg: rgba(18, 20, 30, 0.35);
-    --glass-border: rgba(255, 255, 255, 0.10);
-    --glass-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
-    --glass-blur: 34px;
+    --glass-bg: rgba(10, 12, 22, 0.22);
+    --glass-border: rgba(255, 255, 255, 0.24);
+    --glass-border-subtle: rgba(255, 255, 255, 0.1);
+    --glass-shadow:
+      0 22px 64px rgba(0, 0, 0, 0.55),
+      0 1.5px 0 rgba(255, 255, 255, 0.18) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.25) inset;
+    --glass-blur: 88px;
+    --glass-saturate: 240%;
+
+    --glass-strong-bg: rgba(18, 20, 34, 0.38);
+    --glass-strong-border: rgba(255, 255, 255, 0.34);
+    --glass-strong-shadow:
+      0 32px 80px rgba(0, 0, 0, 0.65),
+      0 1.5px 0 rgba(255, 255, 255, 0.22) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.3) inset;
+    --glass-strong-blur: 110px;
+
     --accent-hue: 217;
     --accent-saturation: 92%;
     --accent-lightness: 62%;
 
-    --surface-elevated: rgba(22, 25, 36, 0.50);
+    --surface-elevated: rgba(26, 29, 44, 0.72);
+    --surface-hover: rgba(38, 42, 62, 0.82);
+    --surface-subtle: rgba(255, 255, 255, 0.06);
+
     --glow-color: rgba(96, 165, 250, 0.18);
+    --glow-color-2: rgba(167, 139, 250, 0.14);
+    --glow-color-3: rgba(34, 211, 238, 0.1);
+
+    --noise-opacity: 0.03;
   }
 }
 
@@ -87,26 +130,110 @@
   }
 }
 
+/* 全局玻璃材质体系 */
 @layer components {
   .glass {
+    position: relative;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+
+  .glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.55) 0%,
+      rgba(255, 255, 255, 0.1) 45%,
+      rgba(255, 255, 255, 0) 55%,
+      rgba(255, 255, 255, 0.18) 100%
+    );
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
   }
 
   .glass-strong {
-    background: var(--surface-elevated);
-    border: 1px solid var(--glass-border);
-    box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(40px) saturate(200%);
-    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    position: relative;
+    background: var(--glass-strong-bg);
+    border: 1px solid var(--glass-strong-border);
+    box-shadow: var(--glass-strong-shadow);
+    backdrop-filter: blur(var(--glass-strong-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-strong-blur)) saturate(var(--glass-saturate));
+  }
+
+  .glass-strong::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.65) 0%,
+      rgba(255, 255, 255, 0.12) 45%,
+      rgba(255, 255, 255, 0) 55%,
+      rgba(255, 255, 255, 0.22) 100%
+    );
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .glass-panel {
+    @apply glass rounded-2xl;
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl;
+    transition:
+      transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+      background 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .glass-card-hover:hover {
+    background: var(--surface-hover);
+    border-color: var(--glass-border);
+    transform: translateY(-1px);
+    box-shadow:
+      0 18px 48px rgba(0, 0, 0, 0.1),
+      0 1px 0 rgba(255, 255, 255, 0.4) inset;
+  }
+
+  .glass-table {
+    @apply glass rounded-2xl overflow-hidden;
+  }
+
+  .glass-table thead,
+  .glass-table tr:nth-child(even) {
+    background: hsl(var(--foreground) / 0.025);
+  }
+
+  .glass-table tr {
+    transition: background 0.15s ease;
+  }
+
+  .glass-table tr:hover {
+    background: hsl(var(--foreground) / 0.08);
   }
 
   .glass-no-blur {
-    background: hsl(var(--background) / 0.92);
-    border: 1px solid hsl(var(--border) / 0.4);
+    background: hsl(var(--background) / 0.96);
+    border: 1px solid hsl(var(--border) / 0.5);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   }
 
@@ -159,19 +286,140 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.32);
   }
+
+  /* 背景层 */
+  .aurora-bg {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .aurora-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(100px);
+    opacity: 0.45;
+    mix-blend-mode: screen;
+  }
+
+  .aurora-blob-1 {
+    width: 60vw;
+    height: 60vw;
+    background: radial-gradient(circle, var(--glow-color), transparent 70%);
+    top: -20%;
+    left: -10%;
+    animation: aurora-float-1 22s ease-in-out infinite alternate;
+  }
+
+  .aurora-blob-2 {
+    width: 50vw;
+    height: 50vw;
+    background: radial-gradient(circle, var(--glow-color-2), transparent 70%);
+    bottom: -15%;
+    right: -10%;
+    animation: aurora-float-2 26s ease-in-out infinite alternate;
+  }
+
+  .aurora-blob-3 {
+    width: 45vw;
+    height: 45vw;
+    background: radial-gradient(circle, var(--glow-color-3), transparent 70%);
+    top: 35%;
+    left: 40%;
+    animation: aurora-float-3 30s ease-in-out infinite alternate;
+  }
+
+  .noise-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--noise-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+
+  .mesh-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 70% 45% at 25% 25%, var(--glow-color), transparent 60%),
+      radial-gradient(ellipse 60% 55% at 75% 75%, var(--glow-color-2), transparent 58%),
+      radial-gradient(ellipse 50% 35% at 55% 90%, var(--glow-color-3), transparent 55%);
+    opacity: 0.55;
+    animation: bg-shift 32s ease-in-out infinite;
+  }
+
+  .glass-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .glass-sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.05) 35%,
+      rgba(255, 255, 255, 0) 55%,
+      rgba(255, 255, 255, 0) 100%
+    );
+  }
+
+  .glass-flat .glass,
+  .glass-flat .glass-strong,
+  .glass-flat .glass-panel,
+  .glass-flat .glass-card,
+  .glass-flat .glass-table,
+  .glass-flat .glass-card-hover:hover {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: hsl(var(--card));
+    border-color: hsl(var(--border));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .glass-flat .glass::before,
+  .glass-flat .glass-strong::before {
+    display: none;
+  }
 }
 
 @supports not ((backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px))) {
-  .glass {
+  .glass,
+  .glass-strong,
+  .glass-panel,
+  .glass-card,
+  .glass-table {
     background: hsl(var(--background) / 0.96);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  .glass-strong {
-    background: hsl(var(--background) / 0.98);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+  .glass::before,
+  .glass-strong::before {
+    display: none;
   }
+}
+
+@keyframes aurora-float-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(8%, 10%) scale(1.08); }
+}
+
+@keyframes aurora-float-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-10%, -8%) scale(1.12); }
+}
+
+@keyframes aurora-float-3 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(6%, -12%) scale(1.05); }
 }
 
 @keyframes bg-shift {

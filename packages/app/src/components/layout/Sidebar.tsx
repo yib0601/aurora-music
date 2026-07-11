@@ -56,7 +56,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-56 flex-shrink-0 flex flex-col p-2 gap-2">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="flex items-center gap-2.5 px-3 py-3">
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center shadow-lg shadow-primary/20">
           <Music className="h-4 w-4 text-white" />
@@ -73,7 +73,7 @@ export function Sidebar() {
               cn(
                 'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all',
                 isActive
-                  ? 'bg-foreground/10 text-foreground shadow-sm'
+                  ? 'glass-strong text-foreground shadow-sm'
                   : 'text-foreground/55 hover:text-foreground hover:bg-foreground/5'
               )
             }
@@ -122,7 +122,7 @@ export function Sidebar() {
                     className={({ isActive }) =>
                       cn(
                         'flex items-center gap-2.5 px-3 py-1.5 rounded-xl flex-1 min-w-0 transition-all',
-                        isActive ? 'bg-foreground/10 text-foreground shadow-sm' : 'text-foreground/55 hover:text-foreground hover:bg-foreground/5'
+                        isActive ? 'glass text-foreground shadow-sm' : 'text-foreground/55 hover:text-foreground hover:bg-foreground/5'
                       )
                     }
                   >
@@ -193,6 +193,6 @@ export function Sidebar() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </aside>
+    </div>
   )
 }
