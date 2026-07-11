@@ -33,7 +33,7 @@ export function RecentPage() {
 
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-foreground/40">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center mb-5">
+          <div className="w-20 h-20 rounded-2xl glass-card flex items-center justify-center mb-5">
             <Clock className="h-10 w-10 text-primary/70" />
           </div>
           <p className="text-lg font-medium mb-1">还没有播放记录</p>
@@ -41,10 +41,10 @@ export function RecentPage() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
-          <div className="rounded-2xl border border-border/30 overflow-hidden bg-foreground/[0.02]">
+          <div className="glass-table">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border/30 bg-foreground/[0.02]">
+                <tr className="border-b border-border/30">
                   <th className="text-left py-3 px-4 font-medium text-foreground/45 w-10">#</th>
                   <th className="text-left py-3 px-4 font-medium text-foreground/45">标题</th>
                   <th className="text-left py-3 px-4 font-medium text-foreground/45">艺术家</th>

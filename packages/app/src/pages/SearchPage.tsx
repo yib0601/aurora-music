@@ -67,16 +67,16 @@ export function SearchPage() {
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         {!query.trim() ? (
           <div className="flex flex-col items-center justify-center py-24 text-foreground/30">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center mb-5">
-              <SearchIcon className="h-10 w-10 text-primary/70" />
-            </div>
+            <div className="w-20 h-20 rounded-2xl glass-card flex items-center justify-center mb-5">
+            <SearchIcon className="h-10 w-10 text-primary/70" />
+          </div>
             <p className="text-sm text-foreground/45">输入关键词搜索你的音乐库</p>
           </div>
         ) : results.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-foreground/30">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center mb-5">
-              <Music2 className="h-10 w-10 text-primary/70" />
-            </div>
+            <div className="w-20 h-20 rounded-2xl glass-card flex items-center justify-center mb-5">
+            <Music2 className="h-10 w-10 text-primary/70" />
+          </div>
             <p className="text-sm text-foreground/45">未找到 "{query}" 的相关结果</p>
           </div>
         ) : (
@@ -85,7 +85,7 @@ export function SearchPage() {
               <h2 className="text-xs font-medium text-foreground/45 uppercase tracking-wider mb-3 px-1">
                 歌曲 ({results.length})
               </h2>
-              <div className="rounded-2xl border border-border/30 overflow-hidden bg-foreground/[0.02]">
+              <div className="glass-table">
                 {results.slice(0, 30).map((track, idx) => (
                   <ContextMenu key={track.id}>
                     <ContextMenuTrigger asChild>

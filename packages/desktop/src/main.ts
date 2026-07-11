@@ -14,8 +14,8 @@ function createWindow() {
     frame: false,
     backgroundColor: '#00000000',
     hasShadow: true,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: false,
+    thickFrame: false,
+    roundedCorners: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -72,5 +72,6 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,UseOzonePlatform')
 app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('ozone-platform', 'wayland')

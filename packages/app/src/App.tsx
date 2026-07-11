@@ -127,24 +127,38 @@ function AppLayout() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative" style={{ background: 'transparent' }}>
-      {/* 主背景层：半透明深色，让桌面壁纸透过来形成毛玻璃基底 */}
-      <div className="absolute inset-0 pointer-events-none dark:bg-[rgba(10,12,20,0.55)] bg-[rgba(250,250,252,0.5)]" />
-      {/* 动态光晕层 */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,var(--glow-color),transparent_40%),radial-gradient(circle_at_80%_80%,rgba(139,92,246,0.12),transparent_40%)] animate-bg-shift pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.08),transparent_55%)] pointer-events-none" />
+      {/* 桌面壁纸透射基底：更透明，让壁纸/背景色透出来 */}
+      <div className="absolute inset-0 pointer-events-none dark:bg-[rgba(6,8,16,0.28)] bg-[rgba(250,251,254,0.32)]" />
+
+      {/* 网格极光背景 */}
+      <div className="mesh-bg" />
+
+      {/* 流动光斑 */}
+      <div className="aurora-bg">
+        <div className="aurora-blob aurora-blob-1" />
+        <div className="aurora-blob aurora-blob-2" />
+        <div className="aurora-blob aurora-blob-3" />
+      </div>
+
+      {/* 封面主题光晕 */}
       <div className="absolute inset-0 pointer-events-none" style={{
         background: currentTrack?.coverPath
-          ? 'radial-gradient(ellipse 70% 45% at 50% -15%, var(--accent-from-color, rgba(59,130,246,0.18)), transparent 70%)'
-          : 'none',
+          ? 'radial-gradient(ellipse 80% 55% at 50% -20%, var(--accent-from-color, rgba(59,130,246,0.16)), transparent 72%)'
+          : 'radial-gradient(ellipse_at_top,hsl(var(--primary)/0.06),transparent_55%)',
         transition: 'background 0.8s ease',
       }} />
 
+      {/* 噪点纹理 */}
+      <div className="noise-overlay" />
+
       <TitleBar />
 
-      <div className="flex-1 flex overflow-hidden relative z-10 gap-3 p-3 pt-0">
-        <Sidebar />
+      <div className="flex-1 flex overflow-hidden relative z-10 gap-2 p-2 pt-0">
+        <aside className="w-56 flex-shrink-0 flex flex-col p-2 gap-2 glass-panel glass-sheen">
+          <Sidebar />
+        </aside>
 
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl glass">
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl glass glass-sheen">
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
               <Routes>
@@ -160,7 +174,7 @@ function AppLayout() {
 
             {currentTrack && (
               <div className="w-80 flex-shrink-0 p-5 hidden lg:flex flex-col gap-4 border-l border-border/30">
-                <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-primary/15 to-primary/5 border border-border/30 aspect-square flex items-center justify-center shadow-lg shadow-black/5">
+                <div className="rounded-2xl overflow-hidden glass-card aspect-square flex items-center justify-center shadow-lg shadow-black/5">
                   {currentTrack.coverPath ? (
                     <img
                       src={`file://${currentTrack.coverPath}`}
@@ -177,11 +191,11 @@ function AppLayout() {
                   <p className="text-sm text-foreground/50 truncate">{currentTrack.artist}</p>
                 </div>
 
-                <div className="rounded-2xl bg-foreground/5 border border-border/30 h-28 p-3 overflow-hidden">
+                <div className="rounded-2xl glass-card h-28 p-3 overflow-hidden">
                   <Visualizer mode="bars" />
                 </div>
 
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0 rounded-2xl bg-foreground/5 border border-border/30">
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0 rounded-2xl glass-card">
                   <div className="px-4 pt-4 pb-2 text-xs font-medium text-foreground/40 uppercase tracking-wider">
                     歌词
                   </div>

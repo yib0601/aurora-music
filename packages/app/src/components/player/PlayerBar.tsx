@@ -83,7 +83,7 @@ export function PlayerBar({
   }
 
   return (
-    <div className="glass-strong rounded-2xl px-5 py-3 flex items-center gap-5">
+    <div className="glass-card px-5 py-3 flex items-center gap-5">
       <div className="flex items-center gap-3 min-w-0 w-52 flex-shrink-0">
         <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
           {currentTrack?.coverPath ? (
