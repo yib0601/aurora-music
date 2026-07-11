@@ -15,18 +15,18 @@
     "typecheck": "tsc --noEmit -p tsconfig.electron.json"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^12.11.1",
     "iconv-lite": "^0.6.3",
     "music-metadata": "^10.5.0",
     "uuid": "^10.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
-    "@types/node": "^22.9.0",
+    "@types/node": "^24.13.3",
     "@types/uuid": "^10.0.0",
     "concurrently": "^9.0.1",
-    "electron": "^33.0.2",
-    "electron-builder": "^25.1.8",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.6.3",
     "wait-on": "^8.0.1"
   },
@@ -53,9 +53,13 @@
       "icon": "resources/icon.png",
       "maintainer": "Aurora Music <aurora-music@example.com>",
       "desktop": {
-        "Name": "Aurora Music",
-        "Comment": "An elegant cross-platform music player",
-        "Categories": "AudioVideo;Audio;"
+        "entry": {
+          "Name": "Aurora Music",
+          "Comment": "An elegant cross-platform music player",
+          "Categories": "AudioVideo;Audio;",
+          "Terminal": false,
+          "Type": "Application"
+        }
       }
     },
     "rpm": {

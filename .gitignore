@@ -52,6 +52,7 @@ pnpm-debug.log*
 .trae
 .codegraph
 .cache
+.mcp.json
 
 # 操作系统
 .DS_Store
