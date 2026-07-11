@@ -1,10 +1,18 @@
 import fs from 'fs'
 import path from 'path'
-import { parseBuffer } from 'music-metadata'
+import { loadMusicMetadata } from 'music-metadata'
 import iconv from 'iconv-lite'
 import { v4 as uuidv4 } from 'uuid'
 import type { Track } from '../types'
 import { insertTrack, getTrackByPath } from './database'
+
+let musicMetadataApi: any = null
+async function getMusicMetadataApi() {
+  if (!musicMetadataApi) {
+    musicMetadataApi = await loadMusicMetadata()
+  }
+  return musicMetadataApi
+}
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus'])
 
@@ -62,8 +70,10 @@ async function processFile(
 
     let metadata
     try {
-      metadata = await parseBuffer(buf, { mimeType: getMimeType(filePath) }, { duration: true })
-    } catch {
+      const mm = await getMusicMetadataApi()
+      metadata = await mm.parseBuffer(buf, { mimeType: getMimeType(filePath) }, { duration: true })
+    } catch (err) {
+      console.error('parseBuffer failed for', filePath, err)
       return null
     }
 
@@ -144,7 +154,9 @@ export async function scanFolder(
   userData: string,
   onProgress?: ProgressCallback
 ): Promise<Track[]> {
+  console.log('scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
+  console.log('scanFolder found files:', files.length)
   const tracks: Track[] = []
   const coverCache = new Map<string, string>()
 

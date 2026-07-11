@@ -1,6 +1,6 @@
 {
   "name": "@aurora/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Aurora Music - 跨平台优雅音乐播放器",
   "author": "Aurora Music <aurora-music@example.com>",
@@ -32,7 +32,8 @@
   },
   "build": {
     "appId": "com.aurora.music",
-    "productName": "Aurora Music",
+    "productName": "Aurora-Music",
+    "executableName": "Aurora-Music",
     "directories": {
       "output": "release"
     },
@@ -46,8 +47,6 @@
     ],
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] },
         { "target": "rpm", "arch": ["x64"] }
       ],
       "category": "AudioVideo",
@@ -58,6 +57,9 @@
         "Comment": "An elegant cross-platform music player",
         "Categories": "AudioVideo;Audio;"
       }
+    },
+    "rpm": {
+      "fpm": ["--rpm-digest", "sha256"]
     },
     "win": {
       "target": [
