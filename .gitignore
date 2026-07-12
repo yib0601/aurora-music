@@ -68,3 +68,6 @@ coverage
 # 临时文件
 *.tgz
 *.local
+
+# 构建增量缓存
+.build-cache

@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"SF Pro Text"', '"Segoe UI"', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',
@@ -50,9 +50,23 @@ const config: Config = {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        '2xl': '18px',
+        '3xl': '22px',
+      },
+      boxShadow: {
+        glass: '0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04)',
+        'glass-strong': '0 12px 44px rgba(0, 0, 0, 0.08), 0 3px 12px rgba(0, 0, 0, 0.05)',
+        float: '0 18px 48px rgba(0, 0, 0, 0.08)',
+      },
+      transitionTimingFunction: {
+        apple: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
+      },
+      transitionDuration: {
+        '200': '200ms',
+        '300': '300ms',
       },
       backdropBlur: {
-        glass: '20px',
+        glass: '28px',
       },
     },
   },

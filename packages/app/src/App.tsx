@@ -2,6 +2,7 @@ import React, { useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { TitleBar } from '@/components/layout/TitleBar'
+import { ResizeHandles } from '@/components/layout/ResizeHandle'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { QueueView } from '@/components/player/QueueView'
@@ -127,40 +128,51 @@ function AppLayout() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative" style={{ background: 'transparent' }}>
-      {/* 桌面壁纸透射基底：更透明，让壁纸/背景色透出来 */}
-      <div className="absolute inset-0 pointer-events-none dark:bg-[rgba(6,8,16,0.28)] bg-[rgba(250,251,254,0.32)]" />
+      {/* 背景层 - 深邃渐变 */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `
+            radial-gradient(ellipse 120% 100% at 0% 0%, rgba(30, 50, 110, 0.10), transparent 55%),
+            radial-gradient(ellipse 100% 80% at 100% 100%, rgba(50, 35, 100, 0.08), transparent 55%),
+            radial-gradient(ellipse 80% 60% at 50% 50%, rgba(20, 60, 120, 0.04), transparent 45%),
+            linear-gradient(160deg, #0a0b10 0%, #0c0d14 30%, #0b0c12 60%, #090a0f 100%)
+          `,
+        }}
+      />
 
-      {/* 网格极光背景 */}
-      <div className="mesh-bg" />
-
-      {/* 流动光斑 */}
-      <div className="aurora-bg">
-        <div className="aurora-blob aurora-blob-1" />
-        <div className="aurora-blob aurora-blob-2" />
-        <div className="aurora-blob aurora-blob-3" />
-      </div>
-
-      {/* 封面主题光晕 */}
-      <div className="absolute inset-0 pointer-events-none" style={{
+      {/* 动态光晕层 - 封面主题色 */}
+      <div className="absolute inset-0 pointer-events-none transition-opacity duration-[1500ms] ease-out" style={{
+        opacity: currentTrack?.coverPath ? 0.7 : 0,
         background: currentTrack?.coverPath
-          ? 'radial-gradient(ellipse 80% 55% at 50% -20%, var(--accent-from-color, rgba(59,130,246,0.16)), transparent 72%)'
-          : 'radial-gradient(ellipse_at_top,hsl(var(--primary)/0.06),transparent_55%)',
-        transition: 'background 0.8s ease',
+          ? 'radial-gradient(ellipse 70% 50% at 50% 25%, var(--accent-from-color, rgba(40,90,180,0.06)), transparent 65%)'
+          : 'none',
       }} />
 
-      {/* 噪点纹理 */}
-      <div className="noise-overlay" />
+      {/* 微光效果层 - 顶部柔光 */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: 'radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255,255,255,0.012), transparent 60%)',
+      }} />
+
+      {/* 噪点纹理层 */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        opacity: 0.012,
+        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+        backgroundSize: '128px 128px',
+      }} />
 
       <TitleBar />
 
-      <div className="flex-1 flex overflow-hidden relative z-10 gap-2 p-2 pt-0">
-        <aside className="w-56 flex-shrink-0 flex flex-col p-2 gap-2 glass-panel glass-sheen">
+      <ResizeHandles />
+
+      <div className="flex-1 flex overflow-hidden relative z-10 gap-2.5 p-2.5 pt-0">
+        <aside className="w-56 flex-shrink-0 flex flex-col p-2.5 gap-2.5 glass-panel">
           <Sidebar />
         </aside>
 
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl glass glass-sheen">
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-[16px] glass">
           <div className="flex-1 flex overflow-hidden">
-            <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-5">
               <Routes>
                 <Route path="/" element={<Navigate to="/library" replace />} />
                 <Route path="/library" element={<LibraryPage />} />
@@ -173,8 +185,8 @@ function AppLayout() {
             </div>
 
             {currentTrack && (
-              <div className="w-80 flex-shrink-0 p-5 hidden lg:flex flex-col gap-4 border-l border-border/30">
-                <div className="rounded-2xl overflow-hidden glass-card aspect-square flex items-center justify-center shadow-lg shadow-black/5">
+              <div className="w-72 flex-shrink-0 p-4 hidden lg:flex flex-col gap-3.5 border-l border-border/10">
+                <div className="rounded-[14px] overflow-hidden glass-card aspect-square flex items-center justify-center">
                   {currentTrack.coverPath ? (
                     <img
                       src={`file://${currentTrack.coverPath}`}
@@ -187,16 +199,16 @@ function AppLayout() {
                 </div>
 
                 <div className="text-center px-1">
-                  <p className="font-semibold truncate text-lg">{currentTrack.title}</p>
-                  <p className="text-sm text-foreground/50 truncate">{currentTrack.artist}</p>
+                  <p className="font-semibold truncate text-[15px]">{currentTrack.title}</p>
+                  <p className="text-[12px] text-foreground/40 truncate mt-0.5">{currentTrack.artist}</p>
                 </div>
 
-                <div className="rounded-2xl glass-card h-28 p-3 overflow-hidden">
+                <div className="rounded-[14px] glass-card h-24 p-2.5 overflow-hidden">
                   <Visualizer mode="bars" />
                 </div>
 
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0 rounded-2xl glass-card">
-                  <div className="px-4 pt-4 pb-2 text-xs font-medium text-foreground/40 uppercase tracking-wider">
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0 rounded-[14px] glass-card">
+                  <div className="px-3.5 pt-3 pb-1.5 text-[10px] font-medium text-foreground/35 uppercase tracking-wider">
                     歌词
                   </div>
                   <div className="flex-1 min-h-0">
@@ -209,7 +221,7 @@ function AppLayout() {
 
           <QueueView />
 
-          <div className="px-5 pb-4 pt-2">
+          <div className="px-4 pb-3 pt-1.5">
             <PlayerBar
               currentTrack={currentTrack}
               isPlaying={isPlaying}

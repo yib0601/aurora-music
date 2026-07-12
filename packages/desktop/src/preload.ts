@@ -25,6 +25,10 @@ const electronAPI = {
     close: () => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
   },
+  getBounds: (): Promise<{ x: number; y: number; width: number; height: number } | null> =>
+    ipcRenderer.invoke('window:getBounds'),
+  setBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.invoke('window:setBounds', bounds),
   onTracksScanned: (callback: (tracks: any[]) => void) => {
     ipcRenderer.on('scan:complete', (_event, tracks) => callback(tracks))
   },

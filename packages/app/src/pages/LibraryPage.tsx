@@ -95,16 +95,16 @@ export function LibraryPage() {
       <ContextMenuTrigger asChild>
         <tr
           key={track.id}
-          className="hover:bg-foreground/[0.04] cursor-pointer transition-colors group border-b border-border/20 last:border-0"
+          className="hover:bg-foreground/[0.03] cursor-pointer transition-colors duration-200 ease-apple group border-b border-border/[0.06] last:border-0"
           onDoubleClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), queue)}
         >
-          <td className="py-2.5 px-4 text-foreground/40 group-hover:text-foreground/70 w-10">
-            <span className="group-hover:hidden">{idx + 1}</span>
-            <Play className="h-3.5 w-3.5 hidden group-hover:block" />
+          <td className="py-2.5 px-3.5 text-foreground/30 group-hover:text-foreground/60 w-10">
+            <span className="group-hover:hidden text-[12px]">{idx + 1}</span>
+            <Play className="h-3 w-3 hidden group-hover:block" strokeWidth={1.8} />
           </td>
-          <td className="py-2.5 px-4 font-medium truncate max-w-xs">{track.title}</td>
-          <td className="py-2.5 px-4 text-foreground/55 truncate max-w-40">{track.artist}</td>
-          <td className="py-2.5 px-4 text-foreground/55 truncate max-w-48 hidden md:table-cell">
+          <td className="py-2.5 px-3.5 font-medium text-[12.5px] truncate max-w-xs text-foreground/85">{track.title}</td>
+          <td className="py-2.5 px-3.5 text-foreground/40 text-[12.5px] truncate max-w-40">{track.artist}</td>
+          <td className="py-2.5 px-3.5 text-foreground/40 text-[12.5px] truncate max-w-48 hidden md:table-cell">
             {track.album}
           </td>
           <td className="py-2.5 px-2 w-10">
@@ -113,35 +113,36 @@ export function LibraryPage() {
                 e.stopPropagation()
                 toggleLike(track.id)
               }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-foreground/10 rounded"
+              className="opacity-0 group-hover:opacity-100 transition-all duration-200 ease-apple p-1 hover:bg-foreground/[0.06] rounded-md"
             >
               <Heart
-                className={cn('h-4 w-4', likedTracks.has(track.id) ? 'text-red-500 fill-red-500' : 'text-foreground/40')}
+                className={cn('h-3.5 w-3.5', likedTracks.has(track.id) ? 'text-red-500 fill-red-500' : 'text-foreground/35')}
+                strokeWidth={1.7}
               />
             </button>
           </td>
-          <td className="py-2.5 px-4 text-right text-foreground/40 tabular-nums w-16">
+          <td className="py-2.5 px-3.5 text-right text-foreground/30 text-[11px] tabular-nums w-16">
             {formatTime(track.duration)}
           </td>
         </tr>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         <ContextMenuItem onClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), queue)}>
-          <Play className="h-4 w-4 mr-2" />
+          <Play className="h-4 w-4 mr-2" strokeWidth={1.6} />
           立即播放
         </ContextMenuItem>
         <ContextMenuItem onClick={() => handlePlayNext(track)}>
-          <ListEnd className="h-4 w-4 mr-2" />
+          <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.6} />
           下一首播放
         </ContextMenuItem>
         <ContextMenuItem onClick={() => handleAddToQueue(track)}>
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
           添加到队列
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuSub>
           <ContextMenuSubTrigger>
-            <ListPlus className="h-4 w-4 mr-2" />
+            <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.6} />
             添加到播放列表
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-48">
@@ -152,14 +153,14 @@ export function LibraryPage() {
                   setShowNewPlaylistDialog(true)
                 }}
               >
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
                 新建播放列表...
               </ContextMenuItem>
             ) : (
               <>
                 {playlists.map((pl) => (
                   <ContextMenuItem key={pl.id} onClick={() => handleAddToPlaylist(track.id, pl.id)}>
-                    <ListPlus className="h-4 w-4 mr-2 opacity-50" />
+                    <ListPlus className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.6} />
                     {pl.name}
                   </ContextMenuItem>
                 ))}
@@ -170,7 +171,7 @@ export function LibraryPage() {
                     setShowNewPlaylistDialog(true)
                   }}
                 >
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
                   新建播放列表...
                 </ContextMenuItem>
               </>
@@ -179,7 +180,7 @@ export function LibraryPage() {
         </ContextMenuSub>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => toggleLike(track.id)}>
-          <Heart className={cn('h-4 w-4 mr-2', likedTracks.has(track.id) && 'fill-red-500 text-red-500')} />
+          <Heart className={cn('h-4 w-4 mr-2', likedTracks.has(track.id) && 'fill-red-500 text-red-500')} strokeWidth={1.7} />
           {likedTracks.has(track.id) ? '取消收藏' : '收藏'}
         </ContextMenuItem>
       </ContextMenuContent>
@@ -188,61 +189,61 @@ export function LibraryPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-6 px-1">
+      <div className="flex items-center justify-between mb-5 px-0.5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">音乐库</h1>
-          <p className="text-sm text-foreground/45 mt-0.5">{tracks.length} 首歌曲</p>
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground/85">音乐库</h1>
+          <p className="text-[12px] text-foreground/35 mt-0.5">{tracks.length} 首歌曲</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground/40" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-foreground/30" strokeWidth={1.7} />
             <input
               type="text"
               placeholder="搜索歌曲..."
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
-              className="glass rounded-xl pl-9 pr-4 py-2 text-sm w-56 outline-none focus:ring-2 focus:ring-primary/30 bg-transparent"
+              className="glass rounded-[10px] pl-9 pr-3.5 py-1.5 text-[12px] w-52 outline-none focus:ring-2 focus:ring-primary/20 bg-transparent transition-all duration-200 ease-apple"
             />
           </div>
           {isDesktop() && (
-            <Button variant="outline" size="sm" className="rounded-xl border-border/50 bg-transparent hover:bg-foreground/5" onClick={handlePickFolder}>
-              <FolderOpen className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" className="rounded-[10px] border-border/30 bg-transparent hover:bg-foreground/[0.04] text-[12px] h-8 px-3 transition-all duration-200 ease-apple" onClick={handlePickFolder}>
+              <FolderOpen className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.6} />
               导入音乐
             </Button>
           )}
-          <div className="glass rounded-xl p-0.5 flex">
+          <div className="glass rounded-[10px] p-0.5 flex">
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size="icon"
-              className="h-8 w-8 rounded-lg"
+              className="h-7 w-7 rounded-[8px] transition-all duration-200 ease-apple"
               onClick={() => setViewMode('list')}
             >
-              <List className="h-4 w-4" />
+              <List className="h-3.5 w-3.5" strokeWidth={1.7} />
             </Button>
             <Button
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
               size="icon"
-              className="h-8 w-8 rounded-lg"
+              className="h-7 w-7 rounded-[8px] transition-all duration-200 ease-apple"
               onClick={() => setViewMode('grid')}
             >
-              <Grid3X3 className="h-4 w-4" />
+              <Grid3X3 className="h-3.5 w-3.5" strokeWidth={1.7} />
             </Button>
           </div>
         </div>
       </div>
 
       {isScanning && (
-        <div className="glass-card p-4 mb-5">
-          <p className="text-sm text-foreground/70 mb-2 truncate">
+        <div className="glass-card p-4 mb-6">
+          <p className="text-[13px] text-foreground/65 mb-2 truncate">
             正在扫描: {scanProgress.file}
           </p>
           <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
             <div
-              className="bg-primary h-full rounded-full transition-all"
+              className="bg-primary h-full rounded-full transition-all duration-300 ease-apple"
               style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}%` }}
             />
           </div>
-          <p className="text-xs text-foreground/45 mt-2">
+          <p className="text-[11px] text-foreground/40 mt-2">
             {scanProgress.current} / {scanProgress.total}
           </p>
         </div>
@@ -250,14 +251,14 @@ export function LibraryPage() {
 
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-foreground/40">
-          <div className="w-20 h-20 rounded-2xl glass-card flex items-center justify-center mb-5">
-            <MusicIcon className="h-10 w-10 text-primary/70" />
+          <div className="w-20 h-20 rounded-[18px] glass-card flex items-center justify-center mb-5">
+            <MusicIcon className="h-10 w-10 text-primary/70" strokeWidth={1.5} />
           </div>
-          <p className="text-lg font-medium mb-1">还没有音乐</p>
-          <p className="text-sm text-foreground/45 mb-5">点击"导入音乐"添加你的音乐文件夹</p>
+          <p className="text-lg font-medium mb-1 text-foreground/70">还没有音乐</p>
+          <p className="text-[13px] text-foreground/40 mb-6">点击"导入音乐"添加你的音乐文件夹</p>
           {isDesktop() && (
-            <Button onClick={handlePickFolder} className="rounded-xl">
-              <FolderOpen className="h-4 w-4 mr-2" />
+            <Button onClick={handlePickFolder} className="rounded-[13px] h-9 px-5 transition-all duration-200 ease-apple hover:scale-[1.02] active:scale-95">
+              <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
               导入音乐
             </Button>
           )}
@@ -265,15 +266,15 @@ export function LibraryPage() {
       ) : viewMode === 'list' ? (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           <div className="glass-table">
-            <table className="w-full text-sm">
+            <table className="w-full text-[12.5px]">
               <thead>
-                <tr className="border-b border-border/30">
-                  <th className="text-left py-3 px-4 font-medium text-foreground/45 w-10">#</th>
-                  <th className="text-left py-3 px-4 font-medium text-foreground/45">标题</th>
-                  <th className="text-left py-3 px-4 font-medium text-foreground/45">艺术家</th>
-                  <th className="text-left py-3 px-4 font-medium text-foreground/45 hidden md:table-cell">专辑</th>
+                <tr className="border-b border-border/[0.08]">
+                  <th className="text-left py-3 px-3.5 font-medium text-foreground/25 w-10 text-[11px]">#</th>
+                  <th className="text-left py-3 px-3.5 font-medium text-foreground/25 text-[11px]">标题</th>
+                  <th className="text-left py-3 px-3.5 font-medium text-foreground/25 text-[11px]">艺术家</th>
+                  <th className="text-left py-3 px-3.5 font-medium text-foreground/25 text-[11px] hidden md:table-cell">专辑</th>
                   <th className="w-10"></th>
-                  <th className="text-right py-3 px-4 font-medium text-foreground/45 w-16">时长</th>
+                  <th className="text-right py-3 px-3.5 font-medium text-foreground/25 text-[11px] w-16">时长</th>
                 </tr>
               </thead>
               <tbody>
@@ -291,10 +292,10 @@ export function LibraryPage() {
               <ContextMenu key={track.id}>
                 <ContextMenuTrigger asChild>
                   <div
-                    className="group glass-card glass-card-hover p-3 cursor-pointer"
+                    className="group glass-card glass-card-hover p-2.5 cursor-pointer"
                     onDoubleClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), filteredTracks)}
                   >
-                    <div className="aspect-square rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 border border-border/30 mb-3 flex items-center justify-center overflow-hidden relative glass-card">
+                    <div className="aspect-square rounded-[11px] bg-gradient-to-br from-primary/12 to-primary/3 border border-border/15 mb-2.5 flex items-center justify-center overflow-hidden relative">
                       {track.coverPath ? (
                         <img
                           src={`file://${track.coverPath}`}
@@ -302,40 +303,41 @@ export function LibraryPage() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <MusicIcon className="h-10 w-10 text-foreground/25" />
+                        <MusicIcon className="h-8 w-8 text-foreground/20" strokeWidth={1.5} />
                       )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
                           toggleLike(track.id)
                         }}
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all bg-black/35 backdrop-blur-sm rounded-full p-1.5"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-apple bg-black/30 backdrop-blur-md rounded-full p-1 hover:scale-105"
                       >
                         <Heart
-                          className={cn('h-4 w-4', likedTracks.has(track.id) ? 'text-red-400 fill-red-400' : 'text-white')}
+                          className={cn('h-3.5 w-3.5', likedTracks.has(track.id) ? 'text-red-400 fill-red-400' : 'text-white')}
+                          strokeWidth={1.7}
                         />
                       </button>
                     </div>
-                    <p className="text-sm font-medium truncate">{track.title}</p>
-                    <p className="text-xs text-foreground/45 truncate">{track.artist}</p>
+                    <p className="text-[12.5px] font-medium truncate text-foreground/85">{track.title}</p>
+                    <p className="text-[11px] text-foreground/35 truncate">{track.artist}</p>
                   </div>
                 </ContextMenuTrigger>
                 <ContextMenuContent className="w-52">
                   <ContextMenuItem onClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), filteredTracks)}>
-                    <Play className="h-4 w-4 mr-2" />
+                    <Play className="h-4 w-4 mr-2" strokeWidth={1.6} />
                     立即播放
                   </ContextMenuItem>
                   <ContextMenuItem onClick={() => handlePlayNext(track)}>
-                    <ListEnd className="h-4 w-4 mr-2" />
+                    <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.6} />
                     下一首播放
                   </ContextMenuItem>
                   <ContextMenuItem onClick={() => handleAddToQueue(track)}>
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
                     添加到队列
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem onClick={() => toggleLike(track.id)}>
-                    <Heart className={cn('h-4 w-4 mr-2', likedTracks.has(track.id) && 'fill-red-500 text-red-500')} />
+                    <Heart className={cn('h-4 w-4 mr-2', likedTracks.has(track.id) && 'fill-red-500 text-red-500')} strokeWidth={1.7} />
                     {likedTracks.has(track.id) ? '取消收藏' : '收藏'}
                   </ContextMenuItem>
                 </ContextMenuContent>
@@ -346,7 +348,7 @@ export function LibraryPage() {
       )}
 
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
-        <DialogContent className="sm:max-w-sm rounded-2xl">
+        <DialogContent className="sm:max-w-sm rounded-[18px]">
           <DialogHeader>
             <DialogTitle>新建播放列表</DialogTitle>
           </DialogHeader>

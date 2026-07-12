@@ -1,18 +1,10 @@
 import fs from 'fs'
 import path from 'path'
-import { loadMusicMetadata } from 'music-metadata'
+import { parseFile } from 'music-metadata'
 import iconv from 'iconv-lite'
 import { v4 as uuidv4 } from 'uuid'
 import type { Track } from '../types'
 import { insertTrack, getTrackByPath } from './database'
-
-let musicMetadataApi: any = null
-async function getMusicMetadataApi() {
-  if (!musicMetadataApi) {
-    musicMetadataApi = await loadMusicMetadata()
-  }
-  return musicMetadataApi
-}
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus'])
 
@@ -66,14 +58,12 @@ async function processFile(
     if (existing) return existing
 
     const stat = await fs.promises.stat(filePath)
-    const buf = await fs.promises.readFile(filePath)
 
     let metadata
     try {
-      const mm = await getMusicMetadataApi()
-      metadata = await mm.parseBuffer(buf, { mimeType: getMimeType(filePath) }, { duration: true })
+      metadata = await parseFile(filePath, { duration: true })
     } catch (err) {
-      console.error('parseBuffer failed for', filePath, err)
+      console.error('parseFile failed for', filePath, err)
       return null
     }
 
@@ -132,21 +122,6 @@ async function processFile(
     console.error('Error processing file:', filePath, err)
     return null
   }
-}
-
-function getMimeType(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase()
-  const map: Record<string, string> = {
-    '.mp3': 'audio/mpeg',
-    '.flac': 'audio/flac',
-    '.m4a': 'audio/mp4',
-    '.aac': 'audio/aac',
-    '.ogg': 'audio/ogg',
-    '.opus': 'audio/opus',
-    '.wav': 'audio/wav',
-    '.wma': 'audio/x-ms-wma',
-  }
-  return map[ext] || 'audio/mpeg'
 }
 
 export async function scanFolder(

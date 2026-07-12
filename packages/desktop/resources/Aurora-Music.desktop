@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Aurora Music
+Comment=An elegant cross-platform music player
+Exec=/opt/Aurora-Music/Aurora-Music %U
+Icon=Aurora-Music
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;
+MimeType=audio/mpeg;audio/ogg;audio/flac;audio/wav;
