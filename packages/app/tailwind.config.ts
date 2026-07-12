@@ -64,6 +64,7 @@ const config: Config = {
       transitionDuration: {
         '200': '200ms',
         '300': '300ms',
+        '1500': '1500ms',
       },
       backdropBlur: {
         glass: '28px',

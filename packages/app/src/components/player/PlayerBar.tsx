@@ -20,8 +20,7 @@ interface PlayerBarProps {
   onSeek: (seconds: number) => void
   onVolumeChange: (v: number) => void
   onToggleMute: () => void
-  onToggleShuffle: () => void
-  onCycleRepeat: () => void
+  onCyclePlayMode: () => void
 }
 
 export function PlayerBar({
@@ -39,8 +38,7 @@ export function PlayerBar({
   onSeek,
   onVolumeChange,
   onToggleMute,
-  onToggleShuffle,
-  onCycleRepeat,
+  onCyclePlayMode,
 }: PlayerBarProps) {
   const [seeking, setSeeking] = useState(false)
   const [seekValue, setSeekValue] = useState(0)
@@ -115,9 +113,22 @@ export function PlayerBar({
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-full text-foreground/40 hover:text-foreground/80 hover:bg-white/[0.06] transition-all duration-200 ease-apple"
-            onClick={onToggleShuffle}
+            onClick={onCyclePlayMode}
+            title={
+              shuffleMode === 'on' ? '随机播放' :
+              repeatMode === 'one' ? '单曲循环' :
+              repeatMode === 'all' ? '列表循环' : '随机播放'
+            }
           >
-            <Shuffle className={cn('h-[15px] w-[15px]', shuffleMode === 'on' ? 'text-primary' : '')} strokeWidth={1.5} />
+            {shuffleMode === 'on' ? (
+              <Shuffle className="h-[15px] w-[15px] text-primary" strokeWidth={1.5} />
+            ) : repeatMode === 'one' ? (
+              <Repeat1 className="h-[15px] w-[15px] text-primary" strokeWidth={1.5} />
+            ) : repeatMode === 'all' ? (
+              <Repeat className="h-[15px] w-[15px] text-primary" strokeWidth={1.5} />
+            ) : (
+              <Repeat className="h-[15px] w-[15px]" strokeWidth={1.5} />
+            )}
           </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/[0.06] transition-all duration-200 ease-apple" onClick={onPrevious}>
             <SkipBack className="h-[15px] w-[15px]" strokeWidth={1.5} />
@@ -133,18 +144,6 @@ export function PlayerBar({
           </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/[0.06] transition-all duration-200 ease-apple" onClick={onNext} disabled={!currentTrack}>
             <SkipForward className="h-[15px] w-[15px]" strokeWidth={1.5} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 rounded-full text-foreground/40 hover:text-foreground/80 hover:bg-white/[0.06] transition-all duration-200 ease-apple"
-            onClick={onCycleRepeat}
-          >
-            {repeatMode === 'one' ? (
-              <Repeat1 className="h-[15px] w-[15px] text-primary" strokeWidth={1.5} />
-            ) : (
-              <Repeat className={cn('h-[15px] w-[15px]', repeatMode === 'all' ? 'text-primary' : '')} strokeWidth={1.5} />
-            )}
           </Button>
         </div>
         <div className="flex items-center gap-3 w-full">

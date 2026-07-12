@@ -23,6 +23,7 @@ interface PlayerState {
   currentIndex: number
   repeatMode: RepeatMode
   shuffleMode: ShuffleMode
+  shuffleHistory: number[]
 
   playTrack: (track: Track) => void
   playQueue: (tracks: Track[], startIndex?: number) => void
@@ -36,6 +37,7 @@ interface PlayerState {
   toggleMute: () => void
   toggleShuffle: () => void
   cycleRepeat: () => void
+  cyclePlayMode: () => void
   setCurrentIndex: (index: number) => void
   setIsPlaying: (playing: boolean) => void
   setProgress: (progress: number) => void
@@ -53,7 +55,8 @@ const initialState = {
   queue: [],
   currentIndex: -1,
   repeatMode: 'off' as RepeatMode,
-  shuffleMode: 'off' as ShuffleMode,
+  shuffleMode: 'on' as ShuffleMode,
+  shuffleHistory: [] as number[],
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -63,16 +66,24 @@ export const usePlayerStore = create<PlayerState>()(
 
       playTrack: (track) => {
         const state = get()
-        const index = state.queue.findIndex((t) => t.id === track.id)
-        if (index >= 0) {
-          set({ currentIndex: index })
-        } else {
-          set({ queue: [...state.queue, track], currentIndex: state.queue.length })
+        let index = state.queue.findIndex((t) => t.id === track.id)
+        let newQueue = state.queue
+        if (index < 0) {
+          newQueue = [...state.queue, track]
+          index = newQueue.length - 1
         }
+        const newHistory =
+          state.shuffleMode === 'on'
+            ? [...state.shuffleHistory, index]
+            : state.shuffleHistory
+        set({ queue: newQueue, currentIndex: index, shuffleHistory: newHistory })
         audioPlayTrack(track)
       },
 
       playQueue: (tracks, startIndex = 0) => {
+        const newHistory =
+          get().shuffleMode === 'on' && tracks[startIndex] ? [startIndex] : []
+        set({ queue: tracks, currentIndex: startIndex, shuffleHistory: newHistory })
         audioPlayQueue(tracks, startIndex)
       },
 
@@ -101,16 +112,28 @@ export const usePlayerStore = create<PlayerState>()(
 
         let nextIndex: number
         if (state.shuffleMode === 'on') {
-          nextIndex = Math.floor(Math.random() * state.queue.length)
-        } else {
-          nextIndex = state.currentIndex + 1
-          if (nextIndex >= state.queue.length) {
-            if (state.repeatMode === 'all') {
-              nextIndex = 0
-            } else {
-              set({ isPlaying: false, progress: 0 })
-              return
-            }
+          if (state.queue.length === 1) {
+            nextIndex = state.currentIndex
+          } else {
+            const candidates = state.queue
+              .map((_, i) => i)
+              .filter((i) => i !== state.currentIndex)
+            nextIndex = candidates[Math.floor(Math.random() * candidates.length)]
+          }
+          const newHistory = [...state.shuffleHistory, nextIndex]
+          const nextTrack = state.queue[nextIndex]
+          set({ currentIndex: nextIndex, shuffleHistory: newHistory })
+          audioPlayTrack(nextTrack)
+          return
+        }
+
+        nextIndex = state.currentIndex + 1
+        if (nextIndex >= state.queue.length) {
+          if (state.repeatMode === 'all') {
+            nextIndex = 0
+          } else {
+            set({ isPlaying: false, progress: 0 })
+            return
           }
         }
 
@@ -128,8 +151,21 @@ export const usePlayerStore = create<PlayerState>()(
           return
         }
 
-        let prevIndex = state.currentIndex - 1
-        if (prevIndex < 0) prevIndex = state.queue.length - 1
+        let prevIndex: number
+        if (state.shuffleMode === 'on') {
+          const history = [...state.shuffleHistory]
+          history.pop()
+          const last = history[history.length - 1]
+          if (last === undefined) {
+            audioSeekTo(0)
+            return
+          }
+          prevIndex = last
+          set({ shuffleHistory: history })
+        } else {
+          prevIndex = state.currentIndex - 1
+          if (prevIndex < 0) prevIndex = state.queue.length - 1
+        }
 
         const prevTrack = state.queue[prevIndex]
         set({ currentIndex: prevIndex })
@@ -155,8 +191,13 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       toggleShuffle: () => {
-        const { shuffleMode } = get()
-        set({ shuffleMode: shuffleMode === 'off' ? 'on' : 'off' })
+        const { shuffleMode, currentIndex } = get()
+        const newMode: ShuffleMode = shuffleMode === 'off' ? 'on' : 'off'
+        const newHistory =
+          newMode === 'on' && currentIndex >= 0
+            ? [currentIndex]
+            : []
+        set({ shuffleMode: newMode, shuffleHistory: newHistory })
       },
 
       cycleRepeat: () => {
@@ -164,6 +205,18 @@ export const usePlayerStore = create<PlayerState>()(
         const modes: RepeatMode[] = ['off', 'all', 'one']
         const nextIdx = (modes.indexOf(repeatMode) + 1) % modes.length
         set({ repeatMode: modes[nextIdx] })
+      },
+
+      cyclePlayMode: () => {
+        const { shuffleMode, repeatMode, currentIndex } = get()
+        // shuffle → repeat all → repeat one → shuffle
+        if (shuffleMode === 'on') {
+          set({ shuffleMode: 'off', shuffleHistory: [], repeatMode: 'all' })
+        } else if (repeatMode === 'all') {
+          set({ repeatMode: 'one' })
+        } else {
+          set({ repeatMode: 'off', shuffleMode: 'on', shuffleHistory: currentIndex >= 0 ? [currentIndex] : [] })
+        }
       },
 
       setCurrentIndex: (index) => {
