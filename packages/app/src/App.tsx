@@ -118,12 +118,8 @@ function AppLayout() {
     usePlayerStore.getState().toggleMute()
   }, [])
 
-  const handleToggleShuffle = useCallback(() => {
-    usePlayerStore.getState().toggleShuffle()
-  }, [])
-
-  const handleCycleRepeat = useCallback(() => {
-    usePlayerStore.getState().cycleRepeat()
+  const handleCyclePlayMode = useCallback(() => {
+    usePlayerStore.getState().cyclePlayMode()
   }, [])
 
   return (
@@ -142,7 +138,7 @@ function AppLayout() {
       />
 
       {/* 动态光晕层 - 封面主题色 */}
-      <div className="absolute inset-0 pointer-events-none transition-opacity duration-[1500ms] ease-out" style={{
+      <div className="absolute inset-0 pointer-events-none transition-opacity duration-1500 ease-out" style={{
         opacity: currentTrack?.coverPath ? 0.7 : 0,
         background: currentTrack?.coverPath
           ? 'radial-gradient(ellipse 70% 50% at 50% 25%, var(--accent-from-color, rgba(40,90,180,0.06)), transparent 65%)'
@@ -237,8 +233,7 @@ function AppLayout() {
               onSeek={handleSeek}
               onVolumeChange={handleVolumeChange}
               onToggleMute={handleToggleMute}
-              onToggleShuffle={handleToggleShuffle}
-              onCycleRepeat={handleCycleRepeat}
+              onCyclePlayMode={handleCyclePlayMode}
             />
           </div>
         </main>

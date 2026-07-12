@@ -74,10 +74,10 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 px-3.5 py-2.5 rounded-[11px] text-[12.5px] font-medium transition-all duration-200 ease-apple',
+                'flex items-center gap-3 px-3.5 py-2.5 rounded-[11px] text-[12.5px] font-medium transition-all duration-200 ease-apple border',
                 isActive
-                  ? 'glass-strong text-foreground/90 shadow-sm border border-white/[0.08]'
-                  : 'text-foreground/50 hover:text-foreground/85 hover:bg-white/[0.04]'
+                  ? 'glass-strong text-foreground/90 shadow-sm border-white/[0.08]'
+                  : 'text-foreground/50 hover:text-foreground/85 hover:bg-white/[0.04] border-transparent'
               )
             }
           >
@@ -124,10 +124,10 @@ export function Sidebar() {
                     to={`/playlist/${pl.id}`}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center gap-2.5 px-3.5 py-2 rounded-[11px] flex-1 min-w-0 transition-all duration-200 ease-apple',
+                        'flex items-center gap-2.5 px-3.5 py-2 rounded-[11px] flex-1 min-w-0 transition-all duration-200 ease-apple border',
                         isActive
-                          ? 'glass text-foreground/90 shadow-sm border border-white/[0.06]'
-                          : 'text-foreground/50 hover:text-foreground/85 hover:bg-white/[0.04]'
+                          ? 'glass text-foreground/90 shadow-sm border-white/[0.06]'
+                          : 'text-foreground/50 hover:text-foreground/85 hover:bg-white/[0.04] border-transparent'
                       )
                     }
                   >

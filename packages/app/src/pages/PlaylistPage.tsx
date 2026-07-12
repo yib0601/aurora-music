@@ -17,7 +17,6 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { cn, formatTime } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { playTrack as audioPlayTrack, playQueue } from '@/services/audio.service'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +38,7 @@ export function PlaylistPage() {
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const playTrack = usePlayerStore((s) => s.playTrack)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
+  const playQueue = usePlayerStore((s) => s.playQueue)
 
   const playlist = playlists.find((p) => p.id === id)
 
@@ -70,7 +70,7 @@ export function PlaylistPage() {
 
   const handlePlayTrack = (track: typeof tracks[0], index: number) => {
     if (currentTrack?.id === track.id) {
-      audioPlayTrack(track)
+      playTrack(track)
       return
     }
     playQueue(playlistTracks, index)

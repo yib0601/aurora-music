@@ -45,6 +45,8 @@
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**"
     ],
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
     "linux": {
       "target": [
         { "target": "rpm", "arch": ["x64"] }
