@@ -65,6 +65,17 @@ export function registerIpcHandlers() {
     return mainWindow?.isMaximized() ?? false
   })
 
+  // 无边框窗口的边缘缩放：由渲染进程驱动鼠标手势，主进程应用 setBounds
+  ipcMain.handle('window:getBounds', () => {
+    if (!mainWindow) return null
+    return mainWindow.getBounds()
+  })
+
+  ipcMain.handle('window:setBounds', (_event, bounds: Electron.Rectangle) => {
+    if (!mainWindow) return
+    mainWindow.setBounds(bounds)
+  })
+
   ipcMain.handle('app:getUserDataPath', () => {
     return app.getPath('userData')
   })

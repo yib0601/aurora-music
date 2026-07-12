@@ -83,9 +83,9 @@ export function PlayerBar({
   }
 
   return (
-    <div className="glass-card px-5 py-3 flex items-center gap-5">
-      <div className="flex items-center gap-3 min-w-0 w-52 flex-shrink-0">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 border border-border/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div className="glass-card px-5 py-3.5 flex items-center gap-6">
+      <div className="flex items-center gap-3.5 min-w-0 w-52 flex-shrink-0">
+        <div className="w-12 h-12 rounded-[13px] bg-gradient-to-br from-primary/25 to-primary/8 border border-white/[0.08] flex items-center justify-center flex-shrink-0 overflow-hidden shadow-lg shadow-black/20">
           {currentTrack?.coverPath ? (
             <img
               src={`file://${currentTrack.coverPath}`}
@@ -96,59 +96,59 @@ export function PlayerBar({
               }}
             />
           ) : (
-            <Music2 className="h-5 w-5 text-foreground/35" />
+            <Music2 className="h-5 w-5 text-foreground/35" strokeWidth={1.5} />
           )}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate">
+          <p className="text-[13px] font-semibold truncate text-foreground/90 leading-tight">
             {currentTrack?.title || '未在播放'}
           </p>
-          <p className="text-xs text-foreground/45 truncate">
+          <p className="text-[11px] text-foreground/45 truncate mt-0.5 leading-tight">
             {currentTrack?.artist || '选择一首歌曲开始'}
           </p>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center gap-1.5 max-w-2xl">
-        <div className="flex items-center gap-1">
+      <div className="flex-1 flex flex-col items-center gap-2 max-w-2xl">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-full text-foreground/50 hover:text-foreground hover:bg-foreground/10"
+            className="h-8 w-8 rounded-full text-foreground/40 hover:text-foreground/80 hover:bg-white/[0.06] transition-all duration-200 ease-apple"
             onClick={onToggleShuffle}
           >
-            <Shuffle className={cn('h-4 w-4', shuffleMode === 'on' ? 'text-primary' : '')} />
+            <Shuffle className={cn('h-[15px] w-[15px]', shuffleMode === 'on' ? 'text-primary' : '')} strokeWidth={1.5} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-foreground/10" onClick={onPrevious}>
-            <SkipBack className="h-5 w-5" />
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/[0.06] transition-all duration-200 ease-apple" onClick={onPrevious}>
+            <SkipBack className="h-[15px] w-[15px]" strokeWidth={1.5} />
           </Button>
           <Button
             variant="default"
             size="icon"
-            className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 mx-1"
+            className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-primary/85 shadow-lg shadow-primary/25 mx-1.5 transition-all duration-200 ease-apple hover:scale-[1.05] active:scale-95 border border-white/[0.12]"
             onClick={onTogglePlay}
             disabled={!currentTrack}
           >
-            {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+            {isPlaying ? <Pause className="h-[17px] w-[17px]" strokeWidth={1.8} /> : <Play className="h-[17px] w-[17px] ml-0.5" strokeWidth={1.8} />}
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-foreground/10" onClick={onNext} disabled={!currentTrack}>
-            <SkipForward className="h-5 w-5" />
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/[0.06] transition-all duration-200 ease-apple" onClick={onNext} disabled={!currentTrack}>
+            <SkipForward className="h-[15px] w-[15px]" strokeWidth={1.5} />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-full text-foreground/50 hover:text-foreground hover:bg-foreground/10"
+            className="h-8 w-8 rounded-full text-foreground/40 hover:text-foreground/80 hover:bg-white/[0.06] transition-all duration-200 ease-apple"
             onClick={onCycleRepeat}
           >
             {repeatMode === 'one' ? (
-              <Repeat1 className="h-4 w-4 text-primary" />
+              <Repeat1 className="h-[15px] w-[15px] text-primary" strokeWidth={1.5} />
             ) : (
-              <Repeat className={cn('h-4 w-4', repeatMode === 'all' ? 'text-primary' : '')} />
+              <Repeat className={cn('h-[15px] w-[15px]', repeatMode === 'all' ? 'text-primary' : '')} strokeWidth={1.5} />
             )}
           </Button>
         </div>
         <div className="flex items-center gap-3 w-full">
-          <span className="text-[11px] text-foreground/45 w-9 text-right tabular-nums">
+          <span className="text-[10px] text-foreground/40 w-9 text-right tabular-nums font-medium">
             {formatTime(displayedProgress)}
           </span>
           <div className="flex-1 relative group h-3 flex items-center">
@@ -167,30 +167,30 @@ export function PlayerBar({
               onMouseLeave={() => seeking && handleSeekCommit()}
               className="w-full disabled:opacity-40"
               style={{
-                background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${progressPercent}%, hsl(var(--muted-foreground) / 0.18) ${progressPercent}%, hsl(var(--muted-foreground) / 0.18) 100%)`,
+                background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${progressPercent}%, hsl(var(--muted-foreground) / 0.15) ${progressPercent}%, hsl(var(--muted-foreground) / 0.15) 100%)`,
               }}
             />
           </div>
-          <span className="text-[11px] text-foreground/45 w-9 tabular-nums">
+          <span className="text-[10px] text-foreground/40 w-9 tabular-nums font-medium">
             {formatTime(duration)}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 w-44 flex-shrink-0 justify-end">
+      <div className="flex items-center gap-2.5 w-44 flex-shrink-0 justify-end">
         <Button
           variant="ghost"
           size="icon"
-          className={cn('h-8 w-8 rounded-full hover:bg-foreground/10', showQueuePanel && 'text-primary bg-primary/10')}
+          className={cn('h-8 w-8 rounded-full hover:bg-white/[0.06] transition-all duration-200 ease-apple', showQueuePanel && 'text-primary bg-primary/10')}
           onClick={toggleQueuePanel}
         >
-          <ListMusic className="h-4 w-4" />
+          <ListMusic className="h-[15px] w-[15px]" strokeWidth={1.5} />
         </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-foreground/10" onClick={onToggleMute}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/[0.06] transition-all duration-200 ease-apple" onClick={onToggleMute}>
           {muted || volume === 0 ? (
-            <VolumeX className="h-4 w-4 text-foreground/45" />
+            <VolumeX className="h-[15px] w-[15px] text-foreground/45" strokeWidth={1.5} />
           ) : (
-            <Volume2 className="h-4 w-4" />
+            <Volume2 className="h-[15px] w-[15px]" strokeWidth={1.5} />
           )}
         </Button>
         <div className="flex-1 relative max-w-24 h-3 flex items-center">
@@ -208,7 +208,7 @@ export function PlayerBar({
             onMouseLeave={() => seekingVolume && handleVolumeCommit()}
             className="w-full"
             style={{
-              background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${volumePercent}%, hsl(var(--muted-foreground) / 0.18) ${volumePercent}%, hsl(var(--muted-foreground) / 0.18) 100%)`,
+              background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${volumePercent}%, hsl(var(--muted-foreground) / 0.15) ${volumePercent}%, hsl(var(--muted-foreground) / 0.15) 100%)`,
             }}
           />
         </div>
