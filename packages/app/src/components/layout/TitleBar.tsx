@@ -3,6 +3,12 @@ import { Minus, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { isDesktop } from '@/lib/utils'
 
+/**
+ * Apple sub-nav-frosted 风格的标题栏
+ * - 极薄高度 44px（Apple global-nav 标准）
+ * - 透明背景 + 底部 1px hairline
+ * - 窗口控制按钮采用 btn-icon 风格
+ */
 export function TitleBar() {
   const desktop = isDesktop()
   const api = (window as any).electronAPI
@@ -16,34 +22,36 @@ export function TitleBar() {
   const handleClose = () => api.windowControls.close()
 
   return (
-    <div className="titlebar-drag h-9 flex items-center justify-between px-3.5 select-none glass-strong rounded-none border-0 border-b border-white/[0.04]">
+    <div className="titlebar-drag h-11 flex items-center justify-between px-4 select-none border-b border-border bg-background/80 backdrop-blur-md">
       <div className="flex items-center gap-2 titlebar-no-drag">
-        <span className="text-[12px] font-medium text-foreground/45 tracking-tight">Aurora Music</span>
+        <span className="font-display text-[13px] font-semibold tracking-[0.231px] text-foreground">
+          Aurora Music
+        </span>
       </div>
       <div className="flex items-center gap-0.5 titlebar-no-drag">
         <Button
           variant="ghost"
-          size="icon"
-          className="h-6 w-6 rounded-full hover:bg-foreground/[0.06] transition-all duration-200 ease-apple"
+          size="icon-sm"
+          className="text-foreground/60 hover:text-foreground"
           onClick={handleMinimize}
         >
-          <Minus className="h-3 w-3" strokeWidth={1.7} />
+          <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
         </Button>
         <Button
           variant="ghost"
-          size="icon"
-          className="h-6 w-6 rounded-full hover:bg-foreground/[0.06] transition-all duration-200 ease-apple"
+          size="icon-sm"
+          className="text-foreground/60 hover:text-foreground"
           onClick={handleMaximize}
         >
-          <Square className="h-2.5 w-2.5" strokeWidth={1.7} />
+          <Square className="h-3 w-3" strokeWidth={1.5} />
         </Button>
         <Button
           variant="ghost"
-          size="icon"
-          className="h-6 w-6 rounded-full hover:bg-red-500/80 hover:text-white transition-all duration-200 ease-apple"
+          size="icon-sm"
+          className="text-foreground/60 hover:bg-destructive hover:text-white"
           onClick={handleClose}
         >
-          <X className="h-3 w-3" strokeWidth={1.7} />
+          <X className="h-3.5 w-3.5" strokeWidth={1.5} />
         </Button>
       </div>
     </div>

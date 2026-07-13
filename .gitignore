@@ -74,3 +74,6 @@ coverage
 
 # 构建增量缓存
 .build-cache
+
+# 设计文档
+DESIGN-apple.md

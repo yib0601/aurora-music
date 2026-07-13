@@ -24,6 +24,13 @@ import {
 import { useThemeColor } from '@/hooks/useThemeColor'
 import type { Track } from '@/types'
 
+/**
+ * Apple Design AppLayout
+ * - 移除 aurora 渐变背景、噪点、光晕
+ * - 表面靠颜色微差分隔（背景 = canvas/parchment / dark tile）
+ * - 主区域无 glass / 无阴影，靠 1px hairline 与侧栏分隔
+ * - 封面右侧栏作为产品展示瓷砖，封面图带唯一 product-shadow
+ */
 function AppLayout() {
   const { currentTrack, isPlaying, progress, duration, volume, muted, repeatMode, shuffleMode } =
     usePlayerStore(useShallow((s) => ({
@@ -39,6 +46,7 @@ function AppLayout() {
   const theme = useLibraryStore((s) => s.theme)
   const glassMode = useLibraryStore((s) => s.glassMode)
 
+  // 保留 themeColor hook 以维持封面色提取功能（用于 lyrics 渐变等非装饰场景）
   useThemeColor(currentTrack?.coverPath)
 
   useEffect(() => {
@@ -86,6 +94,7 @@ function AppLayout() {
     }
   }, [theme])
 
+  // glassMode 'flat' 在新设计下是默认行为；保留 'auto'/'forced' 兼容历史设置
   useEffect(() => {
     if (glassMode === 'flat') {
       document.documentElement.classList.add('glass-flat')
@@ -123,52 +132,22 @@ function AppLayout() {
   }, [])
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden relative" style={{ background: 'transparent' }}>
-      {/* 背景层 - 深邃渐变 */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: `
-            radial-gradient(ellipse 120% 100% at 0% 0%, rgba(30, 50, 110, 0.10), transparent 55%),
-            radial-gradient(ellipse 100% 80% at 100% 100%, rgba(50, 35, 100, 0.08), transparent 55%),
-            radial-gradient(ellipse 80% 60% at 50% 50%, rgba(20, 60, 120, 0.04), transparent 45%),
-            linear-gradient(160deg, #0a0b10 0%, #0c0d14 30%, #0b0c12 60%, #090a0f 100%)
-          `,
-        }}
-      />
-
-      {/* 动态光晕层 - 封面主题色 */}
-      <div className="absolute inset-0 pointer-events-none transition-opacity duration-1500 ease-out" style={{
-        opacity: currentTrack?.coverPath ? 0.7 : 0,
-        background: currentTrack?.coverPath
-          ? 'radial-gradient(ellipse 70% 50% at 50% 25%, var(--accent-from-color, rgba(40,90,180,0.06)), transparent 65%)'
-          : 'none',
-      }} />
-
-      {/* 微光效果层 - 顶部柔光 */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background: 'radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255,255,255,0.012), transparent 60%)',
-      }} />
-
-      {/* 噪点纹理层 */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        opacity: 0.012,
-        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-        backgroundSize: '128px 128px',
-      }} />
-
+    <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground">
       <TitleBar />
 
       <ResizeHandles />
 
-      <div className="flex-1 flex overflow-hidden relative z-10 gap-2.5 p-2.5 pt-0">
-        <aside className="w-56 flex-shrink-0 flex flex-col p-2.5 gap-2.5 glass-panel">
+      {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 侧栏 — 与背景同色，右侧 1px hairline 分隔 */}
+        <aside className="w-56 flex-shrink-0 flex flex-col border-r border-border bg-background">
           <Sidebar />
         </aside>
 
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-[16px] glass">
+        {/* 主内容区 */}
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
           <div className="flex-1 flex overflow-hidden">
-            <div className="flex-1 overflow-y-auto scrollbar-thin p-5">
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
               <Routes>
                 <Route path="/" element={<Navigate to="/library" replace />} />
                 <Route path="/library" element={<LibraryPage />} />
@@ -180,32 +159,42 @@ function AppLayout() {
               </Routes>
             </div>
 
+            {/* 右侧 Now Playing 瓷砖 — Apple product-tile-dark 风格 */}
             {currentTrack && (
-              <div className="w-72 flex-shrink-0 p-4 hidden lg:flex flex-col gap-3.5 border-l border-border/10">
-                <div className="rounded-[14px] overflow-hidden glass-card aspect-square flex items-center justify-center">
-                  {currentTrack.coverPath ? (
-                    <img
-                      src={`file://${currentTrack.coverPath}`}
-                      alt={currentTrack.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="text-4xl opacity-30">🎵</div>
-                  )}
+              <div className="w-72 flex-shrink-0 hidden lg:flex flex-col bg-card border-l border-border">
+                <div className="p-6 flex flex-col gap-4">
+                  {/* 封面图 — 唯一使用 product-shadow 的地方 */}
+                  <div className="aspect-square rounded-sm bg-secondary flex items-center justify-center overflow-hidden">
+                    {currentTrack.coverPath ? (
+                      <img
+                        src={`file://${currentTrack.coverPath}`}
+                        alt={currentTrack.title}
+                        className="w-full h-full object-cover product-shadow"
+                      />
+                    ) : (
+                      <div className="text-4xl opacity-30">🎵</div>
+                    )}
+                  </div>
+
+                  <div className="text-center">
+                    <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-foreground">
+                      {currentTrack.title}
+                    </p>
+                    <p className="font-text text-[14px] text-foreground/50 truncate mt-1 tracking-[-0.224px]">
+                      {currentTrack.artist}
+                    </p>
+                  </div>
+
+                  <div className="bg-secondary rounded-sm h-20 p-2 overflow-hidden">
+                    <Visualizer mode="bars" />
+                  </div>
                 </div>
 
-                <div className="text-center px-1">
-                  <p className="font-semibold truncate text-[15px]">{currentTrack.title}</p>
-                  <p className="text-[12px] text-foreground/40 truncate mt-0.5">{currentTrack.artist}</p>
-                </div>
-
-                <div className="rounded-[14px] glass-card h-24 p-2.5 overflow-hidden">
-                  <Visualizer mode="bars" />
-                </div>
-
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0 rounded-[14px] glass-card">
-                  <div className="px-3.5 pt-3 pb-1.5 text-[10px] font-medium text-foreground/35 uppercase tracking-wider">
-                    歌词
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pb-4">
+                  <div className="px-2 pt-2 pb-1.5">
+                    <span className="font-text text-[11px] font-semibold text-foreground/40 uppercase tracking-wider">
+                      歌词
+                    </span>
                   </div>
                   <div className="flex-1 min-h-0">
                     <LyricsView />
@@ -217,25 +206,23 @@ function AppLayout() {
 
           <QueueView />
 
-          <div className="px-4 pb-3 pt-1.5">
-            <PlayerBar
-              currentTrack={currentTrack}
-              isPlaying={isPlaying}
-              progress={progress}
-              duration={duration}
-              volume={volume}
-              muted={muted}
-              repeatMode={repeatMode}
-              shuffleMode={shuffleMode}
-              onTogglePlay={handleTogglePlay}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-              onSeek={handleSeek}
-              onVolumeChange={handleVolumeChange}
-              onToggleMute={handleToggleMute}
-              onCyclePlayMode={handleCyclePlayMode}
-            />
-          </div>
+          <PlayerBar
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            progress={progress}
+            duration={duration}
+            volume={volume}
+            muted={muted}
+            repeatMode={repeatMode}
+            shuffleMode={shuffleMode}
+            onTogglePlay={handleTogglePlay}
+            onNext={handleNext}
+            onPrevious={handlePrevious}
+            onSeek={handleSeek}
+            onVolumeChange={handleVolumeChange}
+            onToggleMute={handleToggleMute}
+            onCyclePlayMode={handleCyclePlayMode}
+          />
         </main>
       </div>
     </div>

@@ -4,6 +4,11 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn, formatTime } from '@/lib/utils'
 
+/**
+ * Apple 风格 QueueView 浮层
+ * - 浮动卡片：1px hairline + 18px 圆角 + popover 阴影
+ * - 无 glass blur
+ */
 export function QueueView() {
   const queue = usePlayerStore((s) => s.queue)
   const currentIndex = usePlayerStore((s) => s.currentIndex)
@@ -20,18 +25,23 @@ export function QueueView() {
   }
 
   return (
-    <div className="fixed right-8 bottom-24 w-80 max-h-[55vh] glass-strong rounded-[20px] overflow-hidden z-50 flex flex-col shadow-2xl border border-white/10">
-      <div className="flex items-center justify-between p-4 border-b border-border/15">
-        <span className="text-[13px] font-semibold text-foreground/90">播放队列</span>
-        <button onClick={() => setQueuePanel(false)} className="p-1.5 hover:bg-foreground/10 rounded-lg transition-all duration-200 ease-apple hover:scale-105">
-          <X className="h-4 w-4" strokeWidth={1.7} />
+    <div className="fixed right-8 bottom-24 w-80 max-h-[55vh] bg-popover border border-border rounded-lg shadow-popover overflow-hidden z-50 flex flex-col">
+      <div className="flex items-center justify-between px-4 h-12 border-b border-border">
+        <span className="font-display text-[15px] font-semibold tracking-[-0.224px] text-foreground">
+          播放队列
+        </span>
+        <button
+          onClick={() => setQueuePanel(false)}
+          className="w-7 h-7 rounded-sm flex items-center justify-center text-foreground/60 hover:bg-foreground/[0.06] transition-colors duration-200 ease-apple"
+        >
+          <X className="h-4 w-4" strokeWidth={1.5} />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-2">
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-1.5">
         {queue.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-foreground/40">
             <Music2 className="h-10 w-10 mb-2 opacity-30" strokeWidth={1.5} />
-            <p className="text-[13px]">队列为空</p>
+            <p className="font-text text-[14px] tracking-[-0.224px]">队列为空</p>
           </div>
         ) : (
           <div className="space-y-0.5">
@@ -40,24 +50,30 @@ export function QueueView() {
                 key={`${track.id}-${idx}`}
                 onClick={() => handlePlayTrack(idx)}
                 className={cn(
-                  'w-full flex items-center gap-3 p-2 rounded-[13px] text-left transition-all duration-200 ease-apple',
+                  'w-full flex items-center gap-3 p-2 rounded-sm text-left transition-colors duration-200 ease-apple',
                   idx === currentIndex
-                    ? 'bg-primary/12 text-foreground'
-                    : 'hover:bg-foreground/[0.04] text-foreground/65'
+                    ? 'bg-action-blue/[0.10] text-foreground'
+                    : 'hover:bg-foreground/[0.04] text-foreground/70'
                 )}
               >
-                <div className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-primary/15 to-primary/5 border border-border/25 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                <div className="w-9 h-9 rounded-xs bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {track.coverPath ? (
                     <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.6} />
+                    <Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-medium truncate text-foreground/90">{track.title}</p>
-                  <p className="text-[11px] text-foreground/40 truncate">{track.artist}</p>
+                  <p className="font-text text-[13px] font-semibold truncate text-foreground tracking-[-0.224px]">
+                    {track.title}
+                  </p>
+                  <p className="font-text text-[12px] text-foreground/50 truncate tracking-[-0.12px]">
+                    {track.artist}
+                  </p>
                 </div>
-                <span className="text-[11px] text-foreground/35 tabular-nums">{formatTime(track.duration)}</span>
+                <span className="font-text text-[11px] text-foreground/40 tabular-nums tracking-[-0.12px]">
+                  {formatTime(track.duration)}
+                </span>
               </button>
             ))}
           </div>
