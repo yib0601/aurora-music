@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Aurora Music
 Comment=An elegant cross-platform music player
-Exec=/opt/Aurora-Music/Aurora-Music %U
+Exec=/opt/Aurora-Music/Aurora-Music --no-sandbox --ozone-platform=x11 --disable-gpu %U
 Icon=Aurora-Music
 Terminal=false
 Type=Application

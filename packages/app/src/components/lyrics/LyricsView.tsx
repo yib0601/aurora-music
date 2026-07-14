@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useMemo } from 'react'
 import type { LyricLine } from '@/types'
 import { parseLRC, findActiveLine } from '@/services/lyrics.service'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -26,33 +26,42 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
 
   const [lyrics, setLyrics] = useState<LyricLine[]>([])
   const activeLineRef = useRef<number>(-1)
+  const lastScrollRef = useRef<number>(0)
 
   useEffect(() => {
     const text = lyricsText || sampleLyrics
     setLyrics(parseLRC(text))
   }, [lyricsText])
 
+  // ⚠️ 性能：单次计算 activeIdx，避免重复调用 findActiveLine
+  const activeIdx = useMemo(
+    () => (lyrics.length > 0 ? findActiveLine(lyrics, progress) : -1),
+    [lyrics, progress]
+  )
+
+  // ⚠️ 性能：节流滚动到 ~10fps，避免每个 progress tick（4fps）触发 smooth scroll 重排
   useEffect(() => {
-    if (lyrics.length === 0) return
-    const activeIdx = findActiveLine(lyrics, progress)
+    if (lyrics.length === 0 || activeIdx < 0) return
+    if (activeLineRef.current === activeIdx) return
     activeLineRef.current = activeIdx
 
-    if (containerRef.current && activeIdx >= 0) {
-      const activeEl = containerRef.current.children[activeIdx] as HTMLElement
-      if (activeEl) {
-        const container = containerRef.current
-        const containerH = container.clientHeight
-        const elTop = activeEl.offsetTop
-        const elH = activeEl.offsetHeight
-        container.scrollTo({
-          top: elTop - containerH / 2 + elH / 2,
-          behavior: isPlaying ? 'smooth' : 'auto',
-        })
-      }
-    }
-  }, [progress, lyrics, isPlaying])
+    const now = performance.now()
+    if (now - lastScrollRef.current < 100) return
+    lastScrollRef.current = now
 
-  const activeIdx = lyrics.length > 0 ? findActiveLine(lyrics, progress) : -1
+    const container = containerRef.current
+    if (!container) return
+    const activeEl = container.children[activeIdx] as HTMLElement | undefined
+    if (!activeEl) return
+
+    const containerH = container.clientHeight
+    const elTop = activeEl.offsetTop
+    const elH = activeEl.offsetHeight
+    container.scrollTo({
+      top: elTop - containerH / 2 + elH / 2,
+      behavior: isPlaying ? 'smooth' : 'auto',
+    })
+  }, [activeIdx, lyrics, isPlaying])
 
   return (
     <div
@@ -60,22 +69,25 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
       className={cn('overflow-y-auto scrollbar-hide px-4 py-8 space-y-6 text-center', className)}
       style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}
     >
-      {lyrics.map((line, idx) => (
-        <p
-          key={`${line.time}-${idx}`}
-          className={cn(
-            'transition-all duration-500 ease-apple cursor-pointer leading-relaxed',
-            idx === activeIdx
-              ? 'text-foreground text-lg font-semibold scale-105'
-              : Math.abs(idx - activeIdx) <= 2
-              ? 'text-foreground/50 text-[15px]'
-              : 'text-foreground/28 text-[13px]'
-          )}
-          onClick={() => onLineClick?.(line.time)}
-        >
-          {line.text}
-        </p>
-      ))}
+      {lyrics.map((line, idx) => {
+        const distance = Math.abs(idx - activeIdx)
+        return (
+          <p
+            key={`${line.time}-${idx}`}
+            className={cn(
+              'transition-all duration-500 ease-apple cursor-pointer leading-relaxed',
+              idx === activeIdx
+                ? 'text-white text-[17px] font-semibold scale-105 [text-shadow:0_0_14px_rgba(168,246,255,.38),0_0_36px_rgba(143,233,255,.30)] [background:linear-gradient(180deg,rgba(246,253,255,1)_0%,rgba(168,246,255,1)_55%,rgba(126,205,255,1)_100%)] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent]'
+                : distance <= 2
+                ? 'text-white/50 text-[15px]'
+                : 'text-white/28 text-[13px]'
+            )}
+            onClick={() => onLineClick?.(line.time)}
+          >
+            {line.text}
+          </p>
+        )
+      })}
     </div>
   )
 }

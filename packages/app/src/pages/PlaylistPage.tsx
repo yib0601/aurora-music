@@ -51,10 +51,10 @@ export function PlaylistPage() {
 
   if (!playlist) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-foreground/50">
+      <div className="flex flex-col items-center justify-center h-full p-8 text-white/50">
         <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
-          <ListMusic className="h-16 w-16 mb-4 text-action-blue" strokeWidth={1.5} />
-          <p className="text-tagline text-foreground mb-3">播放列表不存在</p>
+          <ListMusic className="h-16 w-16 mb-4 text-mint" strokeWidth={1.5} />
+          <p className="text-tagline text-white mb-3">播放列表不存在</p>
           <Button variant="link" onClick={() => navigate('/library')}>
             返回音乐库
           </Button>
@@ -92,15 +92,15 @@ export function PlaylistPage() {
           <ArrowLeft className="h-4 w-4" strokeWidth={1.7} />
         </Button>
         <div className="flex items-end gap-6">
-          <div className="w-44 h-44 rounded-lg bg-card border border-border flex items-center justify-center flex-shrink-0">
-            <ListMusic className="h-20 w-20 text-action-blue" strokeWidth={1.3} />
+          <div className="w-44 h-44 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center flex-shrink-0">
+            <ListMusic className="h-20 w-20 text-mint" strokeWidth={1.3} />
           </div>
           <div className="flex-1 pb-2">
-            <p className="font-text text-caption text-foreground/50 mb-2">播放列表</p>
-            <h1 className="font-display text-[34px] font-semibold tracking-[-0.374px] text-foreground leading-tight mb-3">
+            <p className="font-text text-caption text-white/50 mb-2">播放列表</p>
+            <h1 className="font-display text-[34px] font-semibold tracking-[-0.374px] text-white leading-tight mb-3">
               {playlist.name}
             </h1>
-            <div className="flex items-center gap-3 font-text text-caption text-foreground/50">
+            <div className="flex items-center gap-3 font-text text-caption text-white/50">
               <span>{playlistTracks.length} 首歌曲</span>
               {totalDuration > 0 && (
                 <>
@@ -151,16 +151,16 @@ export function PlaylistPage() {
         {playlistTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
-              <div className="w-20 h-20 rounded-lg bg-card border border-border flex items-center justify-center mb-5">
-                <Music2 className="h-10 w-10 text-action-blue" strokeWidth={1.5} />
+              <div className="w-20 h-20 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center mb-5">
+                <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
               </div>
-              <p className="text-tagline text-foreground mb-1">播放列表为空</p>
-              <p className="font-text text-caption text-foreground/50">从音乐库中添加歌曲</p>
+              <p className="text-tagline text-white mb-1">播放列表为空</p>
+              <p className="font-text text-caption text-white/50">从音乐库中添加歌曲</p>
             </div>
           </div>
         ) : (
           <div>
-            <div className="grid grid-cols-[40px_1fr_auto_auto] gap-3 px-4 py-3 font-text text-caption text-foreground/50 border-b border-border">
+            <div className="grid grid-cols-[40px_1fr_auto_auto] gap-3 px-4 py-3 font-text text-caption text-white/50 border-b border-white/10">
               <span>#</span>
               <span>标题</span>
               <span>
@@ -174,47 +174,47 @@ export function PlaylistPage() {
                 key={track.id}
                 onClick={() => handlePlayTrack(track, idx)}
                 className={cn(
-                  'grid grid-cols-[40px_1fr_auto_auto] gap-3 items-center px-4 py-2.5 cursor-pointer group row-hover border-b border-border/40 last:border-0',
-                  isCurrentTrack(track.id) && 'bg-action-blue/[0.06]'
+                  'grid grid-cols-[40px_1fr_auto_auto] gap-3 items-center px-4 py-2.5 cursor-pointer group row-hover border-b border-white/5 last:border-0',
+                  isCurrentTrack(track.id) && 'bg-mint/[0.06]'
                 )}
               >
-                <div className="text-caption text-foreground/50 w-6">
+                <div className="text-caption text-white/50 w-6">
                   {isCurrentTrack(track.id) && isPlaying ? (
                     <div className="flex gap-0.5 items-end h-4">
-                      <span className="w-1 bg-action-blue rounded-full animate-pulse" style={{ height: '60%' }} />
-                      <span className="w-1 bg-action-blue rounded-full animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
-                      <span className="w-1 bg-action-blue rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
+                      <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '60%' }} />
+                      <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
+                      <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
                     </div>
                   ) : isCurrentTrack(track.id) ? (
-                    <Play className="h-3.5 w-3.5 text-action-blue" strokeWidth={1.8} />
+                    <Play className="h-3.5 w-3.5 text-mint" strokeWidth={1.8} />
                   ) : (
                     <>
                       <span className="group-hover:hidden">{idx + 1}</span>
-                      <Play className="h-3.5 w-3.5 hidden group-hover:block text-action-blue" strokeWidth={1.8} />
+                      <Play className="h-3.5 w-3.5 hidden group-hover:block text-mint" strokeWidth={1.8} />
                     </>
                   )}
                 </div>
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xs bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden product-shadow">
+                  <div className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden product-shadow">
                     {track.coverPath ? (
                       <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <Music2 className="h-4 w-4 text-foreground/40" strokeWidth={1.6} />
+                      <Music2 className="h-4 w-4 text-white/40" strokeWidth={1.6} />
                     )}
                   </div>
                   <div className="min-w-0">
                     <p
                       className={cn(
                         'font-text text-caption truncate font-semibold',
-                        isCurrentTrack(track.id) ? 'text-action-blue' : 'text-foreground'
+                        isCurrentTrack(track.id) ? 'text-mint' : 'text-white'
                       )}
                     >
                       {track.title}
                     </p>
-                    <p className="font-text text-caption text-foreground/50 truncate">{track.artist}</p>
+                    <p className="font-text text-caption text-white/50 truncate">{track.artist}</p>
                   </div>
                 </div>
-                <span className="font-text text-caption text-foreground/50 tabular-nums w-12 text-right">
+                <span className="font-text text-caption text-white/50 tabular-nums w-12 text-right">
                   {formatTime(track.duration)}
                 </span>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-apple w-16 justify-end">
@@ -224,8 +224,8 @@ export function PlaylistPage() {
                       toggleLike(track.id)
                     }}
                     className={cn(
-                      'p-1.5 rounded-sm hover:bg-foreground/10 transition-all duration-200 ease-apple',
-                      likedTracks.has(track.id) ? 'text-action-blue' : 'text-foreground/40'
+                      'p-1.5 rounded-sm hover:bg-mint/[0.075] transition-all duration-200 ease-apple',
+                      likedTracks.has(track.id) ? 'text-coral' : 'text-white/40'
                     )}
                   >
                     <Heart
@@ -238,7 +238,7 @@ export function PlaylistPage() {
                     <DropdownMenuTrigger asChild>
                       <button
                         onClick={(e) => e.stopPropagation()}
-                        className="p-1.5 rounded-sm hover:bg-foreground/10 text-foreground/50 transition-all duration-200 ease-apple"
+                        className="p-1.5 rounded-sm hover:bg-mint/[0.075] text-white/50 transition-all duration-200 ease-apple"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.7} />
                       </button>

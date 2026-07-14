@@ -6,6 +6,7 @@ import { ResizeHandles } from '@/components/layout/ResizeHandle'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { QueueView } from '@/components/player/QueueView'
+import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { LikedPage } from '@/pages/LikedPage'
 import { RecentPage } from '@/pages/RecentPage'
@@ -25,24 +26,20 @@ import { useThemeColor } from '@/hooks/useThemeColor'
 import type { Track } from '@/types'
 
 /**
- * Apple Design AppLayout
- * - 移除 aurora 渐变背景、噪点、光晕
- * - 表面靠颜色微差分隔（背景 = canvas/parchment / dark tile）
- * - 主区域无 glass / 无阴影，靠 1px hairline 与侧栏分隔
+ * Apple Liquid Glass AppLayout
+ * - 内容区保持纯净（白底/纸面/近黑瓷砖，靠颜色微差分隔）
+ * - 浮层 chrome（TitleBar / Sidebar / PlayerBar / QueueView）使用 Liquid Glass 材质
+ * - 根容器加 ambient-backdrop：渲染封面提取色的柔光斑，让玻璃有内容可折射
  * - 封面右侧栏作为产品展示瓷砖，封面图带唯一 product-shadow
  */
 function AppLayout() {
-  const { currentTrack, isPlaying, progress, duration, volume, muted, repeatMode, shuffleMode } =
-    usePlayerStore(useShallow((s) => ({
-      currentTrack: s.currentTrack,
-      isPlaying: s.isPlaying,
-      progress: s.progress,
-      duration: s.duration,
-      volume: s.volume,
-      muted: s.muted,
-      repeatMode: s.repeatMode,
-      shuffleMode: s.shuffleMode,
-    })))
+  // ⚠️ 性能关键：只订阅低频变化字段，避免 progress 每 250ms 触发整树重渲染
+  // progress / duration / isPlaying 等高频字段由 PlayerBar / LyricsView 自行订阅
+  const currentTrack = usePlayerStore((s) => s.currentTrack)
+  const volume = usePlayerStore((s) => s.volume)
+  const muted = usePlayerStore((s) => s.muted)
+  const repeatMode = usePlayerStore((s) => s.repeatMode)
+  const shuffleMode = usePlayerStore((s) => s.shuffleMode)
   const theme = useLibraryStore((s) => s.theme)
   const glassMode = useLibraryStore((s) => s.glassMode)
 
@@ -132,20 +129,23 @@ function AppLayout() {
   }, [])
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground">
+    <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground ambient-backdrop">
+      {/* Mineradio SVG 色差玻璃滤镜定义（隐藏，仅注入 DOM 让 url(#...) 引用生效） */}
+      <GlassSvgFilter />
+
       <TitleBar />
 
       <ResizeHandles />
 
       {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 侧栏 — 与背景同色，右侧 1px hairline 分隔 */}
-        <aside className="w-56 flex-shrink-0 flex flex-col border-r border-border bg-background">
+        {/* 侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上 */}
+        <aside className="w-56 flex-shrink-0 flex flex-col glass-regular border-r border-white/5">
           <Sidebar />
         </aside>
 
         {/* 主内容区 */}
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               <Routes>
@@ -159,12 +159,12 @@ function AppLayout() {
               </Routes>
             </div>
 
-            {/* 右侧 Now Playing 瓷砖 — Apple product-tile-dark 风格 */}
+            {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质 */}
             {currentTrack && (
-              <div className="w-72 flex-shrink-0 hidden lg:flex flex-col bg-card border-l border-border">
+              <div className="w-72 flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
                 <div className="p-6 flex flex-col gap-4">
                   {/* 封面图 — 唯一使用 product-shadow 的地方 */}
-                  <div className="aspect-square rounded-sm bg-secondary flex items-center justify-center overflow-hidden">
+                  <div className="aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden">
                     {currentTrack.coverPath ? (
                       <img
                         src={`file://${currentTrack.coverPath}`}
@@ -172,27 +172,27 @@ function AppLayout() {
                         className="w-full h-full object-cover product-shadow"
                       />
                     ) : (
-                      <div className="text-4xl opacity-30">🎵</div>
+                      <div className="text-4xl text-white/30">🎵</div>
                     )}
                   </div>
 
                   <div className="text-center">
-                    <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-foreground">
+                    <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/96">
                       {currentTrack.title}
                     </p>
-                    <p className="font-text text-[14px] text-foreground/50 truncate mt-1 tracking-[-0.224px]">
+                    <p className="font-text text-[14px] text-white/50 truncate mt-1 tracking-[-0.224px]">
                       {currentTrack.artist}
                     </p>
                   </div>
 
-                  <div className="bg-secondary rounded-sm h-20 p-2 overflow-hidden">
+                  <div className="bg-white/[0.04] rounded-[12px] h-20 p-2 overflow-hidden">
                     <Visualizer mode="bars" />
                   </div>
                 </div>
 
                 <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pb-4">
                   <div className="px-2 pt-2 pb-1.5">
-                    <span className="font-text text-[11px] font-semibold text-foreground/40 uppercase tracking-wider">
+                    <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
                       歌词
                     </span>
                   </div>
@@ -205,12 +205,14 @@ function AppLayout() {
           </div>
 
           <QueueView />
+        </main>
+      </div>
 
+      {/* Mineradio 悬浮胶囊控制台 — 脱离 main 流，悬浮于底部中央 */}
+      {currentTrack && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[min(1080px,calc(100vw-56px))]">
           <PlayerBar
             currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            progress={progress}
-            duration={duration}
             volume={volume}
             muted={muted}
             repeatMode={repeatMode}
@@ -223,8 +225,8 @@ function AppLayout() {
             onToggleMute={handleToggleMute}
             onCyclePlayMode={handleCyclePlayMode}
           />
-        </main>
-      </div>
+        </div>
+      )}
     </div>
   )
 }
