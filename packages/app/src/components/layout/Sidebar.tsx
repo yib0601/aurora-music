@@ -29,10 +29,10 @@ const navItems = [
 ]
 
 /**
- * Apple 风格 Sidebar
- * - 表面：与背景同色，无 glass
- * - 导航项：默认透明，active 仅背景色变化（Apple nav-link 风格）
- * - 不使用边框/阴影区分，靠 hairline 与背景微差
+ * Mineradio 暗色玻璃风格 Sidebar
+ * - 暗色优先，薄荷青（mint #00F5D4）为主色调
+ * - active 态使用 mint/[0.10] 背景 + mint 微光 text-shadow
+ * - hover 态使用 mint/[0.06] 背景，整体冷色调
  */
 export function Sidebar() {
   const navigate = useNavigate()
@@ -65,14 +65,14 @@ export function Sidebar() {
     <div className="flex-1 flex flex-col min-h-0 h-full">
       {/* 品牌区 */}
       <div className="flex items-center gap-3 px-4 py-5">
-        <div className="w-8 h-8 rounded-md bg-action-blue flex items-center justify-center">
-          <Music className="h-4 w-4 text-white" strokeWidth={2} />
+        <div className="w-8 h-8 rounded-md bg-mint flex items-center justify-center">
+          <Music className="h-4 w-4 text-[#030608]" strokeWidth={2} />
         </div>
         <div className="flex flex-col">
-          <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-foreground leading-tight">
+          <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-white/96 leading-tight">
             Aurora
           </span>
-          <span className="font-text text-[11px] text-foreground/40 leading-tight mt-0.5">
+          <span className="font-text text-[11px] text-white/40 leading-tight mt-0.5">
             Music Player
           </span>
         </div>
@@ -88,8 +88,8 @@ export function Sidebar() {
               cn(
                 'flex items-center gap-2.5 px-3 py-[7px] rounded-md text-[14px] font-normal tracking-[-0.224px] transition-colors duration-200 ease-apple',
                 isActive
-                  ? 'bg-foreground/[0.08] text-foreground'
-                  : 'text-foreground/60 hover:text-foreground hover:bg-foreground/[0.04]'
+                  ? 'bg-mint/[0.10] text-white [text-shadow:0_0_12px_rgba(0,245,212,.16)]'
+                  : 'text-white/60 hover:text-white hover:bg-mint/[0.06]'
               )
             }
           >
@@ -102,13 +102,13 @@ export function Sidebar() {
       {/* 播放列表 */}
       <div className="mt-5 flex-1 overflow-y-auto scrollbar-thin min-h-0 px-3">
         <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="font-text text-[11px] font-semibold text-foreground/40 uppercase tracking-wider">
+          <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
             播放列表
           </span>
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-foreground/40 hover:text-foreground"
+            className="text-white/40 hover:text-mint"
             onClick={() => setShowCreateDialog(true)}
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -116,7 +116,7 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col gap-px">
           {playlists.length === 0 ? (
-            <p className="px-3 py-2 text-[13px] text-foreground/35">暂无播放列表</p>
+            <p className="px-3 py-2 text-[13px] text-white/35">暂无播放列表</p>
           ) : (
             playlists.map((pl) => (
               <div key={pl.id} className="group flex items-center gap-0.5">
@@ -139,14 +139,14 @@ export function Sidebar() {
                       cn(
                         'flex items-center gap-2.5 px-3 py-[7px] rounded-md flex-1 min-w-0 transition-colors duration-200 ease-apple',
                         isActive
-                          ? 'bg-foreground/[0.08] text-foreground'
-                          : 'text-foreground/60 hover:text-foreground hover:bg-foreground/[0.04]'
+                          ? 'bg-mint/[0.10] text-white'
+                          : 'text-white/60 hover:text-white hover:bg-mint/[0.06]'
                       )
                     }
                   >
                     <ListMusic className="h-3.5 w-3.5 flex-shrink-0 opacity-50" strokeWidth={1.5} />
                     <span className="truncate text-[13px] tracking-[-0.224px]">{pl.name}</span>
-                    <span className="text-[11px] text-foreground/30 ml-auto tabular-nums font-semibold">
+                    <span className="text-[11px] text-white/30 ml-auto tabular-nums font-semibold">
                       {pl.trackIds.length}
                     </span>
                   </NavLink>
@@ -156,7 +156,7 @@ export function Sidebar() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="opacity-0 group-hover:opacity-100 text-foreground/40 hover:text-foreground flex-shrink-0"
+                      className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-white flex-shrink-0"
                     >
                       <MoreHorizontal className="h-3 w-3" strokeWidth={1.5} />
                     </Button>
@@ -188,8 +188,8 @@ export function Sidebar() {
       </div>
 
       {/* 版本号 */}
-      <div className="px-4 py-3 border-t border-border/60">
-        <p className="font-text text-[11px] text-foreground/30 tracking-[-0.12px]">Aurora Music v0.1.2</p>
+      <div className="px-4 py-3 border-t border-white/5">
+        <p className="font-text text-[11px] text-white/30 tracking-[-0.12px]">Aurora Music v0.1.2</p>
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>

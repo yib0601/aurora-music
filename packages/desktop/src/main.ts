@@ -55,6 +55,12 @@ function createWindow() {
   return win
 }
 
+// ⚠️ 必须在 app.whenReady() 之前调用，否则不生效
+// 注意：ozone-platform 必须用命令行参数 --ozone-platform=x11 在 desktop 文件中设置，
+// app.commandLine.appendSwitch 在 Electron 43 上太晚（Chromium 已选 Wayland）
+// --disable-gpu：AMD Radeon Vega APU 在 Wayland 下 GPU 进程会 SIGSEGV (exit 139)
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
+
 app.whenReady().then(() => {
   registerIpcHandlers()
   createWindow()
@@ -71,8 +77,3 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
-
-// Electron 43+ 默认启用 Wayland，且修复了 frameless 窗口在 Wayland 下的渲染问题
-// 仅保留 GPU 视频解码和光栅化加速
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
-app.commandLine.appendSwitch('enable-gpu-rasterization')

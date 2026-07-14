@@ -11,6 +11,7 @@
     "build": "pnpm -r build",
     "build:app": "pnpm --filter @aurora/app build",
     "build:desktop": "pnpm --filter @aurora/desktop build",
+    "build:deb": "bash build-deb.sh",
     "preview": "pnpm --filter @aurora/app preview",
     "install:all": "pnpm install",
     "rebuild": "electron-rebuild -f -w better-sqlite3"

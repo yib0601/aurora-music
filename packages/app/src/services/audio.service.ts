@@ -21,12 +21,13 @@ function getPlatformSrc(path: string): string {
 
 function startTick(howl: Howl) {
   if (tickInterval) clearInterval(tickInterval)
+  // ⚠️ 性能：500ms 足够进度条显示，过高频率会触发 LyricsView/PlayerBar 频繁更新
   tickInterval = setInterval(() => {
     const progress = howl.seek() as number
     if (typeof progress === 'number' && !isNaN(progress)) {
       usePlayerStore.getState().setProgress(progress)
     }
-  }, 250)
+  }, 500)
 }
 
 function stopTick() {

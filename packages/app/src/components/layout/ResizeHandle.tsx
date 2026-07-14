@@ -23,6 +23,33 @@ function edgeToCursor(edge: Edge): string {
   return map[edge]
 }
 
+// 计算新的 bounds（纯函数，不触发副作用）
+function computeBounds(
+  edge: Edge,
+  startBounds: Bounds,
+  dx: number,
+  dy: number,
+): Bounds {
+  let { x, y, width, height } = startBounds
+  if (edge.includes('e')) {
+    width = Math.max(MIN_W, startBounds.width + dx)
+  }
+  if (edge.includes('s')) {
+    height = Math.max(MIN_H, startBounds.height + dy)
+  }
+  if (edge.includes('w')) {
+    const newW = Math.max(MIN_W, startBounds.width - dx)
+    x = startBounds.x + (startBounds.width - newW)
+    width = newW
+  }
+  if (edge.includes('n')) {
+    const newH = Math.max(MIN_H, startBounds.height - dy)
+    y = startBounds.y + (startBounds.height - newH)
+    height = newH
+  }
+  return { x, y, width, height }
+}
+
 function startResize(
   edge: Edge,
   startBounds: Bounds,
@@ -32,34 +59,43 @@ function startResize(
   const api = (window as any).electronAPI
   if (!api?.setBounds) return
 
+  // ⚠️ 性能：rAF 节流，避免每个 pointermove 都触发 IPC + 窗口 resize +
+  // 全树 backdrop-filter 重算（AMD Vega APU 上的主要卡顿源）
+  let pendingBounds: Bounds | null = null
+  let rafId = 0
+  const flush = () => {
+    rafId = 0
+    if (pendingBounds) {
+      api.setBounds(pendingBounds)
+      pendingBounds = null
+    }
+  }
+
+  // ⚠️ 性能：resize 期间挂 .resizing 类，临时降低 backdrop-filter 强度
+  document.documentElement.classList.add('resizing')
+
   const onMove = (e: PointerEvent) => {
     const dx = e.screenX - startScreenX
     const dy = e.screenY - startScreenY
-    let { x, y, width, height } = startBounds
-
-    if (edge.includes('e')) {
-      width = Math.max(MIN_W, startBounds.width + dx)
+    pendingBounds = computeBounds(edge, startBounds, dx, dy)
+    if (!rafId) {
+      rafId = requestAnimationFrame(flush)
     }
-    if (edge.includes('s')) {
-      height = Math.max(MIN_H, startBounds.height + dy)
-    }
-    if (edge.includes('w')) {
-      const newW = Math.max(MIN_W, startBounds.width - dx)
-      x = startBounds.x + (startBounds.width - newW)
-      width = newW
-    }
-    if (edge.includes('n')) {
-      const newH = Math.max(MIN_H, startBounds.height - dy)
-      y = startBounds.y + (startBounds.height - newH)
-      height = newH
-    }
-
-    api.setBounds({ x, y, width, height })
   }
 
   const onUp = () => {
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    // 最后一次 flush 保证落点准确
+    if (pendingBounds) {
+      api.setBounds(pendingBounds)
+      pendingBounds = null
+    }
+    document.documentElement.classList.remove('resizing')
     document.body.style.cursor = ''
   }
 
