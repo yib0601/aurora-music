@@ -24,11 +24,15 @@ export function TitleBar() {
   const handleMaximize = () => api.windowControls.maximize()
   const handleClose = () => api.windowControls.close()
 
-  // 按钮通用样式：38×30px，圆角 10px，深色半透明底，淡蓝灰文字
+  // 按钮通用样式：38×30px，圆角 10px，Mineradio 玻璃珍珠按钮底
   const btnBase =
     'w-[38px] h-[30px] rounded-[10px] flex items-center justify-center ' +
-    'bg-[rgba(4,8,10,.42)] text-[rgba(224,250,255,.72)] ' +
-    'hover:-translate-y-px transition-all'
+    'bg-[rgba(0,0,0,.10)] text-[rgba(255,255,255,.72)] ' +
+    'backdrop-blur-[12px] saturate-[1.8] ' +
+    'shadow-[inset_0_0_2px_1px_rgba(255,255,255,.34),inset_0_0_10px_4px_rgba(255,255,255,.13),0_10px_30px_rgba(0,0,0,.18)] ' +
+    'hover:-translate-y-px hover:bg-[rgba(255,255,255,.055)] ' +
+    'hover:shadow-[inset_0_0_2px_1px_rgba(255,255,255,.42),inset_0_0_12px_5px_rgba(255,255,255,.17),0_12px_34px_rgba(0,0,0,.22),0_0_18px_rgba(255,255,255,.06)] ' +
+    'transition-all active:scale-95'
 
   return (
     <div className="titlebar-drag h-11 flex items-center justify-between pl-[18px] pr-3 select-none relative z-50">
@@ -40,21 +44,21 @@ export function TitleBar() {
         <button
           onClick={handleMinimize}
           title="最小化"
-          className={`${btnBase} hover:bg-[rgba(244,210,138,.14)] hover:text-[#fff1bd]`}
+          className={`${btnBase} hover:text-[#fff1bd]`}
         >
           <Minus className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
         <button
           onClick={handleMaximize}
           title="最大化"
-          className={`${btnBase} hover:bg-[rgba(244,210,138,.14)] hover:text-[#fff1bd]`}
+          className={`${btnBase} hover:text-[#fff1bd]`}
         >
           <Square className="h-3 w-3" strokeWidth={2} />
         </button>
         <button
           onClick={handleClose}
           title="关闭"
-          className={`${btnBase} hover:bg-[rgba(255,86,100,.86)] hover:text-white`}
+          className={`${btnBase} hover:bg-[rgba(255,86,100,.86)] hover:text-white hover:shadow-[inset_0_0_2px_1px_rgba(255,255,255,.42),0_12px_34px_rgba(0,0,0,.22),0_0_18px_rgba(255,255,255,.06)]`}
         >
           <X className="h-3.5 w-3.5" strokeWidth={2} />
         </button>

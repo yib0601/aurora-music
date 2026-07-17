@@ -64,6 +64,9 @@
         }
       }
     },
+    "deb": {
+      "afterInstall": "resources/after-install.sh"
+    },
     "win": {
       "target": [
         { "target": "nsis", "arch": ["x64"] },

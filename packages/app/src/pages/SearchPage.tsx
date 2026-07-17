@@ -78,7 +78,7 @@ export function SearchPage() {
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         {!query.trim() ? (
           <div className="flex flex-col items-center justify-center py-24 text-white/40">
-            <div className="w-20 h-20 card-utility flex items-center justify-center mb-5">
+            <div className="w-20 h-20 glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
               <SearchIcon className="h-10 w-10 text-mint" strokeWidth={1.5} />
             </div>
             <p className="font-display text-[21px] font-semibold text-white tracking-[0.231px] mb-1">开始搜索</p>
@@ -86,7 +86,7 @@ export function SearchPage() {
           </div>
         ) : results.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-white/40">
-            <div className="w-20 h-20 card-utility flex items-center justify-center mb-5">
+            <div className="w-20 h-20 glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
               <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
             </div>
             <p className="font-display text-[21px] font-semibold text-white tracking-[0.231px] mb-1">未找到结果</p>

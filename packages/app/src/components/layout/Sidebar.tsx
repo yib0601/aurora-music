@@ -86,10 +86,10 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2.5 px-3 py-[7px] rounded-md text-[14px] font-normal tracking-[-0.224px] transition-colors duration-200 ease-apple',
+                'flex items-center gap-2.5 px-3 py-[7px] rounded-md text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
                 isActive
-                  ? 'bg-mint/[0.10] text-white [text-shadow:0_0_12px_rgba(0,245,212,.16)]'
-                  : 'text-white/60 hover:text-white hover:bg-mint/[0.06]'
+                  ? 'bg-white/[0.08] border-white/10 text-white [text-shadow:0_0_12px_rgba(0,245,212,.18)] shadow-[inset_0_1px_0_rgba(255,255,255,.08)]'
+                  : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
               )
             }
           >
@@ -137,10 +137,10 @@ export function Sidebar() {
                     to={`/playlist/${pl.id}`}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center gap-2.5 px-3 py-[7px] rounded-md flex-1 min-w-0 transition-colors duration-200 ease-apple',
+                        'flex items-center gap-2.5 px-3 py-[7px] rounded-md flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
                         isActive
-                          ? 'bg-mint/[0.10] text-white'
-                          : 'text-white/60 hover:text-white hover:bg-mint/[0.06]'
+                          ? 'bg-white/[0.08] border-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.08)]'
+                          : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
                       )
                     }
                   >
