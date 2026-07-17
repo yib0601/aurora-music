@@ -91,13 +91,13 @@ export function PlayerBar({
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
 
   return (
-    <div className="glass-saved-panel rounded-[50px] px-[22px] pt-[9px] pb-[14px] flex flex-col gap-2.5">
+    <div className="glass-saved-panel rounded-[24px] px-[18px] py-2 flex flex-col gap-1.5">
       {/* 进度条 - 居中 */}
       <div className="flex items-center gap-3">
         <span className="text-[12px] text-white/50 w-12 text-right tabular-nums">
           {formatTime(displayedProgress)}
         </span>
-        <div className="flex-1 relative h-4 flex items-center group">
+        <div className="flex-1 relative h-3 flex items-center group">
           <input
             type="range"
             min={0}
@@ -123,14 +123,14 @@ export function PlayerBar({
       </div>
 
       {/* 三列控制网格：曲目信息 / 播放控制 / 音量 */}
-      <div className="grid grid-cols-[minmax(0,1fr)_max-content_minmax(0,1fr)] gap-[18px] items-center">
+      <div className="grid grid-cols-[minmax(0,1fr)_max-content_minmax(0,1fr)] gap-3 items-center">
         {/* 左列：曲目信息（封面 + 标题 + 艺术家） */}
         <div className="flex items-center gap-3 min-w-0 justify-start">
           <div
-            className="w-[52px] h-[52px] rounded-[12px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center"
+            className="w-[40px] h-[40px] rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center"
             style={{
               boxShadow:
-                '0 10px 28px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.20), inset 0 0 0 1px rgba(255,255,255,.08)',
+                '0 6px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07)',
             }}
           >
             {currentTrack?.coverPath ? (
@@ -143,26 +143,26 @@ export function PlayerBar({
                 }}
               />
             ) : (
-              <Music2 className="h-5 w-5 text-white/30" strokeWidth={1.5} />
+              <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
             )}
           </div>
           <div className="min-w-0 flex flex-col gap-0.5">
-            <p className="text-[13.5px] font-bold text-white/92 truncate hover:text-white hover:[text-shadow:0_0_16px_rgba(0,245,212,.20)] transition-all">
+            <p className="text-[12.5px] font-bold text-white/92 truncate hover:text-white hover:[text-shadow:0_0_12px_rgba(0,245,212,.16)] transition-all">
               {currentTrack?.title || '未在播放'}
             </p>
-            <p className="text-[11.5px] text-white/48 truncate">
+            <p className="text-[10.5px] text-white/48 truncate">
               {currentTrack?.artist || '选择一首歌曲开始'}
             </p>
           </div>
         </div>
 
         {/* 中列：播放控制（shuffle / prev / play / next / queue） */}
-        <div className="flex items-center gap-[13px] justify-center">
+        <div className="flex items-center gap-2 justify-center">
           <button
             className={cn(
-              'btn-icon w-9 h-9 rounded-[11px] flex items-center justify-center',
+              'btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center',
               playModeActive &&
-                'text-mint [text-shadow:0_0_12px_rgba(0,245,212,.16)]',
+                'text-mint [text-shadow:0_0_8px_rgba(0,245,212,.12)]',
             )}
             onClick={onCyclePlayMode}
             title={
@@ -176,68 +176,68 @@ export function PlayerBar({
             }
           >
             {shuffleMode === 'on' ? (
-              <Shuffle className="h-[21px] w-[21px]" strokeWidth={1.5} />
+              <Shuffle className="h-[16px] w-[16px]" strokeWidth={1.5} />
             ) : repeatMode === 'one' ? (
-              <Repeat1 className="h-[21px] w-[21px]" strokeWidth={1.5} />
+              <Repeat1 className="h-[16px] w-[16px]" strokeWidth={1.5} />
             ) : repeatMode === 'all' ? (
-              <Repeat className="h-[21px] w-[21px]" strokeWidth={1.5} />
+              <Repeat className="h-[16px] w-[16px]" strokeWidth={1.5} />
             ) : (
-              <Repeat className="h-[21px] w-[21px]" strokeWidth={1.5} />
+              <Repeat className="h-[16px] w-[16px]" strokeWidth={1.5} />
             )}
           </button>
           <button
-            className="btn-icon w-9 h-9 rounded-[11px] flex items-center justify-center"
+            className="btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center"
             onClick={onPrevious}
             disabled={!currentTrack}
           >
-            <SkipBack className="h-[21px] w-[21px]" strokeWidth={1.5} />
+            <SkipBack className="h-[16px] w-[16px]" strokeWidth={1.5} />
           </button>
-          {/* 主播放按钮：圆形 glass-saved-button，58×58 */}
+          {/* 主播放按钮：圆形 glass-saved-button，44×44 */}
           <button
-            className="glass-saved-button w-[58px] h-[58px] rounded-full flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+            className="glass-saved-button w-[44px] h-[44px] rounded-full flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
             onClick={onTogglePlay}
             disabled={!currentTrack}
             style={{ color: 'rgba(255,255,255,.96)' }}
           >
             {isPlaying ? (
-              <Pause className="h-6 w-6" fill="currentColor" strokeWidth={1.5} />
+              <Pause className="h-[18px] w-[18px]" fill="currentColor" strokeWidth={1.5} />
             ) : (
-              <Play className="h-6 w-6 ml-0.5" fill="currentColor" strokeWidth={1.5} />
+              <Play className="h-[18px] w-[18px] ml-0.5" fill="currentColor" strokeWidth={1.5} />
             )}
           </button>
           <button
-            className="btn-icon w-9 h-9 rounded-[11px] flex items-center justify-center"
+            className="btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center"
             onClick={onNext}
             disabled={!currentTrack}
           >
-            <SkipForward className="h-[21px] w-[21px]" strokeWidth={1.5} />
+            <SkipForward className="h-[16px] w-[16px]" strokeWidth={1.5} />
           </button>
           <button
             className={cn(
-              'btn-icon w-9 h-9 rounded-[11px] flex items-center justify-center',
+              'btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center',
               showQueuePanel && 'text-mint bg-mint/[0.08]',
             )}
             onClick={toggleQueuePanel}
             title="队列"
           >
-            <ListMusic className="h-[21px] w-[21px]" strokeWidth={1.5} />
+            <ListMusic className="h-[16px] w-[16px]" strokeWidth={1.5} />
           </button>
         </div>
 
         {/* 右列：音量控制 */}
         <div className="flex items-center gap-2 justify-end">
           <button
-            className="btn-icon w-9 h-9 rounded-[11px] flex items-center justify-center"
+            className="btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center"
             onClick={onToggleMute}
             title={muted || volume === 0 ? '取消静音' : '静音'}
           >
             {muted || volume === 0 ? (
-              <VolumeX className="h-[18px] w-[18px]" strokeWidth={1.5} />
+              <VolumeX className="h-[14px] w-[14px]" strokeWidth={1.5} />
             ) : (
-              <Volume2 className="h-[18px] w-[18px]" strokeWidth={1.5} />
+              <Volume2 className="h-[14px] w-[14px]" strokeWidth={1.5} />
             )}
           </button>
-          <div className="w-24 h-4 flex items-center">
+          <div className="w-24 h-3 flex items-center">
             <input
               type="range"
               min={0}

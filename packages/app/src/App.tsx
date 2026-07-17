@@ -145,7 +145,7 @@ function AppLayout() {
         </aside>
 
         {/* 主内容区 */}
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
+        <main className="relative flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               <Routes>
@@ -205,28 +205,28 @@ function AppLayout() {
           </div>
 
           <QueueView />
+
+          {/* Mineradio 悬浮胶囊控制台 — 跟随主内容区宽度动态调整 */}
+          {currentTrack && (
+            <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 w-[clamp(360px,calc(100%-80px),640px)]">
+              <PlayerBar
+                currentTrack={currentTrack}
+                volume={volume}
+                muted={muted}
+                repeatMode={repeatMode}
+                shuffleMode={shuffleMode}
+                onTogglePlay={handleTogglePlay}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                onSeek={handleSeek}
+                onVolumeChange={handleVolumeChange}
+                onToggleMute={handleToggleMute}
+                onCyclePlayMode={handleCyclePlayMode}
+              />
+            </div>
+          )}
         </main>
       </div>
-
-      {/* Mineradio 悬浮胶囊控制台 — 脱离 main 流，悬浮于底部中央 */}
-      {currentTrack && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[min(1080px,calc(100vw-56px))]">
-          <PlayerBar
-            currentTrack={currentTrack}
-            volume={volume}
-            muted={muted}
-            repeatMode={repeatMode}
-            shuffleMode={shuffleMode}
-            onTogglePlay={handleTogglePlay}
-            onNext={handleNext}
-            onPrevious={handlePrevious}
-            onSeek={handleSeek}
-            onVolumeChange={handleVolumeChange}
-            onToggleMute={handleToggleMute}
-            onCyclePlayMode={handleCyclePlayMode}
-          />
-        </div>
-      )}
     </div>
   )
 }

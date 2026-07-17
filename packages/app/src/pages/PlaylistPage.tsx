@@ -92,7 +92,7 @@ export function PlaylistPage() {
           <ArrowLeft className="h-4 w-4" strokeWidth={1.7} />
         </Button>
         <div className="flex items-end gap-6">
-          <div className="w-44 h-44 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center flex-shrink-0">
+          <div className="w-44 h-44 rounded-lg glass-regular border border-white/10 flex items-center justify-center flex-shrink-0 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
             <ListMusic className="h-20 w-20 text-mint" strokeWidth={1.3} />
           </div>
           <div className="flex-1 pb-2">
@@ -151,7 +151,7 @@ export function PlaylistPage() {
         {playlistTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
-              <div className="w-20 h-20 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center mb-5">
+              <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
                 <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
               </div>
               <p className="text-tagline text-white mb-1">播放列表为空</p>

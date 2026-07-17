@@ -21,7 +21,7 @@ export function RecentPage() {
   return (
     <div className="flex flex-col h-full p-8">
       <div className="flex items-center gap-5 mb-8">
-        <div className="w-20 h-20 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center">
+        <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
           <Clock className="h-9 w-9 text-mint" strokeWidth={1.4} />
         </div>
         <div>
@@ -38,7 +38,7 @@ export function RecentPage() {
       {tracks.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
-            <div className="w-20 h-20 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center mb-5">
+            <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
               <Clock className="h-10 w-10 text-mint" strokeWidth={1.5} />
             </div>
             <p className="text-tagline text-white mb-1">还没有播放记录</p>

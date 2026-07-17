@@ -36,7 +36,7 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-5 mb-8 px-1">
-        <div className="w-20 h-20 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center">
+        <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
           <SettingsIcon className="h-9 w-9 text-mint" strokeWidth={1.4} />
         </div>
         <div>
@@ -64,10 +64,10 @@ export function SettingsPage() {
                         document.documentElement.classList.toggle('dark', prefersDark)
                       }
                     }}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-apple active:scale-95 ${
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
                       theme === value
-                        ? 'bg-mint text-white'
-                        : 'bg-transparent text-white border border-white/10 hover:bg-mint/[0.075]'
+                        ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
+                        : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
                     }`}
                   >
                     <Icon className="h-4 w-4" strokeWidth={1.6} />
@@ -84,10 +84,10 @@ export function SettingsPage() {
                   <button
                     key={value}
                     onClick={() => setGlassMode(value)}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-apple active:scale-95 ${
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
                       glassMode === value
-                        ? 'bg-mint text-white'
-                        : 'bg-transparent text-white border border-white/10 hover:bg-mint/[0.075]'
+                        ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
+                        : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
                     }`}
                   >
                     <Icon className="h-4 w-4" strokeWidth={1.6} />
@@ -122,12 +122,12 @@ export function SettingsPage() {
             ) : (
               <div className="space-y-2">
                 {scanFolders.map((folder) => (
-                  <div key={folder} className="flex items-center justify-between bg-white/[0.04] border border-white/5 rounded-md px-3.5 py-3">
+                  <div key={folder} className="flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 hover:bg-white/[0.06] hover:border-white/14 transition-colors duration-200 ease-mineradio">
                     <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-white/40 hover:text-destructive hover:bg-destructive/10 transition-all duration-200 ease-apple"
+                      className="h-7 w-7 text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
                       onClick={() => removeScanFolder(folder)}
                     >
                       <Trash2 className="h-4 w-4" strokeWidth={1.6} />

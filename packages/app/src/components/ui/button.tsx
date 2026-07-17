@@ -4,43 +4,44 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 /**
- * Apple 风格按钮系统
- * - primary: Action Blue + pill 圆角
- * - secondary: 透明 + 蓝边 + pill
- * - utility: ink 矩形 + sm 圆角
- * - pearl: 珍珠按钮 + md 圆角
- * - ghost: 透明 hover
- * - destructive: 红色 pill（用于删除确认）
+ * Mineradio 暗色玻璃风格按钮系统
+ * - primary: 薄荷青（mint）实心 pill，深色文字
+ * - secondary: 透明 + 薄荷青边框 pill
+ * - pearl: 玻璃珍珠按钮（Saved Button 质感）
+ * - ghost: 透明 hover，暗色底微光
+ * - destructive: 珊瑚红 pill
+ * - outline: 暗色玻璃边框
+ * - link: 薄荷青文字链接
  *
- * 共用 active 状态: scale(0.95)
+ * 共用 active 状态: scale(0.96)
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap font-text transition-[transform,background,filter] duration-200 ease-apple focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-blue-focus focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 active:scale-95 select-none',
+  'inline-flex items-center justify-center whitespace-nowrap font-text transition-[transform,background,box-shadow,border-color] duration-200 ease-mineradio focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/30 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 active:scale-95 select-none',
   {
     variants: {
       variant: {
-        // Apple button-primary: Action Blue + pill
+        // Mineradio primary: mint 实心 pill
         primary:
-          'bg-action-blue text-white rounded-pill text-[14px] font-normal tracking-[-0.224px] hover:bg-action-blue-focus',
-        // Apple button-secondary-pill: 透明 + 蓝边
+          'bg-mint text-[#030608] rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-[#00E0BE] hover:-translate-y-px shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]',
+        // Mineradio secondary: 透明 + mint 边框 pill
         secondary:
-          'bg-transparent text-action-blue border border-action-blue rounded-pill text-[14px] font-normal tracking-[-0.224px] hover:bg-action-blue/[0.06]',
-        // Apple button-dark-utility: ink + sm 圆角
+          'bg-transparent text-mint border border-mint/34 rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-mint/[0.08] hover:border-mint/50',
+        // Mineradio utility: 暗色玻璃胶囊
         utility:
-          'bg-foreground text-background rounded-sm text-[14px] font-normal tracking-[-0.224px] hover:opacity-90',
-        // Apple button-pearl-capsule: 珍珠 + md 圆角
+          'bg-white/[0.06] text-white/86 border border-white/10 rounded-md text-[14px] font-medium tracking-[-0.224px] hover:bg-white/[0.10] hover:border-white/16 hover:-translate-y-px',
+        // Mineradio pearl: 玻璃珍珠按钮（Saved Button 质感）
         pearl:
-          'bg-[#fafafc] text-ink-muted80 border border-[#f0f0f0] rounded-md text-[14px] font-normal tracking-[-0.224px] hover:bg-white',
+          'bg-[rgba(0,0,0,.10)] backdrop-blur-[12px] saturate-[1.8] text-white/86 border-0 rounded-[13px] text-[13px] font-semibold tracking-[-0.12px] shadow-[inset_0_0_2px_1px_rgba(255,255,255,.34),inset_0_0_10px_4px_rgba(255,255,255,.13),0_10px_30px_rgba(0,0,0,.18)] hover:bg-[rgba(255,255,255,.055)] hover:shadow-[inset_0_0_2px_1px_rgba(255,255,255,.42),inset_0_0_12px_5px_rgba(255,255,255,.17),0_12px_34px_rgba(0,0,0,.22),0_0_18px_rgba(255,255,255,.06)] hover:-translate-y-px',
         // ghost: 透明 hover
-        ghost: 'bg-transparent text-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground rounded-sm',
-        // destructive: 红色 pill（删除等危险操作）
+        ghost: 'bg-transparent text-white/70 hover:bg-white/[0.06] hover:text-white rounded-sm',
+        // destructive: 珊瑚红 pill
         destructive:
-          'bg-destructive text-destructive-foreground rounded-pill text-[14px] font-normal tracking-[-0.224px] hover:bg-destructive/90',
+          'bg-coral text-white rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-coral/90 hover:-translate-y-px',
         // link
-        link: 'bg-transparent text-action-blue underline-offset-4 hover:underline rounded-none',
-        // outline: 保留 shadcn 兼容
+        link: 'bg-transparent text-mint underline-offset-4 hover:underline rounded-none',
+        // outline: 暗色玻璃边框
         outline:
-          'bg-transparent border border-border text-foreground rounded-sm text-[14px] hover:bg-foreground/[0.04]',
+          'bg-transparent border border-white/10 text-white/80 rounded-sm text-[14px] hover:bg-white/[0.05] hover:border-white/18',
       },
       size: {
         default: 'h-9 px-4 py-2',

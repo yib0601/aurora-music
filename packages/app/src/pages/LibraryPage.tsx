@@ -272,7 +272,7 @@ export function LibraryPage() {
 
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-white/40">
-          <div className="w-20 h-20 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center mb-5">
+          <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
             <MusicIcon className="h-10 w-10 text-mint" strokeWidth={1.5} />
           </div>
           <p className="font-display text-[21px] font-semibold mb-1 text-white tracking-[0.231px]">还没有音乐</p>
