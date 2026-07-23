@@ -17,11 +17,7 @@ import { LyricsView } from '@/components/lyrics/LyricsView'
 import { Visualizer } from '@/components/visualizer/Visualizer'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
-import {
-  initAudioAnalyser,
-  stopPlayback,
-  seekTo as audioSeekTo,
-} from '@/services/audio.service'
+import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
 import { useThemeColor } from '@/hooks/useThemeColor'
 import type { Track } from '@/types'
 
@@ -113,7 +109,7 @@ function AppLayout() {
   }, [])
 
   const handleSeek = useCallback((seconds: number) => {
-    audioSeekTo(seconds)
+    usePlayerStore.getState().seekTo(seconds)
   }, [])
 
   const handleVolumeChange = useCallback((v: number) => {
@@ -126,6 +122,68 @@ function AppLayout() {
 
   const handleCyclePlayMode = useCallback(() => {
     usePlayerStore.getState().cyclePlayMode()
+  }, [])
+
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 忽略输入框中的按键
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      const playerState = usePlayerStore.getState()
+
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault()
+          playerState.togglePlay()
+          break
+        case 'ArrowRight':
+          if (e.shiftKey) {
+            // Shift+→ 快进 10 秒
+            e.preventDefault()
+            playerState.seekTo(playerState.progress + 10)
+          }
+          break
+        case 'ArrowLeft':
+          if (e.shiftKey) {
+            // Shift+← 快退 10 秒
+            e.preventDefault()
+            playerState.seekTo(Math.max(0, playerState.progress - 10))
+          }
+          break
+        case 'ArrowUp':
+          if (e.ctrlKey || e.metaKey) {
+            // Ctrl/Cmd+↑ 音量 +
+            e.preventDefault()
+            playerState.setVolume(Math.min(1, playerState.volume + 0.1))
+          }
+          break
+        case 'ArrowDown':
+          if (e.ctrlKey || e.metaKey) {
+            // Ctrl/Cmd+↓ 音量 -
+            e.preventDefault()
+            playerState.setVolume(Math.max(0, playerState.volume - 0.1))
+          }
+          break
+        case 'KeyN':
+          if (e.ctrlKey || e.metaKey) {
+            // Ctrl/Cmd+N 下一首
+            e.preventDefault()
+            playerState.next()
+          }
+          break
+        case 'KeyP':
+          if (e.ctrlKey || e.metaKey) {
+            // Ctrl/Cmd+P 上一首
+            e.preventDefault()
+            playerState.previous()
+          }
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
   return (

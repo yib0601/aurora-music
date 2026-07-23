@@ -6,6 +6,7 @@
   "author": "Aurora Music <aurora-music@example.com>",
   "homepage": "https://github.com/aurora-music/aurora-music",
   "main": "dist-electron/main.js",
+  "desktopName": "Aurora-Music",
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c blue,green \"cd ../app && npx vite --host\" \"wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .\"",
     "dev:vite": "cd ../app && npx vite --host",
@@ -49,11 +50,12 @@
     "buildDependenciesFromSource": false,
     "linux": {
       "target": [
-        { "target": "deb", "arch": ["x64"] }
+        { "target": "rpm", "arch": ["x64"] }
       ],
       "category": "AudioVideo",
       "icon": "resources/icon.png",
       "maintainer": "Aurora Music <aurora-music@example.com>",
+      "syncDesktopName": true,
       "desktop": {
         "entry": {
           "Name": "Aurora Music",
@@ -64,8 +66,18 @@
         }
       }
     },
-    "deb": {
-      "afterInstall": "resources/after-install.sh"
+    "rpm": {
+      "afterInstall": "resources/after-install.sh",
+      "depends": [
+        "libXtst",
+        "libuuid",
+        "at-spi2-core",
+        "gtk3",
+        "libXScrnSaver",
+        "libnotify",
+        "nss",
+        "xdg-utils"
+      ]
     },
     "win": {
       "target": [

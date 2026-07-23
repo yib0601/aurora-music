@@ -2,15 +2,15 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import {
-  togglePlayPause,
-  playQueue as audioPlayQueue,
+  togglePlayPause as audioTogglePlayPause,
   playTrack as audioPlayTrack,
-  addToQueue as audioAddToQueue,
-  playNextAdd as audioPlayNextAdd,
   setVolume as audioSetVolume,
   seekTo as audioSeekTo,
   setMuted as audioSetMuted,
+  stopPlayback as audioStopPlayback,
 } from '@/services/audio.service'
+import { audioEvents } from '@/services/audioEvents'
+import { useLibraryStore } from './libraryStore'
 
 interface PlayerState {
   currentTrack: Track | null
@@ -29,6 +29,8 @@ interface PlayerState {
   playQueue: (tracks: Track[], startIndex?: number) => void
   addToQueue: (track: Track) => void
   addToPlayNext: (track: Track) => void
+  removeFromQueue: (index: number) => void
+  clearQueue: () => void
   togglePlay: () => void
   next: () => void
   previous: () => void
@@ -77,27 +79,56 @@ export const usePlayerStore = create<PlayerState>()(
             ? [...state.shuffleHistory, index]
             : state.shuffleHistory
         set({ queue: newQueue, currentIndex: index, shuffleHistory: newHistory })
-        audioPlayTrack(track)
+        audioPlayTrack(track, state.volume, state.muted)
       },
 
       playQueue: (tracks, startIndex = 0) => {
         const newHistory =
           get().shuffleMode === 'on' && tracks[startIndex] ? [startIndex] : []
         set({ queue: tracks, currentIndex: startIndex, shuffleHistory: newHistory })
-        audioPlayQueue(tracks, startIndex)
+        audioPlayTrack(tracks[startIndex], get().volume, get().muted)
       },
 
       addToQueue: (track) => {
-        audioAddToQueue(track)
+        const newQueue = [...get().queue, track]
+        set({ queue: newQueue })
       },
 
       addToPlayNext: (track) => {
-        audioPlayNextAdd(track)
+        const { queue, currentIndex } = get()
+        const insertAt = currentIndex < 0 ? 0 : currentIndex + 1
+        const newQueue = [...queue.slice(0, insertAt), track, ...queue.slice(insertAt)]
+        set({ queue: newQueue })
+      },
+
+      removeFromQueue: (index) => {
+        const { queue, currentIndex } = get()
+        if (index < 0 || index >= queue.length) return
+        const newQueue = queue.filter((_, i) => i !== index)
+        let newCurrentIndex = currentIndex
+        if (index < currentIndex) {
+          newCurrentIndex = currentIndex - 1
+        } else if (index === currentIndex) {
+          // 删除当前播放的曲目，跳到下一首
+          if (newQueue.length === 0) {
+            newCurrentIndex = -1
+          } else {
+            newCurrentIndex = Math.min(currentIndex, newQueue.length - 1)
+            const nextTrack = newQueue[newCurrentIndex]
+            audioPlayTrack(nextTrack, get().volume, get().muted)
+          }
+        }
+        set({ queue: newQueue, currentIndex: newCurrentIndex })
+      },
+
+      clearQueue: () => {
+        audioStopPlayback()
+        set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, progress: 0 })
       },
 
       togglePlay: () => {
         if (!get().currentTrack) return
-        togglePlayPause()
+        audioTogglePlayPause(get().isPlaying)
       },
 
       next: () => {
@@ -106,7 +137,7 @@ export const usePlayerStore = create<PlayerState>()(
 
         if (state.repeatMode === 'one') {
           audioSeekTo(0)
-          audioPlayTrack(state.currentTrack!)
+          audioPlayTrack(state.currentTrack!, state.volume, state.muted)
           return
         }
 
@@ -120,10 +151,10 @@ export const usePlayerStore = create<PlayerState>()(
               .filter((i) => i !== state.currentIndex)
             nextIndex = candidates[Math.floor(Math.random() * candidates.length)]
           }
-          const newHistory = [...state.shuffleHistory, nextIndex]
+          const newHistory = [...state.shuffleHistory, nextIndex].slice(-100)
           const nextTrack = state.queue[nextIndex]
           set({ currentIndex: nextIndex, shuffleHistory: newHistory })
-          audioPlayTrack(nextTrack)
+          audioPlayTrack(nextTrack, state.volume, state.muted)
           return
         }
 
@@ -139,7 +170,7 @@ export const usePlayerStore = create<PlayerState>()(
 
         const nextTrack = state.queue[nextIndex]
         set({ currentIndex: nextIndex })
-        audioPlayTrack(nextTrack)
+        audioPlayTrack(nextTrack, state.volume, state.muted)
       },
 
       previous: () => {
@@ -169,7 +200,7 @@ export const usePlayerStore = create<PlayerState>()(
 
         const prevTrack = state.queue[prevIndex]
         set({ currentIndex: prevIndex })
-        audioPlayTrack(prevTrack)
+        audioPlayTrack(prevTrack, state.volume, state.muted)
       },
 
       seekTo: (seconds) => {
@@ -177,16 +208,17 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       setVolume: (volume) => {
-        set({ volume, muted: volume === 0 })
+        const newMuted = volume === 0
+        set({ volume, muted: newMuted })
         audioSetVolume(volume)
-        if (get().muted) audioSetMuted(volume === 0)
+        if (newMuted) audioSetMuted(true, volume)
       },
 
       toggleMute: () => {
         const { muted, volume } = get()
         const newMuted = !muted
         set({ muted: newMuted })
-        audioSetMuted(newMuted)
+        audioSetMuted(newMuted, volume)
         if (!newMuted) audioSetVolume(volume)
       },
 
@@ -245,3 +277,37 @@ export const usePlayerStore = create<PlayerState>()(
     }
   )
 )
+
+// 订阅音频事件，更新播放状态 — 在模块加载时初始化
+audioEvents.on('play', ({ track }) => {
+  usePlayerStore.setState({ isPlaying: true })
+  // 更新播放统计（从服务层移至状态管理层）
+  useLibraryStore.getState().updateTrack(track.id, {
+    lastPlayedAt: Date.now(),
+    playCount: (track.playCount || 0) + 1,
+  })
+})
+
+audioEvents.on('pause', () => {
+  usePlayerStore.setState({ isPlaying: false })
+})
+
+audioEvents.on('stop', () => {
+  usePlayerStore.setState({ isPlaying: false, progress: 0 })
+})
+
+audioEvents.on('end', () => {
+  usePlayerStore.getState().next()
+})
+
+audioEvents.on('progress', ({ currentTime }) => {
+  usePlayerStore.setState({ progress: currentTime })
+})
+
+audioEvents.on('duration', ({ duration }) => {
+  usePlayerStore.setState({ duration })
+})
+
+audioEvents.on('trackChange', ({ track }) => {
+  usePlayerStore.setState({ currentTrack: track, duration: 0, progress: 0 })
+})

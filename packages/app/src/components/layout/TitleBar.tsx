@@ -1,5 +1,5 @@
-import React from 'react'
-import { Minus, Square, X } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Minus, Square, PanelTopClose, X } from 'lucide-react'
 import { isDesktop } from '@/lib/utils'
 
 /**
@@ -14,14 +14,23 @@ import { isDesktop } from '@/lib/utils'
 export function TitleBar() {
   const desktop = isDesktop()
   const api = (window as any).electronAPI
+  const [isMaximized, setIsMaximized] = useState(false)
 
   // 只在桌面环境且具备窗口控制 API 时渲染
   if (!desktop || !api?.windowControls) {
     return null
   }
 
+  // 初始化时检查窗口状态
+  useEffect(() => {
+    api.windowControls.isMaximized?.().then(setIsMaximized)
+  }, [api])
+
   const handleMinimize = () => api.windowControls.minimize()
-  const handleMaximize = () => api.windowControls.maximize()
+  const handleMaximize = () => {
+    api.windowControls.maximize()
+    setIsMaximized((v) => !v)
+  }
   const handleClose = () => api.windowControls.close()
 
   // 按钮通用样式：38×30px，圆角 10px，Mineradio 玻璃珍珠按钮底
@@ -50,10 +59,14 @@ export function TitleBar() {
         </button>
         <button
           onClick={handleMaximize}
-          title="最大化"
+          title={isMaximized ? '还原' : '最大化'}
           className={`${btnBase} hover:text-[#fff1bd]`}
         >
-          <Square className="h-3 w-3" strokeWidth={2} />
+          {isMaximized ? (
+            <PanelTopClose className="h-3 w-3" strokeWidth={2} />
+          ) : (
+            <Square className="h-3 w-3" strokeWidth={2} />
+          )}
         </button>
         <button
           onClick={handleClose}

@@ -1,7 +1,6 @@
 import { Howl, Howler } from 'howler'
 import type { Track } from '@/types'
-import { usePlayerStore } from '@/stores/playerStore'
-import { useLibraryStore } from '@/stores/libraryStore'
+import { audioEvents } from './audioEvents'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
@@ -25,7 +24,7 @@ function startTick(howl: Howl) {
   tickInterval = setInterval(() => {
     const progress = howl.seek() as number
     if (typeof progress === 'number' && !isNaN(progress)) {
-      usePlayerStore.getState().setProgress(progress)
+      audioEvents.emit('progress', { currentTime: progress })
     }
   }, 500)
 }
@@ -59,9 +58,7 @@ export function getAnalyser(): AnalyserNode | null {
   return analyserNode
 }
 
-export function playTrack(track: Track): void {
-  const state = usePlayerStore.getState()
-
+export function playTrack(track: Track, volume: number = 0.7, muted: boolean = false): void {
   if (currentHowl) {
     currentHowl.unload()
     currentHowl = null
@@ -74,41 +71,33 @@ export function playTrack(track: Track): void {
     src: [src],
     html5: true,
     format: detectFormat(track.path),
-    volume: state.muted ? 0 : state.volume,
+    volume: muted ? 0 : volume,
     onplay: () => {
-      usePlayerStore.getState().setIsPlaying(true)
+      audioEvents.emit('play', { track })
       if (audioContext && audioContext.state === 'suspended') {
         audioContext.resume()
       }
       startTick(howl)
-
-      const current = usePlayerStore.getState().currentTrack
-      if (current) {
-        useLibraryStore.getState().updateTrack(current.id, {
-          lastPlayedAt: Date.now(),
-          playCount: (current.playCount || 0) + 1,
-        })
-      }
     },
     onpause: () => {
-      usePlayerStore.getState().setIsPlaying(false)
+      audioEvents.emit('pause', {})
       stopTick()
     },
     onstop: () => {
-      usePlayerStore.getState().setIsPlaying(false)
-      usePlayerStore.getState().setProgress(0)
+      audioEvents.emit('stop', {})
       stopTick()
     },
     onend: () => {
       stopTick()
-      usePlayerStore.getState().next()
+      audioEvents.emit('end', {})
     },
     onload: () => {
       const dur = howl.duration()
-      usePlayerStore.getState().setDuration(dur)
+      audioEvents.emit('duration', { duration: dur })
     },
     onloaderror: (_id, error) => {
       console.error('Audio load error:', error)
+      audioEvents.emit('error', { error })
     },
     onplayerror: (_id, error) => {
       console.error('Audio play error:', error)
@@ -117,36 +106,11 @@ export function playTrack(track: Track): void {
   })
 
   currentHowl = howl
-  usePlayerStore.setState({ currentTrack: track, duration: 0, progress: 0 })
+  audioEvents.emit('trackChange', { track })
 
   howl.play()
 
   connectAnalyser(howl)
-}
-
-export function playQueue(queue: Track[], startIndex: number = 0): void {
-  const track = queue[startIndex]
-  if (!track) return
-  usePlayerStore.setState({ queue, currentIndex: startIndex })
-  playTrack(track)
-}
-
-export function addToQueue(track: Track): void {
-  const { queue } = usePlayerStore.getState()
-  const newQueue = [...queue, track]
-  usePlayerStore.setState({ queue: newQueue })
-}
-
-export function playNextAdd(track: Track): void {
-  const { queue, currentIndex } = usePlayerStore.getState()
-  const insertAt = currentIndex < 0 ? 0 : currentIndex + 1
-  const newQueue = [...queue.slice(0, insertAt), track, ...queue.slice(insertAt)]
-  usePlayerStore.setState({ queue: newQueue })
-}
-
-export function clearQueue(): void {
-  stopPlayback()
-  usePlayerStore.setState({ queue: [], currentIndex: -1, currentTrack: null })
 }
 
 function connectAnalyser(howl: Howl) {
@@ -181,7 +145,7 @@ export function resumePlayback(): void {
 export function seekTo(seconds: number): void {
   if (currentHowl) {
     currentHowl.seek(seconds)
-    usePlayerStore.getState().setProgress(seconds)
+    audioEvents.emit('progress', { currentTime: seconds })
   }
 }
 
@@ -189,18 +153,15 @@ export function setVolume(volume: number): void {
   if (currentHowl) {
     currentHowl.volume(volume)
   }
-  Howler.volume(1)
 }
 
-export function setMuted(muted: boolean): void {
-  const { volume } = usePlayerStore.getState()
+export function setMuted(muted: boolean, volume: number = 0.7): void {
   if (currentHowl) {
     currentHowl.volume(muted ? 0 : volume)
   }
 }
 
-export function togglePlayPause(): void {
-  const { isPlaying } = usePlayerStore.getState()
+export function togglePlayPause(isPlaying: boolean): void {
   if (isPlaying) {
     pausePlayback()
   } else {
