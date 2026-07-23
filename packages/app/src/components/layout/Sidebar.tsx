@@ -116,7 +116,7 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col gap-px">
           {playlists.length === 0 ? (
-            <p className="px-3 py-2 text-[13px] text-white/35">暂无播放列表</p>
+            <p className="px-3 py-2 text-[12px] text-white/30 leading-relaxed">点击 + 创建你的第一个播放列表</p>
           ) : (
             playlists.map((pl) => (
               <div key={pl.id} className="group flex items-center gap-0.5">
@@ -189,7 +189,7 @@ export function Sidebar() {
 
       {/* 版本号 */}
       <div className="px-4 py-3 border-t border-white/5">
-        <p className="font-text text-[11px] text-white/30 tracking-[-0.12px]">Aurora Music v0.1.2</p>
+        <p className="font-text text-[11px] text-white/50 tracking-[-0.12px]">Aurora Music v0.1.2</p>
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
