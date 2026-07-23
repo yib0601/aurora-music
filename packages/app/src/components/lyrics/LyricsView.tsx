@@ -29,8 +29,11 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
   const lastScrollRef = useRef<number>(0)
 
   useEffect(() => {
-    const text = lyricsText || sampleLyrics
-    setLyrics(parseLRC(text))
+    if (!lyricsText) {
+      setLyrics([])
+      return
+    }
+    setLyrics(parseLRC(lyricsText))
   }, [lyricsText])
 
   // ⚠️ 性能：单次计算 activeIdx，避免重复调用 findActiveLine
@@ -69,6 +72,9 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
       className={cn('overflow-y-auto scrollbar-hide px-4 py-8 space-y-6 text-center', className)}
       style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}
     >
+      {lyrics.length === 0 && (
+        <p className="text-white/20 text-[15px] pt-20">暂无歌词</p>
+      )}
       {lyrics.map((line, idx) => {
         const distance = Math.abs(idx - activeIdx)
         return (

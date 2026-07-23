@@ -72,7 +72,7 @@ export function PlaylistPage() {
 
   const handlePlayTrack = (track: typeof tracks[0], index: number) => {
     if (currentTrack?.id === track.id) {
-      playTrack(track)
+      usePlayerStore.getState().togglePlay()
       return
     }
     playQueue(playlistTracks, index)

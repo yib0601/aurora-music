@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Search as SearchIcon, Play, Plus, ListEnd, Music2, Heart } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -27,14 +27,22 @@ import type { Track } from '@/types'
  */
 export function SearchPage() {
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const tracks = useLibraryStore((s) => s.tracks)
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
+  const debounceTimer = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => setDebouncedQuery(query), 200)
+    return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current) }
+  }, [query])
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = debouncedQuery.trim().toLowerCase()
     if (!q) return []
     return tracks.filter(
       (t) =>
@@ -42,7 +50,7 @@ export function SearchPage() {
         t.artist.toLowerCase().includes(q) ||
         t.album.toLowerCase().includes(q)
     )
-  }, [query, tracks])
+  }, [debouncedQuery, tracks])
 
   const handlePlayTrack = (track: Track, index: number, queue: Track[]) => {
     usePlayerStore.getState().playQueue(queue, index)

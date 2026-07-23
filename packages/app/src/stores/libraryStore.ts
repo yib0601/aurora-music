@@ -34,6 +34,7 @@ interface LibraryState {
   toggleLiked: (trackId: string) => void
   toggleLike: (trackId: string) => void
   likedTracks: Set<string>
+  likedTrackIds?: string[]
 }
 
 export const useLibraryStore = create<LibraryState>()(
@@ -107,7 +108,13 @@ export const useLibraryStore = create<LibraryState>()(
         viewMode: state.viewMode,
         glassMode: state.glassMode,
         theme: state.theme,
+        likedTrackIds: Array.from(state.likedTracks),
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.likedTrackIds) {
+          state.likedTracks = new Set(state.likedTrackIds)
+        }
+      },
     }
   )
 )

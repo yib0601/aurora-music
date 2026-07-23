@@ -45,7 +45,7 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2 space-y-5 max-w-2xl">
+      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2 space-y-5 max-w-3xl mx-auto w-full px-4">
         <section className="card-utility p-5">
           <h2 className="font-display text-tagline mb-5 text-white">外观</h2>
           <div className="space-y-6">

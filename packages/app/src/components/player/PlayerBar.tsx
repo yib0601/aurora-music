@@ -182,7 +182,7 @@ export function PlayerBar({
             ) : repeatMode === 'all' ? (
               <Repeat className="h-[16px] w-[16px]" strokeWidth={1.5} />
             ) : (
-              <Repeat className="h-[16px] w-[16px]" strokeWidth={1.5} />
+              <Shuffle className="h-[16px] w-[16px]" strokeWidth={1.5} />
             )}
           </button>
           <button

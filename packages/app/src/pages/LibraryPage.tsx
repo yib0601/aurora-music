@@ -1,6 +1,6 @@
 import { useState, useCallback, memo, useMemo } from 'react'
 import {
-  FolderOpen, List, Grid3X3, Music as MusicIcon, Search as SearchIcon, Heart,
+  FolderOpen, List, Grid3X3, Music as MusicIcon, Heart,
   Play, Plus, ListPlus, ListEnd,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -46,7 +46,6 @@ export function LibraryPage() {
   const playlists = usePlaylistStore((s) => s.playlists)
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
-  const [localQuery, setLocalQuery] = useState('')
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
   const [newPlName, setNewPlName] = useState('')
   const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
@@ -88,16 +87,7 @@ export function LibraryPage() {
     }
   }
 
-  const filteredTracks = useMemo(() => {
-    if (!localQuery) return tracks
-    const q = localQuery.toLowerCase()
-    return tracks.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.artist.toLowerCase().includes(q) ||
-        t.album.toLowerCase().includes(q)
-    )
-  }, [tracks, localQuery])
+  const filteredTracks = tracks
 
   // ⚠️ 性能：memo 化 TrackRow，避免每次父组件 render 都重建所有行
   const TrackRow = memo(({ track, idx, queue }: { track: Track; idx: number; queue: Track[] }) => (
@@ -106,7 +96,7 @@ export function LibraryPage() {
         <tr
           key={track.id}
           className="row-hover cursor-pointer border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
-          onDoubleClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), queue)}
+          onDoubleClick={() => handlePlayTrack(track, idx, queue)}
         >
           <td className="py-2.5 px-3 text-white/40 w-10 group-hover:text-white">
             <span className="group-hover:hidden font-text text-[13px] tabular-nums">{idx + 1}</span>
@@ -141,7 +131,7 @@ export function LibraryPage() {
         </tr>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        <ContextMenuItem onClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), queue)}>
+        <ContextMenuItem onClick={() => handlePlayTrack(track, idx, queue)}>
           <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
           立即播放
         </ContextMenuItem>
@@ -214,16 +204,6 @@ export function LibraryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative glass-search-box rounded-pill h-9 w-52 flex items-center">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-mint/70" strokeWidth={1.5} />
-            <input
-              type="text"
-              placeholder="搜索歌曲..."
-              value={localQuery}
-              onChange={(e) => setLocalQuery(e.target.value)}
-              className="bg-transparent border-0 rounded-pill pl-9 pr-3.5 h-full w-full text-[14px] outline-none text-white/92 placeholder:text-white/30 font-text tracking-[-0.224px]"
-            />
-          </div>
           {isDesktop() && (
             <button className="btn-secondary inline-flex items-center gap-1.5 h-9" onClick={handlePickFolder}>
               <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.5} />

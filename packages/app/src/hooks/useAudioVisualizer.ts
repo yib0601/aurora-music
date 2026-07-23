@@ -34,7 +34,10 @@ export function useAudioVisualizer(
       analyser = initAudioAnalyser()
     }
     if (!analyser) {
-      rafRef.current = requestAnimationFrame(draw)
+      // 无音频时降低帧率，每 500ms 检查一次
+      setTimeout(() => {
+        rafRef.current = requestAnimationFrame(draw)
+      }, 500)
       return
     }
 

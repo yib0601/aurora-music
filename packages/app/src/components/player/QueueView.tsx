@@ -25,8 +25,7 @@ export function QueueView() {
   }
 
   const handleRemoveTrack = (index: number) => {
-    // 保留删除逻辑占位（当前 store 无 remove 接口）
-    // 如未来加入 removeFromQueue，在此调用
+    usePlayerStore.getState().removeFromQueue(index)
   }
 
   return (

@@ -160,7 +160,7 @@ export function rgbToCssVar(rgb: ColorRGB): string {
   return `${rgb.r} ${rgb.g} ${rgb.b}`
 }
 
-export function getContrastColor(rgb: ColorRGB): string {
+function getContrastColor(rgb: ColorRGB): string {
   const lum = getLuminance(rgb.r, rgb.g, rgb.b)
   return lum > 0.5 ? '#000000' : '#ffffff'
 }
