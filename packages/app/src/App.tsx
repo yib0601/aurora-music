@@ -264,25 +264,23 @@ function AppLayout() {
 
           <QueueView />
 
-          {/* Mineradio 悬浮胶囊控制台 — 跟随主内容区宽度动态调整 */}
-          {currentTrack && (
-            <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 w-[clamp(360px,calc(100%-80px),640px)]">
-              <PlayerBar
-                currentTrack={currentTrack}
-                volume={volume}
-                muted={muted}
-                repeatMode={repeatMode}
-                shuffleMode={shuffleMode}
-                onTogglePlay={handleTogglePlay}
-                onNext={handleNext}
-                onPrevious={handlePrevious}
-                onSeek={handleSeek}
-                onVolumeChange={handleVolumeChange}
-                onToggleMute={handleToggleMute}
-                onCyclePlayMode={handleCyclePlayMode}
-              />
-            </div>
-          )}
+          {/* Mineradio 悬浮胶囊控制台 — 始终显示，无曲目时显示占位状态 */}
+          <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 w-[clamp(360px,calc(100%-80px),640px)]">
+            <PlayerBar
+              currentTrack={currentTrack}
+              volume={volume}
+              muted={muted}
+              repeatMode={repeatMode}
+              shuffleMode={shuffleMode}
+              onTogglePlay={handleTogglePlay}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+              onSeek={handleSeek}
+              onVolumeChange={handleVolumeChange}
+              onToggleMute={handleToggleMute}
+              onCyclePlayMode={handleCyclePlayMode}
+            />
+          </div>
         </main>
       </div>
     </div>
