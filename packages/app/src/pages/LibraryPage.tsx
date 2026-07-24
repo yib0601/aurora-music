@@ -1,4 +1,4 @@
-import { useState, useCallback, memo, useMemo } from 'react'
+import { useState, useCallback, memo } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Heart,
   Play, Plus, ListPlus, ListEnd,
@@ -193,78 +193,95 @@ export function LibraryPage() {
   TrackRow.displayName = 'TrackRow'
 
   return (
-    <div className="flex flex-col h-full p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-display text-[34px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
-            音乐库
-          </h1>
-          <p className="font-text text-[14px] text-white/50 mt-1 tracking-[-0.224px]">
-            {tracks.length} 首歌曲
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isDesktop() && (
-            <button className="btn-secondary inline-flex items-center gap-1.5 h-9" onClick={handlePickFolder}>
-              <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.5} />
-              导入音乐
-            </button>
-          )}
-          <div className="flex rounded-[10px] overflow-hidden border border-white/5 bg-white/[0.04] p-0.5">
-            <button
-              className={cn(
-                'h-7 w-7 flex items-center justify-center rounded-[8px] transition-all duration-200 ease-apple',
-                viewMode === 'list' ? 'bg-mint text-black' : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
-              )}
-              onClick={() => setViewMode('list')}
-            >
-              <List className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
-            <button
-              className={cn(
-                'h-7 w-7 flex items-center justify-center rounded-[8px] transition-all duration-200 ease-apple',
-                viewMode === 'grid' ? 'bg-mint text-black' : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
-              )}
-              onClick={() => setViewMode('grid')}
-            >
-              <Grid3X3 className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {isScanning && (
-        <div className="card-utility p-4 mb-6">
-          <p className="font-text text-[14px] text-white/70 mb-2 truncate tracking-[-0.224px]">
-            正在扫描: {scanProgress.file}
-          </p>
-          <div className="w-full bg-white/[0.06] rounded-pill h-1 overflow-hidden">
-            <div
-              className="bg-mint h-full rounded-pill transition-all duration-300 ease-apple"
-              style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}%` }}
-            />
-          </div>
-          <p className="font-text text-[12px] text-white/40 mt-2 tabular-nums tracking-[-0.12px]">
-            {scanProgress.current} / {scanProgress.total}
-          </p>
-        </div>
-      )}
-
+    <div className="flex flex-col h-full px-8 pt-8 pb-4">
       {tracks.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-white/40">
-          <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
-            <MusicIcon className="h-10 w-10 text-mint" strokeWidth={1.5} />
+        <>
+          {/* 页面头部 */}
+          <div className="mb-8">
+            <h1 className="font-display text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+              音乐库
+            </h1>
+            <p className="font-text text-[13px] text-white/40 mt-1 tracking-[-0.2px]">
+              导入音乐，开始构建你的专属音乐库
+            </p>
           </div>
-          <p className="font-display text-[21px] font-semibold mb-1 text-white tracking-[0.231px]">还没有音乐</p>
-          <p className="font-text text-[14px] text-white/50 mb-6 tracking-[-0.224px]">点击"导入音乐"添加你的音乐文件夹</p>
-          {isDesktop() && (
-            <Button variant="primary" size="lg" onClick={handlePickFolder}>
-              <FolderOpen className="h-4 w-4" strokeWidth={1.5} />
+          {/* 空状态 - 居中 */}
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="relative mb-6">
+              <div className="absolute -inset-16 bg-gradient-to-b from-mint/8 to-transparent rounded-full blur-3xl" />
+              <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                <MusicIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
+              </div>
+            </div>
+            <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
+              还没有音乐
+            </h2>
+            <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
+              导入你的音乐文件夹，开始构建你的专属音乐库
+            </p>
+            <button
+              onClick={handlePickFolder}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-[#030608] font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
+            >
+              <FolderOpen className="h-4 w-4" strokeWidth={1.6} />
               导入音乐
-            </Button>
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* 页面头部 - 有内容时显示 */}
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="font-display text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+                音乐库
+              </h1>
+              <p className="font-text text-[13px] text-white/40 mt-1 tracking-[-0.2px]">
+                {tracks.length} 首歌曲
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-[10px] overflow-hidden border border-white/5 bg-white/[0.04] p-0.5">
+                <button
+                  className={cn(
+                    'h-7 w-7 flex items-center justify-center rounded-[8px] transition-all duration-200 ease-apple',
+                    viewMode === 'list' ? 'bg-mint text-black' : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+                  )}
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+                <button
+                  className={cn(
+                    'h-7 w-7 flex items-center justify-center rounded-[8px] transition-all duration-200 ease-apple',
+                    viewMode === 'grid' ? 'bg-mint text-black' : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+                  )}
+                  onClick={() => setViewMode('grid')}
+                >
+                  <Grid3X3 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {isScanning && (
+            <div className="mb-4 card-utility p-4">
+              <p className="font-text text-[14px] text-white/70 mb-2 truncate tracking-[-0.224px]">
+                正在扫描: {scanProgress.file}
+              </p>
+              <div className="w-full bg-white/[0.06] rounded-pill h-1 overflow-hidden">
+                <div
+                  className="bg-mint h-full rounded-pill transition-all duration-300 ease-apple"
+                  style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <p className="font-text text-[12px] text-white/40 mt-2 tabular-nums tracking-[-0.12px]">
+                {scanProgress.current} / {scanProgress.total}
+              </p>
+            </div>
           )}
-        </div>
-      ) : viewMode === 'list' ? (
+
+          {viewMode === 'list' ? (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           <table className="w-full font-text">
             <thead>
@@ -349,6 +366,8 @@ export function LibraryPage() {
           </div>
         </div>
       )}
+      </>
+    )}
 
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
         <DialogContent className="sm:max-w-sm">
