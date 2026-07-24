@@ -4,6 +4,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn, formatTime } from '@/lib/utils'
+import { PageLayout } from '@/components/PageLayout'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -65,22 +66,17 @@ export function SearchPage() {
   }
 
   return (
-    <div className="flex flex-col h-full p-8">
-      <div className="mb-7">
-        <h1 className="font-display text-[34px] font-semibold tracking-[-0.374px] text-white/98 leading-tight mb-4">
-          搜索
-        </h1>
-        <div className="relative max-w-2xl">
-          <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-mint/70" strokeWidth={1.5} />
-          <input
-            type="text"
-            placeholder="搜索歌曲、艺术家、专辑..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="glass-search-box rounded-[22px] h-[58px] w-full pl-11 pr-4 font-text text-[17px] text-white/92 outline-none placeholder:text-white/22 tracking-[-0.374px]"
-            autoFocus
-          />
-        </div>
+    <PageLayout title="搜索">
+      <div className="relative max-w-2xl mb-7">
+        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-mint/70" strokeWidth={1.5} />
+        <input
+          type="text"
+          placeholder="搜索歌曲、艺术家、专辑..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="glass-search-box rounded-[22px] h-[58px] w-full pl-11 pr-4 font-text text-[17px] text-white/92 outline-none placeholder:text-white/22 tracking-[-0.374px]"
+          autoFocus
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
@@ -194,6 +190,6 @@ export function SearchPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageLayout>
   )
 }
