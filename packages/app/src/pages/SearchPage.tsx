@@ -85,20 +85,26 @@ export function SearchPage() {
 
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         {!query.trim() ? (
-          <div className="flex flex-col items-center justify-center py-24 text-white/40">
-            <div className="w-20 h-20 glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
-              <SearchIcon className="h-10 w-10 text-mint" strokeWidth={1.5} />
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="relative mb-6">
+              <div className="absolute -inset-12 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
+              <div className="relative w-32 h-32 rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                <SearchIcon className="h-14 w-14 text-mint/50" strokeWidth={1} />
+              </div>
             </div>
-            <p className="font-display text-[21px] font-semibold text-white tracking-[0.231px] mb-1">开始搜索</p>
-            <p className="font-text text-[14px] text-white/50 tracking-[-0.224px]">输入关键词搜索你的音乐库</p>
+            <p className="font-display text-[24px] font-bold text-white/90 mb-2 tracking-[-0.3px]">开始搜索</p>
+            <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">输入关键词搜索你的音乐库</p>
           </div>
         ) : results.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-white/40">
-            <div className="w-20 h-20 glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
-              <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="relative mb-6">
+              <div className="absolute -inset-12 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
+              <div className="relative w-32 h-32 rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                <Music2 className="h-14 w-14 text-coral/50" strokeWidth={1} />
+              </div>
             </div>
-            <p className="font-display text-[21px] font-semibold text-white tracking-[0.231px] mb-1">未找到结果</p>
-            <p className="font-text text-[14px] text-white/50 tracking-[-0.224px]">没有匹配 “{query}” 的歌曲</p>
+            <p className="font-display text-[24px] font-bold text-white/90 mb-2 tracking-[-0.3px]">未找到结果</p>
+            <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的歌曲</p>
           </div>
         ) : (
           <div className="space-y-5">

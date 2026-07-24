@@ -110,9 +110,9 @@
     --ease-mineradio-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
     /* ambient 光晕（封面色驱动，默认薄荷青+香槟金） */
-    --ambient-from: rgba(0, 245, 212, 0.14);
-    --ambient-to: rgba(244, 210, 138, 0.08);
-    --ambient-glow: rgba(0, 245, 212, 0.20);
+    --ambient-from: rgba(0, 245, 212, 0.08);
+    --ambient-to: rgba(244, 210, 138, 0.04);
+    --ambient-glow: rgba(0, 245, 212, 0.06);
   }
 }
 
@@ -410,10 +410,10 @@ input[type='range']:active::-webkit-slider-thumb {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 60% 50% at 15% 10%, var(--ambient-from), transparent 60%),
-    radial-gradient(ellipse 50% 40% at 85% 90%, var(--ambient-to), transparent 65%),
-    radial-gradient(ellipse 40% 30% at 50% 50%, var(--ambient-glow), transparent 70%);
-  opacity: 0.9;
+    radial-gradient(ellipse 55% 45% at 20% 15%, var(--ambient-from), transparent 60%),
+    radial-gradient(ellipse 40% 35% at 75% 80%, var(--ambient-to), transparent 65%),
+    radial-gradient(ellipse 35% 25% at 40% 40%, var(--ambient-glow), transparent 70%);
+  opacity: 0.7;
   transition: background 0.6s var(--ease-mineradio);
 }
 .ambient-backdrop::after {
