@@ -1,6 +1,7 @@
 import React from 'react'
 import { Settings as SettingsIcon, Monitor, Moon, Sun, Eye, FolderOpen, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { PageLayout } from '@/components/PageLayout'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { isDesktop } from '@/lib/utils'
 
@@ -34,7 +35,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full px-8 pt-8 pb-4">
+    <PageLayout header={
       <div className="flex items-center gap-5 mb-8">
         <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
           <SettingsIcon className="h-9 w-9 text-mint" strokeWidth={1.4} />
@@ -44,7 +45,7 @@ export function SettingsPage() {
           <p className="font-text text-caption text-white/60 mt-1">自定义你的 Aurora Music</p>
         </div>
       </div>
-
+    }>
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         <div className="w-full max-w-[720px] space-y-5 pb-8">
           <section className="card-utility p-5">
@@ -141,6 +142,6 @@ export function SettingsPage() {
           </section>
         </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }
