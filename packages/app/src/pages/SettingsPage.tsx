@@ -34,8 +34,8 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-5 mb-8 px-1">
+    <div className="flex flex-col h-full px-8 pt-8 pb-4">
+      <div className="flex items-center gap-5 mb-8">
         <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
           <SettingsIcon className="h-9 w-9 text-mint" strokeWidth={1.4} />
         </div>
@@ -47,98 +47,98 @@ export function SettingsPage() {
 
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         <div className="w-full max-w-[720px] space-y-5 pb-8">
-        <section className="card-utility p-5">
-          <h2 className="font-display text-tagline mb-5 text-white">外观</h2>
-          <div className="space-y-6">
-            <div>
-              <p className="font-text text-caption-strong mb-3 text-white/80">主题</p>
-              <div className="flex gap-2">
-                {themeOptions.map(({ value, label, icon: Icon }) => (
-                  <button
-                    key={value}
-                    onClick={() => {
-                      setTheme(value)
-                      if (value === 'dark') document.documentElement.classList.add('dark')
-                      else if (value === 'light') document.documentElement.classList.remove('dark')
-                      else {
-                        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-                        document.documentElement.classList.toggle('dark', prefersDark)
-                      }
-                    }}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
-                      theme === value
-                        ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
-                        : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" strokeWidth={1.6} />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="font-text text-caption-strong mb-3 text-white/80">视觉效果</p>
-              <div className="flex gap-2">
-                {glassOptions.map(({ value, label, icon: Icon }) => (
-                  <button
-                    key={value}
-                    onClick={() => setGlassMode(value)}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
-                      glassMode === value
-                        ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
-                        : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" strokeWidth={1.6} />
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="font-text text-caption text-white/60 mt-3 leading-relaxed">
-                液态玻璃材质会折射当前播放封面的色调；如遇性能问题或不喜欢透明感可切换为纯色模式
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="card-utility p-5">
-          <h2 className="font-display text-tagline mb-4 text-white">音乐库</h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+          <section className="card-utility p-5">
+            <h2 className="font-display text-tagline mb-5 text-white">外观</h2>
+            <div className="space-y-6">
               <div>
-                <p className="font-text text-caption-strong text-white/80">扫描目录</p>
-                <p className="font-text text-caption text-white/60 mt-0.5">应用会扫描这些目录中的音乐文件</p>
+                <p className="font-text text-caption-strong mb-3 text-white/80">主题</p>
+                <div className="flex gap-2">
+                  {themeOptions.map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      onClick={() => {
+                        setTheme(value)
+                        if (value === 'dark') document.documentElement.classList.add('dark')
+                        else if (value === 'light') document.documentElement.classList.remove('dark')
+                        else {
+                          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+                          document.documentElement.classList.toggle('dark', prefersDark)
+                        }
+                      }}
+                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
+                        theme === value
+                          ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
+                          : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" strokeWidth={1.6} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {isDesktop() && (
-                <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickFolder}>
-                  <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                  添加目录
-                </Button>
+
+              <div>
+                <p className="font-text text-caption-strong mb-3 text-white/80">视觉效果</p>
+                <div className="flex gap-2">
+                  {glassOptions.map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      onClick={() => setGlassMode(value)}
+                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
+                        glassMode === value
+                          ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
+                          : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" strokeWidth={1.6} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="font-text text-caption text-white/60 mt-3 leading-relaxed">
+                  液态玻璃材质会折射当前播放封面的色调；如遇性能问题或不喜欢透明感可切换为纯色模式
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="card-utility p-5">
+            <h2 className="font-display text-tagline mb-4 text-white">音乐库</h2>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-text text-caption-strong text-white/80">扫描目录</p>
+                  <p className="font-text text-caption text-white/60 mt-0.5">应用会扫描这些目录中的音乐文件</p>
+                </div>
+                {isDesktop() && (
+                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickFolder}>
+                    <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                    添加目录
+                  </Button>
+                )}
+              </div>
+              {scanFolders.length === 0 ? (
+                <p className="font-text text-caption text-white/60 py-2">尚未添加任何目录</p>
+              ) : (
+                <div className="space-y-2">
+                  {scanFolders.map((folder) => (
+                    <div key={folder} className="flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 hover:bg-white/[0.06] hover:border-white/14 transition-colors duration-200 ease-mineradio">
+                      <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+                        onClick={() => removeScanFolder(folder)}
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={1.6} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-            {scanFolders.length === 0 ? (
-              <p className="font-text text-caption text-white/60 py-2">尚未添加任何目录</p>
-            ) : (
-              <div className="space-y-2">
-                {scanFolders.map((folder) => (
-                  <div key={folder} className="flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 hover:bg-white/[0.06] hover:border-white/14 transition-colors duration-200 ease-mineradio">
-                    <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
-                      onClick={() => removeScanFolder(folder)}
-                    >
-                      <Trash2 className="h-4 w-4" strokeWidth={1.6} />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
+          </section>
         </div>
       </div>
     </div>
