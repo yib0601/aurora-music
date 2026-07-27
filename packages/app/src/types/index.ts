@@ -66,7 +66,7 @@ export type ShuffleMode = 'off' | 'on'
 
 export type ViewMode = 'list' | 'grid'
 
-export type GlassMode = 'auto' | 'forced' | 'flat'
+export type GlassMode = 'auto' | 'forced'
 
 export interface SearchResult {
   title: string

@@ -60,6 +60,28 @@ function AppLayout() {
         useLibraryStore.getState().setIsScanning(true)
       })
     }
+    
+    // 监听 Electron 全局快捷键（应用失焦时也能响应）
+    if (api?.onMediaControl) {
+      api.onMediaControl((action: string) => {
+        const playerState = usePlayerStore.getState()
+        switch (action) {
+          case 'toggle-play':
+            playerState.togglePlay()
+            break
+          case 'next':
+            playerState.next()
+            break
+          case 'previous':
+            playerState.previous()
+            break
+          case 'stop':
+            playerState.reset()
+            break
+        }
+      })
+    }
+    
     const scanFolders = useLibraryStore.getState().scanFolders
     if (api?.scanFolder && scanFolders.length > 0) {
       scanFolders.forEach((folder) => api.scanFolder(folder))
@@ -87,13 +109,9 @@ function AppLayout() {
     }
   }, [theme])
 
-  // glassMode 'flat' 在新设计下是默认行为；保留 'auto'/'forced' 兼容历史设置
+  // glassMode 兼容历史设置中的 'flat' 值
   useEffect(() => {
-    if (glassMode === 'flat') {
-      document.documentElement.classList.add('glass-flat')
-    } else {
-      document.documentElement.classList.remove('glass-flat')
-    }
+    document.documentElement.classList.remove('glass-flat')
   }, [glassMode])
 
   const handleTogglePlay = useCallback(() => {
@@ -185,6 +203,65 @@ function AppLayout() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  // Media Session API - 让 OS 识别媒体键并显示播放信息
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      // 设置媒体操作处理器
+      navigator.mediaSession.setActionHandler('play', () => {
+        usePlayerStore.getState().togglePlay()
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        usePlayerStore.getState().togglePlay()
+      })
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        usePlayerStore.getState().previous()
+      })
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        usePlayerStore.getState().next()
+      })
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const skipTime = details.seekOffset || 10
+        const playerState = usePlayerStore.getState()
+        playerState.seekTo(Math.max(0, playerState.progress - skipTime))
+      })
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const skipTime = details.seekOffset || 10
+        const playerState = usePlayerStore.getState()
+        playerState.seekTo(playerState.progress + skipTime)
+      })
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) {
+          usePlayerStore.getState().seekTo(details.seekTime)
+        }
+      })
+    }
+  }, [])
+
+  // 更新 Media Session 元数据（曲目信息）
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: currentTrack.album || 'Aurora Music',
+        artwork: currentTrack.coverPath
+          ? [
+              { src: `file://${currentTrack.coverPath}`, sizes: '512x512', type: 'image/jpeg' },
+            ]
+          : [],
+      })
+    }
+  }, [currentTrack])
+
+  // 更新 MPRIS 元数据（Linux 媒体键支持）
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (api?.updateMprisMetadata) {
+      const playerState = usePlayerStore.getState()
+      api.updateMprisMetadata(currentTrack, playerState.isPlaying)
+    }
+  }, [currentTrack])
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground ambient-backdrop">

@@ -1,14 +1,9 @@
 import React from 'react'
-import { Settings as SettingsIcon, Monitor, Moon, Sun, Eye, FolderOpen, Trash2 } from 'lucide-react'
+import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageLayout } from '@/components/PageLayout'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { isDesktop } from '@/lib/utils'
-
-const glassOptions = [
-  { value: 'auto' as const, label: '液态玻璃', icon: Eye },
-  { value: 'flat' as const, label: '纯色扁平', icon: Sun },
-]
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
@@ -19,8 +14,7 @@ const themeOptions = [
 export function SettingsPage() {
   const theme = useLibraryStore((s) => s.theme)
   const setTheme = useLibraryStore((s) => s.setTheme)
-  const glassMode = useLibraryStore((s) => s.glassMode)
-  const setGlassMode = useLibraryStore((s) => s.setGlassMode)
+
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
   const api = (window as any).electronAPI
@@ -77,29 +71,6 @@ export function SettingsPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-
-              <div>
-                <p className="font-text text-caption-strong mb-3 text-white/80">视觉效果</p>
-                <div className="flex gap-2">
-                  {glassOptions.map(({ value, label, icon: Icon }) => (
-                    <button
-                      key={value}
-                      onClick={() => setGlassMode(value)}
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
-                        glassMode === value
-                          ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
-                          : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" strokeWidth={1.6} />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <p className="font-text text-caption text-white/60 mt-3 leading-relaxed">
-                  液态玻璃材质会折射当前播放封面的色调；如遇性能问题或不喜欢透明感可切换为纯色模式
-                </p>
               </div>
             </div>
           </section>

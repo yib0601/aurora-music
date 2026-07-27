@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut } from 'electron'
 import path from 'path'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
 
@@ -72,6 +72,7 @@ function createWindow() {
 // app.commandLine.appendSwitch 在 Electron 43 上太晚（Chromium 已选 Wayland）
 // --disable-gpu：AMD Radeon Vega APU 在 Wayland 下 GPU 进程会 SIGSEGV (exit 139)
 app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
+app.commandLine.appendSwitch('disable-gpu')
 
 // 单实例锁：用户重复点击图标时聚焦已有窗口，而不是启动新进程
 const gotTheLock = app.requestSingleInstanceLock()
@@ -90,7 +91,28 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     registerIpcHandlers()
-    createWindow()
+    const win = createWindow()
+
+    if (process.platform === 'linux') {
+      // Linux 上通过 MPRIS 协议（DBus）响应媒体键
+      // TODO: mpris-service 依赖的原生模块在 Electron 中可能不兼容，暂时禁用
+      // initMpris(win)
+      console.log('[MPRIS] Disabled temporarily')
+    } else {
+      // Windows/macOS 上通过 globalShortcut 注册媒体键
+      const shortcuts = [
+        { key: 'MediaPlayPause', action: 'toggle-play' },
+        { key: 'MediaNextTrack', action: 'next' },
+        { key: 'MediaPreviousTrack', action: 'previous' },
+        { key: 'MediaStop', action: 'stop' },
+      ]
+      shortcuts.forEach(({ key, action }) => {
+        const success = globalShortcut.register(key, () => {
+          win?.webContents.send('media-control', action)
+        })
+        console.log(`[GlobalShortcut] Registered ${key}: ${success ? 'SUCCESS' : 'FAILED'}`)
+      })
+    }
   })
 
   app.on('activate', () => {
