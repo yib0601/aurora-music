@@ -18,6 +18,7 @@
   "dependencies": {
     "better-sqlite3": "^12.11.1",
     "iconv-lite": "^0.6.3",
+    "mpris-service": "^2.1.2",
     "music-metadata": "^10.5.0",
     "uuid": "^10.0.0"
   },
@@ -50,7 +51,12 @@
     "buildDependenciesFromSource": false,
     "linux": {
       "target": [
-        { "target": "rpm", "arch": ["x64"] }
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "AudioVideo",
       "icon": "resources/icon.png",
@@ -81,8 +87,18 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "resources/icon.ico"
     }
