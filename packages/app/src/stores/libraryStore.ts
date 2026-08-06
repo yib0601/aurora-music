@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Track, Album, Playlist, ViewMode, GlassMode } from '@/types'
+import { audioEvents } from '@/services/audioEvents'
 
 interface LibraryState {
   tracks: Track[]
@@ -118,3 +119,11 @@ export const useLibraryStore = create<LibraryState>()(
     }
   )
 )
+
+// 订阅播放统计事件，独立更新音乐库数据（解耦 playerStore 的跨Store副作用）
+audioEvents.on('playStatsUpdate', ({ trackId, lastPlayedAt, playCount }) => {
+  useLibraryStore.getState().updateTrack(trackId, {
+    lastPlayedAt,
+    playCount,
+  })
+})

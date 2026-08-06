@@ -13,6 +13,8 @@ export interface AudioEventMap {
   duration: { duration: number }
   error: { error: unknown }
   trackChange: { track: Track }
+  // 播放统计事件：服务层触发，libraryStore 独立订阅更新音乐库数据
+  playStatsUpdate: { trackId: string; lastPlayedAt: number; playCount: number }
 }
 
 type EventHandler<T> = (data: T) => void

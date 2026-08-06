@@ -74,6 +74,12 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
     volume: muted ? 0 : volume,
     onplay: () => {
       audioEvents.emit('play', { track })
+      // 触发播放统计事件，libraryStore 独立订阅更新音乐库数据
+      audioEvents.emit('playStatsUpdate', {
+        trackId: track.id,
+        lastPlayedAt: Date.now(),
+        playCount: (track.playCount || 0) + 1,
+      })
       if (audioContext && audioContext.state === 'suspended') {
         audioContext.resume()
       }
