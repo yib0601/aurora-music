@@ -10,7 +10,6 @@ import {
   stopPlayback as audioStopPlayback,
 } from '@/services/audio.service'
 import { audioEvents } from '@/services/audioEvents'
-import { useLibraryStore } from './libraryStore'
 
 interface PlayerState {
   currentTrack: Track | null
@@ -279,13 +278,8 @@ export const usePlayerStore = create<PlayerState>()(
 )
 
 // 订阅音频事件，更新播放状态 — 在模块加载时初始化
-audioEvents.on('play', ({ track }) => {
+audioEvents.on('play', () => {
   usePlayerStore.setState({ isPlaying: true })
-  // 更新播放统计（从服务层移至状态管理层）
-  useLibraryStore.getState().updateTrack(track.id, {
-    lastPlayedAt: Date.now(),
-    playCount: (track.playCount || 0) + 1,
-  })
 })
 
 audioEvents.on('pause', () => {
