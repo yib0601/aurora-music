@@ -89,7 +89,10 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
     <div
       ref={containerRef}
       className={cn('overflow-y-auto scrollbar-hide px-4 py-8 space-y-6 text-center', className)}
-      style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}
+      style={{
+        maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)',
+        paddingBottom: '96px',
+      }}
     >
       {lyrics.length === 0 && (
         <p className="text-white/20 text-[15px] pt-20">{loading ? '搜索歌词中...' : '暂无歌词'}</p>
