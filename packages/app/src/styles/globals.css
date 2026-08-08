@@ -174,9 +174,10 @@
     -webkit-backdrop-filter: var(--saved-panel-glass-filter);
     box-shadow: var(--saved-panel-glass-shadow);
   }
+  /* 底栏玻璃面板使用纯透明 blur，不启用 SVG 位移滤镜（避免背后文字翻转扭曲） */
   html.control-glass-svg-ok .glass-saved-panel {
-    backdrop-filter: var(--saved-panel-glass-svg-filter);
-    -webkit-backdrop-filter: var(--saved-panel-glass-svg-filter);
+    backdrop-filter: var(--saved-panel-glass-filter);
+    -webkit-backdrop-filter: var(--saved-panel-glass-filter);
   }
   .glass-saved-panel::before, .glass-saved-panel::after { content: none; }
 
