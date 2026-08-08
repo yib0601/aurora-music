@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { PageLayout } from '@/components/PageLayout'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { isDesktop } from '@/lib/utils'
+import { useAudioDevices } from '@/hooks/useAudioDevices'
+import { setOutputDevice } from '@/services/audio.service'
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
@@ -18,6 +20,13 @@ export function SettingsPage() {
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
   const api = (window as any).electronAPI
+
+  const { devices, selectedDeviceId, setSelectedDeviceId } = useAudioDevices()
+
+  const handleDeviceChange = (deviceId: string) => {
+    setSelectedDeviceId(deviceId)
+    setOutputDevice(deviceId)
+  }
 
   const handlePickFolder = async () => {
     if (!api) return
@@ -109,6 +118,31 @@ export function SettingsPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </section>
+
+          <section className="card-utility p-5">
+            <h2 className="font-display text-tagline mb-5 text-white">音频</h2>
+            <div className="space-y-4">
+              <div>
+                <p className="font-text text-caption-strong mb-3 text-white/80">输出设备</p>
+                {devices.length === 0 ? (
+                  <p className="font-text text-caption text-white/60 py-2">需要授权后才能获取设备列表</p>
+                ) : (
+                  <select
+                    value={selectedDeviceId}
+                    onChange={(e) => handleDeviceChange(e.target.value)}
+                    className="w-full bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-2.5 text-caption text-white/80 focus:outline-none focus:border-mint/50 transition-colors duration-200"
+                  >
+                    {devices.map((d) => (
+                      <option key={d.deviceId} value={d.deviceId} className="bg-[#1a1a1a] text-white">
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <p className="font-text text-caption text-white/40 mt-2">切换输出设备会影响当前播放</p>
+              </div>
             </div>
           </section>
         </div>

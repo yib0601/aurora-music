@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Music, Heart, Clock, ListMusic, Search, Settings, Plus, MoreHorizontal, Trash2, Pencil } from 'lucide-react'
+import { Music, Heart, Clock, ListMusic, Search, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { useLibraryStore } from '@/stores/libraryStore'
+import { pickM3UFile, parseM3U, matchTracksByPaths } from '@/services/playlistIO.service'
 import {
   Dialog,
   DialogContent,
@@ -40,6 +42,8 @@ export function Sidebar() {
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist)
   const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist)
+  const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
+  const tracks = useLibraryStore((s) => s.tracks)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -59,6 +63,23 @@ export function Sidebar() {
     }
     setEditingId(null)
     setEditingName('')
+  }
+
+  const handleImportPlaylist = async () => {
+    const content = await pickM3UFile()
+    if (!content) return
+    const paths = parseM3U(content)
+    if (paths.length === 0) {
+      alert('文件中没有找到有效的音乐路径')
+      return
+    }
+    const matchedTracks = matchTracksByPaths(paths, tracks)
+    if (matchedTracks.length === 0) {
+      alert('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录')
+      return
+    }
+    const newPlaylist = createPlaylist('导入的播放列表')
+    addTracksToPlaylist(newPlaylist.id, matchedTracks.map((t) => t.id))
   }
 
   return (
@@ -105,14 +126,26 @@ export function Sidebar() {
           <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
             播放列表
           </span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-white/40 hover:text-mint"
-            onClick={() => setShowCreateDialog(true)}
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-white/40 hover:text-mint"
+              onClick={handleImportPlaylist}
+              title="导入播放列表"
+            >
+              <Upload className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-white/40 hover:text-mint"
+              onClick={() => setShowCreateDialog(true)}
+              title="新建播放列表"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </Button>
+          </div>
         </div>
         <div className="flex flex-col gap-px">
           {playlists.length === 0 ? (

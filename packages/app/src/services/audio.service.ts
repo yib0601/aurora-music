@@ -4,8 +4,11 @@ import { audioEvents } from './audioEvents'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
+let nextHowl: Howl | null = null
 let audioContext: AudioContext | null = null
 let analyserNode: AnalyserNode | null = null
+
+const FADE_DURATION = 800 // ms
 
 function getPlatformSrc(path: string): string {
   const cap = (window as any).Capacitor
@@ -58,9 +61,22 @@ export function getAnalyser(): AnalyserNode | null {
   return analyserNode
 }
 
-export function playTrack(track: Track, volume: number = 0.7, muted: boolean = false): void {
+export function playTrack(track: Track, volume: number = 0.7, muted: boolean = false, autoplay: boolean = true): void {
+  const targetVolume = muted ? 0 : volume
+
+  // 处理旧 howl：淡出后 unload
   if (currentHowl) {
-    currentHowl.unload()
+    const oldHowl = currentHowl
+    if (oldHowl.playing()) {
+      // 淡出旧曲目
+      oldHowl.fade(oldHowl.volume(), 0, FADE_DURATION)
+      oldHowl.once('fade', () => {
+        oldHowl.unload()
+      })
+    } else {
+      // 没在播放，直接 unload
+      oldHowl.unload()
+    }
     currentHowl = null
   }
   stopTick()
@@ -71,7 +87,7 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
     src: [src],
     html5: true,
     format: detectFormat(track.path),
-    volume: muted ? 0 : volume,
+    volume: 0, // 初始为 0，播放后 fade in
     onplay: () => {
       audioEvents.emit('play', { track })
       // 触发播放统计事件，libraryStore 独立订阅更新音乐库数据
@@ -114,9 +130,24 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
   currentHowl = howl
   audioEvents.emit('trackChange', { track })
 
-  howl.play()
+  if (autoplay) {
+    howl.play()
+    // 淡入到目标音量
+    howl.fade(0, targetVolume, FADE_DURATION)
+  } else {
+    // 不自动播放（断点续播场景），直接设置目标音量
+    howl.volume(targetVolume)
+  }
 
   connectAnalyser(howl)
+}
+
+/**
+ * 预加载下一首曲目（gapless 播放预留接口）
+ * TODO: 实现真正的无缝播放需要 playerStore 提供 getNextTrack() 方法
+ */
+export function preloadNextTrack(_track: Track, _volume: number, _muted: boolean): void {
+  // 预留接口，暂不实现
 }
 
 function connectAnalyser(howl: Howl) {
@@ -181,6 +212,10 @@ export function stopPlayback(): void {
     currentHowl.unload()
     currentHowl = null
   }
+  if (nextHowl) {
+    nextHowl.unload()
+    nextHowl = null
+  }
   stopTick()
 }
 
@@ -205,5 +240,15 @@ export function cleanupAudio(): void {
     audioContext.close()
     audioContext = null
     analyserNode = null
+  }
+}
+
+export function setOutputDevice(deviceId: string): void {
+  if (!currentHowl) return
+  const audioEl = (currentHowl as any)._sounds?.[0]?._node
+  if (audioEl && typeof (audioEl as any).setSinkId === 'function') {
+    (audioEl as any).setSinkId(deviceId).catch((e: any) => {
+      console.warn('Failed to set audio output device:', e)
+    })
   }
 }

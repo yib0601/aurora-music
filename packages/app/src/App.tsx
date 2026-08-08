@@ -44,6 +44,13 @@ function AppLayout() {
 
   useEffect(() => {
     initAudioAnalyser()
+
+    // 恢复上次播放状态（不自动播放，仅恢复曲目和进度）
+    // 延迟 500ms 等待 audioContext 初始化和 tracks 加载
+    setTimeout(() => {
+      usePlayerStore.getState().restorePlayback()
+    }, 500)
+
     const api = (window as any).electronAPI
     if (api?.getAllTracks) {
       api.getAllTracks().then((tracks: Track[]) => {
@@ -332,7 +339,7 @@ function AppLayout() {
                     </span>
                   </div>
                   <div className="flex-1 min-h-0">
-                    <LyricsView />
+                    <LyricsView onLineClick={(time) => usePlayerStore.getState().seekTo(time)} />
                   </div>
                 </div>
               </div>
