@@ -88,11 +88,9 @@ function AppLayout() {
         }
       })
     }
-    
-    const scanFolders = useLibraryStore.getState().scanFolders
-    if (api?.scanFolder && scanFolders.length > 0) {
-      scanFolders.forEach((folder) => api.scanFolder(folder))
-    }
+
+    // 启动时仅从数据库加载已有曲目，不自动重新扫描文件夹
+    // 扫描只在用户手动点击"导入音乐"或"扫描"时触发
 
     return () => {
       stopPlayback()
