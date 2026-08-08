@@ -332,7 +332,7 @@ function AppLayout() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pb-4">
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-4" style={{ marginBottom: '88px' }}>
                   <div className="px-2 pt-2 pb-1.5">
                     <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
                       歌词
