@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 import type { LyricLine } from '@/types'
-import { parseLRC, findActiveLine } from '@/services/lyrics.service'
+import { parseLRC, findActiveLine, loadLyricsForTrack } from '@/services/lyrics.service'
 import { usePlayerStore } from '@/stores/playerStore'
 import { cn } from '@/lib/utils'
 
@@ -22,19 +22,38 @@ const sampleLyrics = `[00:00.00]Aurora Music
 export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewProps) {
   const progress = usePlayerStore((s) => s.progress)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const currentTrack = usePlayerStore((s) => s.currentTrack)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const [lyrics, setLyrics] = useState<LyricLine[]>([])
+  const [loadedLyrics, setLoadedLyrics] = useState<string>('')
+  const [loading, setLoading] = useState(false)
   const activeLineRef = useRef<number>(-1)
   const lastScrollRef = useRef<number>(0)
 
   useEffect(() => {
-    if (!lyricsText) {
+    if (!currentTrack) {
+      setLoadedLyrics('')
+      return
+    }
+    // 如果外部传了 lyricsText 优先用外部的
+    if (lyricsText) {
+      setLoadedLyrics(lyricsText)
+      return
+    }
+    setLoading(true)
+    loadLyricsForTrack(currentTrack)
+      .then((lrc) => setLoadedLyrics(lrc || ''))
+      .finally(() => setLoading(false))
+  }, [currentTrack, lyricsText])
+
+  useEffect(() => {
+    if (!loadedLyrics) {
       setLyrics([])
       return
     }
-    setLyrics(parseLRC(lyricsText))
-  }, [lyricsText])
+    setLyrics(parseLRC(loadedLyrics))
+  }, [loadedLyrics])
 
   // ⚠️ 性能：单次计算 activeIdx，避免重复调用 findActiveLine
   const activeIdx = useMemo(
@@ -73,7 +92,7 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
       style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}
     >
       {lyrics.length === 0 && (
-        <p className="text-white/20 text-[15px] pt-20">暂无歌词</p>
+        <p className="text-white/20 text-[15px] pt-20">{loading ? '搜索歌词中...' : '暂无歌词'}</p>
       )}
       {lyrics.map((line, idx) => {
         const distance = Math.abs(idx - activeIdx)

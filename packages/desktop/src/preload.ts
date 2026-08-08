@@ -11,10 +11,18 @@ const electronAPI = {
     return ''
   },
   saveLyrics: async (lyrics: string, trackId: string): Promise<string> => {
-    return ''
+    return ipcRenderer.invoke('lyrics:save', lyrics, trackId)
   },
   readLyrics: async (trackId: string): Promise<string | null> => {
-    return null
+    return ipcRenderer.invoke('lyrics:read', trackId)
+  },
+  searchLyrics: async (
+    query: string,
+    artist?: string,
+    album?: string,
+    duration?: number
+  ): Promise<{ lrc: string | null; name: string; artist: string } | null> => {
+    return ipcRenderer.invoke('lyrics:search', query, artist, album, duration)
   },
   getMetadata: async (filePath: string) => {
     return ipcRenderer.invoke('fs:readFile', filePath)

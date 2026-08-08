@@ -44,6 +44,7 @@ interface PlayerState {
   setProgress: (progress: number) => void
   setDuration: (duration: number) => void
   reset: () => void
+  restorePlayback: () => void
 }
 
 const initialState = {
@@ -264,6 +265,18 @@ export const usePlayerStore = create<PlayerState>()(
       reset: () => {
         set(initialState)
       },
+
+      restorePlayback: () => {
+        const state = get()
+        if (!state.currentTrack || state.currentIndex < 0) return
+        // 加载音频但不自动播放（需要用户交互才能播放）
+        audioPlayTrack(state.currentTrack, state.volume, state.muted, false)
+        // seek 到上次的进度（需等音频元数据加载，onload 事件会触发 duration 更新）
+        // 用一个延迟来确保 howl 已创建
+        setTimeout(() => {
+          audioSeekTo(state.progress)
+        }, 300)
+      },
     }),
     {
       name: 'aurora-player-state',
@@ -272,6 +285,11 @@ export const usePlayerStore = create<PlayerState>()(
         muted: state.muted,
         repeatMode: state.repeatMode,
         shuffleMode: state.shuffleMode,
+        currentTrack: state.currentTrack,
+        queue: state.queue,
+        currentIndex: state.currentIndex,
+        progress: state.progress,
+        shuffleHistory: state.shuffleHistory,
       }),
     }
   )

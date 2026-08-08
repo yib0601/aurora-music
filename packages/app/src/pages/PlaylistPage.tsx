@@ -11,11 +11,19 @@ import {
   Plus,
   Trash2,
   Music2,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { cn, formatTime } from '@/lib/utils'
+import {
+  downloadPlaylistAsM3U,
+  parseM3U,
+  matchTracksByPaths,
+  pickM3UFile,
+} from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -31,6 +39,8 @@ export function PlaylistPage() {
   const playlists = usePlaylistStore((s) => s.playlists)
   const removeTrackFromPlaylist = usePlaylistStore((s) => s.removeTrackFromPlaylist)
   const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist)
+  const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
+  const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   const tracks = useLibraryStore((s) => s.tracks)
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
@@ -79,6 +89,30 @@ export function PlaylistPage() {
   }
 
   const isCurrentTrack = (trackId: string) => currentTrack?.id === trackId
+
+  const handleExport = () => {
+    downloadPlaylistAsM3U(playlist, tracks)
+  }
+
+  const handleImport = async () => {
+    const content = await pickM3UFile()
+    if (!content) return
+    const paths = parseM3U(content)
+    if (paths.length === 0) {
+      alert('文件中没有找到有效的音乐路径')
+      return
+    }
+    const matchedTracks = matchTracksByPaths(paths, tracks)
+    if (matchedTracks.length === 0) {
+      alert('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录')
+      return
+    }
+    // 从文件名推断播放列表名称
+    const newPlaylist = createPlaylist('导入的播放列表')
+    addTracksToPlaylist(newPlaylist.id, matchedTracks.map((t) => t.id))
+    // 可选：导航到新播放列表
+    navigate(`/playlist/${newPlaylist.id}`)
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -132,6 +166,15 @@ export function PlaylistPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={handleExport} disabled={playlistTracks.length === 0}>
+                <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                导出为 M3U
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleImport}>
+                <Upload className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                导入 M3U 文件
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() => {

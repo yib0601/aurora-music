@@ -6,13 +6,21 @@ export function parseLRC(content: string): LyricLine[] {
 
   const timeTagRegex = /\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]/g
 
+  let hasAnyTimeTag = false
+  const pendingNoTag: string[] = []
+
   for (const line of lines) {
     const matches = [...line.matchAll(timeTagRegex)]
-    if (matches.length === 0) continue
-
     const text = line.replace(timeTagRegex, '').trim()
     if (!text) continue
 
+    if (matches.length === 0) {
+      // 无时间标签的行先暂存，待后续判断
+      pendingNoTag.push(text)
+      continue
+    }
+
+    hasAnyTimeTag = true
     for (const match of matches) {
       const minutes = parseInt(match[1], 10)
       const seconds = parseInt(match[2], 10)
@@ -21,6 +29,12 @@ export function parseLRC(content: string): LyricLine[] {
       const time = minutes * 60 + seconds + millis / 1000
       result.push({ time, text })
     }
+  }
+
+  // 如果整个歌词没有任何时间标签，作为纯文本歌词处理
+  // 按行顺序分配时间，每行间隔 5 秒（仅用于滚动定位，无实际同步意义）
+  if (!hasAnyTimeTag && pendingNoTag.length > 0) {
+    return pendingNoTag.map((text, idx) => ({ time: idx * 5, text }))
   }
 
   result.sort((a, b) => a.time - b.time)
@@ -51,4 +65,55 @@ export function formatLyricTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+export interface OnlineLyricsResult {
+  lrc: string | null
+  name: string
+  artist: string
+}
+
+export async function searchOnlineLyrics(
+  query: string,
+  artist?: string,
+  album?: string,
+  duration?: number
+): Promise<OnlineLyricsResult | null> {
+  const api = (window as any).electronAPI
+  if (!api?.searchLyrics) return null
+  try {
+    return await api.searchLyrics(query, artist, album, duration)
+  } catch {
+    return null
+  }
+}
+
+export async function loadLyricsForTrack(track: {
+  id: string
+  title: string
+  artist: string
+  album?: string
+  duration?: number
+}): Promise<string | null> {
+  const api = (window as any).electronAPI
+  // 1. 先读本地缓存
+  if (api?.readLyrics) {
+    const local = await api.readLyrics(track.id)
+    if (local) return local
+  }
+  // 2. 在线搜索（LRCLIB，传入 album 和 duration 提高匹配精度）
+  const online = await searchOnlineLyrics(
+    track.title,
+    track.artist,
+    track.album,
+    track.duration
+  )
+  if (online?.lrc) {
+    // 保存到本地缓存
+    if (api?.saveLyrics) {
+      await api.saveLyrics(online.lrc, track.id)
+    }
+    return online.lrc
+  }
+  return null
 }
