@@ -1,4 +1,4 @@
-import type { PlatformInterface, FileInfo, AudioMetadata, DatabaseAdapter, WindowControls } from '@/types'
+import type { PlatformInterface, FileInfo, AudioMetadata, DatabaseAdapter, WindowControls, OnlineTrackSearchResult } from '@/types'
 
 class NoopDatabase implements DatabaseAdapter {
   async init() {}
@@ -81,6 +81,11 @@ export function createDesktopPlatform(): PlatformInterface {
       return api.readLyrics(trackId)
     },
 
+    async searchOnlineTracks(query: string): Promise<OnlineTrackSearchResult[]> {
+      if (!api?.searchOnlineTracks) return []
+      return api.searchOnlineTracks(query)
+    },
+
     database: new NoopDatabase(),
     windowControls: api?.windowControls || new NoopWindowControls(),
   }
@@ -103,6 +108,7 @@ export function createMobilePlatform(): PlatformInterface {
     async saveCover(): Promise<string> { return '' },
     async saveLyrics(): Promise<string> { return '' },
     async readLyrics(): Promise<string | null> { return null },
+    async searchOnlineTracks(): Promise<OnlineTrackSearchResult[]> { return [] },
     database: new NoopDatabase(),
     windowControls: new NoopWindowControls(),
   }

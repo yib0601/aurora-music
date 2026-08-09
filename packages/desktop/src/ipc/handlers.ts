@@ -4,11 +4,200 @@ import path from 'path'
 import { app } from 'electron'
 import { getAllTracks, initDatabase } from './database'
 import { scanFolder } from './scanner'
+import type { OnlineTrackSearchResult } from '../types'
 
 let mainWindow: BrowserWindow | null = null
 
 export function setMainWindow(win: BrowserWindow) {
   mainWindow = win
+}
+
+// 统一 UA（部分接口对 UA 敏感）
+const HTTP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+// 网易云搜索：/api/search/get 搜列表 → /api/song/enhance/player/url 批量取播放地址
+async function searchNetease(query: string): Promise<OnlineTrackSearchResult[]> {
+  try {
+    const trimmed = (query || '').trim()
+    if (!trimmed) return []
+
+    const searchParams = new URLSearchParams()
+    searchParams.set('s', trimmed)
+    searchParams.set('type', '1')
+    searchParams.set('limit', '20')
+    searchParams.set('offset', '0')
+    const searchUrl = `https://music.163.com/api/search/get?${searchParams.toString()}`
+    const searchResp = await fetch(searchUrl, {
+      headers: { 'User-Agent': HTTP_UA, Referer: 'https://music.163.com' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!searchResp.ok) return []
+    const searchData = (await searchResp.json()) as {
+      code?: number
+      result?: {
+        songs?: Array<{
+          id: number
+          name: string
+          artists?: Array<{ name: string }>
+          artist?: { name: string }
+          album?: { name: string; picUrl?: string }
+          duration?: number
+        }>
+      }
+    }
+    const songs = searchData?.result?.songs
+    if (!Array.isArray(songs) || songs.length === 0) return []
+
+    // 批量取播放 URL
+    const songIds = songs.map((s) => s.id).join(',')
+    const urlParams = new URLSearchParams()
+    urlParams.set('ids', `[${songIds}]`)
+    urlParams.set('br', '320000')
+    const urlResp = await fetch(`https://music.163.com/api/song/enhance/player/url?${urlParams.toString()}`, {
+      headers: { 'User-Agent': HTTP_UA, Referer: 'https://music.163.com' },
+      signal: AbortSignal.timeout(8000),
+    })
+    const urlMap = new Map<number, string>()
+    if (urlResp.ok) {
+      const urlData = (await urlResp.json()) as { data?: Array<{ id: number; url: string | null }> }
+      if (Array.isArray(urlData?.data)) {
+        for (const item of urlData.data) {
+          if (item.url) urlMap.set(item.id, item.url)
+        }
+      }
+    }
+
+    return songs
+      .filter((s) => urlMap.has(s.id))
+      .map((s) => {
+        const artistName = s.artists?.map((a) => a.name).join(', ') || s.artist?.name || '未知艺术家'
+        return {
+          id: `netease-${s.id}`,
+          title: s.name || '未知歌曲',
+          artist: artistName,
+          album: s.album?.name || '',
+          duration: Math.round((s.duration || 0) / 1000),
+          coverUrl: s.album?.picUrl ? `${s.album.picUrl}?param=120y120` : undefined,
+          audioUrl: urlMap.get(s.id)!,
+          source: 'netease' as const,
+        }
+      })
+  } catch {
+    return []
+  }
+}
+
+// QQ音乐搜索：client_search_cp 搜列表 → musicu.fcg 用 songmid 换 purl，拼 isure.stream 直链
+async function searchQQ(query: string): Promise<OnlineTrackSearchResult[]> {
+  try {
+    const trimmed = (query || '').trim()
+    if (!trimmed) return []
+
+    // 1) 搜索歌曲列表
+    const searchParams = new URLSearchParams()
+    searchParams.set('ct', '24')
+    searchParams.set('qqmusic_ver', '1298')
+    searchParams.set('new_json', '1')
+    searchParams.set('remoteplace', 'txt.yqq.song')
+    searchParams.set('searchid', '61460539676714578')
+    searchParams.set('t', '0')
+    searchParams.set('aggr', '1')
+    searchParams.set('cr', '1')
+    searchParams.set('catZhida', '1')
+    searchParams.set('lossless', '0')
+    searchParams.set('flag_qc', '0')
+    searchParams.set('p', '1')
+    searchParams.set('n', '20')
+    searchParams.set('w', trimmed)
+    searchParams.set('g_tk', '5381')
+    searchParams.set('loginUin', '0')
+    searchParams.set('hostUin', '0')
+    searchParams.set('format', 'json')
+    searchParams.set('inCharset', 'utf8')
+    searchParams.set('outCharset', 'utf-8')
+    searchParams.set('notice', '0')
+    searchParams.set('platform', 'yqq.json')
+    searchParams.set('needNewCode', '0')
+    const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?${searchParams.toString()}`
+    const searchResp = await fetch(searchUrl, {
+      headers: { 'User-Agent': HTTP_UA, Referer: 'https://y.qq.com/' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!searchResp.ok) return []
+    const searchData = (await searchResp.json()) as {
+      code?: number
+      data?: {
+        song?: {
+          list?: Array<{
+            mid: string
+            name: string
+            singer?: Array<{ name: string }>
+            album?: { name: string; mid: string }
+            interval?: number
+          }>
+        }
+      }
+    }
+    const songs = searchData?.data?.song?.list
+    if (!Array.isArray(songs) || songs.length === 0) return []
+
+    // 2) 批量获取播放 purl（用 songmid 换）
+    const songmids = songs.map((s) => s.mid)
+    const guid = '358840384'
+    const vkeyData = {
+      req: {
+        module: 'CDN.SrfCdnDispatchServer',
+        method: 'GetCdnDispatch',
+        param: { guid, calltype: 0, userip: '' },
+      },
+      req_0: {
+        module: 'vkey.GetVkeyServer',
+        method: 'CgiGetVkey',
+        param: { guid, songmid: songmids, songtype: songmids.map(() => 0), uin: '0', loginflag: 1, platform: '20' },
+      },
+      comm: { uin: 0, format: 'json', ct: 20, cv: 0 },
+    }
+    const vkeyUrl = `https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&data=${encodeURIComponent(JSON.stringify(vkeyData))}`
+    const vkeyResp = await fetch(vkeyUrl, {
+      headers: { 'User-Agent': HTTP_UA, Referer: 'https://y.qq.com/' },
+      signal: AbortSignal.timeout(8000),
+    })
+    const purlMap = new Map<string, string>()
+    if (vkeyResp.ok) {
+      const vkeyResult = (await vkeyResp.json()) as {
+        req_0?: { data?: { midurlinfo?: Array<{ purl: string }>; sip?: string[] } }
+      }
+      const infos = vkeyResult?.req_0?.data?.midurlinfo
+      const sip = vkeyResult?.req_0?.data?.sip
+      const prefix = sip && sip.length > 0 ? sip[0] : 'https://isure.stream.qqmusic.qq.com/'
+      if (Array.isArray(infos)) {
+        songmids.forEach((mid, i) => {
+          const purl = infos[i]?.purl
+          if (purl) purlMap.set(mid, `${prefix}${purl}`)
+        })
+      }
+    }
+
+    // 3) 拼装结果，过滤无 purl 的（VIP/版权曲）
+    return songs
+      .filter((s) => purlMap.has(s.mid))
+      .map((s) => {
+        const artistName = s.singer?.map((a) => a.name).join(', ') || '未知艺术家'
+        const albumMid = s.album?.mid
+        return {
+          id: `qq-${s.mid}`,
+          title: s.name || '未知歌曲',
+          artist: artistName,
+          album: s.album?.name || '',
+          duration: s.interval || 0,
+          coverUrl: albumMid ? `https://y.gtimg.cn/music/photo_new/T002R120x120M000${albumMid}.jpg` : undefined,
+          audioUrl: purlMap.get(s.mid)!,
+          source: 'qq' as const,
+        }
+      })
+  } catch {
+    return []
+  }
 }
 
 export function registerIpcHandlers() {
@@ -210,6 +399,19 @@ export function registerIpcHandlers() {
       } catch {
         return null
       }
+    }
+  )
+
+  // 聚合在线搜索：网易云 + QQ音乐 双源并行
+  // 单源失败不影响另一源，返回结果按 source 分组（前端可按来源展示）
+  ipcMain.handle(
+    'tracks:searchOnline',
+    async (_event, query: string): Promise<OnlineTrackSearchResult[]> => {
+      const [neteaseResults, qqResults] = await Promise.all([
+        searchNetease(query),
+        searchQQ(query),
+      ])
+      return [...neteaseResults, ...qqResults]
     }
   )
 }
