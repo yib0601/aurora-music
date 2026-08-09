@@ -14,6 +14,21 @@ export interface Track {
   lastPlayedAt?: number
   playCount: number
   liked: boolean
+  // 在线歌曲扩展字段（本地歌曲为 undefined）
+  onlineUrl?: string
+  onlineSource?: 'netease' | 'qq' | 'kugou'
+  onlineId?: string
+}
+
+export interface OnlineTrackSearchResult {
+  id: string
+  title: string
+  artist: string
+  album: string
+  duration: number
+  coverUrl?: string
+  audioUrl: string
+  source: 'netease' | 'qq' | 'kugou'
 }
 
 export interface Album {
@@ -116,6 +131,7 @@ export interface PlatformInterface {
   saveCover(coverData: Buffer, trackId: string): Promise<string>
   saveLyrics(lyrics: string, trackId: string): Promise<string>
   readLyrics(trackId: string): Promise<string | null>
+  searchOnlineTracks(query: string): Promise<OnlineTrackSearchResult[]>
   database: DatabaseAdapter
   windowControls: WindowControls
 }

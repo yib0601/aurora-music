@@ -11,8 +11,8 @@
     "dev": "concurrently -k -n vite,electron -c blue,green \"cd ../app && npx vite --host\" \"wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .\"",
     "dev:vite": "cd ../app && npx vite --host",
     "dev:electron": "wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .",
-    "build": "cd ../app && npx vite build && cd ../desktop && rm -rf app-dist && cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder",
-    "build:dir": "cd ../app && npx vite build && cd ../desktop && rm -rf app-dist && cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
+    "build": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder",
+    "build:dir": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
     "typecheck": "tsc --noEmit -p tsconfig.electron.json"
   },
   "dependencies": {
@@ -29,6 +29,7 @@
     "concurrently": "^9.0.1",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
+    "shx": "^0.4.0",
     "typescript": "^5.6.3",
     "wait-on": "^8.0.1"
   },
@@ -89,12 +90,6 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
           "arch": [
             "x64"
           ]

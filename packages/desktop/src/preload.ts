@@ -24,6 +24,22 @@ const electronAPI = {
   ): Promise<{ lrc: string | null; name: string; artist: string } | null> => {
     return ipcRenderer.invoke('lyrics:search', query, artist, album, duration)
   },
+  searchOnlineTracks: async (
+    query: string
+  ): Promise<
+    Array<{
+      id: string
+      title: string
+      artist: string
+      album: string
+      duration: number
+      coverUrl?: string
+      audioUrl: string
+      source: 'netease' | 'qq' | 'kugou'
+    }>
+  > => {
+    return ipcRenderer.invoke('tracks:searchOnline', query)
+  },
   getMetadata: async (filePath: string) => {
     return ipcRenderer.invoke('fs:readFile', filePath)
   },

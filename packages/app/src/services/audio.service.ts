@@ -11,6 +11,10 @@ let analyserNode: AnalyserNode | null = null
 const FADE_DURATION = 800 // ms
 
 function getPlatformSrc(path: string): string {
+  // 在线流地址直接返回（http/https）
+  if (/^https?:\/\//i.test(path)) {
+    return path
+  }
   const cap = (window as any).Capacitor
   if (cap) {
     return cap.convertFileSrc(path)
@@ -81,12 +85,15 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
   }
   stopTick()
 
-  const src = getPlatformSrc(track.path)
+  // 在线流优先使用 onlineUrl，本地用 path
+  const rawPath = track.onlineUrl || track.path
+  const src = getPlatformSrc(rawPath)
+  const isOnline = /^https?:\/\//i.test(rawPath)
 
   const howl = new Howl({
     src: [src],
     html5: true,
-    format: detectFormat(track.path),
+    format: isOnline ? undefined : detectFormat(track.path),
     volume: 0, // 初始为 0，播放后 fade in
     onplay: () => {
       audioEvents.emit('play', { track })
