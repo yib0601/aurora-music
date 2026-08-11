@@ -14,7 +14,6 @@ import { SearchPage } from '@/pages/SearchPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { PlaylistPage } from '@/pages/PlaylistPage'
 import { LyricsView } from '@/components/lyrics/LyricsView'
-import { Visualizer } from '@/components/visualizer/Visualizer'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
@@ -325,9 +324,6 @@ function AppLayout() {
                     </p>
                   </div>
 
-                  <div className="bg-white/[0.04] rounded-[12px] h-20 p-2 overflow-hidden">
-                    <Visualizer mode="bars" />
-                  </div>
                 </div>
 
                 <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-4" style={{ marginBottom: '88px' }}>
