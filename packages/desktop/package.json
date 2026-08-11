@@ -95,7 +95,9 @@
           ]
         }
       ],
-      "icon": "resources/icon.ico"
+      "icon": "resources/icon.ico",
+      "forceCodeSigning": false,
+      "signAndEditExecutable": false
     }
   }
 }
