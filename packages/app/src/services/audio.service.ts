@@ -167,13 +167,14 @@ function connectAnalyser(howl: Howl) {
     const audioEl = (howl as any)._sounds?.[0]?._node
     if (audioEl && audioEl instanceof HTMLMediaElement) {
       // 同一个 audioEl 只能创建一次 MediaElementSource,否则抛 InvalidStateError
-      // 用属性标记缓存,避免重复创建
-      if ((audioEl as any).__auroraSource) {
-        currentMediaSource = (audioEl as any).__auroraSource
-        return
+      // 用属性标记缓存,避免重复创建;但 howler 会复用 html5 Audio 元素,
+      // 切歌时命中缓存也需强制重连 analyser,否则 AudioContext 挂起导致不播放、进度卡 00:00
+      let source = (audioEl as any).__auroraSource
+      if (!source) {
+        source = audioContext.createMediaElementSource(audioEl)
+        ;(audioEl as any).__auroraSource = source
       }
-      const source = audioContext.createMediaElementSource(audioEl)
-      ;(audioEl as any).__auroraSource = source
+      try { source.disconnect() } catch {}
       source.connect(analyserNode)
       currentMediaSource = source
     }
