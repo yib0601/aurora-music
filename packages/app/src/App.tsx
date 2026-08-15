@@ -46,7 +46,7 @@ function AppLayout() {
 
     // 恢复上次播放状态（不自动播放，仅恢复曲目和进度）
     // 延迟 500ms 等待 audioContext 初始化和 tracks 加载
-    setTimeout(() => {
+    let restoreTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       usePlayerStore.getState().restorePlayback()
     }, 500)
 
@@ -66,10 +66,11 @@ function AppLayout() {
         useLibraryStore.getState().setIsScanning(true)
       })
     }
-    
+
     // 监听 Electron 全局快捷键（应用失焦时也能响应）
+    let unsubscribeMedia: (() => void) | null = null
     if (api?.onMediaControl) {
-      api.onMediaControl((action: string) => {
+      unsubscribeMedia = api.onMediaControl((action: string) => {
         const playerState = usePlayerStore.getState()
         switch (action) {
           case 'toggle-play':
@@ -92,6 +93,14 @@ function AppLayout() {
     // 扫描只在用户手动点击"导入音乐"或"扫描"时触发
 
     return () => {
+      if (restoreTimer) {
+        clearTimeout(restoreTimer)
+        restoreTimer = null
+      }
+      if (unsubscribeMedia) {
+        unsubscribeMedia()
+        unsubscribeMedia = null
+      }
       stopPlayback()
     }
   }, [])
@@ -213,10 +222,10 @@ function AppLayout() {
     if ('mediaSession' in navigator) {
       // 设置媒体操作处理器
       navigator.mediaSession.setActionHandler('play', () => {
-        usePlayerStore.getState().togglePlay()
+        usePlayerStore.getState().play()
       })
       navigator.mediaSession.setActionHandler('pause', () => {
-        usePlayerStore.getState().togglePlay()
+        usePlayerStore.getState().pause()
       })
       navigator.mediaSession.setActionHandler('previoustrack', () => {
         usePlayerStore.getState().previous()

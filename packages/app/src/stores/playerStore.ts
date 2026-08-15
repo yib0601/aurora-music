@@ -8,6 +8,10 @@ import {
   seekTo as audioSeekTo,
   setMuted as audioSetMuted,
   stopPlayback as audioStopPlayback,
+  onCurrentTrackLoad,
+  hasCurrentHowl,
+  pausePlayback as audioPausePlayback,
+  resumePlayback as audioResumePlayback,
 } from '@/services/audio.service'
 import { audioEvents } from '@/services/audioEvents'
 
@@ -31,6 +35,8 @@ interface PlayerState {
   removeFromQueue: (index: number) => void
   clearQueue: () => void
   togglePlay: () => void
+  play: () => void
+  pause: () => void
   next: () => void
   previous: () => void
   seekTo: (seconds: number) => void
@@ -127,8 +133,33 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       togglePlay: () => {
-        if (!get().currentTrack) return
-        audioTogglePlayPause(get().isPlaying)
+        const state = get()
+        if (!state.currentTrack) return
+        // 如果 currentHowl 已被清理(如应用从后台恢复/StrictMode cleanup 后),
+        // 重建 Howl 并从保存的进度续播,而不是静默失败
+        if (!hasCurrentHowl()) {
+          audioPlayTrack(state.currentTrack, state.volume, state.muted, false)
+          const seekPos = state.progress
+          onCurrentTrackLoad(() => audioSeekTo(seekPos))
+          return
+        }
+        audioTogglePlayPause(state.isPlaying)
+      },
+
+      play: () => {
+        const state = get()
+        if (!state.currentTrack) return
+        if (!hasCurrentHowl()) {
+          audioPlayTrack(state.currentTrack, state.volume, state.muted, false)
+          const seekPos = state.progress
+          onCurrentTrackLoad(() => audioSeekTo(seekPos))
+          return
+        }
+        if (!state.isPlaying) audioResumePlayback()
+      },
+
+      pause: () => {
+        if (get().isPlaying) audioPausePlayback()
       },
 
       next: () => {
@@ -271,11 +302,11 @@ export const usePlayerStore = create<PlayerState>()(
         if (!state.currentTrack || state.currentIndex < 0) return
         // 加载音频但不自动播放（需要用户交互才能播放）
         audioPlayTrack(state.currentTrack, state.volume, state.muted, false)
-        // seek 到上次的进度（需等音频元数据加载，onload 事件会触发 duration 更新）
-        // 用一个延迟来确保 howl 已创建
-        setTimeout(() => {
-          audioSeekTo(state.progress)
-        }, 300)
+        // 等 Howl 的 onload 事件触发后再 seek,避免固定延迟导致 seek 失败
+        const seekPos = state.progress
+        onCurrentTrackLoad(() => {
+          audioSeekTo(seekPos)
+        })
       },
     }),
     {
@@ -289,6 +320,7 @@ export const usePlayerStore = create<PlayerState>()(
         queue: state.queue,
         currentIndex: state.currentIndex,
         progress: state.progress,
+        duration: state.duration,
         shuffleHistory: state.shuffleHistory,
       }),
     }

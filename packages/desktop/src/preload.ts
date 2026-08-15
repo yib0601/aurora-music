@@ -60,7 +60,9 @@ const electronAPI = {
     ipcRenderer.on('scan:progress', (_event, progress) => callback(progress))
   },
   onMediaControl: (callback: (action: string) => void) => {
-    ipcRenderer.on('media-control', (_event, action) => callback(action))
+    const handler = (_event: unknown, action: string) => callback(action)
+    ipcRenderer.on('media-control', handler)
+    return () => ipcRenderer.removeListener('media-control', handler)
   },
   updateMprisMetadata: (track: any, isPlaying: boolean) => {
     ipcRenderer.send('mpris:updateMetadata', track, isPlaying)
