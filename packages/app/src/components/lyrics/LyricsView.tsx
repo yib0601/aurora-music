@@ -102,7 +102,7 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
             className={cn(
               'transition-all duration-500 ease-apple cursor-pointer leading-relaxed',
               idx === activeIdx
-                ? 'text-white text-[17px] font-semibold scale-105 [text-shadow:0_0_14px_rgba(168,246,255,.38),0_0_36px_rgba(143,233,255,.30)] [background:linear-gradient(180deg,rgba(246,253,255,1)_0%,rgba(168,246,255,1)_55%,rgba(126,205,255,1)_100%)] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent]'
+                ? 'lyric-active'
                 : distance <= 2
                 ? 'text-white/50 text-[15px]'
                 : 'text-white/28 text-[13px]'
