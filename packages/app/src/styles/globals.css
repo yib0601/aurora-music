@@ -428,6 +428,21 @@ input[type='range']:active::-webkit-slider-thumb {
   opacity: 0.6;
 }
 
+/* ===== 歌词高亮（渐变文字 + 发光） =====
+ * 不用 Tailwind 任意属性写 [-webkit-background-clip:text]，
+ * 在某些构建/运行时环境下会被忽略，导致渐变背景变成实心白块。
+ */
+.lyric-active {
+  font-size: 17px;
+  font-weight: 600;
+  transform: scale(1.05);
+  text-shadow: 0 0 14px rgba(168,246,255,.38), 0 0 36px rgba(143,233,255,.30);
+  background: linear-gradient(180deg, rgba(246,253,255,1) 0%, rgba(168,246,255,1) 55%, rgba(126,205,255,1) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* ===== 性能降级开关 ===== */
 
 /* .glass-flat 兼容：关闭所有玻璃 */
