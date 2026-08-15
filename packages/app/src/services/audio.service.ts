@@ -7,6 +7,7 @@ let currentHowl: Howl | null = null
 let nextHowl: Howl | null = null
 let audioContext: AudioContext | null = null
 let analyserNode: AnalyserNode | null = null
+let currentMediaSource: MediaElementAudioSourceNode | null = null
 
 const FADE_DURATION = 800 // ms
 
@@ -68,20 +69,19 @@ export function getAnalyser(): AnalyserNode | null {
 export function playTrack(track: Track, volume: number = 0.7, muted: boolean = false, autoplay: boolean = true): void {
   const targetVolume = muted ? 0 : volume
 
-  // 处理旧 howl：淡出后 unload
+  // 处理旧 howl：立即停止播放并清理,避免新旧 Howl 同时播放导致重叠声音
+  // 注:为保持切换流畅,不使用异步 fade out——旧 Howl 立即 unload,新 Howl fade in
   if (currentHowl) {
     const oldHowl = currentHowl
-    if (oldHowl.playing()) {
-      // 淡出旧曲目
-      oldHowl.fade(oldHowl.volume(), 0, FADE_DURATION)
-      oldHowl.once('fade', () => {
-        oldHowl.unload()
-      })
-    } else {
-      // 没在播放，直接 unload
-      oldHowl.unload()
-    }
+    // 立即停止输出(即使 unload 之前的 fade 也已无效)
+    oldHowl.volume(0)
+    oldHowl.unload()
     currentHowl = null
+  }
+  // 清理旧 MediaElementSource 节点
+  if (currentMediaSource) {
+    try { currentMediaSource.disconnect() } catch {}
+    currentMediaSource = null
   }
   stopTick()
 
@@ -166,8 +166,16 @@ function connectAnalyser(howl: Howl) {
   try {
     const audioEl = (howl as any)._sounds?.[0]?._node
     if (audioEl && audioEl instanceof HTMLMediaElement) {
+      // 同一个 audioEl 只能创建一次 MediaElementSource,否则抛 InvalidStateError
+      // 用属性标记缓存,避免重复创建
+      if ((audioEl as any).__auroraSource) {
+        currentMediaSource = (audioEl as any).__auroraSource
+        return
+      }
       const source = audioContext.createMediaElementSource(audioEl)
+      ;(audioEl as any).__auroraSource = source
       source.connect(analyserNode)
+      currentMediaSource = source
     }
   } catch (e) {
     console.warn('Analyser connection failed:', e)
@@ -184,6 +192,11 @@ export function resumePlayback(): void {
   if (currentHowl) {
     currentHowl.play()
   }
+}
+
+/** 当前是否持有 Howl 实例（用于判断 togglePlay 是否需要重建播放器） */
+export function hasCurrentHowl(): boolean {
+  return currentHowl !== null
 }
 
 export function seekTo(seconds: number): void {
@@ -223,6 +236,10 @@ export function stopPlayback(): void {
     nextHowl.unload()
     nextHowl = null
   }
+  if (currentMediaSource) {
+    try { currentMediaSource.disconnect() } catch {}
+    currentMediaSource = null
+  }
   stopTick()
 }
 
@@ -247,6 +264,21 @@ export function cleanupAudio(): void {
     audioContext.close()
     audioContext = null
     analyserNode = null
+  }
+}
+
+/**
+ * 为当前 Howl 注册一次性的 load 回调,用于断点续播场景下精确 seek
+ * 如果 Howl 已加载则立即调用 callback
+ */
+export function onCurrentTrackLoad(callback: () => void): void {
+  if (!currentHowl) return
+  const dur = currentHowl.duration()
+  // Howl duration() 在未加载时返回 0
+  if (dur && isFinite(dur) && dur > 0) {
+    callback()
+  } else {
+    currentHowl.once('load', callback)
   }
 }
 
