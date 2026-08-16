@@ -3,6 +3,7 @@ import { Search as SearchIcon, Play, Plus, ListEnd, Music2, Heart, Loader2, Clou
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { cn, formatTime } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
@@ -29,6 +30,7 @@ import type { Track, OnlineTrackSearchResult } from '@/types'
  * - 本地/在线双 tab：本地走内存过滤，在线走 IPC → 网易云 API
  */
 export function SearchPage() {
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [tab, setTab] = useState<'local' | 'online'>('local')
@@ -215,7 +217,14 @@ export function SearchPage() {
                                 {idx + 1}
                               </span>
                               <Play className="w-3 h-3 hidden group-hover:block text-mint" strokeWidth={1.8} />
-                              <div className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden">
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  navigate(`/song/${track.id}`)
+                                }}
+                                title="查看歌曲详情"
+                                className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+                              >
                                 {track.coverPath ? (
                                   <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover product-shadow" />
                                 ) : (

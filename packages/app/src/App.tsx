@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { ResizeHandles } from '@/components/layout/ResizeHandle'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -13,6 +13,7 @@ import { RecentPage } from '@/pages/RecentPage'
 import { SearchPage } from '@/pages/SearchPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { PlaylistPage } from '@/pages/PlaylistPage'
+import { SongDetailPage } from '@/pages/SongDetailPage'
 import { LyricsView } from '@/components/lyrics/LyricsView'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -28,6 +29,7 @@ import type { Track } from '@/types'
  * - 封面右侧栏作为产品展示瓷砖，封面图带唯一 product-shadow
  */
 function AppLayout() {
+  const navigate = useNavigate()
   // ⚠️ 性能关键：只订阅低频变化字段，避免 progress 每 250ms 触发整树重渲染
   // progress / duration / isPlaying 等高频字段由 PlayerBar / LyricsView 自行订阅
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -304,6 +306,7 @@ function AppLayout() {
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/playlist/:id" element={<PlaylistPage />} />
+                <Route path="/song/:id" element={<SongDetailPage />} />
               </Routes>
             </div>
 
@@ -311,8 +314,12 @@ function AppLayout() {
             {currentTrack && (
               <div className="w-72 flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
                 <div className="p-6 flex flex-col gap-4">
-                  {/* 封面图 — 唯一使用 product-shadow 的地方 */}
-                  <div className="aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden">
+                  {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
+                  <button
+                    onClick={() => navigate(`/song/${currentTrack.id}`)}
+                    title="查看歌曲详情"
+                    className="relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02]"
+                  >
                     {currentTrack.coverPath ? (
                       <img
                         src={`file://${currentTrack.coverPath}`}
@@ -322,7 +329,7 @@ function AppLayout() {
                     ) : (
                       <div className="text-4xl text-white/30">🎵</div>
                     )}
-                  </div>
+                  </button>
 
                   <div className="text-center">
                     <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/96">

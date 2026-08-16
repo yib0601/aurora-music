@@ -1,8 +1,9 @@
 import { useState, useCallback, memo } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Heart,
-  Play, Plus, ListPlus, ListEnd,
+  Play, Plus, ListPlus, ListEnd, Disc3,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -37,6 +38,7 @@ import type { Track } from '@/types'
  * - 按钮统一 Apple 风格
  */
 export function LibraryPage() {
+  const navigate = useNavigate()
   const tracks = useLibraryStore((s) => s.tracks)
   const viewMode = useLibraryStore((s) => s.viewMode)
   const setViewMode = useLibraryStore((s) => s.setViewMode)
@@ -103,8 +105,26 @@ export function LibraryPage() {
             <span className="group-hover:hidden font-text text-[13px] tabular-nums">{idx + 1}</span>
             <Play className="h-3 w-3 hidden group-hover:block text-mint" strokeWidth={1.8} />
           </td>
-          <td className="py-2.5 px-3 font-text font-semibold text-[14px] truncate max-w-xs text-white tracking-[-0.224px]">
-            {track.title}
+          <td className="py-2.5 px-3 max-w-xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  navigate(`/song/${track.id}`)
+                }}
+                title="查看歌曲详情"
+                className="w-9 h-9 rounded-[6px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+              >
+                {track.coverPath ? (
+                  <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover product-shadow" />
+                ) : (
+                  <Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
+                )}
+              </button>
+              <span className="font-text font-semibold text-[14px] truncate text-white tracking-[-0.224px]">
+                {track.title}
+              </span>
+            </div>
           </td>
           <td className="py-2.5 px-3 font-text text-white/50 text-[14px] truncate max-w-40 tracking-[-0.224px]">
             {track.artist}
@@ -291,7 +311,14 @@ export function LibraryPage() {
                     className="group card-utility p-2.5 cursor-pointer"
                     onDoubleClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), filteredTracks)}
                   >
-                    <div className="aspect-square rounded-xs bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative">
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate(`/song/${track.id}`)
+                      }}
+                      title="查看歌曲详情"
+                      className="aspect-square rounded-xs bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer transition-transform duration-200 ease-apple group-hover:scale-[1.02]"
+                    >
                       {track.coverPath ? (
                         <img
                           src={`file://${track.coverPath}`}
