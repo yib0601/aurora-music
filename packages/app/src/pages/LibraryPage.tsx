@@ -1,7 +1,7 @@
 import { useState, useCallback, memo } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Heart,
-  Play, Plus, ListPlus, ListEnd, Disc3,
+  Play, Plus, ListPlus, ListEnd, Disc3, RefreshCw,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,7 @@ export function LibraryPage() {
   const setViewMode = useLibraryStore((s) => s.setViewMode)
   const isScanning = useLibraryStore((s) => s.isScanning)
   const scanProgress = useLibraryStore((s) => s.scanProgress)
+  const scanFolders = useLibraryStore((s) => s.scanFolders)
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const playlists = usePlaylistStore((s) => s.playlists)
@@ -60,6 +61,14 @@ export function LibraryPage() {
     const folder = await api.pickFolder()
     if (folder) {
       useLibraryStore.getState().addScanFolder(folder)
+      await api.scanFolder(folder)
+    }
+  }
+
+  // 重新扫描所有已配置目录，同步移除已删除文件对应的曲目记录
+  const handleRescan = async () => {
+    if (!api || scanFolders.length === 0) return
+    for (const folder of scanFolders) {
       await api.scanFolder(folder)
     }
   }
@@ -241,6 +250,16 @@ export function LibraryPage() {
         <>
           <div className="flex items-center justify-end mb-8 -mt-12">
             <div className="flex items-center gap-2">
+              {scanFolders.length > 0 && (
+                <button
+                  onClick={handleRescan}
+                  disabled={isScanning}
+                  title="重新扫描，同步已删除的歌曲"
+                  className="h-7 w-7 flex items-center justify-center rounded-[10px] text-white/60 hover:text-white hover:bg-white/[0.05] transition-all duration-200 ease-apple disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+                </button>
+              )}
               <div className="flex rounded-[10px] overflow-hidden border border-white/5 bg-white/[0.04] p-0.5">
                 <button
                   className={cn(

@@ -4,7 +4,7 @@ import { parseFile } from 'music-metadata'
 import iconv from 'iconv-lite'
 import { v4 as uuidv4 } from 'uuid'
 import type { Track } from '../types'
-import { insertTrack, getTrackByPath } from './database'
+import { insertTrack, getTrackByPath, deleteTracksWithMissingFiles } from './database'
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus'])
 
@@ -132,6 +132,11 @@ export async function scanFolder(
   console.log('scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
   console.log('scanFolder found files:', files.length)
+
+  // 清理数据库中存在但文件已不存在的记录（歌曲被删除/移动后同步移除）
+  const removed = deleteTracksWithMissingFiles(rootPath, new Set(files))
+  if (removed > 0) console.log('scanFolder removed stale tracks:', removed)
+
   const tracks: Track[] = []
   const coverCache = new Map<string, string>()
 
