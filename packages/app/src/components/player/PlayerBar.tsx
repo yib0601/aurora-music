@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { cn, formatTime } from '@/lib/utils'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -47,6 +48,7 @@ export function PlayerBar({
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
+  const navigate = useNavigate()
   const [seeking, setSeeking] = useState(false)
   const [seekValue, setSeekValue] = useState(0)
   const [seekingVolume, setSeekingVolume] = useState(false)
@@ -126,8 +128,10 @@ export function PlayerBar({
       <div className="grid grid-cols-[minmax(0,1fr)_max-content_minmax(0,1fr)] gap-3 items-center">
         {/* 左列：曲目信息（封面 + 标题 + 艺术家） */}
         <div className="flex items-center gap-3 min-w-0 justify-start">
-          <div
-            className="w-[40px] h-[40px] rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center"
+          <button
+            onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
+            title="查看歌曲详情"
+            className="w-[40px] h-[40px] rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
             style={{
               boxShadow:
                 '0 6px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07)',
@@ -145,7 +149,7 @@ export function PlayerBar({
             ) : (
               <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
             )}
-          </div>
+          </button>
           <div className="min-w-0 flex flex-col gap-0.5">
             <p className="text-[12.5px] font-bold text-white/92 truncate hover:text-white hover:[text-shadow:0_0_12px_rgba(0,245,212,.16)] transition-all">
               {currentTrack?.title || '未在播放'}

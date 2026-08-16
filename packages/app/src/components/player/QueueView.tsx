@@ -1,5 +1,6 @@
 import React from 'react'
 import { X, Music2, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn, formatTime } from '@/lib/utils'
@@ -10,6 +11,7 @@ import { cn, formatTime } from '@/lib/utils'
  * - 薄荷青主色高亮当前曲目
  */
 export function QueueView() {
+  const navigate = useNavigate()
   const queue = usePlayerStore((s) => s.queue)
   const currentIndex = usePlayerStore((s) => s.currentIndex)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -60,16 +62,20 @@ export function QueueView() {
                 )}
               >
                 <button
+                  onClick={() => navigate(`/song/${track.id}`)}
+                  title="查看歌曲详情"
+                  className="w-[38px] h-[38px] rounded-[7px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+                >
+                  {track.coverPath ? (
+                    <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />
+                  )}
+                </button>
+                <button
                   onClick={() => handlePlayTrack(idx)}
                   className="flex items-center gap-3 flex-1 min-w-0"
                 >
-                  <div className="w-[38px] h-[38px] rounded-[7px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden">
-                    {track.coverPath ? (
-                      <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />
-                    )}
-                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-text text-[13px] font-semibold truncate text-foreground tracking-[-0.224px]">
                       {track.title}
