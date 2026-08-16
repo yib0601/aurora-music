@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { ResizeHandles } from '@/components/layout/ResizeHandle'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -30,6 +30,9 @@ import type { Track } from '@/types'
  */
 function AppLayout() {
   const navigate = useNavigate()
+  const location = useLocation()
+  // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
+  const isSongDetail = location.pathname.startsWith('/song/')
   // ⚠️ 性能关键：只订阅低频变化字段，避免 progress 每 250ms 触发整树重渲染
   // progress / duration / isPlaying 等高频字段由 PlayerBar / LyricsView 自行订阅
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -289,10 +292,12 @@ function AppLayout() {
 
       {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上 */}
-        <aside className="w-56 flex-shrink-0 flex flex-col glass-regular border-r border-white/5">
-          <Sidebar />
-        </aside>
+        {/* 侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上；歌曲详情页隐藏 */}
+        {!isSongDetail && (
+          <aside className="w-56 flex-shrink-0 flex flex-col glass-regular border-r border-white/5">
+            <Sidebar />
+          </aside>
+        )}
 
         {/* 主内容区 */}
         <main className="relative flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
@@ -310,8 +315,8 @@ function AppLayout() {
               </Routes>
             </div>
 
-            {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质 */}
-            {currentTrack && (
+            {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质；歌曲详情页隐藏（详情页已含完整歌词与歌曲信息） */}
+            {currentTrack && !isSongDetail && (
               <div className="w-72 flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
                 <div className="p-6 flex flex-col gap-4">
                   {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
@@ -358,23 +363,25 @@ function AppLayout() {
 
           <QueueView />
 
-          {/* Mineradio 悬浮胶囊控制台 — 始终显示，无曲目时显示占位状态 */}
-          <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 w-[clamp(360px,calc(100%-80px),640px)]">
-            <PlayerBar
-              currentTrack={currentTrack}
-              volume={volume}
-              muted={muted}
-              repeatMode={repeatMode}
-              shuffleMode={shuffleMode}
-              onTogglePlay={handleTogglePlay}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-              onSeek={handleSeek}
-              onVolumeChange={handleVolumeChange}
-              onToggleMute={handleToggleMute}
-              onCyclePlayMode={handleCyclePlayMode}
-            />
-          </div>
+          {/* Mineradio 悬浮胶囊控制台 — 歌曲详情页已内嵌播放功能框，此处隐藏避免重复 */}
+          {!isSongDetail && (
+            <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 w-[clamp(360px,calc(100%-80px),640px)]">
+              <PlayerBar
+                currentTrack={currentTrack}
+                volume={volume}
+                muted={muted}
+                repeatMode={repeatMode}
+                shuffleMode={shuffleMode}
+                onTogglePlay={handleTogglePlay}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                onSeek={handleSeek}
+                onVolumeChange={handleVolumeChange}
+                onToggleMute={handleToggleMute}
+                onCyclePlayMode={handleCyclePlayMode}
+              />
+            </div>
+          )}
         </main>
       </div>
     </div>

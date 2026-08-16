@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, Heart, Plus, ListEnd, ListMusic, Music2, ArrowLeft,
   BarChart3, Clock, Calendar, Tag, HardDrive, Layers, History, MoreHorizontal,
-  Disc3, Radio, Folder,
+  Disc3, Radio, Folder, ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { PlayerBar } from '@/components/player/PlayerBar'
+import { LyricsView } from '@/components/lyrics/LyricsView'
 import { cn, formatTime } from '@/lib/utils'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { loadLyricsForTrack, parseLRC, findActiveLine } from '@/services/lyrics.service'
+import { loadLyricsForTrack } from '@/services/lyrics.service'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
@@ -20,7 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { LyricLine, Track } from '@/types'
+import type { Track } from '@/types'
 
 /**
  * SongDetailPage — 歌曲播放详情页
@@ -55,88 +57,37 @@ function sourceLabel(track: Track): string {
   return '本地'
 }
 
-/** 完整歌词面板：按所查看曲目加载歌词，自身订阅进度以同步高亮（不冒泡到页面） */
+/** 歌词预览：按所查看曲目加载歌词，渲染为预览样式（聚焦当前播放行），自身订阅进度以同步高亮 */
 function TrackLyrics({ track, onLineClick }: { track: Track; onLineClick: (time: number) => void }) {
-  const progress = usePlayerStore((s) => s.progress)
-  const [lrc, setLrc] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [lyrics, setLyrics] = useState<LyricLine[]>([])
-  const containerRef = useRef<HTMLDivElement>(null)
-  const lastScrollRef = useRef(0)
+  // null = 加载中，'' = 无歌词，其他 = 歌词文本
+  const [lrc, setLrc] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setLrc('')
+    setLrc(null)
     loadLyricsForTrack(track)
       .then((text) => {
         if (!cancelled) setLrc(text || '')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
       })
     return () => {
       cancelled = true
     }
   }, [track.id, track.title, track.artist, track.album, track.duration])
 
-  useEffect(() => {
-    if (!lrc) {
-      setLyrics([])
-      return
-    }
-    setLyrics(parseLRC(lrc))
-  }, [lrc])
-
-  const activeIdx = useMemo(
-    () => (lyrics.length > 0 ? findActiveLine(lyrics, progress) : -1),
-    [lyrics, progress]
-  )
-
-  // 节流滚动高亮行到可视区中央（~10fps）
-  useEffect(() => {
-    if (lyrics.length === 0 || activeIdx < 0 || !containerRef.current) return
-    const now = performance.now()
-    if (now - lastScrollRef.current < 100) return
-    lastScrollRef.current = now
-    const el = containerRef.current.children[activeIdx] as HTMLElement | undefined
-    if (!el) return
-    const container = containerRef.current
-    const containerH = container.clientHeight
-    const target = el.offsetTop - containerH / 2 + el.offsetHeight / 2
-    if (Math.abs(container.scrollTop - target) > 40) {
-      container.scrollTo({ top: target, behavior: 'smooth' })
-    }
-  }, [activeIdx, lyrics])
+  if (lrc === null) {
+    return (
+      <p className="font-text text-[14px] text-white/30 py-10 text-center tracking-[-0.15px]">
+        搜索歌词中…
+      </p>
+    )
+  }
 
   return (
-    <div
-      ref={containerRef}
-      className="overflow-y-auto scrollbar-thin pr-1 space-y-3"
-      style={{ maxHeight: 420 }}
-    >
-      {lyrics.length === 0 && (
-        <p className="font-text text-[14px] text-white/30 py-10 text-center tracking-[-0.15px]">
-          {loading ? '搜索歌词中…' : '暂无歌词'}
-        </p>
-      )}
-      {lyrics.map((line, idx) => (
-        <p
-          key={`${line.time}-${idx}`}
-          className={cn(
-            'font-text leading-relaxed cursor-pointer transition-all duration-300 ease-apple',
-            idx === activeIdx
-              ? 'lyric-active text-[16px]'
-              : Math.abs(idx - activeIdx) <= 2
-                ? 'text-white/50 text-[14px]'
-                : 'text-white/25 text-[13px]'
-          )}
-          onClick={() => onLineClick(line.time)}
-        >
-          {line.text}
-        </p>
-      ))}
-    </div>
+    <LyricsView
+      lyricsText={lrc}
+      className="max-h-[300px]"
+      onLineClick={onLineClick}
+    />
   )
 }
 
@@ -151,9 +102,33 @@ export function SongDetailPage() {
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const volume = usePlayerStore((s) => s.volume)
+  const muted = usePlayerStore((s) => s.muted)
+  const repeatMode = usePlayerStore((s) => s.repeatMode)
+  const shuffleMode = usePlayerStore((s) => s.shuffleMode)
+
+  // 内嵌播放功能框回调（复用 playerStore 动作）
+  const handleTogglePlay = useCallback(() => usePlayerStore.getState().togglePlay(), [])
+  const handleNext = useCallback(() => usePlayerStore.getState().next(), [])
+  const handlePrevious = useCallback(() => usePlayerStore.getState().previous(), [])
+  const handleSeek = useCallback((seconds: number) => usePlayerStore.getState().seekTo(seconds), [])
+  const handleVolumeChange = useCallback((v: number) => usePlayerStore.getState().setVolume(v), [])
+  const handleToggleMute = useCallback(() => usePlayerStore.getState().toggleMute(), [])
+  const handleCyclePlayMode = useCallback(() => usePlayerStore.getState().cyclePlayMode(), [])
 
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
   const [newPlName, setNewPlName] = useState('')
+  const [showMoreInfo, setShowMoreInfo] = useState(false)
+
+  // 跟随当前播放曲目：在详情页内切换歌曲（下一首/上一首/队列自动切换）时，详情页同步切换
+  const lastTrackIdRef = useRef<string | null>(currentTrack?.id ?? null)
+  useEffect(() => {
+    const curId = currentTrack?.id ?? null
+    if (curId !== lastTrackIdRef.current && curId && curId !== id) {
+      navigate(`/song/${curId}`, { replace: true })
+    }
+    lastTrackIdRef.current = curId
+  }, [currentTrack, id, navigate])
 
   // 从音乐库查找，找不到则回退到播放器队列（如在线搜索的歌曲）
   const track = useMemo(() => {
@@ -257,7 +232,7 @@ export function SongDetailPage() {
   const coverSrc = track.coverPath ? `file://${track.coverPath}` : null
 
   return (
-    <div className="flex flex-col px-8 pt-8 pb-10">
+    <div className="flex flex-col px-8 pt-8">
       {/* 返回按钮 */}
       <button
         onClick={() => navigate(-1)}
@@ -369,29 +344,38 @@ export function SongDetailPage() {
         </div>
       </div>
 
-      {/* 统计信息 */}
+      {/* 更多信息 — 默认收起，展开查看详细统计 */}
       <section className="mt-9">
-        <h2 className="font-text text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-3">
-          歌曲信息
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {statItems.map(({ icon: Icon, label, value }) => (
-            <div
-              key={label}
-              className="card-utility rounded-[16px] px-4 py-3.5 flex items-center gap-3"
-            >
-              <div className="w-9 h-9 rounded-[10px] bg-white/[0.05] flex items-center justify-center flex-shrink-0">
-                <Icon className="h-4 w-4 text-mint/70" strokeWidth={1.5} />
+        <button
+          onClick={() => setShowMoreInfo((v) => !v)}
+          className="flex items-center gap-1.5 text-[12px] font-semibold text-white/40 uppercase tracking-wider hover:text-mint transition-colors duration-200 ease-apple"
+        >
+          <ChevronDown
+            className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
+            strokeWidth={1.8}
+          />
+          更多信息
+        </button>
+        {showMoreInfo && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+            {statItems.map(({ icon: Icon, label, value }) => (
+              <div
+                key={label}
+                className="card-utility rounded-[16px] px-4 py-3.5 flex items-center gap-3"
+              >
+                <div className="w-9 h-9 rounded-[10px] bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+                  <Icon className="h-4 w-4 text-mint/70" strokeWidth={1.5} />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</p>
+                  <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
+                    {value}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</p>
-                <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
-                  {value}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 歌词 */}
@@ -469,6 +453,24 @@ export function SongDetailPage() {
           </div>
         </section>
       )}
+
+      {/* 内置播放功能框 — 粘性固定在详情页底部，无需滚动即可操作 */}
+      <div className="sticky bottom-0 z-10 -mx-8 px-8 pt-5 pb-4 bg-gradient-to-t from-background/90 via-background/35 to-transparent">
+        <PlayerBar
+          currentTrack={currentTrack}
+          volume={volume}
+          muted={muted}
+          repeatMode={repeatMode}
+          shuffleMode={shuffleMode}
+          onTogglePlay={handleTogglePlay}
+          onNext={handleNext}
+          onPrevious={handlePrevious}
+          onSeek={handleSeek}
+          onVolumeChange={handleVolumeChange}
+          onToggleMute={handleToggleMute}
+          onCyclePlayMode={handleCyclePlayMode}
+        />
+      </div>
 
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
         <DialogContent className="sm:max-w-sm">
