@@ -145,6 +145,25 @@ export function deleteTrack(id: string): void {
   d.prepare('DELETE FROM tracks WHERE id = ?').run(id)
 }
 
+/**
+ * 清理扫描目录下已不存在的文件的曲目记录（歌曲被删除/移动后同步移除）。
+ * 仅处理 rootPath 前缀范围内的记录，避免误删其他扫描目录的曲目。
+ * 返回删除的曲目数量。
+ */
+export function deleteTracksWithMissingFiles(rootPath: string, existingPaths: ReadonlySet<string>): number {
+  const d = getDb()
+  const prefix = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep
+  const all = getAllTracks()
+  const stale = all.filter((t) => t.path.startsWith(prefix) && !existingPaths.has(t.path))
+  if (stale.length === 0) return 0
+  const stmt = d.prepare('DELETE FROM tracks WHERE id = ?')
+  const delMany = d.transaction((ids: string[]) => {
+    for (const id of ids) stmt.run(id)
+  })
+  delMany(stale.map((t) => t.id))
+  return stale.length
+}
+
 export function insertAlbum(album: Album): void {
   const d = getDb()
   d.prepare(`

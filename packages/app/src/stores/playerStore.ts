@@ -355,3 +355,16 @@ audioEvents.on('duration', ({ duration }) => {
 audioEvents.on('trackChange', ({ track }) => {
   usePlayerStore.setState({ currentTrack: track, duration: 0, progress: 0 })
 })
+
+// 本地文件加载失败（文件被删除/移动/损坏）时自动跳过，避免播放卡住；在线流网络错误不自动跳
+audioEvents.on('error', () => {
+  const state = usePlayerStore.getState()
+  const { currentTrack, queue, currentIndex } = state
+  if (!currentTrack) return
+  if (currentTrack.onlineUrl || /^https?:\/\//i.test(currentTrack.path)) return
+  if (queue.length <= 1) {
+    state.clearQueue()
+    return
+  }
+  state.removeFromQueue(currentIndex)
+})
