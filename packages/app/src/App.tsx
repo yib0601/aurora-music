@@ -94,8 +94,15 @@ function AppLayout() {
       })
     }
 
-    // 启动时仅从数据库加载已有曲目，不自动重新扫描文件夹
-    // 扫描只在用户手动点击"导入音乐"或"扫描"时触发
+    // 每次启动在后台自动重新扫描所有已配置的音乐目录
+    // 用于同步移除已被删除的歌曲记录并纳入新增文件；扫描在后台执行不阻塞 UI，
+    // 列表通过 onScanProgress / onTracksScanned 事件自动刷新
+    if (api?.scanFolder) {
+      const folders = useLibraryStore.getState().scanFolders
+      for (const folder of folders) {
+        api.scanFolder(folder).catch(() => {})
+      }
+    }
 
     return () => {
       if (restoreTimer) {
