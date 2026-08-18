@@ -48,10 +48,22 @@
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**"
     ],
-    "npmRebuild": false,
+    "npmRebuild": true,
     "buildDependenciesFromSource": false,
     "linux": {
       "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
         {
           "target": "rpm",
           "arch": [
@@ -72,6 +84,19 @@
           "Type": "Application"
         }
       }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1"
+      ],
+      "category": "sound"
     },
     "rpm": {
       "afterInstall": "resources/after-install.sh",
@@ -98,6 +123,14 @@
       "icon": "resources/icon.ico",
       "forceCodeSigning": false,
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Aurora Music"
     }
   }
 }
