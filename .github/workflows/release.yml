@@ -238,8 +238,8 @@ jobs:
         run: |
           set -e
           mkdir -p release
-          # Windows
-          find release-artifacts/windows-nsis -name "*.exe" -exec cp {} release/ \; 2>/dev/null || true
+          # Windows（只取带版本号的 NSIS 安装包，跳过 unpacked 的 Aurora-Music.exe 和 elevate.exe）
+          find release-artifacts/windows-nsis -name "Aurora-Music-*.exe" -exec cp {} release/ \; 2>/dev/null || true
           # Linux
           find release-artifacts/linux-packages -name "*.AppImage" -exec cp {} release/ \; 2>/dev/null || true
           find release-artifacts/linux-packages -name "*.deb" -exec cp {} release/ \; 2>/dev/null || true
