@@ -17,7 +17,27 @@ function getDbPath(): string {
 
 export function initDatabase(): Database.Database {
   const dbPath = getDbPath()
-  db = new Database(dbPath)
+  try {
+    db = new Database(dbPath)
+    // 完整性检查：数据库损坏时备份并重建，避免应用无法启动
+    const check = db.pragma('integrity_check') as Array<{ integrity_check: string }>
+    if (check[0]?.integrity_check !== 'ok') {
+      throw new Error(`数据库完整性检查失败: ${check[0]?.integrity_check}`)
+    }
+  } catch (err) {
+    console.error('数据库打开失败，备份损坏文件并重建:', err)
+    try { db?.close() } catch {}
+    db = null
+    // 将损坏的库文件（含 WAL/SHM）改名备份，便于用户找回数据
+    const backupPath = `${dbPath}.corrupt-${Date.now()}`
+    for (const suffix of ['', '-wal', '-shm']) {
+      const f = dbPath + suffix
+      if (fs.existsSync(f)) {
+        try { fs.renameSync(f, backupPath + suffix) } catch {}
+      }
+    }
+    db = new Database(dbPath)
+  }
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
 
@@ -79,28 +99,46 @@ export function getDb(): Database.Database {
   return db
 }
 
-export function insertTrack(track: Track): void {
+/** 批量事务插入（扫描提速：N 条记录只开一个事务） */
+export function insertTracks(tracks: Track[]): void {
+  if (tracks.length === 0) return
   const d = getDb()
-  d.prepare(`
-    INSERT OR REPLACE INTO tracks (id, path, title, artist, album, year, genre, duration, track_number, cover_path, file_size, added_at, last_played_at, play_count, liked)
+  const stmt = d.prepare(`
+    INSERT INTO tracks (id, path, title, artist, album, year, genre, duration, track_number, cover_path, file_size, added_at, last_played_at, play_count, liked)
     VALUES (@id, @path, @title, @artist, @album, @year, @genre, @duration, @trackNumber, @coverPath, @fileSize, @addedAt, @lastPlayedAt, @playCount, @liked)
-  `).run({
-    id: track.id,
-    path: track.path,
-    title: track.title,
-    artist: track.artist || null,
-    album: track.album || null,
-    year: track.year || null,
-    genre: track.genre || null,
-    duration: track.duration,
-    trackNumber: track.trackNumber || null,
-    coverPath: track.coverPath || null,
-    fileSize: track.fileSize || null,
-    addedAt: track.addedAt,
-    lastPlayedAt: track.lastPlayedAt || null,
-    playCount: track.playCount,
-    liked: track.liked ? 1 : 0,
+    ON CONFLICT(path) DO UPDATE SET
+      title = excluded.title,
+      artist = excluded.artist,
+      album = excluded.album,
+      year = excluded.year,
+      genre = excluded.genre,
+      duration = excluded.duration,
+      track_number = excluded.track_number,
+      cover_path = excluded.cover_path,
+      file_size = excluded.file_size
+  `)
+  const runAll = d.transaction((items: Track[]) => {
+    for (const track of items) {
+      stmt.run({
+        id: track.id,
+        path: track.path,
+        title: track.title,
+        artist: track.artist || null,
+        album: track.album || null,
+        year: track.year || null,
+        genre: track.genre || null,
+        duration: track.duration,
+        trackNumber: track.trackNumber || null,
+        coverPath: track.coverPath || null,
+        fileSize: track.fileSize || null,
+        addedAt: track.addedAt,
+        lastPlayedAt: track.lastPlayedAt || null,
+        playCount: track.playCount,
+        liked: track.liked ? 1 : 0,
+      })
+    }
   })
+  runAll(tracks)
 }
 
 export function getAllTracks(): Track[] {
@@ -114,10 +152,17 @@ export function getTrackById(id: string): Track | null {
   return row ? rowToTrack(row) : null
 }
 
-export function getTrackByPath(p: string): Track | null {
+/** 批量按路径查询（扫描时用一次 SQL 预取，替代逐文件查询） */
+export function getTracksByPaths(paths: string[]): Map<string, Track> {
   const d = getDb()
-  const row = d.prepare('SELECT * FROM tracks WHERE path = ?').get(p) as any
-  return row ? rowToTrack(row) : null
+  const result = new Map<string, Track>()
+  if (paths.length === 0) return result
+  const stmt = d.prepare('SELECT * FROM tracks WHERE path = ?')
+  for (const p of paths) {
+    const row = stmt.get(p)
+    if (row) result.set(p, rowToTrack(row))
+  }
+  return result
 }
 
 export function searchTracks(query: string): Track[] {
@@ -129,20 +174,58 @@ export function searchTracks(query: string): Track[] {
   `).all(q, q, q).map(rowToTrack)
 }
 
+// 允许更新的字段白名单（camelCase → 列名），防止任意字段注入
+const UPDATABLE_COLUMNS: Record<string, string> = {
+  title: 'title',
+  artist: 'artist',
+  album: 'album',
+  year: 'year',
+  genre: 'genre',
+  duration: 'duration',
+  trackNumber: 'track_number',
+  coverPath: 'cover_path',
+  fileSize: 'file_size',
+  addedAt: 'added_at',
+  lastPlayedAt: 'last_played_at',
+  playCount: 'play_count',
+  liked: 'liked',
+}
+
 export function updateTrack(id: string, updates: Partial<Track>): void {
   const d = getDb()
-  const fields = Object.keys(updates).map((k) => {
-    const col = camelToSnake(k)
-    return `${col} = @${k}`
-  })
+  const fields: string[] = []
+  const params: Record<string, unknown> = { id }
+  for (const [key, value] of Object.entries(updates)) {
+    const col = UPDATABLE_COLUMNS[key]
+    if (!col) continue
+    fields.push(`${col} = @${key}`)
+    // liked 存为 0/1；其余 undefined 统一转 null，避免 better-sqlite3 绑定 undefined 抛错
+    params[key] = key === 'liked' ? (value ? 1 : 0) : value ?? null
+  }
   if (fields.length === 0) return
   const stmt = d.prepare(`UPDATE tracks SET ${fields.join(', ')} WHERE id = @id`)
-  stmt.run({ id, ...updates, liked: updates.liked !== undefined ? (updates.liked ? 1 : 0) : undefined })
+  stmt.run(params)
 }
 
 export function deleteTrack(id: string): void {
   const d = getDb()
+  // 删除曲目前先取出封面路径，同步清理磁盘上的封面缓存文件
+  const row = d.prepare('SELECT cover_path FROM tracks WHERE id = ?').get(id) as { cover_path?: string } | undefined
   d.prepare('DELETE FROM tracks WHERE id = ?').run(id)
+  removeCoverFile(row?.cover_path)
+}
+
+function removeCoverFile(coverPath?: string | null): void {
+  if (!coverPath) return
+  // 只清理本应用封面缓存目录内的文件，避免误删用户文件
+  try {
+    const coverDir = path.join(app.getPath('userData'), 'aurora-music', 'covers')
+    if (path.dirname(coverPath) === coverDir && fs.existsSync(coverPath)) {
+      fs.unlinkSync(coverPath)
+    }
+  } catch (err) {
+    console.warn('清理封面文件失败:', coverPath, err)
+  }
 }
 
 /**
@@ -153,14 +236,18 @@ export function deleteTrack(id: string): void {
 export function deleteTracksWithMissingFiles(rootPath: string, existingPaths: ReadonlySet<string>): number {
   const d = getDb()
   const prefix = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep
-  const all = getAllTracks()
-  const stale = all.filter((t) => t.path.startsWith(prefix) && !existingPaths.has(t.path))
+  // 只取前缀范围内的记录，避免全表加载到 JS 层
+  const rows = d.prepare('SELECT id, path, cover_path FROM tracks WHERE path LIKE ?').all(prefix + '%') as Array<{ id: string; path: string; cover_path?: string }>
+  // LIKE 的通配符可能匹配到额外字符，用 startsWith 精确校验前缀
+  const stale = rows.filter((r) => r.path.startsWith(prefix) && !existingPaths.has(r.path))
   if (stale.length === 0) return 0
   const stmt = d.prepare('DELETE FROM tracks WHERE id = ?')
   const delMany = d.transaction((ids: string[]) => {
     for (const id of ids) stmt.run(id)
   })
   delMany(stale.map((t) => t.id))
+  // 同步清理被删曲目的封面缓存文件，避免磁盘泄漏
+  for (const t of stale) removeCoverFile(t.cover_path)
   return stale.length
 }
 
@@ -229,6 +316,10 @@ function rowToAlbum(row: any): Album {
   }
 }
 
-function camelToSnake(s: string): string {
-  return s.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase())
+/** 应用退出时关闭数据库，确保 WAL 数据落盘 */
+export function closeDatabase(): void {
+  if (db) {
+    try { db.close() } catch {}
+    db = null
+  }
 }

@@ -8,8 +8,6 @@ interface LibraryState {
   albums: Album[]
   playlists: Playlist[]
   scanFolders: string[]
-  isScanning: boolean
-  scanProgress: { current: number; total: number; file: string }
   viewMode: ViewMode
   glassMode: GlassMode
   theme: 'light' | 'dark' | 'system'
@@ -24,8 +22,6 @@ interface LibraryState {
   setPlaylists: (playlists: Playlist[]) => void
   addScanFolder: (path: string) => void
   removeScanFolder: (path: string) => void
-  setIsScanning: (scanning: boolean) => void
-  setScanProgress: (progress: { current: number; total: number; file: string }) => void
   setViewMode: (mode: ViewMode) => void
   setGlassMode: (mode: GlassMode) => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
@@ -45,8 +41,6 @@ export const useLibraryStore = create<LibraryState>()(
       albums: [],
       playlists: [],
       scanFolders: [],
-      isScanning: false,
-      scanProgress: { current: 0, total: 0, file: '' },
       viewMode: 'list',
       glassMode: 'auto',
       theme: 'dark',
@@ -55,7 +49,16 @@ export const useLibraryStore = create<LibraryState>()(
       searchResults: [],
       likedTracks: new Set<string>(),
 
-      setTracks: (tracks) => set({ tracks, likedTracks: new Set(tracks.filter((t) => t.liked).map((t) => t.id)) }),
+      setTracks: (tracks) => {
+        // 内容指纹比较：扫描完成事件每次 IPC 传来的都是全新对象引用，
+        // 若仅浅比较引用会认为变化了，导致订阅 tracks 的组件（如歌词/详情页）无谓重渲染。
+        // 基于 id + 关键字段生成指纹，内容不变则跳过 set。
+        const prev = get().tracks
+        if (prev === tracks) return
+        const fp = (t: Track) => `${t.id}|${t.title}|${t.artist}|${t.coverPath ?? ''}|${t.liked ? 1 : 0}|${t.playCount ?? 0}|${t.lastPlayedAt ?? ''}`
+        if (prev.length === tracks.length && prev.map(fp).join('\n') === tracks.map(fp).join('\n')) return
+        set({ tracks, likedTracks: new Set(tracks.filter((t) => t.liked).map((t) => t.id)) })
+      },
       setAlbums: (albums) => set({ albums }),
       addTracks: (newTracks) => {
         const existing = get().tracks
@@ -77,8 +80,6 @@ export const useLibraryStore = create<LibraryState>()(
       removeScanFolder: (path) => {
         set({ scanFolders: get().scanFolders.filter((p) => p !== path) })
       },
-      setIsScanning: (scanning) => set({ isScanning: scanning }),
-      setScanProgress: (progress) => set({ scanProgress: progress }),
       setViewMode: (mode) => set({ viewMode: mode }),
       setGlassMode: (mode) => set({ glassMode: mode }),
       setTheme: (theme) => set({ theme }),

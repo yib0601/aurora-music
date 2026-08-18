@@ -1,8 +1,32 @@
-import { app, BrowserWindow, shell, globalShortcut } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut, protocol } from 'electron'
 import path from 'path'
+import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
+import { closeDatabase } from './ipc/database'
 
 const isDev = !app.isPackaged
+
+// 主进程未捕获异常兜底：记录日志而不是直接崩溃，避免播放中静默退出
+process.on('uncaughtException', (err) => {
+  console.error('[Main] uncaughtException:', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] unhandledRejection:', reason)
+})
+
+// 注册安全的本地文件协议：替代 file://，避免 webSecurity 阻止渲染进程加载本地封面图
+// 用法：cover-local://localhost/absolute/path/to/file.jpg
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'cover-local',
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    stream: true,
+    bypassCSP: true,
+    corsEnabled: true,
+  },
+}])
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -24,7 +48,9 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webSecurity: true,
+      // 开发模式下关闭 webSecurity，允许 file:// 音频加载（Web Audio API 的 MediaElementSource 需要同源访问）
+      // 生产模式打包后页面用 file:// 加载，与音频同源，无需关闭
+      webSecurity: !isDev,
     },
     show: false,
   })
@@ -90,6 +116,59 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
+    // 注册 cover-local 协议处理器：读取本地文件并返回，绕过 webSecurity 对 file:// 的限制
+    // 用法：cover-local://localhost/absolute/path → 读取 /absolute/path
+    protocol.handle('cover-local', async (request) => {
+      try {
+        const url = new URL(request.url)
+        const filePath = decodeURIComponent(url.pathname)
+        const ext = path.extname(filePath).toLowerCase()
+        // 支持音频 Range 请求（html5 <audio> seek 需要）
+        const stat = await fs.promises.stat(filePath)
+        const range = request.headers.get('range')
+        if (range) {
+          const m = /bytes=(\d+)-(\d*)/.exec(range)
+          if (m) {
+            const start = parseInt(m[1])
+            const end = m[2] ? parseInt(m[2]) : stat.size - 1
+            const chunkSize = end - start + 1
+            const stream = fs.createReadStream(filePath, { start, end })
+            const chunks: Buffer[] = []
+            for await (const chunk of stream) chunks.push(chunk as Buffer)
+            const buffer = Buffer.concat(chunks)
+            const ext = path.extname(filePath).toLowerCase()
+            const mimeMap: Record<string, string> = {
+              '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+              '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
+              '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.wma': 'audio/x-ms-wma', '.opus': 'audio/ogg',
+            }
+            const mime = mimeMap[ext] || 'application/octet-stream'
+            return new Response(buffer, {
+              status: 206,
+              headers: {
+                'Content-Type': mime,
+                'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+                'Content-Length': String(chunkSize),
+                'Accept-Ranges': 'bytes',
+                'Access-Control-Allow-Origin': '*',
+              },
+            })
+          }
+        }
+        const buf = await fs.promises.readFile(filePath)
+        const mimeMap2: Record<string, string> = {
+          '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+          '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
+          '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.wma': 'audio/x-ms-wma', '.opus': 'audio/ogg',
+        }
+        const mime2 = mimeMap2[ext] || 'application/octet-stream'
+        return new Response(buf, { headers: { 'Content-Type': mime2, 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes' } })
+      } catch (err) {
+        console.error('[cover-local] 读取失败:', err)
+        return new Response('', { status: 404 })
+      }
+    })
+
     registerIpcHandlers()
     const win = createWindow()
 
@@ -125,5 +204,11 @@ if (!gotTheLock) {
     if (process.platform !== 'darwin') {
       app.quit()
     }
+  })
+
+  // 退出清理：注销全局快捷键、关闭数据库（确保 WAL 落盘）
+  app.on('before-quit', () => {
+    globalShortcut.unregisterAll()
+    closeDatabase()
   })
 }

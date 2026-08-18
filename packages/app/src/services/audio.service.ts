@@ -1,6 +1,7 @@
 import { Howl, Howler } from 'howler'
 import type { Track } from '@/types'
 import { audioEvents } from './audioEvents'
+import { platform } from '@/services/platform'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
@@ -16,14 +17,8 @@ function getPlatformSrc(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     return path
   }
-  const cap = (window as any).Capacitor
-  if (cap) {
-    return cap.convertFileSrc(path)
-  }
-  if ((window as any).electronAPI) {
-    return `file://${path}`
-  }
-  return path
+  // 委托 platform 层处理协议转换（桌面端 cover-local://，移动端 Capacitor.convertFileSrc）
+  return platform.getAudioSrc(path)
 }
 
 function startTick(howl: Howl) {
@@ -164,7 +159,8 @@ function connectAnalyser(howl: Howl) {
   if (!analyserNode || !audioContext) return
 
   try {
-    const audioEl = (howl as any)._sounds?.[0]?._node
+    // ⚠️ howler 私有 API：防御性访问，内部结构变化时静默降级（无可视化但正常出声）
+    const audioEl = (howl as any)?._sounds?.[0]?._node
     if (audioEl && audioEl instanceof HTMLMediaElement) {
       // 同一个 audioEl 只能创建一次 MediaElementSource,否则抛 InvalidStateError
       // 用属性标记缓存,避免重复创建;但 howler 会复用 html5 Audio 元素,
@@ -177,6 +173,8 @@ function connectAnalyser(howl: Howl) {
       try { source.disconnect() } catch {}
       source.connect(analyserNode)
       currentMediaSource = source
+    } else {
+      console.warn('Analyser: 无法获取 audio 元素，跳过可视化连接')
     }
   } catch (e) {
     console.warn('Analyser connection failed:', e)

@@ -7,6 +7,9 @@ const electronAPI = {
   scanFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('scan:start', folderPath),
   getUserDataPath: (): Promise<string> => ipcRenderer.invoke('app:getUserDataPath'),
   getAllTracks: (): Promise<any[]> => ipcRenderer.invoke('db:getAllTracks'),
+  getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),
+  // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）
+  ensureCover: (id: string): Promise<string | null> => ipcRenderer.invoke('covers:ensure', id),
   saveCover: async (coverData: ArrayBuffer, trackId: string): Promise<string> => {
     return ''
   },
@@ -54,10 +57,14 @@ const electronAPI = {
   setBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.invoke('window:setBounds', bounds),
   onTracksScanned: (callback: (tracks: any[]) => void) => {
-    ipcRenderer.on('scan:complete', (_event, tracks) => callback(tracks))
+    const handler = (_event: unknown, tracks: any[]) => callback(tracks)
+    ipcRenderer.on('scan:complete', handler)
+    return () => ipcRenderer.removeListener('scan:complete', handler)
   },
-  onScanProgress: (callback: (progress: { current: number; total: number; file: string }) => void) => {
-    ipcRenderer.on('scan:progress', (_event, progress) => callback(progress))
+  onScanError: (callback: (error: { folder: string; message: string }) => void) => {
+    const handler = (_event: unknown, error: { folder: string; message: string }) => callback(error)
+    ipcRenderer.on('scan:error', handler)
+    return () => ipcRenderer.removeListener('scan:error', handler)
   },
   onMediaControl: (callback: (action: string) => void) => {
     const handler = (_event: unknown, action: string) => callback(action)

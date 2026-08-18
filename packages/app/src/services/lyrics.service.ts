@@ -1,4 +1,5 @@
 import type { LyricLine } from '@/types'
+import { platform } from '@/services/platform'
 
 export function parseLRC(content: string): LyricLine[] {
   const lines = content.split(/\r?\n/)
@@ -79,10 +80,9 @@ export async function searchOnlineLyrics(
   album?: string,
   duration?: number
 ): Promise<OnlineLyricsResult | null> {
-  const api = (window as any).electronAPI
-  if (!api?.searchLyrics) return null
+  if (!platform.searchLyrics) return null
   try {
-    return await api.searchLyrics(query, artist, album, duration)
+    return await platform.searchLyrics(query, artist, album, duration)
   } catch {
     return null
   }
@@ -95,10 +95,9 @@ export async function loadLyricsForTrack(track: {
   album?: string
   duration?: number
 }): Promise<string | null> {
-  const api = (window as any).electronAPI
   // 1. 先读本地缓存
-  if (api?.readLyrics) {
-    const local = await api.readLyrics(track.id)
+  if (platform.readLyrics) {
+    const local = await platform.readLyrics(track.id)
     if (local) return local
   }
   // 2. 在线搜索（LRCLIB，传入 album 和 duration 提高匹配精度）
@@ -110,8 +109,8 @@ export async function loadLyricsForTrack(track: {
   )
   if (online?.lrc) {
     // 保存到本地缓存
-    if (api?.saveLyrics) {
-      await api.saveLyrics(online.lrc, track.id)
+    if (platform.saveLyrics) {
+      await platform.saveLyrics(online.lrc, track.id)
     }
     return online.lrc
   }

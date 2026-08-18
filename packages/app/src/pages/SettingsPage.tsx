@@ -6,6 +6,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { isDesktop } from '@/lib/utils'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
+import { platform } from '@/services/platform'
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
@@ -19,7 +20,6 @@ export function SettingsPage() {
 
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
-  const api = (window as any).electronAPI
 
   const { devices, selectedDeviceId, setSelectedDeviceId } = useAudioDevices()
 
@@ -29,11 +29,10 @@ export function SettingsPage() {
   }
 
   const handlePickFolder = async () => {
-    if (!api) return
-    const folder = await api.pickFolder()
+    const folder = await platform.pickFolder()
     if (folder) {
       useLibraryStore.getState().addScanFolder(folder)
-      await api.scanFolder(folder)
+      await platform.scanFolder?.(folder)
     }
   }
 
@@ -92,12 +91,10 @@ export function SettingsPage() {
                   <p className="font-text text-caption-strong text-white/80">扫描目录</p>
                   <p className="font-text text-caption text-white/60 mt-0.5">应用会扫描这些目录中的音乐文件</p>
                 </div>
-                {isDesktop() && (
-                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickFolder}>
-                    <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    添加目录
-                  </Button>
-                )}
+                <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickFolder}>
+                  <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                  添加目录
+                </Button>
               </div>
               {scanFolders.length === 0 ? (
                 <p className="font-text text-caption text-white/60 py-2">尚未添加任何目录</p>

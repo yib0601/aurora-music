@@ -13,6 +13,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { loadLyricsForTrack } from '@/services/lyrics.service'
+import { platform } from '@/services/platform'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
@@ -229,7 +230,7 @@ export function SongDetailPage() {
     )
   }
 
-  const coverSrc = track.coverPath ? `file://${track.coverPath}` : null
+  const coverSrc = track.coverPath ? platform.getCoverSrc(track.coverPath) : null
 
   return (
     <div className="flex flex-col px-8 pt-8">
@@ -421,7 +422,7 @@ export function SongDetailPage() {
                 >
                   {t.coverPath ? (
                     <img
-                      src={`file://${t.coverPath}`}
+                      src={platform.getCoverSrc(t.coverPath)}
                       alt=""
                       className="w-full h-full object-cover product-shadow"
                     />

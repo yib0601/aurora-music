@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { extractColorsFromUrl } from '@/lib/colorExtractor'
+import { platform } from '@/services/platform'
 
 export function useThemeColor(coverPath: string | undefined) {
   const lastPathRef = useRef<string | undefined>(undefined)
@@ -17,11 +18,7 @@ export function useThemeColor(coverPath: string | undefined) {
     if (coverPath === lastPathRef.current) return
     lastPathRef.current = coverPath
 
-    const url = (window as any).Capacitor
-      ? (window as any).Capacitor.convertFileSrc(coverPath)
-      : (window as any).electronAPI
-        ? `file://${coverPath}`
-        : coverPath
+    const url = platform.getCoverSrc(coverPath)
 
     extractColorsFromUrl(url).then((colors) => {
       if (!colors) return

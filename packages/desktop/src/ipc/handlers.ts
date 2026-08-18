@@ -2,14 +2,72 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
-import { getAllTracks, initDatabase } from './database'
-import { scanFolder } from './scanner'
-import type { OnlineTrackSearchResult } from '../types'
+import { getAllTracks, getTrackById, initDatabase } from './database'
+import { scanFolder, ensureCover } from './scanner'
+import type { OnlineTrackSearchResult, Track } from '../types'
 
 let mainWindow: BrowserWindow | null = null
 
 export function setMainWindow(win: BrowserWindow) {
   mainWindow = win
+}
+
+/** 安全地向渲染进程发送事件（窗口可能已销毁） */
+function sendToRenderer(channel: string, ...args: unknown[]) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args)
+  }
+}
+
+// 已扫描过的目录白名单：fs:readFile 仅允许读取这些目录内的文件
+const allowedRoots = new Set<string>()
+
+function isPathAllowed(target: string): boolean {
+  const resolved = path.resolve(target)
+  for (const root of allowedRoots) {
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep
+    if (resolved.startsWith(prefix)) return true
+  }
+  return false
+}
+
+/** trackId 仅允许字母数字与连字符（uuid / netease-xxx / qq-xxx），防止路径穿越 */
+function isValidTrackId(id: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/.test(id)
+}
+
+// 扫描队列：多个目录串行执行，避免并发写数据库、进度事件互相覆盖
+let scanChain: Promise<unknown> = Promise.resolve()
+
+function enqueueScan(folderPath: string): Promise<Track[]> {
+  const task = scanChain.then(() => runScan(folderPath))
+  // 链上吞掉错误，避免一次失败阻断后续扫描
+  scanChain = task.catch(() => {})
+  return task
+}
+
+async function runScan(folderPath: string): Promise<Track[]> {
+  const userData = app.getPath('userData')
+
+  try {
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+      throw new Error('文件夹不存在或不可访问')
+    }
+    allowedRoots.add(path.resolve(folderPath))
+    // 静默后台扫描：不发送进度事件，仅在完成/失败时通知
+    await scanFolder(folderPath, userData)
+    const allTracks = getAllTracks()
+    sendToRenderer('scan:complete', allTracks)
+    return allTracks
+  } catch (err) {
+    console.error('扫描失败:', folderPath, err)
+    // 静默后台扫描：仅通知渲染进程记录日志，不向用户展示
+    sendToRenderer('scan:error', {
+      folder: folderPath,
+      message: `扫描失败：文件夹「${folderPath}」不存在或无法读取`,
+    })
+    throw err
+  }
 }
 
 // 统一 UA（部分接口对 UA 敏感）
@@ -82,8 +140,10 @@ async function searchNetease(query: string): Promise<OnlineTrackSearchResult[]> 
           source: 'netease' as const,
         }
       })
-  } catch {
-    return []
+  } catch (err) {
+    // 抛给调用方区分"无结果"与"网络失败"，由聚合层决定是否提示用户
+    console.warn('网易云搜索失败:', err)
+    throw err
   }
 }
 
@@ -195,8 +255,9 @@ async function searchQQ(query: string): Promise<OnlineTrackSearchResult[]> {
           source: 'qq' as const,
         }
       })
-  } catch {
-    return []
+  } catch (err) {
+    console.warn('QQ音乐搜索失败:', err)
+    throw err
   }
 }
 
@@ -204,7 +265,8 @@ export function registerIpcHandlers() {
   initDatabase()
 
   ipcMain.handle('dialog:openFolder', async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
+    if (!mainWindow || mainWindow.isDestroyed()) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
       title: '选择音乐文件夹',
     })
@@ -214,6 +276,7 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('fs:readDir', async (_event, dirPath: string) => {
     try {
+      if (typeof dirPath !== 'string' || !isPathAllowed(dirPath)) return []
       const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
       return entries.map((e) => ({
         name: e.name,
@@ -227,6 +290,8 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('fs:readFile', async (_event, filePath: string) => {
     try {
+      // 只允许读取已扫描目录内的文件，防止任意文件读取
+      if (typeof filePath !== 'string' || !isPathAllowed(filePath)) return new ArrayBuffer(0)
       const buf = await fs.promises.readFile(filePath)
       return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
     } catch {
@@ -270,29 +335,34 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle('scan:start', async (_event, folderPath: string) => {
-    const userData = app.getPath('userData')
-    mainWindow?.webContents.send('scan:progress', {
-      current: 0,
-      total: 0,
-      file: '准备扫描...',
-    })
-
-    const tracks = await scanFolder(folderPath, userData, (progress) => {
-      mainWindow?.webContents.send('scan:progress', progress)
-    })
-
-    const allTracks = getAllTracks()
-    mainWindow?.webContents.send('scan:complete', allTracks)
-    return allTracks
+    if (typeof folderPath !== 'string' || !folderPath.trim()) {
+      sendToRenderer('scan:error', { folder: '', message: '扫描失败：未指定文件夹' })
+      throw new Error('empty folder path')
+    }
+    // 进入串行队列执行；失败时 runScan 已发送 scan:error 事件
+    return enqueueScan(folderPath)
   })
 
   ipcMain.handle('db:getAllTracks', () => {
     return getAllTracks()
   })
 
+  ipcMain.handle('tracks:get', async (_event, id: string) => {
+    return getTrackById(id)
+  })
+
+  // 按需补齐封面：扫描时为提速跳过了嵌入图片读取，UI 需要时单独提取并缓存
+  ipcMain.handle('covers:ensure', async (_event, id: string): Promise<string | null> => {
+    const track = getTrackById(id)
+    if (!track) return null
+    return ensureCover(track, app.getPath('userData'))
+  })
+
   // 读取本地歌词文件：路径 ${userData}/aurora-music/lyrics/${trackId}.lrc，不存在返回 null
   ipcMain.handle('lyrics:read', async (_event, trackId: string): Promise<string | null> => {
     try {
+      // trackId 白名单校验，防止路径穿越（在线曲目的 id 来自远端服务器）
+      if (typeof trackId !== 'string' || !isValidTrackId(trackId)) return null
       const filePath = path.join(app.getPath('userData'), 'aurora-music', 'lyrics', `${trackId}.lrc`)
       const content = await fs.promises.readFile(filePath, 'utf-8')
       return content
@@ -303,6 +373,10 @@ export function registerIpcHandlers() {
 
   // 保存歌词到本地，返回保存的文件路径
   ipcMain.handle('lyrics:save', async (_event, lyrics: string, trackId: string): Promise<string> => {
+    if (typeof trackId !== 'string' || !isValidTrackId(trackId)) {
+      throw new Error('invalid track id')
+    }
+    if (typeof lyrics !== 'string') lyrics = ''
     const dir = path.join(app.getPath('userData'), 'aurora-music', 'lyrics')
     await fs.promises.mkdir(dir, { recursive: true })
     const filePath = path.join(dir, `${trackId}.lrc`)
@@ -403,15 +477,21 @@ export function registerIpcHandlers() {
   )
 
   // 聚合在线搜索：网易云 + QQ音乐 双源并行
-  // 单源失败不影响另一源，返回结果按 source 分组（前端可按来源展示）
+  // 单源失败不影响另一源；两源都失败时抛错，前端展示直白的中文网络错误提示
   ipcMain.handle(
     'tracks:searchOnline',
     async (_event, query: string): Promise<OnlineTrackSearchResult[]> => {
-      const [neteaseResults, qqResults] = await Promise.all([
+      const [neteaseRes, qqRes] = await Promise.allSettled([
         searchNetease(query),
         searchQQ(query),
       ])
-      return [...neteaseResults, ...qqResults]
+      const results: OnlineTrackSearchResult[] = []
+      if (neteaseRes.status === 'fulfilled') results.push(...neteaseRes.value)
+      if (qqRes.status === 'fulfilled') results.push(...qqRes.value)
+      if (neteaseRes.status === 'rejected' && qqRes.status === 'rejected') {
+        throw new Error('网络请求失败，请检查网络连接')
+      }
+      return results
     }
   )
 }

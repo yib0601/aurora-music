@@ -126,6 +126,7 @@ export interface PlatformInterface {
   readDir(path: string): Promise<FileInfo[]>
   readFile(path: string): Promise<ArrayBuffer>
   getAudioSrc(path: string): string
+  getCoverSrc(path: string): string
   getMetadata(path: string): Promise<AudioMetadata>
   getUserDataPath(): Promise<string>
   saveCover(coverData: Buffer, trackId: string): Promise<string>

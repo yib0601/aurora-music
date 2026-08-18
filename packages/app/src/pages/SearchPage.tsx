@@ -80,9 +80,10 @@ export function SearchPage() {
         if (seq !== searchSeqRef.current) return
         setOnlineResults(res)
       })
-      .catch(() => {
+      .catch((err) => {
         if (seq !== searchSeqRef.current) return
-        setOnlineError('搜索失败，请稍后重试')
+        // 展示主进程返回的直白中文错误（如"网络请求失败，请检查网络连接"）
+        setOnlineError(err?.message || '搜索失败，请稍后重试')
         setOnlineResults([])
       })
       .finally(() => {
@@ -226,7 +227,7 @@ export function SearchPage() {
                                 className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                               >
                                 {track.coverPath ? (
-                                  <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover product-shadow" />
+                                  <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover product-shadow" />
                                 ) : (
                                   <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.6} />
                                 )}

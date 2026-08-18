@@ -5,6 +5,7 @@ import { cn, formatTime } from '@/lib/utils'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { platform } from '@/services/platform'
 
 interface PlayerBarProps {
   currentTrack?: Track | null
@@ -139,7 +140,7 @@ export function PlayerBar({
           >
             {currentTrack?.coverPath ? (
               <img
-                src={`file://${currentTrack.coverPath}`}
+                src={platform.getCoverSrc(currentTrack.coverPath)}
                 alt={currentTrack.title}
                 className="w-full h-full object-cover"
                 onError={(e) => {

@@ -39,9 +39,3 @@ export interface Album {
   year?: number
   trackCount: number
 }
-
-export interface ScanProgress {
-  current: number
-  total: number
-  file: string
-}
