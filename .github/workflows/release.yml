@@ -1,0 +1,278 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.2)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9.15.0'
+
+jobs:
+  # ============ Windows ============
+  build-windows:
+    name: Build Windows (nsis)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app (vite)
+        run: pnpm --filter @aurora/app build
+
+      - name: Sync app dist to desktop
+        run: |
+          Remove-Item -Recurse -Force packages/desktop/app-dist -ErrorAction SilentlyContinue
+          Copy-Item -Recurse packages/app/dist packages/desktop/app-dist
+        shell: pwsh
+
+      - name: Compile Electron main (tsc)
+        run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
+
+      - name: Build Windows installer
+        run: pnpm --filter @aurora/desktop exec electron-builder --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload all release artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-nsis
+          path: packages/desktop/release/
+
+  # ============ Linux ============
+  build-linux:
+    name: Build Linux (AppImage/deb/rpm)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app (vite)
+        run: pnpm --filter @aurora/app build
+
+      - name: Sync app dist to desktop
+        run: |
+          rm -rf packages/desktop/app-dist
+          cp -r packages/app/dist packages/desktop/app-dist
+
+      - name: Compile Electron main (tsc)
+        run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
+
+      - name: Build Linux packages
+        run: pnpm --filter @aurora/desktop exec electron-builder --linux --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            packages/desktop/release/*.AppImage
+            packages/desktop/release/*.deb
+            packages/desktop/release/*.rpm
+
+  # ============ Android ============
+  build-android:
+    name: Build Android (APK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app (vite)
+        run: pnpm --filter @aurora/app build
+
+      - name: Sync app dist to mobile webDir
+        run: |
+          mkdir -p packages/mobile/dist
+          cp -r packages/app/dist/* packages/mobile/dist/
+
+      - name: Add Android platform
+        run: |
+          cd packages/mobile
+          npx cap add android
+          npx cap copy android
+        env:
+          CAPACITOR_ANDROID_LICENSE_PROMPT: auto
+
+      - name: Patch AndroidManifest (storage permissions)
+        run: |
+          cd packages/mobile/android/app
+          # 在 <manifest> 标签内，application 标签前插入权限
+          python3 - <<'PY'
+          import re
+          p = 'src/main/AndroidManifest.xml'
+          s = open(p).read()
+          perms = (
+              '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n'
+              '    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />\n'
+              '    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />\n'
+              '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />\n'
+          )
+          if 'MANAGE_EXTERNAL_STORAGE' not in s:
+              s = re.sub(r'(<application)', perms + r'\1', s, count=1)
+              open(p, 'w').write(s)
+              print('Patched AndroidManifest.xml')
+          else:
+              print('AndroidManifest.xml already patched')
+          PY
+
+      - name: Patch strings.xml (app name)
+        run: |
+          f=packages/mobile/android/app/src/main/res/values/strings.xml
+          sed -i 's/<string name="app_name">[^<]*</<string name="app_name">Aurora Music</' "$f"
+          grep -q 'app_name' "$f" && cat "$f" || echo "strings.xml not found"
+
+      - name: Make gradlew executable
+        run: chmod +x packages/mobile/android/gradlew
+
+      - name: Build APK (debug)
+        run: |
+          cd packages/mobile/android
+          ./gradlew assembleDebug --no-daemon -x lintVitalAnalyzeRelease
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: packages/mobile/android/app/build/outputs/apk/debug/*.apk
+
+  # ============ Release ============
+  create-release:
+    name: Create GitHub Release
+    needs: [build-windows, build-linux, build-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            # fallback: read from package.json
+            v=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+            echo "version=$v" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Organize release files
+        run: |
+          set -e
+          mkdir -p release
+          # Windows
+          find release-artifacts/windows-nsis -name "*.exe" -exec cp {} release/ \; 2>/dev/null || true
+          # Linux
+          find release-artifacts/linux-packages -name "*.AppImage" -exec cp {} release/ \; 2>/dev/null || true
+          find release-artifacts/linux-packages -name "*.deb" -exec cp {} release/ \; 2>/dev/null || true
+          find release-artifacts/linux-packages -name "*.rpm" -exec cp {} release/ \; 2>/dev/null || true
+          # Android
+          find release-artifacts/android-apk -name "*.apk" -exec cp {} release/ \; 2>/dev/null || true
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Aurora Music v${{ steps.ver.outputs.version }}
+          tag_name: v${{ steps.ver.outputs.version }}
+          files: release/*
+          body: |
+            ## Aurora Music v${{ steps.ver.outputs.version }}
+
+            ### 下载
+
+            | 平台 | 文件 | 说明 |
+            | --- | --- | --- |
+            | Windows | `Aurora-Music-${{ steps.ver.outputs.version }}.exe` | NSIS 安装包，双击安装 |
+            | Linux (AppImage) | `Aurora-Music-${{ steps.ver.outputs.version }}.AppImage` | 便携版，`chmod +x` 后双击或 `./Aurora-Music-*.AppImage` 运行 |
+            | Linux (deb) | `Aurora-Music-${{ steps.ver.outputs.version }}.deb` | Debian/Ubuntu 系，`sudo dpkg -i` 安装 |
+            | Linux (rpm) | `Aurora-Music-${{ steps.ver.outputs.version }}.rpm` | Fedora/RHEL 系，`sudo rpm -Uvh` 安装 |
+            | Android | `app-debug.apk` | 调试版 APK，需在「设置 → 安全」允许未知来源后安装 |
+
+            ### 首次使用
+
+            - **Windows**: 下载 `.exe` 安装包运行。
+            - **Linux AppImage**: `chmod +x Aurora-Music-*.AppImage && ./Aurora-Music-*.AppImage`。
+            - **Linux deb/rpm**: 用对应包管理器安装。
+            - **Android**: 安装 APK 后，进入应用，点击「添加文件夹」选择音乐目录（相对 `storage/emulated/0` 的路径，如 `Music`）。
+
+            > Android 版本为调试签名 APK，安装时需手动允许「未知来源」。生产签名版本将在后续发布。
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
