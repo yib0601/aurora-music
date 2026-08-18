@@ -67,6 +67,13 @@ const initialState = {
   shuffleHistory: [] as number[],
 }
 
+/** 持久化前剥离已过期的在线播放地址，保留曲目元信息 */
+function stripOnlineUrl(track: Track | null): Track | null {
+  if (!track || !track.onlineUrl) return track
+  const { onlineUrl: _url, ...rest } = track
+  return rest as Track
+}
+
 export const usePlayerStore = create<PlayerState>()(
   persist(
     (set, get) => ({
@@ -89,10 +96,13 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       playQueue: (tracks, startIndex = 0) => {
+        // 空队列或索引越界时直接返回，避免 audioPlayTrack(undefined) 崩溃
+        if (!tracks || tracks.length === 0) return
+        const idx = Math.max(0, Math.min(startIndex, tracks.length - 1))
         const newHistory =
-          get().shuffleMode === 'on' && tracks[startIndex] ? [startIndex] : []
-        set({ queue: tracks, currentIndex: startIndex, shuffleHistory: newHistory })
-        audioPlayTrack(tracks[startIndex], get().volume, get().muted)
+          get().shuffleMode === 'on' && tracks[idx] ? [idx] : []
+        set({ queue: tracks, currentIndex: idx, shuffleHistory: newHistory })
+        audioPlayTrack(tracks[idx], get().volume, get().muted)
       },
 
       addToQueue: (track) => {
@@ -300,6 +310,10 @@ export const usePlayerStore = create<PlayerState>()(
       restorePlayback: () => {
         const state = get()
         if (!state.currentTrack || state.currentIndex < 0) return
+        // 在线曲目的播放地址已在持久化时剥离（地址会过期），无有效来源则跳过恢复，
+        // 避免用空地址创建 Howl 导致加载报错
+        const src = state.currentTrack.onlineUrl || state.currentTrack.path
+        if (!src) return
         // 加载音频但不自动播放（需要用户交互才能播放）
         audioPlayTrack(state.currentTrack, state.volume, state.muted, false)
         // 等 Howl 的 onload 事件触发后再 seek,避免固定延迟导致 seek 失败
@@ -316,8 +330,10 @@ export const usePlayerStore = create<PlayerState>()(
         muted: state.muted,
         repeatMode: state.repeatMode,
         shuffleMode: state.shuffleMode,
-        currentTrack: state.currentTrack,
-        queue: state.queue,
+        // 在线播放地址（onlineUrl）有效期通常只有几十分钟，持久化后恢复必然失效；
+        // 剥离后恢复播放时由 audio.service 走错误跳过逻辑，避免用过期 URL 卡死
+        currentTrack: stripOnlineUrl(state.currentTrack),
+        queue: state.queue.map(stripOnlineUrl),
         currentIndex: state.currentIndex,
         progress: state.progress,
         duration: state.duration,

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { platform } from '@/services/platform'
 import {
   Play,
   Pause,
@@ -240,7 +241,7 @@ export function PlaylistPage() {
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden product-shadow">
                     {track.coverPath ? (
-                      <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover" />
+                      <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <Music2 className="h-4 w-4 text-white/40" strokeWidth={1.6} />
                     )}

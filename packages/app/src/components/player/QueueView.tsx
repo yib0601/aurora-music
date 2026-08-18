@@ -3,6 +3,7 @@ import { X, Music2, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { platform } from '@/services/platform'
 import { cn, formatTime } from '@/lib/utils'
 
 /**
@@ -67,7 +68,7 @@ export function QueueView() {
                   className="w-[38px] h-[38px] rounded-[7px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                 >
                   {track.coverPath ? (
-                    <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover" />
+                    <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />
                   )}

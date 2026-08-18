@@ -19,7 +19,11 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
 import { useThemeColor } from '@/hooks/useThemeColor'
+import { platform } from '@/services/platform'
 import type { Track } from '@/types'
+
+// 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
+let initialScanTriggered = false
 
 /**
  * Apple Liquid Glass AppLayout
@@ -55,52 +59,60 @@ function AppLayout() {
       usePlayerStore.getState().restorePlayback()
     }, 500)
 
-    const api = (window as any).electronAPI
-    if (api?.getAllTracks) {
-      api.getAllTracks().then((tracks: Track[]) => {
+    // 订阅平台事件，收集取消函数以便 effect 清理时移除，避免监听器泄漏/重复注册
+    const unsubscribers: Array<() => void> = []
+    if (platform.getAllTracks) {
+      platform.getAllTracks().then((tracks: Track[]) => {
         useLibraryStore.getState().setTracks(tracks)
       })
     }
-    if (api?.onTracksScanned) {
-      api.onTracksScanned((scannedTracks: Track[]) => {
-        useLibraryStore.getState().setTracks(scannedTracks)
-        useLibraryStore.getState().setIsScanning(false)
-      })
-      api.onScanProgress((progress: { current: number; total: number; file: string }) => {
-        useLibraryStore.getState().setScanProgress(progress)
-        useLibraryStore.getState().setIsScanning(true)
-      })
+    if (platform.onTracksScanned) {
+      unsubscribers.push(
+        platform.onTracksScanned((scannedTracks: Track[]) => {
+          useLibraryStore.getState().setTracks(scannedTracks)
+        })
+      )
+    }
+    // 扫描为静默后台任务：不订阅进度、不展示错误，失败仅记录日志
+    if (platform.onScanError) {
+      unsubscribers.push(
+        platform.onScanError((error: { folder: string; message: string }) => {
+          console.warn('[Scan] 后台扫描失败:', error.message)
+        })
+      )
     }
 
-    // 监听 Electron 全局快捷键（应用失焦时也能响应）
-    let unsubscribeMedia: (() => void) | null = null
-    if (api?.onMediaControl) {
-      unsubscribeMedia = api.onMediaControl((action: string) => {
-        const playerState = usePlayerStore.getState()
-        switch (action) {
-          case 'toggle-play':
-            playerState.togglePlay()
-            break
-          case 'next':
-            playerState.next()
-            break
-          case 'previous':
-            playerState.previous()
-            break
-          case 'stop':
-            playerState.reset()
-            break
-        }
-      })
+    // 监听系统媒体键（桌面端 globalShortcut/MPRIS，移动端 mediaSession）
+    if (platform.onMediaControl) {
+      unsubscribers.push(
+        platform.onMediaControl((action: string) => {
+          const playerState = usePlayerStore.getState()
+          switch (action) {
+            case 'toggle-play':
+              playerState.togglePlay()
+              break
+            case 'next':
+              playerState.next()
+              break
+            case 'previous':
+              playerState.previous()
+              break
+            case 'stop':
+              playerState.reset()
+              break
+          }
+        })
+      )
     }
 
-    // 每次启动在后台自动重新扫描所有已配置的音乐目录
-    // 用于同步移除已被删除的歌曲记录并纳入新增文件；扫描在后台执行不阻塞 UI，
-    // 列表通过 onScanProgress / onTracksScanned 事件自动刷新
-    if (api?.scanFolder) {
+    // 每次启动在后台静默重新扫描所有已配置的音乐目录
+    // 用于同步移除已被删除的歌曲记录并纳入新增文件；扫描在后台执行不阻塞 UI、无任何提示，
+    // 列表通过 onTracksScanned 事件自动刷新；平台已串行化扫描队列，失败仅记录日志
+    if (platform.scanFolder && !initialScanTriggered) {
+      initialScanTriggered = true
       const folders = useLibraryStore.getState().scanFolders
       for (const folder of folders) {
-        api.scanFolder(folder).catch(() => {})
+        platform.scanFolder(folder).catch(() => {})
       }
     }
 
@@ -109,10 +121,7 @@ function AppLayout() {
         clearTimeout(restoreTimer)
         restoreTimer = null
       }
-      if (unsubscribeMedia) {
-        unsubscribeMedia()
-        unsubscribeMedia = null
-      }
+      for (const unsub of unsubscribers) unsub()
       stopPlayback()
     }
   }, [])
@@ -270,16 +279,12 @@ function AppLayout() {
         title: currentTrack.title,
         artist: currentTrack.artist,
         album: currentTrack.album || 'Aurora Music',
-        artwork: currentTrack.coverPath
-          ? [
-              { src: `file://${currentTrack.coverPath}`, sizes: '512x512', type: 'image/jpeg' },
-            ]
-          : [],
+        // MediaImage 只接受 http/https/data/blob，本地文件协议不被支持，故不设 artwork
       })
     }
   }, [currentTrack])
 
-  // 更新 MPRIS 元数据（Linux 媒体键支持）
+  // 更新 MPRIS 元数据（Linux 媒体键支持，桌面端专用）
   useEffect(() => {
     const api = (window as any).electronAPI
     if (api?.updateMprisMetadata) {
@@ -334,7 +339,7 @@ function AppLayout() {
                   >
                     {currentTrack.coverPath ? (
                       <img
-                        src={`file://${currentTrack.coverPath}`}
+                        src={platform.getCoverSrc(currentTrack.coverPath)}
                         alt={currentTrack.title}
                         className="w-full h-full object-cover product-shadow"
                       />

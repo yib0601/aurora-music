@@ -28,6 +28,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, formatTime, cn } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
+import { platform } from '@/services/platform'
 import type { Track } from '@/types'
 
 /**
@@ -42,8 +43,6 @@ export function LibraryPage() {
   const tracks = useLibraryStore((s) => s.tracks)
   const viewMode = useLibraryStore((s) => s.viewMode)
   const setViewMode = useLibraryStore((s) => s.setViewMode)
-  const isScanning = useLibraryStore((s) => s.isScanning)
-  const scanProgress = useLibraryStore((s) => s.scanProgress)
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
@@ -54,22 +53,20 @@ export function LibraryPage() {
   const [newPlName, setNewPlName] = useState('')
   const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
 
-  const api = (window as any).electronAPI
-
   const handlePickFolder = async () => {
-    if (!api) return
-    const folder = await api.pickFolder()
+    const folder = await platform.pickFolder()
     if (folder) {
       useLibraryStore.getState().addScanFolder(folder)
-      await api.scanFolder(folder)
+      // 扫描失败时平台会发送 scan:error 事件展示提示，这里吞掉 reject 即可
+      await platform.scanFolder?.(folder).catch(() => {})
     }
   }
 
   // 重新扫描所有已配置目录，同步移除已删除文件对应的曲目记录
   const handleRescan = async () => {
-    if (!api || scanFolders.length === 0) return
+    if (!platform.scanFolder || scanFolders.length === 0) return
     for (const folder of scanFolders) {
-      await api.scanFolder(folder)
+      await platform.scanFolder(folder).catch(() => {})
     }
   }
 
@@ -125,7 +122,7 @@ export function LibraryPage() {
                 className="w-9 h-9 rounded-[6px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
               >
                 {track.coverPath ? (
-                  <img src={`file://${track.coverPath}`} alt="" className="w-full h-full object-cover product-shadow" />
+                  <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover product-shadow" />
                 ) : (
                   <Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
                 )}
@@ -253,11 +250,10 @@ export function LibraryPage() {
               {scanFolders.length > 0 && (
                 <button
                   onClick={handleRescan}
-                  disabled={isScanning}
                   title="重新扫描，同步已删除的歌曲"
-                  className="h-7 w-7 flex items-center justify-center rounded-[10px] text-white/60 hover:text-white hover:bg-white/[0.05] transition-all duration-200 ease-apple disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="h-7 w-7 flex items-center justify-center rounded-[10px] text-white/60 hover:text-white hover:bg-white/[0.05] transition-all duration-200 ease-apple"
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+                  <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </button>
               )}
               <div className="flex rounded-[10px] overflow-hidden border border-white/5 bg-white/[0.04] p-0.5">
@@ -282,23 +278,6 @@ export function LibraryPage() {
               </div>
             </div>
           </div>
-
-          {isScanning && (
-            <div className="mb-4 card-utility p-4">
-              <p className="font-text text-[14px] text-white/70 mb-2 truncate tracking-[-0.224px]">
-                正在扫描: {scanProgress.file}
-              </p>
-              <div className="w-full bg-white/[0.06] rounded-pill h-1 overflow-hidden">
-                <div
-                  className="bg-mint h-full rounded-pill transition-all duration-300 ease-apple"
-                  style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}%` }}
-                />
-              </div>
-              <p className="font-text text-[12px] text-white/40 mt-2 tabular-nums tracking-[-0.12px]">
-                {scanProgress.current} / {scanProgress.total}
-              </p>
-            </div>
-          )}
 
           {viewMode === 'list' ? (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
@@ -340,7 +319,7 @@ export function LibraryPage() {
                     >
                       {track.coverPath ? (
                         <img
-                          src={`file://${track.coverPath}`}
+                          src={platform.getCoverSrc(track.coverPath)}
                           alt={track.title}
                           className="w-full h-full object-cover product-shadow"
                         />
