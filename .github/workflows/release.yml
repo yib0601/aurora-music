@@ -37,8 +37,11 @@ jobs:
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
+      - name: Install deps (skip native build scripts; electron-builder will rebuild)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+        env:
+          # 防止 node-gyp 尝试查找 Visual Studio（windows-latest 的 VS18 不被旧 node-gyp 识别）
+          npm_config_build_from_source: 'false'
 
       - name: Build app (vite)
         run: pnpm --filter @aurora/app build
@@ -53,16 +56,17 @@ jobs:
         run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
 
       - name: Build Windows installer
-        run: pnpm --filter @aurora/desktop exec electron-builder --win --x64
+        run: pnpm --filter @aurora/desktop exec electron-builder --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload all release artifacts
+      - name: Upload release artifacts
+        if: success()
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: windows-nsis
           path: packages/desktop/release/
+          if-no-files-found: error
 
   # ============ Linux ============
   build-linux:
@@ -97,7 +101,7 @@ jobs:
         run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
 
       - name: Build Linux packages
-        run: pnpm --filter @aurora/desktop exec electron-builder --linux --x64
+        run: pnpm --filter @aurora/desktop exec electron-builder --linux --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

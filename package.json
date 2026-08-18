@@ -4,6 +4,11 @@
   "description": "Aurora Music - 跨平台优雅音乐播放器",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yib0601/aurora-music.git"
+  },
+  "homepage": "https://github.com/yib0601/aurora-music",
   "scripts": {
     "dev": "pnpm --filter @aurora/desktop dev",
     "dev:app": "pnpm --filter @aurora/app dev",
