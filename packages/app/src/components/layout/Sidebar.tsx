@@ -222,7 +222,7 @@ export function Sidebar() {
 
       {/* 版本号 */}
       <div className="px-4 py-3 border-t border-white/5">
-        <p className="font-text text-[11px] text-white/50 tracking-[-0.12px]">Aurora Music v0.1.2</p>
+        <p className="font-text text-[11px] text-white/50 tracking-[-0.12px]">Aurora Music v0.1.8</p>
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
