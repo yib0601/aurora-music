@@ -18,6 +18,7 @@ import { LyricsView } from '@/components/lyrics/LyricsView'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
+import { onMediaButtonEvent } from '@/services/mediaSession'
 import { useThemeColor } from '@/hooks/useThemeColor'
 import { platform, setFolderPickerHandler } from '@/services/platform'
 import { MobileFolderPicker } from '@/components/MobileFolderPicker'
@@ -336,6 +337,25 @@ function AppLayout() {
       })
     }
   }, [currentTrack])
+
+  // 移动端原生 MediaSession：监听通知栏/锁屏按钮事件
+  // Honor/Huawei AudioHardening 要求 app 声明 foreground service 才会路由
+  // STREAM_MUSIC 到扬声器；通知栏按钮事件通过 MediaSessionPlugin 转发到这里
+  useEffect(() => {
+    let unsub = () => {}
+    onMediaButtonEvent((action) => {
+      const player = usePlayerStore.getState()
+      switch (action) {
+        case 'play': player.play(); break
+        case 'pause': player.pause(); break
+        case 'next': player.next(); break
+        case 'prev': player.previous(); break
+        case 'stop': player.clearQueue(); break
+        case 'seek': break // seek 需 position，已通过 navigator.mediaSession 处理
+      }
+    }).then((u) => { unsub = u })
+    return () => unsub()
+  }, [])
 
   // 更新 MPRIS 元数据（Linux 媒体键支持，桌面端专用）
   useEffect(() => {

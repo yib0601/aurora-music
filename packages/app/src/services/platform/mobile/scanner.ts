@@ -1,4 +1,5 @@
 import { Filesystem, Directory } from '@capacitor/filesystem'
+import { Capacitor } from '@capacitor/core'
 import * as mm from 'music-metadata-browser'
 import type { Track } from '@/types'
 import { MobileDatabase } from './database'
@@ -117,9 +118,13 @@ async function processFile(
           data: b64,
           recursive: true,
         })
-        // Capacitor.convertFileSrc 需要 Capacitor 格式路径
-        coverPath = coverDest
-        coverCache.set(album + '|' + artist, coverDest)
+        // 获取可直接在 WebView 中加载的 URL：
+        // Filesystem.getUri 返回 file:///data/data/<pkg>/files/aurora-music/covers/xxx.jpg
+        // Capacitor.convertFileSrc 把 file:// 转成 capacitor://localhost/... 或 https://localhost/_capacitor_file_/...
+        // 直接存可访问 URL 到 coverPath，UI 层 getCoverSrc 原样返回即可
+        const { uri } = await Filesystem.getUri({ path: coverDest, directory: Directory.Data })
+        coverPath = Capacitor.convertFileSrc(uri)
+        coverCache.set(album + '|' + artist, coverPath)
       } catch (err) {
         console.warn('保存封面失败:', err)
       }

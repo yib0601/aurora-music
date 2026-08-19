@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core'
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite'
 import type { DatabaseAdapter, Track, Album, Playlist } from '@/types'
 
@@ -9,6 +10,12 @@ const DB_VERSION = 1
 let sqlite: SQLiteConnection | null = null
 let dbConn: SQLiteDBConnection | null = null
 let initialized = false
+// in-flight Promise 缓存：移动端 App 启动时 platform.getAllTracks() 和
+// platform.scanFolder() 会在同一个 useEffect 中并发触发，二者都会调用
+// ensureDbInited() → db.init()。即使外部 ensureDbInited 用 Promise 缓存，
+// 仍可能在 microtask 边界处产生二次进入。把 Promise 缓存下沉到 init 内部，
+// 保证 createConnection 只被调用一次，彻底避免 "Connection already exists"。
+let initInFlight: Promise<void> | null = null
 
 // 移动端曲目行结构（与桌面端 database.ts 一致）
 interface TrackRow {
@@ -71,78 +78,99 @@ function rowToAlbum(row: AlbumRow): Album {
 export class MobileDatabase implements DatabaseAdapter {
   async init(): Promise<void> {
     if (initialized) return
-    try {
-      // Web 平台需要 initWebStore，Android 原生忽略即可
-      if (CapacitorSQLite.initWebStore) {
-        await CapacitorSQLite.initWebStore()
-      }
-      sqlite = new SQLiteConnection(CapacitorSQLite)
-      // createConnection 返回 SQLiteDBConnection 句柄，后续所有操作均通过该句柄
-      dbConn = await sqlite.createConnection(
-        DB_NAME,
-        false, // encrypted
-        'no-encryption',
-        DB_VERSION,
-        false, // readonly
-      )
-      await dbConn.open()
-      // 建表脚本（与桌面端 packages/desktop/src/ipc/database.ts 完全一致，便于数据迁移）
-      await dbConn.execute(`
-        CREATE TABLE IF NOT EXISTS tracks (
-          id TEXT PRIMARY KEY,
-          path TEXT NOT NULL UNIQUE,
-          title TEXT NOT NULL,
-          artist TEXT,
-          album TEXT,
-          year INTEGER,
-          genre TEXT,
-          duration REAL,
-          track_number INTEGER,
-          cover_path TEXT,
-          file_size INTEGER,
-          added_at INTEGER,
-          last_played_at INTEGER,
-          play_count INTEGER DEFAULT 0,
-          liked INTEGER DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS albums (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          artist TEXT,
-          cover_path TEXT,
-          year INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS playlists (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          created_at INTEGER,
-          updated_at INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS playlist_tracks (
-          playlist_id TEXT,
-          track_id TEXT,
-          position INTEGER,
-          PRIMARY KEY (playlist_id, track_id),
-          FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
-          FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_tracks_title ON tracks(title);
-        CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist);
-        CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album, artist);
-        CREATE INDEX IF NOT EXISTS idx_tracks_liked ON tracks(liked);
-        CREATE INDEX IF NOT EXISTS idx_tracks_last_played ON tracks(last_played_at);
-      `)
-      // WASM 模式下没有 foreign_keys pragma 支持；原生 Android 默认开启
+    // 并发去重：多个 caller 并发调 init() 时，第一个 caller 走真正的初始化流程，
+    // 其余 caller 直接 await 同一个 in-flight Promise。失败时清空缓存允许重试。
+    if (initInFlight) {
       try {
-        await dbConn.execute('PRAGMA foreign_keys = ON;')
-      } catch {
-        // 部分平台/版本不支持 PRAGMA，忽略
+        await initInFlight
+      } catch (e) {
+        // 重试由 caller 自行处理（initInFlight 已被 catch 块清空）
       }
-      console.log('[MobileDB] 数据库已初始化')
-      initialized = true
-    } catch (err) {
-      console.error('[MobileDB] 初始化失败:', err)
-      throw err
+      return
+    }
+    initInFlight = (async () => {
+      try {
+        // initWebStore 仅 web 平台实现；Android/iOS 原生未实现会抛 "not implemented"，
+        // 因此必须用平台判断而不是 truthy 检查（Capacitor Proxy 会让未实现方法为 truthy）
+        if (Capacitor.getPlatform() === 'web') {
+          await CapacitorSQLite.initWebStore()
+        }
+        sqlite = new SQLiteConnection(CapacitorSQLite)
+        // createConnection 返回 SQLiteDBConnection 句柄，后续所有操作均通过该句柄
+        dbConn = await sqlite.createConnection(
+          DB_NAME,
+          false, // encrypted
+          'no-encryption',
+          DB_VERSION,
+          false, // readonly
+        )
+        await dbConn.open()
+        // 建表脚本（与桌面端 packages/desktop/src/ipc/database.ts 完全一致，便于数据迁移）
+        await dbConn.execute(`
+          CREATE TABLE IF NOT EXISTS tracks (
+            id TEXT PRIMARY KEY,
+            path TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            artist TEXT,
+            album TEXT,
+            year INTEGER,
+            genre TEXT,
+            duration REAL,
+            track_number INTEGER,
+            cover_path TEXT,
+            file_size INTEGER,
+            added_at INTEGER,
+            last_played_at INTEGER,
+            play_count INTEGER DEFAULT 0,
+            liked INTEGER DEFAULT 0
+          );
+          CREATE TABLE IF NOT EXISTS albums (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            artist TEXT,
+            cover_path TEXT,
+            year INTEGER
+          );
+          CREATE TABLE IF NOT EXISTS playlists (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            created_at INTEGER,
+            updated_at INTEGER
+          );
+          CREATE TABLE IF NOT EXISTS playlist_tracks (
+            playlist_id TEXT,
+            track_id TEXT,
+            position INTEGER,
+            PRIMARY KEY (playlist_id, track_id),
+            FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_tracks_title ON tracks(title);
+          CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist);
+          CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album, artist);
+          CREATE INDEX IF NOT EXISTS idx_tracks_liked ON tracks(liked);
+          CREATE INDEX IF NOT EXISTS idx_tracks_last_played ON tracks(last_played_at);
+        `)
+        // WASM 模式下没有 foreign_keys pragma 支持；原生 Android 默认开启
+        try {
+          await dbConn.execute('PRAGMA foreign_keys = ON;')
+        } catch {
+          // 部分平台/版本不支持 PRAGMA，忽略
+        }
+        console.log('[MobileDB] 数据库已初始化')
+        initialized = true
+      } catch (err) {
+        console.error('[MobileDB] 初始化失败:', err)
+        // 失败时清空 in-flight 缓存，允许后续重试
+        initInFlight = null
+        throw err
+      }
+    })()
+    try {
+      await initInFlight
+    } catch (e) {
+      // initInFlight 已在内部 catch 清空，这里直接抛出
+      throw e
     }
   }
 
