@@ -1,6 +1,6 @@
 {
   "name": "aurora-music",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Aurora Music - 跨平台优雅音乐播放器",
   "private": true,
   "type": "module",
