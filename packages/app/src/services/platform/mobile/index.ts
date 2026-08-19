@@ -55,6 +55,19 @@ function emitScanError(e: { folder: string; message: string }) {
   scanErrorCbs.forEach((cb) => cb(e))
 }
 
+/**
+ * 文件夹选择 UI 回调机制：移动端不能用浏览器原生 prompt，
+ * 由 UI 层（MobileFolderPicker）调用 setFolderPickerHandler 注册一个打开选择器的回调，
+ * pickFolder() 调用该回调并等待用户在 UI 中选完目录后 resolve。
+ * 替代旧版 window.prompt 手填路径的方案。
+ */
+type FolderPickerHandler = () => Promise<string | null>
+let folderPickerHandler: FolderPickerHandler | null = null
+
+export function setFolderPickerHandler(handler: FolderPickerHandler | null) {
+  folderPickerHandler = handler
+}
+
 /** 扫描队列：多个目录串行执行（与桌面端一致），避免并发写数据库 */
 let scanChain: Promise<Track[]> = Promise.resolve([])
 function enqueueScan(folderPath: string): Promise<Track[]> {
@@ -108,8 +121,17 @@ export function createMobilePlatform(): PlatformInterface & {
     platform: 'mobile',
 
     async pickFolder(): Promise<string | null> {
-      // Android 分区存储下，让用户输入相对 storage/emulated/0 的路径
-      // 预设常见目录作为提示，用户可参考或自行修改
+      // 走 UI 层注册的文件夹选择器（MobileFolderPicker），用户在目录树中点选，
+      // 不再使用 window.prompt 手填路径。UI 未注册时降级为 prompt。
+      if (folderPickerHandler) {
+        try {
+          return await folderPickerHandler()
+        } catch (err) {
+          console.warn('[Mobile] pickFolder UI 选择器异常:', err)
+          return null
+        }
+      }
+      // 降级路径：UI 未注册时使用旧 prompt 行为
       const hint =
         '请输入音乐目录的相对路径（相对于 storage/emulated/0）。\n常见目录：\n' +
         '  Music\n  Download/Music\n  Documents/Music\n  DCIM/Music'
@@ -117,7 +139,6 @@ export function createMobilePlatform(): PlatformInterface & {
       if (input === null) return null
       const trimmed = input.trim()
       if (!trimmed) return null
-      // 校验目录可读
       try {
         await Filesystem.readdir({ path: trimmed, directory: Directory.ExternalStorage })
         return trimmed
