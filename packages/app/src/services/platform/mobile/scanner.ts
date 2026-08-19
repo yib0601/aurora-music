@@ -153,7 +153,11 @@ async function processFile(
   }
 }
 
-export async function scanFolder(rootPath: string, db: MobileDatabase): Promise<Track[]> {
+export async function scanFolder(
+  rootPath: string,
+  db: MobileDatabase,
+  onTrack?: (track: Track) => void
+): Promise<Track[]> {
   console.log('[Mobile] scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
   console.log('[Mobile] scanFolder found files:', files.length)
@@ -167,7 +171,11 @@ export async function scanFolder(rootPath: string, db: MobileDatabase): Promise<
 
   for (const file of files) {
     const track = await processFile(file, coverCache, db)
-    if (track) tracks.push(track)
+    if (track) {
+      tracks.push(track)
+      // 立即通知 UI 追加显示（渐进式刷新），不等全部扫描完
+      if (onTrack) onTrack(track)
+    }
   }
 
   return tracks

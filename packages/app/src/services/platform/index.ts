@@ -23,6 +23,8 @@ export interface PlatformExtension {
   getAllTracks?: () => Promise<Track[]>
   /** 扫描完成事件订阅 */
   onTracksScanned?: (cb: (tracks: Track[]) => void) => () => void
+  /** 单曲扫描完成事件订阅（渐进式刷新：每解析完一首立即通知，UI 追加而非等全部完成） */
+  onTrackScanned?: (cb: (track: Track) => void) => () => void
   /** 扫描失败事件订阅（静默扫描：仅用于记录日志） */
   onScanError?: (cb: (e: { folder: string; message: string }) => void) => () => void
   /** 系统媒体键事件订阅（桌面端来自 globalShortcut/MPRIS，移动端来自 mediaSession） */

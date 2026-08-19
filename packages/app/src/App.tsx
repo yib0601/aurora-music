@@ -118,6 +118,14 @@ function AppLayout() {
         })
       )
     }
+    // 渐进式刷新：每解析完一首立即追加到音乐库（addTracks 按 id 去重，重复扫描无副作用）
+    if (platform.onTrackScanned) {
+      unsubscribers.push(
+        platform.onTrackScanned((track: Track) => {
+          useLibraryStore.getState().addTracks([track])
+        })
+      )
+    }
     // 扫描为静默后台任务：不订阅进度、不展示错误，失败仅记录日志
     if (platform.onScanError) {
       unsubscribers.push(

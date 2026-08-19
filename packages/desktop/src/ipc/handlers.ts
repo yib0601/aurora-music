@@ -54,8 +54,10 @@ async function runScan(folderPath: string): Promise<Track[]> {
       throw new Error('文件夹不存在或不可访问')
     }
     allowedRoots.add(path.resolve(folderPath))
-    // 静默后台扫描：不发送进度事件，仅在完成/失败时通知
-    await scanFolder(folderPath, userData)
+    // 渐进式扫描：每解析完一首立即推送到渲染进程，UI 端追加显示而非等全部完成
+    await scanFolder(folderPath, userData, (track) => {
+      sendToRenderer('track:scanned', track)
+    })
     const allTracks = getAllTracks()
     sendToRenderer('scan:complete', allTracks)
     return allTracks

@@ -43,16 +43,21 @@ class NoopWindowControls implements WindowControls {
 type ScanCompleteCb = (tracks: Track[]) => void
 type ScanErrorCb = (e: { folder: string; message: string }) => void
 type MediaControlCb = (action: string) => void
+type TrackScannedCb = (track: Track) => void
 
 const scanCompleteCbs = new Set<ScanCompleteCb>()
 const scanErrorCbs = new Set<ScanErrorCb>()
 const mediaControlCbs = new Set<MediaControlCb>()
+const trackScannedCbs = new Set<TrackScannedCb>()
 
 function emitScanComplete(tracks: Track[]) {
   scanCompleteCbs.forEach((cb) => cb(tracks))
 }
 function emitScanError(e: { folder: string; message: string }) {
   scanErrorCbs.forEach((cb) => cb(e))
+}
+function emitTrackScanned(track: Track) {
+  trackScannedCbs.forEach((cb) => cb(track))
 }
 
 /**
@@ -85,7 +90,10 @@ async function runScan(folderPath: string): Promise<Track[]> {
     } catch {
       throw new Error('文件夹不存在或不可访问')
     }
-    await mobileScanFolder(folderPath, db)
+    // 渐进式扫描：每解析完一首立即通知 UI 追加显示
+    await mobileScanFolder(folderPath, db, (track) => {
+      emitTrackScanned(track)
+    })
     // 与桌面端对齐：扫描完成后从数据库读取全库再 emit，
     // 避免多次扫描不同目录时只 emit 本次结果导致前一次曲目被覆盖丢失
     const allTracks = await db.getAllTracks()
@@ -109,6 +117,7 @@ function isValidTrackId(id: string): boolean {
 export function createMobilePlatform(): PlatformInterface & {
   // 扩展接口：扫描事件订阅（移动端用回调替代 IPC 事件）
   onTracksScanned: (cb: (tracks: Track[]) => void) => () => void
+  onTrackScanned: (cb: (track: Track) => void) => () => void
   onScanError: (cb: ScanErrorCb) => () => void
   onMediaControl: (cb: MediaControlCb) => () => void
   scanFolder: (folderPath: string) => Promise<Track[]>
@@ -316,6 +325,11 @@ export function createMobilePlatform(): PlatformInterface & {
     onTracksScanned(cb: ScanCompleteCb) {
       scanCompleteCbs.add(cb)
       return () => scanCompleteCbs.delete(cb)
+    },
+
+    onTrackScanned(cb: TrackScannedCb) {
+      trackScannedCbs.add(cb)
+      return () => trackScannedCbs.delete(cb)
     },
 
     onScanError(cb: ScanErrorCb) {
