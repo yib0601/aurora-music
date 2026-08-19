@@ -7,7 +7,11 @@ import type {
   OnlineTrackSearchResult,
   Track,
 } from '@/types'
-import { createMobilePlatform as createMobilePlatformImpl } from './mobile'
+import { createMobilePlatform as createMobilePlatformImpl, setFolderPickerHandler } from './mobile'
+
+// 重新导出：UI 层（SettingsPage）注册移动端文件夹选择器回调，
+// 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）
+export { setFolderPickerHandler }
 
 // 平台扩展能力：扫描事件订阅、媒体键、在线歌词搜索
 // 桌面端通过 electronAPI 转发；移动端用回调机制
