@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import React, { useEffect, useCallback, useState } from 'react'
+import { Menu, Music } from 'lucide-react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { ResizeHandles } from '@/components/layout/ResizeHandle'
@@ -20,6 +20,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
 import { useThemeColor } from '@/hooks/useThemeColor'
 import { platform } from '@/services/platform'
+import { cn, isMobile } from '@/lib/utils'
 import type { Track } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
@@ -35,8 +36,16 @@ let initialScanTriggered = false
 function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  // 移动端侧栏抽屉：默认收起，点击汉堡或路由切换时关闭
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const mobile = isMobile()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
   const isSongDetail = location.pathname.startsWith('/song/')
+
+  // 路由切换时自动关闭移动端抽屉
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [location.pathname])
   // ⚠️ 性能关键：只订阅低频变化字段，避免 progress 每 250ms 触发整树重渲染
   // progress / duration / isPlaying 等高频字段由 PlayerBar / LyricsView 自行订阅
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -300,15 +309,59 @@ function AppLayout() {
 
       <TitleBar />
 
+      {/* 移动端顶部栏：替代桌面 TitleBar 的位置，提供汉堡按钮和品牌标识 */}
+      {mobile && !isSongDetail && (
+        <header className="md:hidden h-12 flex items-center gap-3 px-3 glass-regular border-b border-white/5 z-30">
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label="打开菜单"
+            className="w-9 h-9 -ml-1 flex items-center justify-center rounded-md text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <Menu className="h-5 w-5" strokeWidth={1.5} />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-mint flex items-center justify-center">
+              <Music className="h-3 w-3 text-[#030608]" strokeWidth={2} />
+            </div>
+            <span className="font-display font-semibold text-[14px] tracking-[-0.224px] text-white/96">
+              Aurora
+            </span>
+          </div>
+        </header>
+      )}
+
       <ResizeHandles />
 
       {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上；歌曲详情页隐藏 */}
-        {!isSongDetail && (
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 桌面端侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上；歌曲详情页隐藏 */}
+        {!isSongDetail && !mobile && (
           <aside className="w-56 flex-shrink-0 flex flex-col glass-regular border-r border-white/5">
             <Sidebar />
           </aside>
+        )}
+
+        {/* 移动端侧栏抽屉：默认隐藏，open 时滑入；带遮罩层 */}
+        {mobile && !isSongDetail && (
+          <>
+            {/* 遮罩：点击关闭 */}
+            <div
+              className={cn(
+                'absolute inset-0 z-40 bg-black/50 backdrop-blur-[2px] transition-opacity duration-200',
+                mobileSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              )}
+              onClick={() => setMobileSidebarOpen(false)}
+            />
+            {/* 抽屉：从左滑入，宽 280px，最多占屏宽 80% */}
+            <aside
+              className={cn(
+                'absolute left-0 top-0 bottom-0 z-50 w-[280px] max-w-[80%] flex flex-col glass-regular border-r border-white/5 transition-transform duration-200 ease-apple',
+                mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+              )}
+            >
+              <Sidebar />
+            </aside>
+          </>
         )}
 
         {/* 主内容区 */}
