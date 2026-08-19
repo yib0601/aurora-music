@@ -21,5 +21,8 @@ export function isDesktop(): boolean {
 }
 
 export function isMobile(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).Capacitor
+  // 注意：桌面端 bundle 会静态引入 @capacitor/core（经 platform/mobile 链），
+  // 其 IIFE 会把 window.Capacitor 注入到桌面端，因此必须先排除 electronAPI，
+  // 否则桌面端会被误判为移动端，导致左侧导航栏被隐藏
+  return typeof window !== 'undefined' && !(window as any).electronAPI && !!(window as any).Capacitor
 }
