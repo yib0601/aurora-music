@@ -64,6 +64,7 @@ export const useLibraryStore = create<LibraryState>()(
         const existing = get().tracks
         const existingIds = new Set(existing.map((t) => t.id))
         const unique = newTracks.filter((t) => !existingIds.has(t.id))
+        if (unique.length === 0) return
         set({ tracks: [...existing, ...unique] })
       },
       updateTrack: (id, updates) => {

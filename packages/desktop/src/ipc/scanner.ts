@@ -127,7 +127,16 @@ async function processFile(
 /** 并发上限：受限于磁盘 IO 与 music-metadata 的 CPU 开销，8 是经验值 */
 const PARSE_CONCURRENCY = 8
 
-export async function scanFolder(rootPath: string, userData: string): Promise<Track[]> {
+/**
+ * 扫描指定目录，返回本次扫描到的全部曲目。
+ * @param onTrack 可选回调：每解析完一首立即触发，用于渐进式刷新 UI
+ *   （注意：并发批次内回调顺序非顺序，但 UI 端 addTracks 是去重追加，乱序无影响）
+ */
+export async function scanFolder(
+  rootPath: string,
+  userData: string,
+  onTrack?: (track: Track) => void
+): Promise<Track[]> {
   console.log('scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
   console.log('scanFolder found files:', files.length)
@@ -160,6 +169,8 @@ export async function scanFolder(rootPath: string, userData: string): Promise<Tr
       const stat = stats[j]
       if (!track || !stat) continue
       tracks.push(track)
+      // 立即通知 UI 追加显示（渐进式刷新），不等全部扫描完
+      if (onTrack) onTrack(track)
       // 只有新解析的（不在已有记录里、或大小变化重新解析的）才需要写库
       const existing = existingByPath.get(batch[j])
       if (!existing || existing.fileSize !== stat.size) {

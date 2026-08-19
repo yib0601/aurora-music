@@ -61,6 +61,11 @@ const electronAPI = {
     ipcRenderer.on('scan:complete', handler)
     return () => ipcRenderer.removeListener('scan:complete', handler)
   },
+  onTrackScanned: (callback: (track: any) => void) => {
+    const handler = (_event: unknown, track: any) => callback(track)
+    ipcRenderer.on('track:scanned', handler)
+    return () => ipcRenderer.removeListener('track:scanned', handler)
+  },
   onScanError: (callback: (error: { folder: string; message: string }) => void) => {
     const handler = (_event: unknown, error: { folder: string; message: string }) => callback(error)
     ipcRenderer.on('scan:error', handler)
