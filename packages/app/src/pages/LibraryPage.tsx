@@ -105,7 +105,10 @@ export function LibraryPage() {
         <tr
           key={track.id}
           className="row-hover cursor-pointer border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
-          onDoubleClick={() => handlePlayTrack(track, idx, queue)}
+          // 移动端无 hover/double-click 概念，改用单击触发播放；
+          // 桌面端保留双击（避免误触，且单击只是 hover 显示播放图标）
+          onClick={isDesktop() ? undefined : () => handlePlayTrack(track, idx, queue)}
+          onDoubleClick={isDesktop() ? () => handlePlayTrack(track, idx, queue) : undefined}
         >
           <td className="py-2.5 px-3 text-white/40 w-10 group-hover:text-white">
             <span className="group-hover:hidden font-text text-[13px] tabular-nums">{idx + 1}</span>

@@ -18,12 +18,22 @@ import { searchOnlineTracks, searchLyrics } from './online'
 
 // 单例数据库实例
 const db = new MobileDatabase()
-let dbInited = false
+// 用 Promise 缓存避免并发 init：MobileDatabase.init 内部虽 initialized 检查，
+// 但 createConnection 失败后 initialized 仍为 false，下次会再次尝试 createConnection 报
+// "Connection already exists"。用 in-flight Promise 让所有并发 caller 复用同一次 init。
+let initPromise: Promise<void> | null = null
 
 async function ensureDbInited() {
-  if (dbInited) return
-  await db.init()
-  dbInited = true
+  if (!initPromise) {
+    initPromise = db.init()
+  }
+  try {
+    await initPromise
+  } catch (e) {
+    // init 失败时清空缓存，允许后续重试
+    initPromise = null
+    throw e
+  }
 }
 
 /** NoopWindowControls：移动端没有原生窗口控制概念（系统级返回/全屏由 OS 托管） */
@@ -216,12 +226,9 @@ export function createMobilePlatform(): PlatformInterface & {
     },
 
     getCoverSrc(path: string): string {
-      // 移动端封面图也用 Capacitor.convertFileSrc
-      const cap = (window as any).Capacitor
-      if (cap) {
-        const abs = `/storage/emulated/0/${path.replace(/^\/+/, '')}`
-        return cap.convertFileSrc(abs)
-      }
+      // scanner 已在扫描时通过 Filesystem.getUri + Capacitor.convertFileSrc
+      // 把封面转成可直接在 WebView 加载的 URL 存入 coverPath，
+      // 这里原样返回即可。在线 URL（https://）也直接返回。
       return path
     },
 

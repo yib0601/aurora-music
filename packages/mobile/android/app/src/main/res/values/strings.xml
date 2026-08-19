@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Aurora Music</string>
+    <string name="title_activity_main">Aurora Music</string>
+    <string name="package_name">com.aurora.music</string>
+    <string name="custom_url_scheme">com.aurora.music</string>
+</resources>

@@ -61,7 +61,14 @@ Desktop.ini
 
 # Capacitor 原生构建
 packages/mobile/ios
-packages/mobile/android
+# Android 工程源码（含自定义 native 代码如 MediaPlaybackService）需跟踪，
+# 仅忽略 cap copy 生成的 web 资源、构建产物和本机环境文件
+packages/mobile/android/.gradle/
+packages/mobile/android/build/
+packages/mobile/android/app/build/
+packages/mobile/android/app/capacitor.build.gradle
+packages/mobile/android/app/src/main/assets/public/
+packages/mobile/android/local.properties
 packages/mobile/www
 
 # 测试覆盖率
