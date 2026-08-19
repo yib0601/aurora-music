@@ -205,6 +205,12 @@ export class MobileDatabase implements DatabaseAdapter {
     return rows[0] ? rowToTrack(rows[0]) : null
   }
 
+  /** 按 path 查询曲目，供扫描时复用已有记录（移动端 scanner 用 path 作为主键查询） */
+  async getTrackByPath(filePath: string): Promise<Track | null> {
+    const rows = await this.query<TrackRow>('SELECT * FROM tracks WHERE path = ?', [filePath])
+    return rows[0] ? rowToTrack(rows[0]) : null
+  }
+
   async getTracksByAlbum(album: string, artist: string): Promise<Track[]> {
     const rows = await this.query<TrackRow>(
       'SELECT * FROM tracks WHERE album = ? AND artist = ? ORDER BY track_number',

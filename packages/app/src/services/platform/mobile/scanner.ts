@@ -76,8 +76,8 @@ async function processFile(
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
     const blob = new Blob([bytes])
 
-    // 复用已有记录（与桌面端 scanner.ts 一致：文件大小不变则跳过重新解析）
-    const existing = await db.getTrackById(filePath)
+    // 复用已有记录（与桌面端 scanner.ts 一致：按 path 查询已有记录，避免重复解析）
+    const existing = await db.getTrackByPath(filePath)
     if (existing) {
       // 移动端无法廉价地拿 fileSize（需读文件），简化处理：直接返回已有记录
       // 若用户认为标签变了，可通过"重新扫描"按钮删除再插
