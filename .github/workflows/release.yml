@@ -162,6 +162,16 @@ jobs:
         env:
           CAPACITOR_ANDROID_LICENSE_PROMPT: auto
 
+      - name: Install fixed debug keystore (signature stability across versions)
+        # GitHub Actions 的 runner 每次都是新的，默认 ~/.android/debug.keystore 会被重新生成，
+        # 导致不同版本的 APK 签名不一致，Android 拒绝覆盖安装。
+        # 用仓库里固定的 debug.keystore 覆盖之，保证每次构建的 APK 签名一致可覆盖安装。
+        # debug keystore 本身无安全价值（密码 android 是公开默认值），公开仓库可安全提交。
+        run: |
+          mkdir -p ~/.android
+          cp packages/mobile/debug.keystore ~/.android/debug.keystore
+          echo "已安装固定 debug keystore：" $(keytool -list -keystore ~/.android/debug.keystore -storepass android 2>/dev/null | head -5)
+
       - name: Patch AndroidManifest (storage permissions)
         run: |
           cd packages/mobile/android/app
@@ -265,14 +275,14 @@ jobs:
             | Linux (AppImage) | `Aurora-Music-${{ steps.ver.outputs.version }}.AppImage` | 便携版，`chmod +x` 后双击或 `./Aurora-Music-*.AppImage` 运行 |
             | Linux (deb) | `Aurora-Music-${{ steps.ver.outputs.version }}.deb` | Debian/Ubuntu 系，`sudo dpkg -i` 安装 |
             | Linux (rpm) | `Aurora-Music-${{ steps.ver.outputs.version }}.rpm` | Fedora/RHEL 系，`sudo rpm -Uvh` 安装 |
-            | Android | `app-debug.apk` | 调试版 APK，需在「设置 → 安全」允许未知来源后安装 |
+            | Android | `app-debug.apk` | 调试版 APK，需在「设置 → 安全」允许未知来源后安装。从 v0.1.3 起使用固定 debug 签名，新版本可直接覆盖安装。 |
 
             ### 首次使用
 
             - **Windows**: 下载 `.exe` 安装包运行。
             - **Linux AppImage**: `chmod +x Aurora-Music-*.AppImage && ./Aurora-Music-*.AppImage`。
             - **Linux deb/rpm**: 用对应包管理器安装。
-            - **Android**: 安装 APK 后，进入应用，点击「添加文件夹」选择音乐目录（相对 `storage/emulated/0` 的路径，如 `Music`）。
+            - **Android**: 安装 APK 后，进入应用，点击「添加目录」在文件夹树中点选音乐目录（v0.1.3 起支持可视化选择，无需手填路径）。
 
             > Android 版本为调试签名 APK，安装时需手动允许「未知来源」。生产签名版本将在后续发布。
           draft: false
