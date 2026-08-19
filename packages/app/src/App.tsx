@@ -19,7 +19,8 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
 import { useThemeColor } from '@/hooks/useThemeColor'
-import { platform } from '@/services/platform'
+import { platform, setFolderPickerHandler } from '@/services/platform'
+import { MobileFolderPicker } from '@/components/MobileFolderPicker'
 import { cn, isMobile } from '@/lib/utils'
 import type { Track } from '@/types'
 
@@ -41,6 +42,41 @@ function AppLayout() {
   const mobile = isMobile()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
   const isSongDetail = location.pathname.startsWith('/song/')
+
+  // 移动端文件夹选择器：在 App 层全局注册 handler，让 LibraryPage 与 SettingsPage
+  // 的"导入音乐"按钮共用同一个 MobileFolderPicker（替代旧版每页各自注册的方案）
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false)
+  const folderPickerResolve = React.useRef<((p: string | null) => void) | null>(null)
+
+  React.useEffect(() => {
+    if (!mobile) return
+    setFolderPickerHandler(async () => {
+      return new Promise<string | null>((resolve) => {
+        folderPickerResolve.current = resolve
+        setFolderPickerOpen(true)
+      })
+    })
+    return () => {
+      setFolderPickerHandler(null)
+      folderPickerResolve.current = null
+    }
+  }, [mobile])
+
+  const handleFolderPickerClose = useCallback(() => {
+    setFolderPickerOpen(false)
+    if (folderPickerResolve.current) {
+      folderPickerResolve.current(null)
+      folderPickerResolve.current = null
+    }
+  }, [])
+
+  const handleFolderSelected = useCallback((path: string) => {
+    setFolderPickerOpen(false)
+    if (folderPickerResolve.current) {
+      folderPickerResolve.current(path)
+      folderPickerResolve.current = null
+    }
+  }, [])
 
   // 路由切换时自动关闭移动端抽屉
   useEffect(() => {
@@ -449,6 +485,15 @@ function AppLayout() {
           )}
         </main>
       </div>
+
+      {/* 移动端文件夹选择器：在 App 层全局渲染，LibraryPage 与 SettingsPage 共用 */}
+      {mobile && (
+        <MobileFolderPicker
+          open={folderPickerOpen}
+          onSelected={handleFolderSelected}
+          onClose={handleFolderPickerClose}
+        />
+      )}
     </div>
   )
 }

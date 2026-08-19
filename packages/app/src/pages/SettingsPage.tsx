@@ -1,13 +1,10 @@
-import React from 'react'
 import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageLayout } from '@/components/PageLayout'
-import { MobileFolderPicker } from '@/components/MobileFolderPicker'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { isDesktop, isMobile } from '@/lib/utils'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
-import { platform, setFolderPickerHandler } from '@/services/platform'
+import { platform } from '@/services/platform'
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
@@ -24,47 +21,13 @@ export function SettingsPage() {
 
   const { devices, selectedDeviceId, setSelectedDeviceId } = useAudioDevices()
 
-  // 移动端文件夹选择器状态：MobileFolderPicker 通过 setFolderPickerHandler
-  // 注册到 platform 层，platform.pickFolder() 调用 handler → 这里打开对话框并等待 resolve
-  const [folderPickerOpen, setFolderPickerOpen] = React.useState(false)
-  const folderPickerResolve = React.useRef<((p: string | null) => void) | null>(null)
-
-  React.useEffect(() => {
-    // 仅移动端注册：桌面端 pickFolder 直接走 electronAPI 原生对话框
-    if (!isMobile()) return
-    setFolderPickerHandler(async () => {
-      return new Promise<string | null>((resolve) => {
-        folderPickerResolve.current = resolve
-        setFolderPickerOpen(true)
-      })
-    })
-    return () => {
-      setFolderPickerHandler(null)
-      folderPickerResolve.current = null
-    }
-  }, [])
-
-  const handleFolderPickerClose = React.useCallback(() => {
-    setFolderPickerOpen(false)
-    if (folderPickerResolve.current) {
-      folderPickerResolve.current(null)
-      folderPickerResolve.current = null
-    }
-  }, [])
-
-  const handleFolderSelected = React.useCallback((path: string) => {
-    setFolderPickerOpen(false)
-    if (folderPickerResolve.current) {
-      folderPickerResolve.current(path)
-      folderPickerResolve.current = null
-    }
-  }, [])
-
   const handleDeviceChange = (deviceId: string) => {
     setSelectedDeviceId(deviceId)
     setOutputDevice(deviceId)
   }
 
+  // 移动端文件夹选择器（MobileFolderPicker）由 App 层全局注册与渲染，
+  // 这里直接调用 platform.pickFolder() 即可，与 LibraryPage 的"导入音乐"按钮共用同一入口
   const handlePickFolder = async () => {
     const folder = await platform.pickFolder()
     if (folder) {
@@ -181,13 +144,6 @@ export function SettingsPage() {
           </section>
         </div>
       </div>
-      {isMobile() && (
-        <MobileFolderPicker
-          open={folderPickerOpen}
-          onSelected={handleFolderSelected}
-          onClose={handleFolderPickerClose}
-        />
-      )}
     </PageLayout>
   )
 }
