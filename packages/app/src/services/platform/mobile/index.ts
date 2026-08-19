@@ -85,9 +85,12 @@ async function runScan(folderPath: string): Promise<Track[]> {
     } catch {
       throw new Error('文件夹不存在或不可访问')
     }
-    const tracks = await mobileScanFolder(folderPath, db)
-    emitScanComplete(tracks)
-    return tracks
+    await mobileScanFolder(folderPath, db)
+    // 与桌面端对齐：扫描完成后从数据库读取全库再 emit，
+    // 避免多次扫描不同目录时只 emit 本次结果导致前一次曲目被覆盖丢失
+    const allTracks = await db.getAllTracks()
+    emitScanComplete(allTracks)
+    return allTracks
   } catch (err: any) {
     console.error('[Mobile] 扫描失败:', folderPath, err)
     emitScanError({
