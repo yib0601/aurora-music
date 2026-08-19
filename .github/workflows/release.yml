@@ -132,16 +132,17 @@ jobs:
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - name: Setup Java 17
+      - name: Setup Java 21
+        # AGP 9.2 要求 JDK 17+，推荐 JDK 21；同时支持 Kotlin 1.9 编译
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
+          packages: 'platforms;android-36 build-tools;36.0.0 platforms;android-34'
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -154,10 +155,12 @@ jobs:
           mkdir -p packages/mobile/dist
           cp -r packages/app/dist/* packages/mobile/dist/
 
-      - name: Add Android platform
+      - name: Copy web assets to Android project
+        # android/ 工程已在仓库中（含自定义 MediaPlaybackService、
+        # AndroidManifest 权限声明、Kotlin 配置），无需 cap add，
+        # 只需同步最新 web 资源到 android/app/src/main/assets/public/
         run: |
           cd packages/mobile
-          npx cap add android
           npx cap copy android
         env:
           CAPACITOR_ANDROID_LICENSE_PROMPT: auto
@@ -172,41 +175,20 @@ jobs:
           cp packages/mobile/debug.keystore ~/.android/debug.keystore
           echo "已安装固定 debug keystore：" $(keytool -list -keystore ~/.android/debug.keystore -storepass android 2>/dev/null | head -5)
 
-      - name: Patch AndroidManifest (storage permissions)
-        run: |
-          cd packages/mobile/android/app
-          # 在 <manifest> 标签内，application 标签前插入权限
-          python3 - <<'PY'
-          import re
-          p = 'src/main/AndroidManifest.xml'
-          s = open(p).read()
-          perms = (
-              '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n'
-              '    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />\n'
-              '    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />\n'
-              '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />\n'
-          )
-          if 'MANAGE_EXTERNAL_STORAGE' not in s:
-              s = re.sub(r'(<application)', perms + r'\1', s, count=1)
-              open(p, 'w').write(s)
-              print('Patched AndroidManifest.xml')
-          else:
-              print('AndroidManifest.xml already patched')
-          PY
-
-      - name: Patch strings.xml (app name)
-        run: |
-          f=packages/mobile/android/app/src/main/res/values/strings.xml
-          sed -i 's/<string name="app_name">[^<]*</<string name="app_name">Aurora Music</' "$f"
-          grep -q 'app_name' "$f" && cat "$f" || echo "strings.xml not found"
-
       - name: Make gradlew executable
         run: chmod +x packages/mobile/android/gradlew
+
+      - name: Switch Gradle distribution to official source
+        # 本地用腾讯云镜像加速，CI（境外）改回官方源更稳定
+        run: |
+          sed -i 's|https\\://mirrors.cloud.tencent.com/gradle/|https\\://services.gradle.org/distributions/|' \
+            packages/mobile/android/gradle/wrapper/gradle-wrapper.properties
+          cat packages/mobile/android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Build APK (debug)
         run: |
           cd packages/mobile/android
-          ./gradlew assembleDebug --no-daemon -x lintVitalAnalyzeRelease
+          ./gradlew assembleDebug --no-daemon
         env:
           JAVA_HOME: ${{ env.JAVA_HOME }}
 
