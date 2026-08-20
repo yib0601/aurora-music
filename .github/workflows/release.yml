@@ -155,13 +155,14 @@ jobs:
           mkdir -p packages/mobile/dist
           cp -r packages/app/dist/* packages/mobile/dist/
 
-      - name: Copy web assets to Android project
+      - name: Sync web assets and Capacitor config to Android project
         # android/ 工程已在仓库中（含自定义 MediaPlaybackService、
         # AndroidManifest 权限声明、Kotlin 配置），无需 cap add，
-        # 只需同步最新 web 资源到 android/app/src/main/assets/public/
+        # 但需要 cap sync（而非 cap copy）来同步 web 资源并重新生成
+        # capacitor.settings.gradle 和 capacitor.build.gradle
         run: |
           cd packages/mobile
-          npx cap copy android
+          npx cap sync android
         env:
           CAPACITOR_ANDROID_LICENSE_PROMPT: auto
 
