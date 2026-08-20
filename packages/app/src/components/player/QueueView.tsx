@@ -32,7 +32,7 @@ export function QueueView() {
   }
 
   return (
-    <div className="fixed right-8 bottom-24 w-80 max-h-[55vh] glass-floating rounded-[16px] overflow-hidden z-50 flex flex-col">
+    <div className="fixed right-8 bottom-28 w-80 max-h-[55vh] glass-floating rounded-[16px] overflow-hidden z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 h-12 border-b border-white/10 dark:border-white/5">
         <span className="font-display text-[15px] font-semibold tracking-[-0.224px] text-foreground">
           播放队列

@@ -191,7 +191,8 @@ export function PlaylistPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
+      {/* pb 为底部悬浮播放条让位，避免滚动到底时内容被遮挡 */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2 pb-[calc(100px+env(safe-area-inset-bottom))] lg:pb-32">
         {playlistTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
