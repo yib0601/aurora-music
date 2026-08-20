@@ -449,17 +449,49 @@ function AppLayout() {
         {/* 主内容区 */}
         <main className="relative flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
           <div className="flex-1 flex overflow-hidden">
-            <div className="flex-1 overflow-y-auto scrollbar-thin">
-              <Routes>
-                <Route path="/" element={<Navigate to="/library" replace />} />
-                <Route path="/library" element={<LibraryPage />} />
-                <Route path="/liked" element={<LikedPage />} />
-                <Route path="/recent" element={<RecentPage />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/playlist/:id" element={<PlaylistPage />} />
-                <Route path="/song/:id" element={<SongDetailPage />} />
-              </Routes>
+            {/* 内容列：页面路由 + 悬浮播放条（播放条相对内容列居中，避免压到右侧歌词瓷砖） */}
+            <div className="relative flex-1 flex flex-col min-w-0">
+              <div className="flex-1 overflow-y-auto scrollbar-thin">
+                <Routes>
+                  <Route path="/" element={<Navigate to="/library" replace />} />
+                  <Route path="/library" element={<LibraryPage />} />
+                  <Route path="/liked" element={<LikedPage />} />
+                  <Route path="/recent" element={<RecentPage />} />
+                  <Route path="/search" element={<SearchPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/playlist/:id" element={<PlaylistPage />} />
+                  <Route path="/song/:id" element={<SongDetailPage />} />
+                </Routes>
+              </div>
+
+              {/* Mineradio 悬浮胶囊控制台 — 歌曲详情页已内嵌播放功能框，此处隐藏避免重复 */}
+              {/* 移动端：贴屏幕底部（safe-area），宽度铺满屏宽 -16 */}
+              {!isSongDetail && (
+                <div
+                  className={cn(
+                    'absolute left-1/2 -translate-x-1/2 z-30',
+                    mobile
+                      ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-16px)]'
+                      : 'bottom-3 w-[clamp(360px,calc(100%-48px),640px)]',
+                  )}
+                >
+                  <PlayerBar
+                    currentTrack={currentTrack}
+                    volume={volume}
+                    muted={muted}
+                    repeatMode={repeatMode}
+                    shuffleMode={shuffleMode}
+                    onTogglePlay={handleTogglePlay}
+                    onNext={handleNext}
+                    onPrevious={handlePrevious}
+                    onSeek={handleSeek}
+                    onVolumeChange={handleVolumeChange}
+                    onToggleMute={handleToggleMute}
+                    onCyclePlayMode={handleCyclePlayMode}
+                    onOpenNowPlaying={() => setNowPlayingOpen(true)}
+                  />
+                </div>
+              )}
             </div>
 
             {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质；歌曲详情页隐藏（详情页已含完整歌词与歌曲信息） */}
@@ -494,7 +526,7 @@ function AppLayout() {
 
                 </div>
 
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-4" style={{ marginBottom: '88px' }}>
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-6">
                   <div className="px-2 pt-2 pb-1.5">
                     <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
                       歌词
@@ -509,35 +541,6 @@ function AppLayout() {
           </div>
 
           <QueueView />
-
-          {/* Mineradio 悬浮胶囊控制台 — 歌曲详情页已内嵌播放功能框，此处隐藏避免重复 */}
-          {/* 移动端：贴屏幕底部（safe-area），宽度铺满屏宽 -16 */}
-          {!isSongDetail && (
-            <div
-              className={cn(
-                'absolute left-1/2 -translate-x-1/2 z-30',
-                mobile
-                  ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-16px)]'
-                  : 'bottom-2.5 w-[clamp(360px,calc(100%-80px),640px)]',
-              )}
-            >
-              <PlayerBar
-                currentTrack={currentTrack}
-                volume={volume}
-                muted={muted}
-                repeatMode={repeatMode}
-                shuffleMode={shuffleMode}
-                onTogglePlay={handleTogglePlay}
-                onNext={handleNext}
-                onPrevious={handlePrevious}
-                onSeek={handleSeek}
-                onVolumeChange={handleVolumeChange}
-                onToggleMute={handleToggleMute}
-                onCyclePlayMode={handleCyclePlayMode}
-                onOpenNowPlaying={() => setNowPlayingOpen(true)}
-              />
-            </div>
-          )}
         </main>
       </div>
 

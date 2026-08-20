@@ -159,14 +159,14 @@ export function SearchPage() {
 
   return (
     <PageLayout title="搜索">
-      <div className="relative max-w-2xl mb-7">
-        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-mint/70" strokeWidth={1.5} />
+      <div className="relative max-w-xl mb-5">
+        <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-mint/70" strokeWidth={1.5} />
         <input
           type="text"
           placeholder="搜索歌曲、艺术家、专辑..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="glass-search-box rounded-[22px] h-[58px] w-full pl-11 pr-4 font-text text-[17px] text-white/92 outline-none placeholder:text-white/22 tracking-[-0.374px]"
+          className="glass-search-box rounded-full h-11 w-full pl-10 pr-4 font-text text-[14px] text-white/92 outline-none placeholder:text-white/28 tracking-[-0.224px]"
           autoFocus
         />
       </div>
@@ -174,14 +174,14 @@ export function SearchPage() {
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         {!query.trim() ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <div className="relative mb-6">
-              <div className="absolute -inset-12 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
-              <div className="relative w-32 h-32 rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                <SearchIcon className="h-14 w-14 text-mint/50" strokeWidth={1} />
+            <div className="relative mb-5">
+              <div className="absolute -inset-10 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
+              <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                <SearchIcon className="h-10 w-10 text-mint/50" strokeWidth={1} />
               </div>
             </div>
-            <p className="font-display text-[24px] font-bold text-white/90 mb-2 tracking-[-0.3px]">开始搜索</p>
-            <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">输入关键词搜索你的音乐库</p>
+            <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">开始搜索</p>
+            <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词搜索你的音乐库</p>
           </div>
         ) : (
           <>
@@ -216,30 +216,33 @@ export function SearchPage() {
             {tab === 'local' ? (
               localResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full">
-                  <div className="relative mb-6">
-                    <div className="absolute -inset-12 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                    <div className="relative w-32 h-32 rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                      <Music2 className="h-14 w-14 text-coral/50" strokeWidth={1} />
+                  <div className="relative mb-5">
+                    <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
+                    <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                      <Music2 className="h-10 w-10 text-coral/50" strokeWidth={1} />
                     </div>
                   </div>
-                  <p className="font-display text-[24px] font-bold text-white/90 mb-2 tracking-[-0.3px]">未找到结果</p>
+                  <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">未找到结果</p>
                   <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的本地歌曲</p>
                 </div>
               ) : (
                 <div className="space-y-5">
                   <section>
-                    <div className="card-utility overflow-hidden">
+                    <div className="card-list overflow-hidden">
                       {localResults.slice(0, 30).map((track, idx) => (
                         <ContextMenu key={track.id}>
                           <ContextMenuTrigger asChild>
                             <div
-                              className="row-hover flex items-center gap-3 px-4 py-3 cursor-pointer group border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
+                              className="row-hover flex items-center gap-3 px-4 py-2.5 cursor-pointer group border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
                               onDoubleClick={() => handlePlayTrack(track, idx, localResults)}
                             >
-                              <span className="font-text text-[12px] text-white/35 w-5 text-right group-hover:hidden tabular-nums tracking-[-0.12px]">
-                                {idx + 1}
+                              {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
+                              <span className="w-6 flex-shrink-0 flex items-center justify-center relative">
+                                <span className="font-text text-[12px] text-white/35 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
+                                  {idx + 1}
+                                </span>
+                                <Play className="w-3 h-3 absolute text-mint opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
                               </span>
-                              <Play className="w-3 h-3 hidden group-hover:block text-mint" strokeWidth={1.8} />
                               <div
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -323,24 +326,24 @@ export function SearchPage() {
               </div>
             ) : onlineError ? (
               <div className="flex flex-col items-center justify-center h-full">
-                <div className="relative mb-6">
-                  <div className="absolute -inset-12 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                  <div className="relative w-32 h-32 rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                    <Music2 className="h-14 w-14 text-coral/50" strokeWidth={1} />
+                <div className="relative mb-5">
+                  <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
+                  <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                    <Music2 className="h-10 w-10 text-coral/50" strokeWidth={1} />
                   </div>
                 </div>
-                <p className="font-display text-[24px] font-bold text-white/90 mb-2 tracking-[-0.3px]">搜索失败</p>
+                <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">搜索失败</p>
                 <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">{onlineError}</p>
               </div>
             ) : onlineTracks.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full">
-                <div className="relative mb-6">
-                  <div className="absolute -inset-12 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                  <div className="relative w-32 h-32 rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                    <Music2 className="h-14 w-14 text-coral/50" strokeWidth={1} />
+                <div className="relative mb-5">
+                  <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
+                  <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                    <Music2 className="h-10 w-10 text-coral/50" strokeWidth={1} />
                   </div>
                 </div>
-                <p className="font-display text-[24px] font-bold text-white/90 mb-2 tracking-[-0.3px]">未找到结果</p>
+                <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">未找到结果</p>
                 <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的在线歌曲</p>
               </div>
             ) : (
@@ -350,7 +353,7 @@ export function SearchPage() {
                     <h2 className="font-text text-[12px] font-semibold text-white/40 mb-3 px-1 tracking-[-0.12px]">
                       {group.label} ({group.tracks.length})
                     </h2>
-                    <div className="card-utility overflow-hidden">
+                    <div className="card-list overflow-hidden">
                       {group.tracks.map((track, idx) => {
                         // 找到该曲目在 onlineResults 中的原始索引，用于取封面 URL
                         const resultIdx = onlineResults.findIndex((r) => r.id === track.id)
@@ -358,13 +361,16 @@ export function SearchPage() {
                           <ContextMenu key={track.id}>
                             <ContextMenuTrigger asChild>
                               <div
-                                className="row-hover flex items-center gap-3 px-4 py-3 cursor-pointer group border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
+                                className="row-hover flex items-center gap-3 px-4 py-2.5 cursor-pointer group border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
                                 onDoubleClick={() => handlePlayTrack(track, idx, group.tracks)}
                               >
-                                <span className="font-text text-[12px] text-white/35 w-5 text-right group-hover:hidden tabular-nums tracking-[-0.12px]">
-                                  {idx + 1}
+                                {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
+                                <span className="w-6 flex-shrink-0 flex items-center justify-center relative">
+                                  <span className="font-text text-[12px] text-white/35 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
+                                    {idx + 1}
+                                  </span>
+                                  <Play className="w-3 h-3 absolute text-mint opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
                                 </span>
-                                <Play className="w-3 h-3 hidden group-hover:block text-mint" strokeWidth={1.8} />
                                 <div className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden">
                                   {onlineResults[resultIdx]?.coverUrl ? (
                                     <img src={onlineResults[resultIdx].coverUrl} alt="" className="w-full h-full object-cover product-shadow" referrerPolicy="no-referrer" />

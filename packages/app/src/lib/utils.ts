@@ -24,5 +24,10 @@ export function isMobile(): boolean {
   // 注意：桌面端 bundle 会静态引入 @capacitor/core（经 platform/mobile 链），
   // 其 IIFE 会把 window.Capacitor 注入到桌面端，因此必须先排除 electronAPI，
   // 否则桌面端会被误判为移动端，导致左侧导航栏被隐藏
-  return typeof window !== 'undefined' && !(window as any).electronAPI && !!(window as any).Capacitor
+  if (typeof window === 'undefined') return false
+  if ((window as any).electronAPI) return false
+  const cap = (window as any).Capacitor
+  if (!cap) return false
+  // 纯浏览器环境（vite dev 预览）getPlatform() === 'web'，应使用桌面端布局
+  return cap.getPlatform?.() !== 'web'
 }
