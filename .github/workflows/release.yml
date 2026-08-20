@@ -166,15 +166,17 @@ jobs:
         env:
           CAPACITOR_ANDROID_LICENSE_PROMPT: auto
 
-      - name: Patch @capacitor/android for AGP 9.x compatibility
+      - name: Patch Capacitor libraries for AGP 9.x compatibility
         # AGP 9.x 移除了对 getDefaultProguardFile('proguard-android.txt') 的支持，
-        # 但 @capacitor/android@6.2.1 仍使用旧文件名。本地 node_modules 已手动
-        # patch，CI 需要在 cap sync 后同步打补丁。
+        # 但 Capacitor 6.x 各包仍使用旧文件名。本地 node_modules 已手动 patch，
+        # CI 需要在 cap sync 后批量替换所有 Capacitor 包中的 proguard-android.txt。
         run: |
-          find node_modules/.pnpm/@capacitor+android*/node_modules/@capacitor/android/capacitor/build.gradle \
+          find node_modules/.pnpm/@capacitor*/node_modules -name "build.gradle" \
             -exec sed -i "s|proguard-android\.txt|proguard-android-optimize.txt|g" {} \;
-          echo "Patched proguard file references:"
-          grep -n "proguard" node_modules/.pnpm/@capacitor+android*/node_modules/@capacitor/android/capacitor/build.gradle
+          find node_modules/.pnpm/@capacitor-community*/node_modules -name "build.gradle" \
+            -exec sed -i "s|proguard-android\.txt|proguard-android-optimize.txt|g" {} \;
+          echo "Patched files:"
+          grep -rn "proguard-android" node_modules/.pnpm/@capacitor*/node_modules/@capacitor/*/android/build.gradle node_modules/.pnpm/@capacitor*/node_modules/@capacitor/*/capacitor/build.gradle node_modules/.pnpm/@capacitor-community*/node_modules/@capacitor-community/*/android/build.gradle 2>/dev/null | head -20
 
       - name: Install fixed debug keystore (signature stability across versions)
         # GitHub Actions 的 runner 每次都是新的，默认 ~/.android/debug.keystore 会被重新生成，
