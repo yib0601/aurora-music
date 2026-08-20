@@ -166,6 +166,16 @@ jobs:
         env:
           CAPACITOR_ANDROID_LICENSE_PROMPT: auto
 
+      - name: Patch @capacitor/android for AGP 9.x compatibility
+        # AGP 9.x 移除了对 getDefaultProguardFile('proguard-android.txt') 的支持，
+        # 但 @capacitor/android@6.2.1 仍使用旧文件名。本地 node_modules 已手动
+        # patch，CI 需要在 cap sync 后同步打补丁。
+        run: |
+          find node_modules/.pnpm/@capacitor+android*/node_modules/@capacitor/android/capacitor/build.gradle \
+            -exec sed -i "s|proguard-android\.txt|proguard-android-optimize.txt|g" {} \;
+          echo "Patched proguard file references:"
+          grep -n "proguard" node_modules/.pnpm/@capacitor+android*/node_modules/@capacitor/android/capacitor/build.gradle
+
       - name: Install fixed debug keystore (signature stability across versions)
         # GitHub Actions 的 runner 每次都是新的，默认 ~/.android/debug.keystore 会被重新生成，
         # 导致不同版本的 APK 签名不一致，Android 拒绝覆盖安装。
