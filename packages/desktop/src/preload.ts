@@ -28,7 +28,8 @@ const electronAPI = {
     return ipcRenderer.invoke('lyrics:search', query, artist, album, duration)
   },
   searchOnlineTracks: async (
-    query: string
+    query: string,
+    options?: { customSources?: Array<{ id: string; name: string; apiUrl: string; enabled: boolean }>; useNetease?: boolean; useQQ?: boolean }
   ): Promise<
     Array<{
       id: string
@@ -38,10 +39,11 @@ const electronAPI = {
       duration: number
       coverUrl?: string
       audioUrl: string
-      source: 'netease' | 'qq' | 'kugou'
+      source: 'netease' | 'qq' | 'kugou' | 'custom'
+      sourceName?: string
     }>
   > => {
-    return ipcRenderer.invoke('tracks:searchOnline', query)
+    return ipcRenderer.invoke('tracks:searchOnline', query, options)
   },
   getMetadata: async (filePath: string) => {
     return ipcRenderer.invoke('fs:readFile', filePath)

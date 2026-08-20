@@ -1,4 +1,4 @@
-import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2 } from 'lucide-react'
+import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageLayout } from '@/components/PageLayout'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -18,6 +18,16 @@ export function SettingsPage() {
 
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
+
+  // 在线搜索配置
+  const onlineSources = useLibraryStore((s) => s.onlineSources)
+  const useNeteaseSources = useLibraryStore((s) => s.useNeteaseSources)
+  const useQQSources = useLibraryStore((s) => s.useQQSources)
+  const addOnlineSource = useLibraryStore((s) => s.addOnlineSource)
+  const updateOnlineSource = useLibraryStore((s) => s.updateOnlineSource)
+  const removeOnlineSource = useLibraryStore((s) => s.removeOnlineSource)
+  const setUseNeteaseSources = useLibraryStore((s) => s.setUseNeteaseSources)
+  const setUseQQSources = useLibraryStore((s) => s.setUseQQSources)
 
   const { devices, selectedDeviceId, setSelectedDeviceId } = useAudioDevices()
 
@@ -115,6 +125,156 @@ export function SettingsPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </section>
+
+          <section className="card-utility p-5">
+            <h2 className="font-display text-tagline mb-4 text-white">在线搜索</h2>
+            <div className="space-y-4">
+              {/* 内置源开关：网易云 / QQ 音乐各自独立 */}
+              <div className="space-y-2">
+                <p className="font-text text-caption-strong text-white/80">内置音乐源</p>
+                <div className="flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
+                    <div className="min-w-0">
+                      <p className="font-text text-caption-strong text-white/80">网易云</p>
+                      <p className="font-text text-caption text-white/60 mt-0.5">music.163.com 内置源</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={useNeteaseSources}
+                    onClick={() => setUseNeteaseSources(!useNeteaseSources)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
+                      useNeteaseSources ? 'bg-mint' : 'bg-white/15'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-mineradio ${
+                        useNeteaseSources ? 'translate-x-4.5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
+                    <div className="min-w-0">
+                      <p className="font-text text-caption-strong text-white/80">QQ 音乐</p>
+                      <p className="font-text text-caption text-white/60 mt-0.5">y.qq.com 内置源</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={useQQSources}
+                    onClick={() => setUseQQSources(!useQQSources)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
+                      useQQSources ? 'bg-mint' : 'bg-white/15'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-mineradio ${
+                        useQQSources ? 'translate-x-4.5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* 自定义源列表 */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="font-text text-caption-strong text-white/80">自定义音乐源</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">配置你自己的搜索接口，可添加多个</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-9 px-3.5"
+                    onClick={() =>
+                      addOnlineSource({
+                        name: '新音乐源',
+                        apiUrl: 'https://example.com/api/search?q={query}',
+                        enabled: true,
+                      })
+                    }
+                  >
+                    <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                    添加
+                  </Button>
+                </div>
+
+                {onlineSources.length === 0 ? (
+                  <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-md px-3.5 py-6 text-center">
+                    <Globe className="h-6 w-6 text-white/30 mx-auto mb-2" strokeWidth={1.4} />
+                    <p className="font-text text-caption text-white/50">尚未添加自定义音乐源</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {onlineSources.map((src) => (
+                      <div
+                        key={src.id}
+                        className={`bg-white/[0.04] border rounded-md px-3.5 py-3 transition-colors duration-200 ease-mineradio ${
+                          src.enabled ? 'border-white/10' : 'border-white/10 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <input
+                            type="text"
+                            value={src.name}
+                            placeholder="源名称"
+                            onChange={(e) => updateOnlineSource(src.id, { name: e.target.value })}
+                            className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-mint/50 transition-colors duration-200 py-1"
+                          />
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={src.enabled}
+                            onClick={() => updateOnlineSource(src.id, { enabled: !src.enabled })}
+                            className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
+                              src.enabled ? 'bg-mint' : 'bg-white/15'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-mineradio ${
+                                src.enabled ? 'translate-x-4.5' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+                            onClick={() => removeOnlineSource(src.id)}
+                          >
+                            <Trash2 className="h-4 w-4" strokeWidth={1.6} />
+                          </Button>
+                        </div>
+                        <input
+                          type="text"
+                          value={src.apiUrl}
+                          placeholder="https://your-api.com/search?q={query}"
+                          onChange={(e) => updateOnlineSource(src.id, { apiUrl: e.target.value })}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 协议说明 */}
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-md px-3.5 py-3">
+                <p className="font-text text-caption text-white/50 leading-relaxed">
+                  接口地址需包含 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{query}`}</code> 占位符（搜索时替换为关键词）。
+                  响应需为 JSON，支持数组或 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{results:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{data:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{songs:[]}`}</code> 结构。
+                  每项字段：<span className="text-white/70">title / artist / album / duration（秒）/ coverUrl / audioUrl（必填）</span>。
+                </p>
+              </div>
             </div>
           </section>
 

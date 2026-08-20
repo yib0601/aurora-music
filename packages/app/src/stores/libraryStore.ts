@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Track, Album, Playlist, ViewMode, GlassMode } from '@/types'
+import type { Track, Album, Playlist, ViewMode, GlassMode, OnlineSourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 
 interface LibraryState {
@@ -14,6 +14,10 @@ interface LibraryState {
   currentView: 'library' | 'liked' | 'recent' | 'playlists' | 'search' | 'settings'
   searchQuery: string
   searchResults: Track[]
+  // 在线搜索配置
+  onlineSources: OnlineSourceConfig[]
+  useNeteaseSources: boolean
+  useQQSources: boolean
 
   setTracks: (tracks: Track[]) => void
   setAlbums: (albums: Album[]) => void
@@ -32,6 +36,12 @@ interface LibraryState {
   toggleLike: (trackId: string) => void
   likedTracks: Set<string>
   likedTrackIds?: string[]
+  // 在线搜索配置操作
+  addOnlineSource: (source: Omit<OnlineSourceConfig, 'id'>) => void
+  updateOnlineSource: (id: string, updates: Partial<OnlineSourceConfig>) => void
+  removeOnlineSource: (id: string) => void
+  setUseNeteaseSources: (use: boolean) => void
+  setUseQQSources: (use: boolean) => void
 }
 
 export const useLibraryStore = create<LibraryState>()(
@@ -48,6 +58,9 @@ export const useLibraryStore = create<LibraryState>()(
       searchQuery: '',
       searchResults: [],
       likedTracks: new Set<string>(),
+      onlineSources: [],
+      useNeteaseSources: true,
+      useQQSources: true,
 
       setTracks: (tracks) => {
         // 内容指纹比较：扫描完成事件每次 IPC 传来的都是全新对象引用，
@@ -103,6 +116,23 @@ export const useLibraryStore = create<LibraryState>()(
       toggleLike: (trackId) => {
         get().toggleLiked(trackId)
       },
+
+      addOnlineSource: (source) => {
+        const id = `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        set({ onlineSources: [...get().onlineSources, { ...source, id }] })
+      },
+      updateOnlineSource: (id, updates) => {
+        set({
+          onlineSources: get().onlineSources.map((s) =>
+            s.id === id ? { ...s, ...updates } : s
+          ),
+        })
+      },
+      removeOnlineSource: (id) => {
+        set({ onlineSources: get().onlineSources.filter((s) => s.id !== id) })
+      },
+      setUseNeteaseSources: (use) => set({ useNeteaseSources: use }),
+      setUseQQSources: (use) => set({ useQQSources: use }),
     }),
     {
       name: 'aurora-library-state',
@@ -112,7 +142,20 @@ export const useLibraryStore = create<LibraryState>()(
         glassMode: state.glassMode,
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
+        onlineSources: state.onlineSources,
+        useNeteaseSources: state.useNeteaseSources,
+        useQQSources: state.useQQSources,
       }),
+      // 旧版本（v1）用合并的 useBuiltinSources 字段；迁移为两个独立开关
+      migrate: (persisted: any, version: number) => {
+        if (version < 2 && persisted && persisted.useBuiltinSources !== undefined) {
+          persisted.useNeteaseSources = persisted.useBuiltinSources
+          persisted.useQQSources = persisted.useBuiltinSources
+          delete persisted.useBuiltinSources
+        }
+        return persisted
+      },
+      version: 2,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

@@ -42,6 +42,10 @@ export function SearchPage() {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
+  // 在线搜索配置：自定义源 + 内置源开关
+  const onlineSources = useLibraryStore((s) => s.onlineSources)
+  const useNeteaseSources = useLibraryStore((s) => s.useNeteaseSources)
+  const useQQSources = useLibraryStore((s) => s.useQQSources)
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>()
   // 并发取消：每次发起新搜索递增 seq，响应回来时校验是否仍是最新一次
   const searchSeqRef = useRef(0)
@@ -75,7 +79,11 @@ export function SearchPage() {
     setOnlineLoading(true)
     setOnlineError(null)
     platform
-      .searchOnlineTracks(q)
+      .searchOnlineTracks(q, {
+        customSources: onlineSources,
+        useNetease: useNeteaseSources,
+        useQQ: useQQSources,
+      })
       .then((res) => {
         if (seq !== searchSeqRef.current) return
         setOnlineResults(res)
@@ -90,7 +98,7 @@ export function SearchPage() {
         if (seq !== searchSeqRef.current) return
         setOnlineLoading(false)
       })
-  }, [debouncedQuery, tab])
+  }, [debouncedQuery, tab, onlineSources, useNeteaseSources, useQQSources])
 
   // 在线结果转 Track（复用播放器逻辑）：path 置空，onlineUrl 携带播放地址
   const onlineTracks: Track[] = useMemo(() => {
@@ -110,18 +118,32 @@ export function SearchPage() {
     }))
   }, [onlineResults])
 
-  // 按来源分组（网易云 / QQ音乐），保持原结果顺序；播放队列用整组曲目
+  // 按来源分组：网易云 / QQ音乐 / 各自定义源，保持原结果顺序；播放队列用整组曲目
   const onlineGroups = useMemo(() => {
-    const groups: { source: 'netease' | 'qq'; label: string; tracks: Track[] }[] = [
-      { source: 'netease', label: '网易云', tracks: [] },
-      { source: 'qq', label: 'QQ 音乐', tracks: [] },
-    ]
+    // 先收集所有出现过的 source 标识（自定义源用 sourceName 区分）
+    type Group = { key: string; source: 'netease' | 'qq' | 'custom'; label: string; tracks: Track[] }
+    const groupMap = new Map<string, Group>()
+    // 内置源顺序固定在前
+    groupMap.set('netease', { key: 'netease', source: 'netease', label: '网易云', tracks: [] })
+    groupMap.set('qq', { key: 'qq', source: 'qq', label: 'QQ 音乐', tracks: [] })
     for (const t of onlineTracks) {
-      const g = groups.find((g) => g.source === t.onlineSource)
-      if (g) g.tracks.push(t)
+      if (t.onlineSource === 'netease') {
+        groupMap.get('netease')!.tracks.push(t)
+      } else if (t.onlineSource === 'qq') {
+        groupMap.get('qq')!.tracks.push(t)
+      } else if (t.onlineSource === 'custom') {
+        // 自定义源按 sourceName 分组（取该 source 的 name；通过 onlineResults 找回）
+        const resultItem = onlineResults.find((r) => r.id === t.id)
+        const name = resultItem?.sourceName || '自定义源'
+        const key = `custom:${name}`
+        if (!groupMap.has(key)) {
+          groupMap.set(key, { key, source: 'custom', label: name, tracks: [] })
+        }
+        groupMap.get(key)!.tracks.push(t)
+      }
     }
-    return groups.filter((g) => g.tracks.length > 0)
-  }, [onlineTracks])
+    return Array.from(groupMap.values()).filter((g) => g.tracks.length > 0)
+  }, [onlineTracks, onlineResults])
 
   const handlePlayTrack = (track: Track, index: number, queue: Track[]) => {
     usePlayerStore.getState().playQueue(queue, index)
@@ -324,7 +346,7 @@ export function SearchPage() {
             ) : (
               <div className="space-y-5">
                 {onlineGroups.map((group) => (
-                  <section key={group.source}>
+                  <section key={group.key}>
                     <h2 className="font-text text-[12px] font-semibold text-white/40 mb-3 px-1 tracking-[-0.12px]">
                       {group.label} ({group.tracks.length})
                     </h2>
