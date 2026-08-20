@@ -1,8 +1,11 @@
-import React, { useEffect, useCallback, useState } from 'react'
-import { Menu, Music } from 'lucide-react'
+import React, { useEffect, useCallback, useState, useRef } from 'react'
+import { Music, ShieldAlert } from 'lucide-react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { App as CapApp } from '@capacitor/app'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { ResizeHandles } from '@/components/layout/ResizeHandle'
+import { MobileNav } from '@/components/layout/MobileNav'
+import { MobileNowPlaying } from '@/components/player/MobileNowPlaying'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { QueueView } from '@/components/player/QueueView'
@@ -19,6 +22,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
 import { onMediaButtonEvent } from '@/services/mediaSession'
+import { checkAllFilesAccess, openAllFilesAccessSettings } from '@/services/permission'
 import { useThemeColor } from '@/hooks/useThemeColor'
 import { platform, setFolderPickerHandler } from '@/services/platform'
 import { MobileFolderPicker } from '@/components/MobileFolderPicker'
@@ -38,8 +42,8 @@ let initialScanTriggered = false
 function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  // 移动端侧栏抽屉：默认收起，点击汉堡或路由切换时关闭
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  // 移动端全屏 Now Playing 视图：由 PlayerBar 封面/标题点击触发
+  const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
   const mobile = isMobile()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
   const isSongDetail = location.pathname.startsWith('/song/')
@@ -63,6 +67,59 @@ function AppLayout() {
     }
   }, [mobile])
 
+  // 移动端「所有文件访问」权限引导：Android 11+ 扫描 /sdcard 下音乐需要
+  // MANAGE_EXTERNAL_STORAGE 特殊权限，必须由用户在系统设置中手动授予。
+  // 已配置 scanFolders 但未授权时弹引导卡片，用户授权回 App 后自动重扫。
+  const [needsAllFilesAccess, setNeedsAllFilesAccess] = useState(false)
+  // ref 用于 resume 监听里拿到最新值，避免重复注册 listener
+  const needsPermissionRef = useRef(false)
+  useEffect(() => { needsPermissionRef.current = needsAllFilesAccess }, [needsAllFilesAccess])
+
+  const triggerScanForConfiguredFolders = useCallback(() => {
+    if (!platform.scanFolder) return
+    const folders = useLibraryStore.getState().scanFolders
+    for (const folder of folders) {
+      platform.scanFolder(folder).catch(() => {})
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!mobile) return
+    // 启动时检测：仅在已配置扫描目录但未授权时弹引导
+    // （没配置目录的用户不需要打扰；已授权的也不打扰）
+    checkAllFilesAccess().then((granted) => {
+      if (!granted && useLibraryStore.getState().scanFolders.length > 0) {
+        setNeedsAllFilesAccess(true)
+      }
+    }).catch(() => {})
+  }, [mobile])
+
+  useEffect(() => {
+    if (!mobile) return
+    // 监听 app resume：用户从系统设置授权后回到 App，重新检测；
+    // 已授权则关闭引导卡片并触发扫描（让用户立即看到歌曲）
+    let listener: { remove: () => void } | undefined
+    let cancelled = false
+    CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) return
+      checkAllFilesAccess().then((granted) => {
+        if (cancelled) return
+        if (granted && needsPermissionRef.current) {
+          setNeedsAllFilesAccess(false)
+          triggerScanForConfiguredFolders()
+        }
+      }).catch(() => {})
+    }).then((l) => { if (!cancelled) listener = l })
+    return () => {
+      cancelled = true
+      listener?.remove()
+    }
+  }, [mobile, triggerScanForConfiguredFolders])
+
+  const handleOpenAllFilesAccessSettings = useCallback(() => {
+    openAllFilesAccessSettings().catch(() => {})
+  }, [])
+
   const handleFolderPickerClose = useCallback(() => {
     setFolderPickerOpen(false)
     if (folderPickerResolve.current) {
@@ -79,9 +136,9 @@ function AppLayout() {
     }
   }, [])
 
-  // 路由切换时自动关闭移动端抽屉
+  // 路由切换时关闭移动端全屏 Now Playing（避免切到其他页时残留遮罩）
   useEffect(() => {
-    setMobileSidebarOpen(false)
+    setNowPlayingOpen(false)
   }, [location.pathname])
   // ⚠️ 性能关键：只订阅低频变化字段，避免 progress 每 250ms 触发整树重渲染
   // progress / duration / isPlaying 等高频字段由 PlayerBar / LyricsView 自行订阅
@@ -373,59 +430,20 @@ function AppLayout() {
 
       <TitleBar />
 
-      {/* 移动端顶部栏：替代桌面 TitleBar 的位置，提供汉堡按钮和品牌标识 */}
-      {mobile && !isSongDetail && (
-        <header className="md:hidden h-12 flex items-center gap-3 px-3 glass-regular border-b border-white/5 z-30">
-          <button
-            onClick={() => setMobileSidebarOpen(true)}
-            aria-label="打开菜单"
-            className="w-9 h-9 -ml-1 flex items-center justify-center rounded-md text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <Menu className="h-5 w-5" strokeWidth={1.5} />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-mint flex items-center justify-center">
-              <Music className="h-3 w-3 text-[#030608]" strokeWidth={2} />
-            </div>
-            <span className="font-display font-semibold text-[14px] tracking-[-0.224px] text-white/96">
-              Aurora
-            </span>
-          </div>
-        </header>
-      )}
-
+      {/* 桌面端窗口缩放手柄；移动端不需要（组件内部 isDesktop 判断返回 null） */}
       <ResizeHandles />
+
+      {/* 移动端顶部导航：左上角汉堡菜单 + 左侧抽屉（替代底部 BottomTabBar） */}
+      {mobile && <MobileNav />}
 
       {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* 桌面端侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上；歌曲详情页隐藏 */}
+        {/* 移动端导航改为顶部汉堡菜单 + 左侧抽屉（MobileNav），不再用底部 Tab 或固定侧栏 */}
         {!isSongDetail && !mobile && (
           <aside className="w-56 flex-shrink-0 flex flex-col glass-regular border-r border-white/5">
             <Sidebar />
           </aside>
-        )}
-
-        {/* 移动端侧栏抽屉：默认隐藏，open 时滑入；带遮罩层 */}
-        {mobile && !isSongDetail && (
-          <>
-            {/* 遮罩：点击关闭 */}
-            <div
-              className={cn(
-                'absolute inset-0 z-40 bg-black/50 backdrop-blur-[2px] transition-opacity duration-200',
-                mobileSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              )}
-              onClick={() => setMobileSidebarOpen(false)}
-            />
-            {/* 抽屉：从左滑入，宽 280px，最多占屏宽 80% */}
-            <aside
-              className={cn(
-                'absolute left-0 top-0 bottom-0 z-50 w-[280px] max-w-[80%] flex flex-col glass-regular border-r border-white/5 transition-transform duration-200 ease-apple',
-                mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-              )}
-            >
-              <Sidebar />
-            </aside>
-          </>
         )}
 
         {/* 主内容区 */}
@@ -493,8 +511,16 @@ function AppLayout() {
           <QueueView />
 
           {/* Mineradio 悬浮胶囊控制台 — 歌曲详情页已内嵌播放功能框，此处隐藏避免重复 */}
+          {/* 移动端：贴屏幕底部（safe-area），宽度铺满屏宽 -16 */}
           {!isSongDetail && (
-            <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 w-[clamp(360px,calc(100%-80px),640px)]">
+            <div
+              className={cn(
+                'absolute left-1/2 -translate-x-1/2 z-30',
+                mobile
+                  ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-16px)]'
+                  : 'bottom-2.5 w-[clamp(360px,calc(100%-80px),640px)]',
+              )}
+            >
               <PlayerBar
                 currentTrack={currentTrack}
                 volume={volume}
@@ -508,11 +534,17 @@ function AppLayout() {
                 onVolumeChange={handleVolumeChange}
                 onToggleMute={handleToggleMute}
                 onCyclePlayMode={handleCyclePlayMode}
+                onOpenNowPlaying={() => setNowPlayingOpen(true)}
               />
             </div>
           )}
         </main>
       </div>
+
+      {/* 移动端全屏 Now Playing 视图 */}
+      {mobile && (
+        <MobileNowPlaying open={nowPlayingOpen} onClose={() => setNowPlayingOpen(false)} />
+      )}
 
       {/* 移动端文件夹选择器：在 App 层全局渲染，LibraryPage 与 SettingsPage 共用 */}
       {mobile && (
@@ -521,6 +553,35 @@ function AppLayout() {
           onSelected={handleFolderSelected}
           onClose={handleFolderPickerClose}
         />
+      )}
+
+      {/* 移动端「所有文件访问」权限引导：已配置扫描目录但未授权时显示 */}
+      {mobile && needsAllFilesAccess && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+          <div className="w-full max-w-[340px] rounded-[20px] bg-[#0E1014] border border-white/10 p-6 flex flex-col items-center text-center shadow-[0_20px_60px_rgba(0,0,0,.5)]">
+            <div className="w-14 h-14 rounded-full bg-mint/10 border border-mint/20 flex items-center justify-center mb-4">
+              <ShieldAlert className="h-7 w-7 text-mint" strokeWidth={1.6} />
+            </div>
+            <h2 className="font-display text-[17px] font-bold text-white/96 tracking-[-0.3px]">
+              需要文件访问权限
+            </h2>
+            <p className="font-text text-[13px] text-white/60 leading-relaxed mt-2 mb-6 tracking-[-0.15px]">
+              为了扫描本地音乐文件，需要授予「所有文件访问」权限。点击下方按钮前往系统设置，授权后返回应用即可自动开始扫描。
+            </p>
+            <button
+              onClick={handleOpenAllFilesAccessSettings}
+              className="w-full h-11 rounded-full bg-mint text-[#030608] font-semibold text-[14px] active:scale-[0.98] transition"
+            >
+              前往设置
+            </button>
+            <button
+              onClick={() => setNeedsAllFilesAccess(false)}
+              className="w-full h-10 mt-2 text-white/50 text-[13px] hover:text-white/80 active:scale-[0.98] transition"
+            >
+              稍后再说
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

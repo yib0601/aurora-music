@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { cn, formatTime } from '@/lib/utils'
+import { cn, formatTime, isMobile } from '@/lib/utils'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
@@ -20,6 +20,7 @@ interface PlayerBarProps {
   onVolumeChange: (v: number) => void
   onToggleMute: () => void
   onCyclePlayMode: () => void
+  onOpenNowPlaying?: () => void
 }
 
 /**
@@ -45,6 +46,7 @@ export function PlayerBar({
   onVolumeChange,
   onToggleMute,
   onCyclePlayMode,
+  onOpenNowPlaying,
 }: PlayerBarProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const progress = usePlayerStore((s) => s.progress)
@@ -57,6 +59,7 @@ export function PlayerBar({
   const showQueuePanel = usePlaylistStore((s) => s.showQueuePanel)
   const toggleQueuePanel = usePlaylistStore((s) => s.toggleQueuePanel)
 
+  const mobile = isMobile()
   const displayedProgress = seeking ? seekValue : progress
   const displayedVolume = seekingVolume ? volumeValue : (muted ? 0 : volume)
   const progressPercent = duration > 0 ? (displayedProgress / duration) * 100 : 0
@@ -93,6 +96,85 @@ export function PlayerBar({
   // 播放模式激活：shuffle 开启 或 repeat 非 off
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
 
+  // ───────────────────────── 移动端紧凑布局 ─────────────────────────
+  // 去掉桌面 grid + 音量控件；触控目标 ≥ 44×44；封面/标题点击进全屏 Now Playing
+  if (mobile) {
+    const openNowPlaying = () => {
+      if (onOpenNowPlaying) onOpenNowPlaying()
+      else if (currentTrack) navigate(`/song/${currentTrack.id}`)
+    }
+    return (
+      <div className="glass-saved-panel rounded-[20px] px-3 py-2 flex items-center gap-1.5">
+        <button
+          onClick={openNowPlaying}
+          title="展开播放器"
+          className="flex items-center gap-2.5 min-w-0 flex-1 py-1 active:scale-[0.99] transition"
+        >
+          <div className="w-10 h-10 rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
+            {currentTrack?.coverPath ? (
+              <img
+                src={platform.getCoverSrc(currentTrack.coverPath)}
+                alt={currentTrack.title}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+            ) : (
+              <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
+            )}
+          </div>
+          <div className="min-w-0 flex flex-col">
+            <p className="text-[13px] font-bold text-white/92 truncate tracking-[-0.224px]">
+              {currentTrack?.title || '未在播放'}
+            </p>
+            <p className="text-[10.5px] text-white/48 truncate tracking-[-0.12px]">
+              {currentTrack?.artist || '选择一首歌曲'}
+            </p>
+          </div>
+        </button>
+
+        <button
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40"
+          onClick={onPrevious}
+          disabled={!currentTrack}
+          aria-label="上一首"
+        >
+          <SkipBack className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
+        </button>
+        <button
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-white/[0.08] text-white active:scale-95 transition disabled:opacity-40"
+          onClick={onTogglePlay}
+          disabled={!currentTrack}
+          aria-label={isPlaying ? '暂停' : '播放'}
+        >
+          {isPlaying ? (
+            <Pause className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
+          ) : (
+            <Play className="h-5 w-5 ml-0.5" fill="currentColor" strokeWidth={1.5} />
+          )}
+        </button>
+        <button
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40"
+          onClick={onNext}
+          disabled={!currentTrack}
+          aria-label="下一首"
+        >
+          <SkipForward className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
+        </button>
+        <button
+          className={cn(
+            'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
+            showQueuePanel ? 'text-mint bg-mint/[0.10]' : 'text-white/60',
+          )}
+          onClick={toggleQueuePanel}
+          aria-label="队列"
+        >
+          <ListMusic className="h-5 w-5" strokeWidth={1.5} />
+        </button>
+      </div>
+    )
+  }
+
+  // ───────────────────────── 桌面端三列网格（原布局） ─────────────────────────
   return (
     <div className="glass-saved-panel rounded-[24px] px-[18px] py-2 flex flex-col gap-1.5">
       {/* 进度条 - 居中 */}

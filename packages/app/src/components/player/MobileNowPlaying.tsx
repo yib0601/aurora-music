@@ -1,0 +1,220 @@
+import { useEffect, useState } from 'react'
+import {
+  Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
+  ChevronDown, Heart, ListMusic, Music2,
+} from 'lucide-react'
+import { cn, formatTime } from '@/lib/utils'
+import type { RepeatMode, ShuffleMode } from '@/types'
+import { usePlayerStore } from '@/stores/playerStore'
+import { usePlaylistStore } from '@/stores/playlistStore'
+import { useLibraryStore } from '@/stores/libraryStore'
+import { LyricsView } from '@/components/lyrics/LyricsView'
+import { platform } from '@/services/platform'
+
+interface Props {
+  open: boolean
+  onClose: () => void
+}
+
+/**
+ * 移动端全屏 Now Playing 视图
+ * - 点击 PlayerBar 触发，下滑/点 ChevronDown 关闭
+ * - 大封面 + 标题 + 进度条 + 大控件 + 歌词
+ * - 触控目标 ≥ 48×48，主播放按钮 72×72
+ * - 不含音量控件（移动端交由系统硬件音量键）
+ */
+export function MobileNowPlaying({ open, onClose }: Props) {
+  const currentTrack = usePlayerStore((s) => s.currentTrack)
+  const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const progress = usePlayerStore((s) => s.progress)
+  const duration = usePlayerStore((s) => s.duration)
+  const repeatMode = usePlayerStore((s) => s.repeatMode)
+  const shuffleMode = usePlayerStore((s) => s.shuffleMode)
+  const toggleQueuePanel = usePlaylistStore((s) => s.toggleQueuePanel)
+  const likedTracks = useLibraryStore((s) => s.likedTracks)
+  const toggleLike = useLibraryStore((s) => s.toggleLike)
+
+  const [seeking, setSeeking] = useState(false)
+  const [seekValue, setSeekValue] = useState(0)
+
+  // open 切换时重置 seeking 状态
+  useEffect(() => {
+    if (!open) {
+      setSeeking(false)
+      setSeekValue(0)
+    }
+  }, [open])
+
+  // 阻止背景滚动
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
+  // 注意：所有 hooks 必须在 early return 之前调用，避免 React hooks 顺序错误
+  if (!open) return null
+
+  const displayedProgress = seeking ? seekValue : progress
+  const progressPercent = duration > 0 ? (displayedProgress / duration) * 100 : 0
+  const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
+  const isLiked = currentTrack ? likedTracks.has(currentTrack.id) : false
+  const coverSrc = currentTrack?.coverPath ? platform.getCoverSrc(currentTrack.coverPath) : null
+
+  const handleSeekStart = () => { setSeeking(true); setSeekValue(progress) }
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => setSeekValue(parseFloat(e.target.value))
+  const handleSeekCommit = () => { setSeeking(false); usePlayerStore.getState().seekTo(seekValue) }
+
+  const cyclePlayMode = () => usePlayerStore.getState().cyclePlayMode()
+
+  return (
+    <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-xl">
+      {/* 顶部栏：关闭按钮 */}
+      <header className="flex items-center justify-between px-4 pt-[env(safe-area-inset-top)] pb-2">
+        <button
+          onClick={onClose}
+          aria-label="关闭"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
+        >
+          <ChevronDown className="h-6 w-6" strokeWidth={1.8} />
+        </button>
+        <span className="text-[12px] font-semibold text-white/40 uppercase tracking-wider">正在播放</span>
+        <button
+          onClick={() => { toggleQueuePanel(); onClose() }}
+          aria-label="队列"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
+        >
+          <ListMusic className="h-5 w-5" strokeWidth={1.6} />
+        </button>
+      </header>
+
+      {/* 大封面 */}
+      <div className="px-8 pt-2 pb-4 flex justify-center">
+        <div className="relative w-full max-w-[320px] aspect-square">
+          <div
+            className="absolute -inset-6 rounded-[40px] blur-3xl opacity-50"
+            style={{ background: 'radial-gradient(circle at 30% 30%, rgba(0,245,212,.20), transparent 70%)' }}
+          />
+          <div className="relative w-full h-full rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center overflow-hidden product-shadow">
+            {coverSrc ? (
+              <img src={coverSrc} alt={currentTrack?.title || ''} className="w-full h-full object-cover" />
+            ) : (
+              <Music2 className="h-20 w-20 text-mint/40" strokeWidth={1} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 标题 + 收藏 */}
+      <div className="px-6 pb-3 flex items-center gap-3">
+        <div className="flex-1 min-w-0 text-center">
+          <h1 className="font-display text-[20px] font-bold text-white/96 truncate tracking-[-0.3px]">
+            {currentTrack?.title || '未在播放'}
+          </h1>
+          <p className="font-text text-[13px] text-white/50 truncate mt-0.5 tracking-[-0.15px]">
+            {currentTrack?.artist || '选择一首歌曲开始'}
+          </p>
+        </div>
+        <button
+          onClick={() => currentTrack && toggleLike(currentTrack.id)}
+          aria-label={isLiked ? '取消收藏' : '收藏'}
+          className={cn(
+            'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
+            isLiked ? 'text-coral' : 'text-white/50 hover:text-white',
+          )}
+        >
+          <Heart className={cn('h-5 w-5', isLiked && 'fill-coral')} strokeWidth={1.6} />
+        </button>
+      </div>
+
+      {/* 进度条 */}
+      <div className="px-6 pb-3">
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-white/50 w-10 text-right tabular-nums">
+            {formatTime(displayedProgress)}
+          </span>
+          <div className="flex-1 relative h-3 flex items-center">
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              value={displayedProgress}
+              step={0.1}
+              disabled={!currentTrack}
+              onTouchStart={handleSeekStart}
+              onChange={handleSeekChange}
+              onTouchEnd={handleSeekCommit}
+              className="w-full h-1.5 rounded-full appearance-none cursor-pointer disabled:opacity-40"
+              style={{
+                background: `linear-gradient(to right, rgba(255,255,255,.92) 0%, rgba(0,245,212,.74) ${progressPercent}%, rgba(255,255,255,.12) ${progressPercent}%, rgba(255,255,255,.12) 100%)`,
+              }}
+            />
+          </div>
+          <span className="text-[11px] text-white/50 w-10 tabular-nums">
+            {formatTime(duration)}
+          </span>
+        </div>
+      </div>
+
+      {/* 控制按钮 */}
+      <div className="px-6 pb-3 flex items-center justify-center gap-6">
+        <button
+          onClick={cyclePlayMode}
+          aria-label="播放模式"
+          className={cn(
+            'w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition',
+            playModeActive ? 'text-mint' : 'text-white/50 hover:text-white',
+          )}
+        >
+          {shuffleMode === 'on' ? (
+            <Shuffle className="h-5 w-5" strokeWidth={1.8} />
+          ) : repeatMode === 'one' ? (
+            <Repeat1 className="h-5 w-5" strokeWidth={1.8} />
+          ) : repeatMode === 'all' ? (
+            <Repeat className="h-5 w-5" strokeWidth={1.8} />
+          ) : (
+            <Shuffle className="h-5 w-5" strokeWidth={1.8} />
+          )}
+        </button>
+        <button
+          onClick={() => usePlayerStore.getState().previous()}
+          disabled={!currentTrack}
+          aria-label="上一首"
+          className="w-12 h-12 flex items-center justify-center rounded-full text-white/90 hover:text-white active:scale-90 transition disabled:opacity-40"
+        >
+          <SkipBack className="h-6 w-6" fill="currentColor" strokeWidth={1.5} />
+        </button>
+        {/* 主播放按钮：72px 大圆形 */}
+        <button
+          onClick={() => usePlayerStore.getState().togglePlay()}
+          disabled={!currentTrack}
+          aria-label={isPlaying ? '暂停' : '播放'}
+          className="w-[72px] h-[72px] rounded-full flex items-center justify-center bg-mint text-[#030608] disabled:opacity-40 active:scale-95 transition shadow-[0_10px_30px_rgba(0,245,212,.35),inset_0_1px_0_rgba(255,255,255,.25)]"
+        >
+          {isPlaying ? (
+            <Pause className="h-7 w-7" fill="currentColor" strokeWidth={1.5} />
+          ) : (
+            <Play className="h-7 w-7 ml-1" fill="currentColor" strokeWidth={1.5} />
+          )}
+        </button>
+        <button
+          onClick={() => usePlayerStore.getState().next()}
+          disabled={!currentTrack}
+          aria-label="下一首"
+          className="w-12 h-12 flex items-center justify-center rounded-full text-white/90 hover:text-white active:scale-90 transition disabled:opacity-40"
+        >
+          <SkipForward className="h-6 w-6" fill="currentColor" strokeWidth={1.5} />
+        </button>
+        <div className="w-12 h-12" aria-hidden="true" />
+      </div>
+
+      {/* 歌词 */}
+      <div className="flex-1 min-h-0 px-6 pb-[env(safe-area-inset-bottom)]">
+        <LyricsView className="h-full" onLineClick={(t) => usePlayerStore.getState().seekTo(t)} />
+      </div>
+    </div>
+  )
+}
