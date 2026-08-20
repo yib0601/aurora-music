@@ -397,7 +397,7 @@ export function registerIpcHandlers() {
       album?: string,
       duration?: number
     ): Promise<{ lrc: string | null; name: string; artist: string } | null> => {
-      const UA = 'Aurora-Music v0.1.2 (https://github.com/yib0601/aurora-music)'
+      const UA = 'Aurora-Music v0.1.9 (https://github.com/yib0601/aurora-music)'
       try {
         // 优先用 /api/get 精确匹配（需要 track_name + artist_name，album 和 duration 提高精度）
         // query 即 track_name，artist 即 artist_name
