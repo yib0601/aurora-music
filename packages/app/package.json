@@ -23,6 +23,7 @@
     "colorthief": "^2.6.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.42.2",
+    "@capacitor/app": "^6.0.1",
     "@capacitor/core": "^6.2.0",
     "@capacitor/filesystem": "^6.0.1",
     "@capacitor-community/sqlite": "^6.0.0",
