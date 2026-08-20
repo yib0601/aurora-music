@@ -194,7 +194,9 @@ export async function readLyricsFile(trackId: string): Promise<string | null> {
     // data:application/octet-stream;base64,xxxx 或直接 base64
     const raw = result.data as string
     const b64 = raw.includes(',') ? raw.split(',')[1] : raw
-    return atob(b64)
+    // atob 返回的是 Latin-1 二进制字符串，需反解 UTF-8，否则中文会乱码
+    // (写入端用 btoa(unescape(encodeURIComponent(lyrics))) 做 UTF-8 编码，这里做对称解码)
+    return decodeURIComponent(escape(atob(b64)))
   } catch {
     return null
   }
