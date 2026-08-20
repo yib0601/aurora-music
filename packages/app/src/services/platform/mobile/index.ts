@@ -6,6 +6,7 @@ import type {
   AudioMetadata,
   WindowControls,
   OnlineTrackSearchResult,
+  OnlineSearchOptions,
   Track,
 } from '@/types'
 import { MobileDatabase } from './database'
@@ -303,8 +304,8 @@ export function createMobilePlatform(): PlatformInterface & {
       return readLyricsFile(trackId)
     },
 
-    async searchOnlineTracks(query: string): Promise<OnlineTrackSearchResult[]> {
-      return searchOnlineTracks(query)
+    async searchOnlineTracks(query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]> {
+      return searchOnlineTracks(query, options)
     },
 
     /** 在线歌词搜索（与桌面端 lyrics:search 一致） */

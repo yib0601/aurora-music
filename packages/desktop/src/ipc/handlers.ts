@@ -4,7 +4,7 @@ import path from 'path'
 import { app } from 'electron'
 import { getAllTracks, getTrackById, initDatabase } from './database'
 import { scanFolder, ensureCover } from './scanner'
-import type { OnlineTrackSearchResult, Track } from '../types'
+import type { OnlineTrackSearchResult, OnlineSearchOptions, OnlineSourceConfig, Track } from '../types'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -263,6 +263,74 @@ async function searchQQ(query: string): Promise<OnlineTrackSearchResult[]> {
   }
 }
 
+/**
+ * 自定义音乐源搜索：用户在设置页配置的接口
+ * - apiUrl 需包含 {query} 占位符，替换为 URL 编码后的搜索词
+ * - 响应支持多种 JSON 结构（数组 / {results} / {data} / {songs}），每项字段宽松解析
+ * - 返回结果携带 source='custom' 与 sourceName，便于 UI 分组展示
+ */
+async function searchCustomSource(
+  source: OnlineSourceConfig,
+  query: string
+): Promise<OnlineTrackSearchResult[]> {
+  try {
+    const trimmed = (query || '').trim()
+    if (!trimmed) return []
+    if (!source.apiUrl || !source.apiUrl.includes('{query}')) {
+      throw new Error(`源「${source.name}」的接口地址无效，必须包含 {query} 占位符`)
+    }
+
+    const url = source.apiUrl.replace('{query}', encodeURIComponent(trimmed))
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': HTTP_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!resp.ok) throw new Error(`源「${source.name}」返回 HTTP ${resp.status}`)
+
+    const json = (await resp.json()) as any
+    // 容错提取结果数组：支持直接数组或常见包裹结构
+    let rawItems: any[] = []
+    if (Array.isArray(json)) {
+      rawItems = json
+    } else if (Array.isArray(json?.results)) {
+      rawItems = json.results
+    } else if (Array.isArray(json?.data)) {
+      // data 可能是数组也可能是 { song: { list: [] } } 这类嵌套，递归一层
+      rawItems = Array.isArray(json.data) ? json.data : Array.isArray(json.data?.song?.list) ? json.data.song.list : []
+    } else if (Array.isArray(json?.songs)) {
+      rawItems = json.songs
+    } else if (Array.isArray(json?.list)) {
+      rawItems = json.list
+    }
+
+    const results: OnlineTrackSearchResult[] = []
+    for (const item of rawItems) {
+      if (!item || typeof item !== 'object') continue
+      // 兼容多种字段命名：audioUrl/url/playUrl、coverUrl/cover/picUrl/pic 等
+      const audioUrl =
+        item.audioUrl || item.url || item.playUrl || item.play_url || item.link
+      if (!audioUrl || typeof audioUrl !== 'string') continue // 无播放地址的结果跳过
+      const rawId = item.id ?? item.songId ?? item.song_id ?? item.mid
+      const idStr = rawId != null ? String(rawId) : `custom-${source.id}-${results.length}`
+      results.push({
+        id: `custom-${source.id}-${idStr}`,
+        title: String(item.title || item.name || item.songName || '未知歌曲'),
+        artist: String(item.artist || item.singer || item.artists || '未知艺术家'),
+        album: String(item.album || item.albumName || ''),
+        duration: Number(item.duration || item.interval || 0) || 0,
+        coverUrl: item.coverUrl || item.cover || item.picUrl || item.pic || item.albumPic || undefined,
+        audioUrl,
+        source: 'custom' as const,
+        sourceName: source.name,
+      })
+    }
+    return results
+  } catch (err) {
+    console.warn(`自定义源「${source.name}」搜索失败:`, err)
+    throw err
+  }
+}
+
 export function registerIpcHandlers() {
   initDatabase()
 
@@ -478,20 +546,38 @@ export function registerIpcHandlers() {
     }
   )
 
-  // 聚合在线搜索：网易云 + QQ音乐 双源并行
-  // 单源失败不影响另一源；两源都失败时抛错，前端展示直白的中文网络错误提示
+  // 聚合在线搜索：按用户配置并发调用内置源（网易云/QQ）+ 自定义源
+  // - options.useNetease 默认 true：启用网易云
+  // - options.useQQ 默认 true：启用 QQ 音乐
+  // - options.customSources：用户自定义源列表，仅 enabled=true 的会被调用
+  // - 单源失败不影响其他源；全部失败时抛错，前端展示直白的中文网络错误提示
   ipcMain.handle(
     'tracks:searchOnline',
-    async (_event, query: string): Promise<OnlineTrackSearchResult[]> => {
-      const [neteaseRes, qqRes] = await Promise.allSettled([
-        searchNetease(query),
-        searchQQ(query),
-      ])
+    async (_event, query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]> => {
+      const useNetease = options?.useNetease !== false
+      const useQQ = options?.useQQ !== false
+      const customSources = (options?.customSources || []).filter((s) => s && s.enabled && s.apiUrl)
+
+      const tasks: Promise<OnlineTrackSearchResult[]>[] = []
+      if (useNetease) tasks.push(searchNetease(query))
+      if (useQQ) tasks.push(searchQQ(query))
+      for (const src of customSources) {
+        tasks.push(searchCustomSource(src, query))
+      }
+
+      if (tasks.length === 0) return []
+
+      const settled = await Promise.allSettled(tasks)
       const results: OnlineTrackSearchResult[] = []
-      if (neteaseRes.status === 'fulfilled') results.push(...neteaseRes.value)
-      if (qqRes.status === 'fulfilled') results.push(...qqRes.value)
-      if (neteaseRes.status === 'rejected' && qqRes.status === 'rejected') {
-        throw new Error('网络请求失败，请检查网络连接')
+      let allFailed = true
+      for (const r of settled) {
+        if (r.status === 'fulfilled') {
+          allFailed = false
+          results.push(...r.value)
+        }
+      }
+      if (allFailed) {
+        throw new Error('所有音乐源请求失败，请检查网络连接或源配置')
       }
       return results
     }

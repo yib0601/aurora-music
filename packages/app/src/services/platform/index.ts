@@ -5,6 +5,7 @@ import type {
   DatabaseAdapter,
   WindowControls,
   OnlineTrackSearchResult,
+  OnlineSearchOptions,
   Track,
 } from '@/types'
 import { createMobilePlatform as createMobilePlatformImpl, setFolderPickerHandler } from './mobile'
@@ -129,9 +130,9 @@ export function createDesktopPlatform(): Platform {
       return api.readLyrics(trackId)
     },
 
-    async searchOnlineTracks(query: string): Promise<OnlineTrackSearchResult[]> {
+    async searchOnlineTracks(query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]> {
       if (!api?.searchOnlineTracks) return []
-      return api.searchOnlineTracks(query)
+      return api.searchOnlineTracks(query, options)
     },
 
     database: new NoopDatabase(),
