@@ -25,7 +25,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1000,
   },
   cacheDir: path.resolve(__dirname, 'node_modules/.vite'),
 })
