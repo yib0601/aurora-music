@@ -1,6 +1,6 @@
 {
   "name": "@aurora/desktop",
-  "version": "0.1.15",
+  "version": "0.1.0",
   "private": true,
   "description": "Aurora Music - 跨平台优雅音乐播放器",
   "author": "Aurora Music <aurora-music@example.com>",
