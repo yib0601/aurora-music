@@ -15,8 +15,10 @@ export default defineConfig({
     },
   },
   // music-metadata-browser 等老库依赖 Node 的 global，注入 globalThis。
+  // __APP_VERSION__：构建期注入版本号，供「检查更新」与当前版本展示使用
   define: {
     global: 'globalThis',
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '0.1.15'),
   },
   server: {
     port: 5173,

@@ -6,6 +6,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
+import { platform } from '@/services/platform'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -75,12 +76,12 @@ export function RecentPage() {
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
             <table className="w-full font-text text-body">
-              <thead>
+              {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
+              <thead className="hidden md:table-header-group">
                 <tr className="border-b border-white/10">
-                  <th className="text-left py-3.5 px-4 font-semibold text-white/50 w-10 text-caption">#</th>
                   <th className="text-left py-3.5 px-4 font-semibold text-white/50 text-caption">标题</th>
                   <th className="text-left py-3.5 px-4 font-semibold text-white/50 text-caption">艺术家</th>
-                  <th className="text-left py-3.5 px-4 font-semibold text-white/50 text-caption hidden md:table-cell">专辑</th>
+                  <th className="text-left py-3.5 px-4 font-semibold text-white/50 text-caption">专辑</th>
                   <th className="text-right py-3.5 px-4 font-semibold text-white/50 text-caption w-16">时长</th>
                 </tr>
               </thead>
@@ -92,11 +93,32 @@ export function RecentPage() {
                         className="row-hover cursor-pointer border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
                         onClick={() => handlePlay(track, idx)}
                       >
-                        <td className="py-3 px-4 text-white/50 text-caption">{idx + 1}</td>
-                        <td className="py-3 px-4 font-semibold truncate max-w-xs text-white">{track.title}</td>
-                        <td className="py-3 px-4 text-white/50 truncate max-w-40">{track.artist}</td>
+                        <td className="py-2 px-1.5 md:py-3 md:px-4 max-w-xs">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                navigate(`/song/${track.id}`)
+                              }}
+                              title="查看歌曲详情"
+                              className="w-11 h-11 md:w-9 md:h-9 rounded-lg md:rounded-[6px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+                            >
+                              {track.coverPath ? (
+                                <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover product-shadow" />
+                              ) : (
+                                <Clock className="h-4 w-4 text-white/30" strokeWidth={1.5} />
+                              )}
+                            </button>
+                            <div className="min-w-0">
+                              <span className="block font-semibold text-[14px] truncate text-white">{track.title}</span>
+                              {/* 移动端隐藏艺术家列，改为标题下方第二行展示 */}
+                              <span className="block md:hidden text-[12px] text-white/40 truncate mt-0.5">{track.artist}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-white/50 truncate max-w-40 hidden md:table-cell">{track.artist}</td>
                         <td className="py-3 px-4 text-white/50 truncate max-w-48 hidden md:table-cell">{track.album}</td>
-                        <td className="py-3 px-4 text-right text-white/50 text-caption tabular-nums">{formatTime(track.duration)}</td>
+                        <td className="py-2 pr-1.5 pl-1 md:py-3 md:px-4 text-right text-white/50 text-caption tabular-nums w-12 md:w-16">{formatTime(track.duration)}</td>
                       </tr>
                     </ContextMenuTrigger>
                     <ContextMenuContent className="w-52">

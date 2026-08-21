@@ -400,6 +400,54 @@ input[type='range']:active::-webkit-slider-thumb {
   transform: scale(1);
 }
 
+/* ===== 进度条 seek-bar：薄荷渐变填充 + 发光常显滑块 =====
+ * 桌面 PlayerBar 与移动端全屏播放页共用；--seek 变量传入已播放百分比。
+ * 选择器需带上 input[type='range'] 前缀，特异性高于上方全局 range 规则 */
+input[type='range'].seek-bar {
+  height: 24px;
+  background: transparent;
+}
+input[type='range'].seek-bar::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    rgba(0, 245, 212, 0.30) 0%,
+    rgba(0, 245, 212, 0.95) var(--seek, 0%),
+    rgba(255, 255, 255, 0.10) var(--seek, 0%)
+  );
+}
+input[type='range'].seek-bar::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -3.5px;
+  opacity: 1;
+  transform: scale(1);
+  background: #fff;
+  box-shadow:
+    0 0 0 3px rgba(0, 245, 212, 0.16),
+    0 0 12px rgba(0, 245, 212, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+  transition: transform 0.16s var(--ease-mineradio), box-shadow 0.16s var(--ease-mineradio);
+}
+input[type='range'].seek-bar:hover::-webkit-slider-thumb,
+input[type='range'].seek-bar:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+  box-shadow:
+    0 0 0 5px rgba(0, 245, 212, 0.22),
+    0 0 16px rgba(0, 245, 212, 0.65),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+}
+/* 移动端加大版：更粗轨道 + 更大滑块，方便触控 */
+input[type='range'].seek-bar.seek-lg::-webkit-slider-runnable-track {
+  height: 6px;
+}
+input[type='range'].seek-bar.seek-lg::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+}
+
 .row-hover { transition: background 0.18s var(--ease-mineradio); }
 .row-hover:hover { background: rgba(0,245,212,.075); }
 

@@ -22,10 +22,21 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
 import { onMediaButtonEvent } from '@/services/mediaSession'
-import { checkAllFilesAccess, openAllFilesAccessSettings } from '@/services/permission'
+import {
+  checkMediaPermissions,
+  requestMediaPermissions,
+  openAllFilesAccessSettings,
+} from '@/services/permission'
 import { useThemeColor } from '@/hooks/useThemeColor'
 import { platform, setFolderPickerHandler } from '@/services/platform'
 import { MobileFolderPicker } from '@/components/MobileFolderPicker'
+import { UpdateBanner } from '@/components/UpdateBanner'
+import {
+  checkForUpdate,
+  shouldShowStartupBanner,
+  markStartupBannerShown,
+  type UpdateInfo,
+} from '@/services/update.service'
 import { cn, isMobile } from '@/lib/utils'
 import type { Track } from '@/types'
 
@@ -67,13 +78,12 @@ function AppLayout() {
     }
   }, [mobile])
 
-  // 移动端「所有文件访问」权限引导：Android 11+ 扫描 /sdcard 下音乐需要
-  // MANAGE_EXTERNAL_STORAGE 特殊权限，必须由用户在系统设置中手动授予。
-  // 已配置 scanFolders 但未授权时弹引导卡片，用户授权回 App 后自动重扫。
-  const [needsAllFilesAccess, setNeedsAllFilesAccess] = useState(false)
+  // 移动端存储权限引导：扫描本地音乐需要存储权限（运行时「音乐和音频」权限
+  // 或「所有文件访问」特殊权限）。未授权时弹引导卡片，授权回 App 后自动重扫。
+  const [needsStoragePermission, setNeedsStoragePermission] = useState(false)
   // ref 用于 resume 监听里拿到最新值，避免重复注册 listener
   const needsPermissionRef = useRef(false)
-  useEffect(() => { needsPermissionRef.current = needsAllFilesAccess }, [needsAllFilesAccess])
+  useEffect(() => { needsPermissionRef.current = needsStoragePermission }, [needsStoragePermission])
 
   const triggerScanForConfiguredFolders = useCallback(() => {
     if (!platform.scanFolder) return
@@ -85,27 +95,16 @@ function AppLayout() {
 
   useEffect(() => {
     if (!mobile) return
-    // 启动时检测：仅在已配置扫描目录但未授权时弹引导
-    // （没配置目录的用户不需要打扰；已授权的也不打扰）
-    checkAllFilesAccess().then((granted) => {
-      if (!granted && useLibraryStore.getState().scanFolders.length > 0) {
-        setNeedsAllFilesAccess(true)
-      }
-    }).catch(() => {})
-  }, [mobile])
-
-  useEffect(() => {
-    if (!mobile) return
     // 监听 app resume：用户从系统设置授权后回到 App，重新检测；
     // 已授权则关闭引导卡片并触发扫描（让用户立即看到歌曲）
     let listener: { remove: () => void } | undefined
     let cancelled = false
     CapApp.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) return
-      checkAllFilesAccess().then((granted) => {
+      checkMediaPermissions().then((granted) => {
         if (cancelled) return
         if (granted && needsPermissionRef.current) {
-          setNeedsAllFilesAccess(false)
+          setNeedsStoragePermission(false)
           triggerScanForConfiguredFolders()
         }
       }).catch(() => {})
@@ -116,9 +115,20 @@ function AppLayout() {
     }
   }, [mobile, triggerScanForConfiguredFolders])
 
-  const handleOpenAllFilesAccessSettings = useCallback(() => {
-    openAllFilesAccessSettings().catch(() => {})
-  }, [])
+  // 授予权限：先尝试系统弹窗申请「音乐和音频」权限（一键）；
+  // 若系统不再弹窗（永久拒绝）则跳转应用设置页，由用户手动开启
+  const handleGrantStoragePermission = useCallback(() => {
+    requestMediaPermissions().then((granted) => {
+      if (granted) {
+        setNeedsStoragePermission(false)
+        triggerScanForConfiguredFolders()
+      } else {
+        openAllFilesAccessSettings().catch(() => {})
+      }
+    }).catch(() => {
+      openAllFilesAccessSettings().catch(() => {})
+    })
+  }, [triggerScanForConfiguredFolders])
 
   const handleFolderPickerClose = useCallback(() => {
     setFolderPickerOpen(false)
@@ -153,6 +163,26 @@ function AppLayout() {
   // 保留 themeColor hook 以维持封面色提取功能（用于 lyrics 渐变等非装饰场景）
   useThemeColor(currentTrack?.coverPath)
 
+  // 启动时检查软件更新：有新版本且本次会话未提示过时展示横幅
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  useEffect(() => {
+    if (!shouldShowStartupBanner()) return
+    let cancelled = false
+    checkForUpdate()
+      .then((info) => {
+        if (info && !cancelled) {
+          setUpdateInfo(info)
+          markStartupBannerShown()
+        }
+      })
+      .catch(() => {
+        // 网络不可用 / API 限流时静默跳过，不打扰用户
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     initAudioAnalyser()
 
@@ -184,11 +214,27 @@ function AppLayout() {
         })
       )
     }
-    // 扫描为静默后台任务：不订阅进度、不展示错误，失败仅记录日志
+    // 扫描失败必须给用户明确提示：未授权时用户只会看到 0 首歌且无任何报错，
+    // 极易误以为是软件本身的缺陷（而非缺少存储权限）
     if (platform.onScanError) {
+      let lastErrorAt = 0
       unsubscribers.push(
         platform.onScanError((error: { folder: string; message: string }) => {
           console.warn('[Scan] 后台扫描失败:', error.message)
+          if (!isMobile()) return
+          checkMediaPermissions().then((granted) => {
+            if (!granted) {
+              // 权限缺失：弹引导卡片（幂等，多个目录连续失败不会重复弹多个）
+              setNeedsStoragePermission(true)
+            } else {
+              // 权限正常却仍失败（目录被删/损坏等）：5 秒去重，避免多目录连续弹窗
+              const now = Date.now()
+              if (now - lastErrorAt > 5000) {
+                lastErrorAt = now
+                alert(error.message)
+              }
+            }
+          }).catch(() => {})
         })
       )
     }
@@ -222,8 +268,23 @@ function AppLayout() {
     if (platform.scanFolder && !initialScanTriggered) {
       initialScanTriggered = true
       const folders = useLibraryStore.getState().scanFolders
-      for (const folder of folders) {
-        platform.scanFolder(folder).catch(() => {})
+      const doScan = () => {
+        for (const folder of folders) {
+          platform.scanFolder!(folder).catch(() => {})
+        }
+      }
+      if (isMobile() && folders.length > 0) {
+        // 移动端：先申请存储权限再扫描。未授权时 readdir 会静默失败，
+        // 用户只会看到 0 首歌且无任何提示，会误以为是软件本身的缺陷
+        requestMediaPermissions().then((granted) => {
+          if (granted) {
+            doScan()
+          } else {
+            setNeedsStoragePermission(true)
+          }
+        }).catch(doScan)
+      } else if (folders.length > 0) {
+        doScan()
       }
     }
 
@@ -451,6 +512,12 @@ function AppLayout() {
           <div className="flex-1 flex overflow-hidden">
             {/* 内容列：页面路由 + 悬浮播放条（播放条相对内容列居中，避免压到右侧歌词瓷砖） */}
             <div className="relative flex-1 flex flex-col min-w-0">
+              {/* 新版本提示横幅：启动检测到新版本时固定在内容区顶部 */}
+              {updateInfo && (
+                <div className="pt-3">
+                  <UpdateBanner info={updateInfo} onClose={() => setUpdateInfo(null)} />
+                </div>
+              )}
               <div className="flex-1 overflow-y-auto scrollbar-thin">
                 <Routes>
                   <Route path="/" element={<Navigate to="/library" replace />} />
@@ -558,27 +625,27 @@ function AppLayout() {
         />
       )}
 
-      {/* 移动端「所有文件访问」权限引导：已配置扫描目录但未授权时显示 */}
-      {mobile && needsAllFilesAccess && (
+      {/* 移动端存储权限引导：扫描需要「音乐和音频」权限（或「所有文件访问」）时显示 */}
+      {mobile && needsStoragePermission && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
           <div className="w-full max-w-[340px] rounded-[20px] bg-[#0E1014] border border-white/10 p-6 flex flex-col items-center text-center shadow-[0_20px_60px_rgba(0,0,0,.5)]">
             <div className="w-14 h-14 rounded-full bg-mint/10 border border-mint/20 flex items-center justify-center mb-4">
               <ShieldAlert className="h-7 w-7 text-mint" strokeWidth={1.6} />
             </div>
             <h2 className="font-display text-[17px] font-bold text-white/96 tracking-[-0.3px]">
-              需要文件访问权限
+              需要存储权限
             </h2>
             <p className="font-text text-[13px] text-white/60 leading-relaxed mt-2 mb-6 tracking-[-0.15px]">
-              为了扫描本地音乐文件，需要授予「所有文件访问」权限。点击下方按钮前往系统设置，授权后返回应用即可自动开始扫描。
+              未授予存储权限时无法读取本地音乐，因此扫描结果为空。请授予「音乐和音频」权限；若系统不再弹出授权窗口，可在设置中开启「所有文件访问」。授权后返回应用会自动开始扫描。
             </p>
             <button
-              onClick={handleOpenAllFilesAccessSettings}
+              onClick={handleGrantStoragePermission}
               className="w-full h-11 rounded-full bg-mint text-[#030608] font-semibold text-[14px] active:scale-[0.98] transition"
             >
-              前往设置
+              授予权限
             </button>
             <button
-              onClick={() => setNeedsAllFilesAccess(false)}
+              onClick={() => setNeedsStoragePermission(false)}
               className="w-full h-10 mt-2 text-white/50 text-[13px] hover:text-white/80 active:scale-[0.98] transition"
             >
               稍后再说

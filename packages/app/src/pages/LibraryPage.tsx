@@ -110,11 +110,7 @@ export function LibraryPage() {
           onClick={isDesktop() ? undefined : () => handlePlayTrack(track, idx, queue)}
           onDoubleClick={isDesktop() ? () => handlePlayTrack(track, idx, queue) : undefined}
         >
-          <td className="py-2.5 px-3 text-white/40 w-10 group-hover:text-white">
-            <span className="group-hover:hidden font-text text-[13px] tabular-nums">{idx + 1}</span>
-            <Play className="h-3 w-3 hidden group-hover:block text-mint" strokeWidth={1.8} />
-          </td>
-          <td className="py-2.5 px-3 max-w-xs">
+          <td className="py-2 px-1.5 md:py-2.5 md:px-3 max-w-xs">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={(e) => {
@@ -122,7 +118,7 @@ export function LibraryPage() {
                   navigate(`/song/${track.id}`)
                 }}
                 title="查看歌曲详情"
-                className="w-9 h-9 rounded-[6px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+                className="w-11 h-11 md:w-9 md:h-9 rounded-lg md:rounded-[6px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
               >
                 {track.coverPath ? (
                   <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover product-shadow" />
@@ -130,32 +126,39 @@ export function LibraryPage() {
                   <Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
                 )}
               </button>
-              <span className="font-text font-semibold text-[14px] truncate text-white tracking-[-0.224px]">
-                {track.title}
-              </span>
+              <div className="min-w-0">
+                <span className="block font-text font-semibold text-[14px] truncate text-white tracking-[-0.224px]">
+                  {track.title}
+                </span>
+                {/* 移动端隐藏艺术家列，改为标题下方第二行展示 */}
+                <span className="block md:hidden font-text text-[12px] text-white/40 truncate mt-0.5 tracking-[-0.12px]">
+                  {track.artist}
+                </span>
+              </div>
             </div>
           </td>
-          <td className="py-2.5 px-3 font-text text-white/50 text-[14px] truncate max-w-40 tracking-[-0.224px]">
+          <td className="py-2.5 px-3 font-text text-white/50 text-[14px] truncate max-w-40 tracking-[-0.224px] hidden md:table-cell">
             {track.artist}
           </td>
           <td className="py-2.5 px-3 font-text text-white/40 text-[14px] truncate max-w-48 hidden md:table-cell tracking-[-0.224px]">
             {track.album}
           </td>
-          <td className="py-2.5 px-2 w-10">
+          <td className="py-2 px-1 md:py-2.5 md:px-2 w-10">
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 toggleLike(track.id)
               }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-apple p-1 hover:bg-mint/[0.075] rounded-xs"
+              // 移动端无 hover，收藏按钮需常显；桌面端保持 hover 显示
+              className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 ease-apple p-1.5 md:p-1 hover:bg-mint/[0.075] rounded-xs"
             >
               <Heart
-                className={cn('h-3.5 w-3.5', likedTracks.has(track.id) ? 'text-coral fill-coral' : 'text-white/40')}
+                className={cn('h-4 w-4 md:h-3.5 md:w-3.5', likedTracks.has(track.id) ? 'text-coral fill-coral' : 'text-white/40')}
                 strokeWidth={1.5}
               />
             </button>
           </td>
-          <td className="py-2.5 px-3 text-right font-text text-white/40 text-[13px] tabular-nums w-16 tracking-[-0.12px]">
+          <td className="py-2 pr-1.5 pl-1 md:py-2.5 md:px-3 text-right font-text text-white/40 text-[12px] md:text-[13px] tabular-nums w-12 md:w-16 tracking-[-0.12px]">
             {formatTime(track.duration)}
           </td>
         </tr>
@@ -248,7 +251,7 @@ export function LibraryPage() {
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-end mb-8 -mt-12">
+          <div className="flex items-center justify-end mb-6 -mt-10 md:mb-8 md:-mt-12">
             <div className="flex items-center gap-2">
               {scanFolders.length > 0 && (
                 <button
@@ -285,12 +288,12 @@ export function LibraryPage() {
           {viewMode === 'list' ? (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           <table className="w-full font-text">
-            <thead>
+            {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
+            <thead className="hidden md:table-header-group">
               <tr className="border-b border-white/10">
-                <th className="text-left py-2.5 px-3 font-semibold text-white/40 w-10 text-[12px] tracking-[-0.12px]">#</th>
                 <th className="text-left py-2.5 px-3 font-semibold text-white/40 text-[12px] tracking-[-0.12px]">标题</th>
                 <th className="text-left py-2.5 px-3 font-semibold text-white/40 text-[12px] tracking-[-0.12px]">艺术家</th>
-                <th className="text-left py-2.5 px-3 font-semibold text-white/40 text-[12px] tracking-[-0.12px] hidden md:table-cell">专辑</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-white/40 text-[12px] tracking-[-0.12px]">专辑</th>
                 <th className="w-10"></th>
                 <th className="text-right py-2.5 px-3 font-semibold text-white/40 text-[12px] w-16 tracking-[-0.12px]">时长</th>
               </tr>
@@ -310,6 +313,8 @@ export function LibraryPage() {
                 <ContextMenuTrigger asChild>
                   <div
                     className="group card-utility p-2.5 cursor-pointer"
+                    // 移动端单击卡片即播放；桌面端保留双击，封面单击仍进详情
+                    onClick={isDesktop() ? undefined : () => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), filteredTracks)}
                     onDoubleClick={() => handlePlayTrack(track, tracks.findIndex((t) => t.id === track.id), filteredTracks)}
                   >
                     <div
@@ -334,7 +339,11 @@ export function LibraryPage() {
                           e.stopPropagation()
                           toggleLike(track.id)
                         }}
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-apple bg-black/40 rounded-pill p-1 hover:scale-105"
+                        // 移动端无 hover：已收藏的红心常显，未收藏的保持隐藏避免遮挡封面
+                        className={cn(
+                          'absolute top-2 right-2 transition-opacity duration-200 ease-apple bg-black/40 rounded-pill p-1 hover:scale-105',
+                          likedTracks.has(track.id) ? 'opacity-100 md:opacity-0 md:group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        )}
                       >
                         <Heart
                           className={cn('h-3.5 w-3.5', likedTracks.has(track.id) ? 'text-coral fill-coral' : 'text-white')}

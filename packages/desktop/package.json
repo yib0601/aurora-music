@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.electron.json"
   },
   "dependencies": {
+    "@aurora/shared": "workspace:*",
     "better-sqlite3": "^12.11.1",
     "iconv-lite": "^0.6.3",
     "mpris-service": "^2.1.2",

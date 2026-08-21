@@ -20,10 +20,11 @@ export function PageLayout({ title, subtitle, header, children, className }: Pag
   return (
     // pb 需为底部悬浮播放条让位（移动端约 84px+safe-area / 桌面约 102px），
     // 否则滚动到底时内容会被播放条永久遮挡
-    <div className={cn('flex flex-col h-full px-8 pt-8 pb-[calc(100px+env(safe-area-inset-bottom))] lg:pb-32', className)}>
+    // 移动端收窄左右内边距、缩小大标题字号，避免小屏上内容拥挤
+    <div className={cn('flex flex-col h-full px-4 pt-4 md:px-8 md:pt-8 pb-[calc(100px+env(safe-area-inset-bottom))] lg:pb-32', className)}>
       {header ?? (title && (
-        <div className="mb-8">
-          <h1 className="font-display text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+        <div className="mb-6 md:mb-8">
+          <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
             {title}
           </h1>
           {subtitle && (

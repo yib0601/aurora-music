@@ -6,6 +6,8 @@ import type {
   WindowControls,
   OnlineTrackSearchResult,
   OnlineSearchOptions,
+  LyricsSearchOptions,
+  LyricsSearchResult,
   Track,
 } from '@/types'
 import { createMobilePlatform as createMobilePlatformImpl, setFolderPickerHandler } from './mobile'
@@ -30,13 +32,14 @@ export interface PlatformExtension {
   onScanError?: (cb: (e: { folder: string; message: string }) => void) => () => void
   /** 系统媒体键事件订阅（桌面端来自 globalShortcut/MPRIS，移动端来自 mediaSession） */
   onMediaControl?: (cb: (action: string) => void) => () => void
-  /** 在线歌词搜索（LRCLIB API） */
+  /** 在线歌词搜索（按用户配置的歌词源依次尝试） */
   searchLyrics?: (
     query: string,
     artist?: string,
     album?: string,
-    duration?: number
-  ) => Promise<{ lrc: string | null; name: string; artist: string } | null>
+    duration?: number,
+    options?: LyricsSearchOptions
+  ) => Promise<LyricsSearchResult | null>
 }
 
 class NoopDatabase implements DatabaseAdapter {
@@ -159,9 +162,9 @@ export function createDesktopPlatform(): Platform {
       if (!api?.onMediaControl) return () => {}
       return api.onMediaControl(cb)
     },
-    async searchLyrics(query, artist, album, duration) {
+    async searchLyrics(query, artist, album, duration, options) {
       if (!api?.searchLyrics) return null
-      return api.searchLyrics(query, artist, album, duration)
+      return api.searchLyrics(query, artist, album, duration, options)
     },
   }
 }
