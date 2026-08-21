@@ -44,7 +44,9 @@ jobs:
           npm_config_build_from_source: 'false'
 
       - name: Build app (vite)
-        run: pnpm --filter @aurora/app build
+        # @aurora/app 依赖 workspace 包 @aurora/shared（types 指向 dist/），
+        # 必须先构建 shared，否则 tsc 报 "Cannot find module '@aurora/shared'"
+        run: pnpm --filter @aurora/shared build && pnpm --filter @aurora/app build
 
       - name: Sync app dist to desktop
         run: |
@@ -90,7 +92,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build app (vite)
-        run: pnpm --filter @aurora/app build
+        # @aurora/app 依赖 workspace 包 @aurora/shared（types 指向 dist/），
+        # 必须先构建 shared，否则 tsc 报 "Cannot find module '@aurora/shared'"
+        run: pnpm --filter @aurora/shared build && pnpm --filter @aurora/app build
 
       - name: Sync app dist to desktop
         run: |
@@ -148,7 +152,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build app (vite)
-        run: pnpm --filter @aurora/app build
+        # @aurora/app 依赖 workspace 包 @aurora/shared（types 指向 dist/），
+        # 必须先构建 shared，否则 tsc 报 "Cannot find module '@aurora/shared'"
+        run: pnpm --filter @aurora/shared build && pnpm --filter @aurora/app build
 
       - name: Sync app dist to mobile webDir
         run: |
