@@ -27,7 +27,7 @@ import type { Track, OnlineTrackSearchResult } from '@/types'
  * - 封面缩略图 rounded-xs + bg-white/[0.04] + product-shadow（仅 img）
  * - 收藏图标 active 态使用 text-coral fill-coral（珊瑚红强调）
  * - 空状态使用 card-utility 容器（白底 + 1px hairline + 18px 圆角）+ tagline 文案
- * - 本地/在线双 tab：本地走内存过滤，在线走 IPC → 网易云 API
+ * - 本地/在线双 tab：本地走内存过滤，在线按用户配置的歌源协议搜索
  */
 export function SearchPage() {
   const navigate = useNavigate()
@@ -42,10 +42,13 @@ export function SearchPage() {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
-  // 在线搜索配置：自定义源 + 内置源开关
+  // 歌源配置：应用不内置任何源，全部由用户按协议配置
   const onlineSources = useLibraryStore((s) => s.onlineSources)
-  const useNeteaseSources = useLibraryStore((s) => s.useNeteaseSources)
-  const useQQSources = useLibraryStore((s) => s.useQQSources)
+  // 已启用的源（空数组 = 用户尚未配置任何源，搜索页需给出引导）
+  const enabledSourceCount = useMemo(
+    () => onlineSources.filter((s) => s.enabled && s.apiUrl).length,
+    [onlineSources]
+  )
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>()
   // 并发取消：每次发起新搜索递增 seq，响应回来时校验是否仍是最新一次
   const searchSeqRef = useRef(0)
@@ -80,9 +83,7 @@ export function SearchPage() {
     setOnlineError(null)
     platform
       .searchOnlineTracks(q, {
-        customSources: onlineSources,
-        useNetease: useNeteaseSources,
-        useQQ: useQQSources,
+        sources: onlineSources,
       })
       .then((res) => {
         if (seq !== searchSeqRef.current) return
@@ -98,7 +99,7 @@ export function SearchPage() {
         if (seq !== searchSeqRef.current) return
         setOnlineLoading(false)
       })
-  }, [debouncedQuery, tab, onlineSources, useNeteaseSources, useQQSources])
+  }, [debouncedQuery, tab, onlineSources])
 
   // 在线结果转 Track（复用播放器逻辑）：path 置空，onlineUrl 携带播放地址
   const onlineTracks: Track[] = useMemo(() => {
@@ -114,36 +115,24 @@ export function SearchPage() {
       liked: false,
       onlineUrl: r.audioUrl,
       onlineSource: r.source,
+      onlineSourceName: r.sourceName,
       onlineId: r.id,
     }))
   }, [onlineResults])
 
-  // 按来源分组：网易云 / QQ音乐 / 各自定义源，保持原结果顺序；播放队列用整组曲目
+  // 按来源分组：每个源一个分组，顺序跟随结果出现顺序（即用户配置的源顺序）
   const onlineGroups = useMemo(() => {
-    // 先收集所有出现过的 source 标识（自定义源用 sourceName 区分）
-    type Group = { key: string; source: 'netease' | 'qq' | 'custom'; label: string; tracks: Track[] }
+    type Group = { key: string; label: string; tracks: Track[] }
     const groupMap = new Map<string, Group>()
-    // 内置源顺序固定在前
-    groupMap.set('netease', { key: 'netease', source: 'netease', label: '网易云', tracks: [] })
-    groupMap.set('qq', { key: 'qq', source: 'qq', label: 'QQ 音乐', tracks: [] })
     for (const t of onlineTracks) {
-      if (t.onlineSource === 'netease') {
-        groupMap.get('netease')!.tracks.push(t)
-      } else if (t.onlineSource === 'qq') {
-        groupMap.get('qq')!.tracks.push(t)
-      } else if (t.onlineSource === 'custom') {
-        // 自定义源按 sourceName 分组（取该 source 的 name；通过 onlineResults 找回）
-        const resultItem = onlineResults.find((r) => r.id === t.id)
-        const name = resultItem?.sourceName || '自定义源'
-        const key = `custom:${name}`
-        if (!groupMap.has(key)) {
-          groupMap.set(key, { key, source: 'custom', label: name, tracks: [] })
-        }
-        groupMap.get(key)!.tracks.push(t)
+      const name = t.onlineSourceName || '在线音乐'
+      if (!groupMap.has(name)) {
+        groupMap.set(name, { key: name, label: name, tracks: [] })
       }
+      groupMap.get(name)!.tracks.push(t)
     }
-    return Array.from(groupMap.values()).filter((g) => g.tracks.length > 0)
-  }, [onlineTracks, onlineResults])
+    return Array.from(groupMap.values())
+  }, [onlineTracks])
 
   const handlePlayTrack = (track: Track, index: number, queue: Track[]) => {
     usePlayerStore.getState().playQueue(queue, index)
@@ -319,6 +308,25 @@ export function SearchPage() {
                   </section>
                 </div>
               )
+            ) : enabledSourceCount === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <div className="relative mb-5">
+                  <div className="absolute -inset-10 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
+                  <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                    <Cloud className="h-10 w-10 text-mint/50" strokeWidth={1} />
+                  </div>
+                </div>
+                <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">未配置音乐源</p>
+                <p className="font-text text-[14px] text-white/40 tracking-[-0.15px] mb-5 text-center max-w-xs">
+                  应用不内置任何音乐源，请先在设置中配置符合协议的搜索接口
+                </p>
+                <button
+                  onClick={() => navigate('/settings')}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-mint/[0.12] text-mint text-[13px] font-semibold hover:bg-mint/20 transition-colors duration-200 ease-apple"
+                >
+                  前往设置音乐源
+                </button>
+              </div>
             ) : onlineLoading ? (
               <div className="flex flex-col items-center justify-center h-full">
                 <Loader2 className="h-10 w-10 text-mint/60 animate-spin mb-4" strokeWidth={1.5} />

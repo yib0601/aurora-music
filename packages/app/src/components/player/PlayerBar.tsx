@@ -104,7 +104,18 @@ export function PlayerBar({
       else if (currentTrack) navigate(`/song/${currentTrack.id}`)
     }
     return (
-      <div className="glass-saved-panel rounded-[20px] px-3 py-2 flex items-center gap-1.5">
+      <div className="glass-saved-panel rounded-[20px] px-3 py-2 flex items-center gap-1.5 relative overflow-hidden">
+        {/* 顶部进度细线：迷你条上一眼可见播放进度 */}
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-white/[0.08]">
+          <div
+            className="h-full rounded-r-full transition-[width] duration-300 ease-linear"
+            style={{
+              width: `${progressPercent}%`,
+              background: 'linear-gradient(to right, rgba(0,245,212,.35), rgba(0,245,212,.95))',
+              boxShadow: progressPercent > 0 ? '0 0 8px rgba(0,245,212,.5)' : 'none',
+            }}
+          />
+        </div>
         <button
           onClick={openNowPlaying}
           title="展开播放器"
@@ -182,7 +193,7 @@ export function PlayerBar({
         <span className="text-[12px] text-white/50 w-12 text-right tabular-nums">
           {formatTime(displayedProgress)}
         </span>
-        <div className="flex-1 relative h-3 flex items-center group">
+        <div className="flex-1 relative flex items-center">
           <input
             type="range"
             min={0}
@@ -196,10 +207,8 @@ export function PlayerBar({
             onMouseUp={handleSeekCommit}
             onTouchEnd={handleSeekCommit}
             onMouseLeave={() => seeking && handleSeekCommit()}
-            className="w-full h-1 group-hover:h-[5px] rounded-full appearance-none cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-all"
-            style={{
-              background: `linear-gradient(to right, rgba(255,255,255,.92) 0%, rgba(0,245,212,.74) ${progressPercent}%, rgba(255,255,255,.095) ${progressPercent}%, rgba(255,255,255,.095) 100%)`,
-            }}
+            className="seek-bar w-full cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+            style={{ '--seek': `${progressPercent}%` } as React.CSSProperties}
           />
         </div>
         <span className="text-[12px] text-white/50 w-12 tabular-nums">
@@ -339,7 +348,7 @@ export function PlayerBar({
               onMouseLeave={() => seekingVolume && handleVolumeCommit()}
               className="w-full h-1 rounded-full appearance-none cursor-pointer"
               style={{
-                background: `linear-gradient(to right, rgba(255,255,255,.92) 0%, rgba(0,245,212,.74) ${volumePercent}%, rgba(255,255,255,.095) ${volumePercent}%, rgba(255,255,255,.095) 100%)`,
+                background: `linear-gradient(to right, rgba(0,245,212,.45) 0%, rgba(0,245,212,.9) ${volumePercent}%, rgba(255,255,255,.095) ${volumePercent}%, rgba(255,255,255,.095) 100%)`,
               }}
             />
           </div>

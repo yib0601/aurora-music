@@ -28,7 +28,7 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
   const [lyrics, setLyrics] = useState<LyricLine[]>([])
   const [loadedLyrics, setLoadedLyrics] = useState<string>('')
   const [loading, setLoading] = useState(false)
-  const activeLineRef = useRef<number>(-1)
+  const activeLineRef = useRef<number>(-2)
   const lastScrollRef = useRef<number>(0)
 
   useEffect(() => {
@@ -52,6 +52,8 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
       setLyrics([])
       return
     }
+    // 歌词变化（切歌）时重置滚动跟踪，确保新歌重新定位
+    activeLineRef.current = -2
     setLyrics(parseLRC(loadedLyrics))
   }, [loadedLyrics])
 
@@ -61,29 +63,54 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
     [lyrics, progress]
   )
 
-  // ⚠️ 性能：节流滚动到 ~10fps，避免每个 progress tick（4fps）触发 smooth scroll 重排
+  const scrollTimerRef = useRef<number | null>(null)
+
+  // ⚠️ 性能：节流滚动到 ~10fps，避免每个 progress tick（4fps）触发 smooth scroll 重排；
+  // 节流窗口内的变化延迟补滚，确保滚动最终与高亮行一致
   useEffect(() => {
     if (lyrics.length === 0 || activeIdx < 0) return
     if (activeLineRef.current === activeIdx) return
     activeLineRef.current = activeIdx
 
-    const now = performance.now()
-    if (now - lastScrollRef.current < 100) return
-    lastScrollRef.current = now
+    const doScroll = () => {
+      scrollTimerRef.current = null
+      lastScrollRef.current = performance.now()
+      const container = containerRef.current
+      if (!container) return
+      const activeEl = container.children[activeLineRef.current] as HTMLElement | undefined
+      if (!activeEl) return
 
-    const container = containerRef.current
-    if (!container) return
-    const activeEl = container.children[activeIdx] as HTMLElement | undefined
-    if (!activeEl) return
+      // 用视口矩形计算相对滚动容器的位置：
+      // offsetTop 相对 offsetParent（移动端 fixed 全屏层会干扰），导致滚动偏移
+      const containerRect = container.getBoundingClientRect()
+      const elRect = activeEl.getBoundingClientRect()
+      const elTop = elRect.top - containerRect.top + container.scrollTop
 
-    const containerH = container.clientHeight
-    const elTop = activeEl.offsetTop
-    const elH = activeEl.offsetHeight
-    container.scrollTo({
-      top: elTop - containerH / 2 + elH / 2,
-      behavior: isPlaying ? 'smooth' : 'auto',
-    })
+      container.scrollTo({
+        top: elTop - container.clientHeight / 2 + elRect.height / 2,
+        behavior: isPlaying ? 'smooth' : 'auto',
+      })
+    }
+
+    const elapsed = performance.now() - lastScrollRef.current
+    if (elapsed >= 100) {
+      if (scrollTimerRef.current != null) {
+        window.clearTimeout(scrollTimerRef.current)
+        scrollTimerRef.current = null
+      }
+      doScroll()
+    } else if (scrollTimerRef.current == null) {
+      // 节流窗口内：合并为一次延迟补滚，不丢失滚动目标
+      scrollTimerRef.current = window.setTimeout(doScroll, 100 - elapsed)
+    }
   }, [activeIdx, lyrics, isPlaying])
+
+  // 卸载时清理延迟滚动定时器
+  useEffect(() => {
+    return () => {
+      if (scrollTimerRef.current != null) window.clearTimeout(scrollTimerRef.current)
+    }
+  }, [])
 
   return (
     <div

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
   ChevronDown, Heart, ListMusic, Music2,
@@ -81,7 +81,13 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         >
           <ChevronDown className="h-6 w-6" strokeWidth={1.8} />
         </button>
-        <span className="text-[12px] font-semibold text-white/40 uppercase tracking-wider">正在播放</span>
+        <span className="flex-1 min-w-0 px-1 text-center text-[13px] font-semibold text-white/70 truncate">
+          {currentTrack
+            ? currentTrack.artist
+              ? `${currentTrack.title} - ${currentTrack.artist}`
+              : currentTrack.title
+            : '正在播放'}
+        </span>
         <button
           onClick={() => { toggleQueuePanel(); onClose() }}
           aria-label="队列"
@@ -91,9 +97,9 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         </button>
       </header>
 
-      {/* 大封面 */}
+      {/* 大封面：矮屏自动缩小，给歌词留空间 */}
       <div className="px-8 pt-2 pb-4 flex justify-center">
-        <div className="relative w-full max-w-[320px] aspect-square">
+        <div className="relative w-full max-w-[min(320px,42vh)] aspect-square">
           <div
             className="absolute -inset-6 rounded-[40px] blur-3xl opacity-50"
             style={{ background: 'radial-gradient(circle at 30% 30%, rgba(0,245,212,.20), transparent 70%)' }}
@@ -108,59 +114,38 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         </div>
       </div>
 
-      {/* 标题 + 收藏 */}
-      <div className="px-6 pb-3 flex items-center gap-3">
-        <div className="flex-1 min-w-0 text-center">
-          <h1 className="font-display text-[20px] font-bold text-white/96 truncate tracking-[-0.3px]">
-            {currentTrack?.title || '未在播放'}
-          </h1>
-          <p className="font-text text-[13px] text-white/50 truncate mt-0.5 tracking-[-0.15px]">
-            {currentTrack?.artist || '选择一首歌曲开始'}
-          </p>
-        </div>
-        <button
-          onClick={() => currentTrack && toggleLike(currentTrack.id)}
-          aria-label={isLiked ? '取消收藏' : '收藏'}
-          className={cn(
-            'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
-            isLiked ? 'text-coral' : 'text-white/50 hover:text-white',
-          )}
-        >
-          <Heart className={cn('h-5 w-5', isLiked && 'fill-coral')} strokeWidth={1.6} />
-        </button>
+      {/* 歌词：置于播放控件上方；歌曲标题信息已移至顶部栏 */}
+      <div className="flex-1 min-h-0 px-6">
+        <LyricsView className="h-full" onLineClick={(t) => usePlayerStore.getState().seekTo(t)} />
       </div>
 
-      {/* 进度条 */}
-      <div className="px-6 pb-3">
+      {/* 进度条：32px 触控高度 + 发光常显滑块 */}
+      <div className="px-6 pb-1">
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-white/50 w-10 text-right tabular-nums">
             {formatTime(displayedProgress)}
           </span>
-          <div className="flex-1 relative h-3 flex items-center">
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              value={displayedProgress}
-              step={0.1}
-              disabled={!currentTrack}
-              onTouchStart={handleSeekStart}
-              onChange={handleSeekChange}
-              onTouchEnd={handleSeekCommit}
-              className="w-full h-1.5 rounded-full appearance-none cursor-pointer disabled:opacity-40"
-              style={{
-                background: `linear-gradient(to right, rgba(255,255,255,.92) 0%, rgba(0,245,212,.74) ${progressPercent}%, rgba(255,255,255,.12) ${progressPercent}%, rgba(255,255,255,.12) 100%)`,
-              }}
-            />
-          </div>
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            value={displayedProgress}
+            step={0.1}
+            disabled={!currentTrack}
+            onTouchStart={handleSeekStart}
+            onChange={handleSeekChange}
+            onTouchEnd={handleSeekCommit}
+            className="seek-bar seek-lg flex-1 cursor-pointer disabled:opacity-40"
+            style={{ '--seek': `${progressPercent}%` } as CSSProperties}
+          />
           <span className="text-[11px] text-white/50 w-10 tabular-nums">
             {formatTime(duration)}
           </span>
         </div>
       </div>
 
-      {/* 控制按钮 */}
-      <div className="px-6 pb-3 flex items-center justify-center gap-6">
+      {/* 控制按钮：播放模式 / 上一首 / 播放 / 下一首 / 收藏，左右对称 */}
+      <div className="px-6 pb-[calc(env(safe-area-inset-bottom)+12px)] flex items-center justify-between">
         <button
           onClick={cyclePlayMode}
           aria-label="播放模式"
@@ -170,51 +155,56 @@ export function MobileNowPlaying({ open, onClose }: Props) {
           )}
         >
           {shuffleMode === 'on' ? (
-            <Shuffle className="h-5 w-5" strokeWidth={1.8} />
+            <Shuffle className="h-[22px] w-[22px]" strokeWidth={1.8} />
           ) : repeatMode === 'one' ? (
-            <Repeat1 className="h-5 w-5" strokeWidth={1.8} />
+            <Repeat1 className="h-[22px] w-[22px]" strokeWidth={1.8} />
           ) : repeatMode === 'all' ? (
-            <Repeat className="h-5 w-5" strokeWidth={1.8} />
+            <Repeat className="h-[22px] w-[22px]" strokeWidth={1.8} />
           ) : (
-            <Shuffle className="h-5 w-5" strokeWidth={1.8} />
+            <Shuffle className="h-[22px] w-[22px]" strokeWidth={1.8} />
           )}
         </button>
         <button
           onClick={() => usePlayerStore.getState().previous()}
           disabled={!currentTrack}
           aria-label="上一首"
-          className="w-12 h-12 flex items-center justify-center rounded-full text-white/90 hover:text-white active:scale-90 transition disabled:opacity-40"
+          className="w-14 h-14 flex items-center justify-center rounded-full text-white/90 hover:text-white active:scale-90 transition disabled:opacity-40"
         >
-          <SkipBack className="h-6 w-6" fill="currentColor" strokeWidth={1.5} />
+          <SkipBack className="h-7 w-7" fill="currentColor" strokeWidth={1.5} />
         </button>
-        {/* 主播放按钮：72px 大圆形 */}
+        {/* 主播放按钮：76px 大圆形 */}
         <button
           onClick={() => usePlayerStore.getState().togglePlay()}
           disabled={!currentTrack}
           aria-label={isPlaying ? '暂停' : '播放'}
-          className="w-[72px] h-[72px] rounded-full flex items-center justify-center bg-mint text-[#030608] disabled:opacity-40 active:scale-95 transition shadow-[0_10px_30px_rgba(0,245,212,.35),inset_0_1px_0_rgba(255,255,255,.25)]"
+          className="w-[76px] h-[76px] rounded-full flex items-center justify-center bg-mint text-[#030608] disabled:opacity-40 active:scale-95 transition shadow-[0_10px_30px_rgba(0,245,212,.35),inset_0_1px_0_rgba(255,255,255,.25)]"
         >
           {isPlaying ? (
-            <Pause className="h-7 w-7" fill="currentColor" strokeWidth={1.5} />
+            <Pause className="h-8 w-8" fill="currentColor" strokeWidth={1.5} />
           ) : (
-            <Play className="h-7 w-7 ml-1" fill="currentColor" strokeWidth={1.5} />
+            <Play className="h-8 w-8 ml-1" fill="currentColor" strokeWidth={1.5} />
           )}
         </button>
         <button
           onClick={() => usePlayerStore.getState().next()}
           disabled={!currentTrack}
           aria-label="下一首"
-          className="w-12 h-12 flex items-center justify-center rounded-full text-white/90 hover:text-white active:scale-90 transition disabled:opacity-40"
+          className="w-14 h-14 flex items-center justify-center rounded-full text-white/90 hover:text-white active:scale-90 transition disabled:opacity-40"
         >
-          <SkipForward className="h-6 w-6" fill="currentColor" strokeWidth={1.5} />
+          <SkipForward className="h-7 w-7" fill="currentColor" strokeWidth={1.5} />
         </button>
-        <div className="w-12 h-12" aria-hidden="true" />
+        <button
+          onClick={() => currentTrack && toggleLike(currentTrack.id)}
+          aria-label={isLiked ? '取消收藏' : '收藏'}
+          className={cn(
+            'w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition',
+            isLiked ? 'text-coral' : 'text-white/50 hover:text-white',
+          )}
+        >
+          <Heart className={cn('h-[22px] w-[22px]', isLiked && 'fill-coral')} strokeWidth={1.6} />
+        </button>
       </div>
 
-      {/* 歌词 */}
-      <div className="flex-1 min-h-0 px-6 pb-[env(safe-area-inset-bottom)]">
-        <LyricsView className="h-full" onLineClick={(t) => usePlayerStore.getState().seekTo(t)} />
-      </div>
     </div>
   )
 }

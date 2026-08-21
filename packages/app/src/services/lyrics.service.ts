@@ -100,7 +100,7 @@ export async function loadLyricsForTrack(track: {
     const local = await platform.readLyrics(track.id)
     if (local) return local
   }
-  // 2. 在线搜索（LRCLIB，传入 album 和 duration 提高匹配精度）
+  // 2. 在线搜索（按用户配置的歌词源，传入 album 和 duration 提高匹配精度）
   const online = await searchOnlineLyrics(
     track.title,
     track.artist,

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { OnlineSearchOptions, OnlineTrackSearchResult, LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
 
 const electronAPI = {
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -23,26 +24,15 @@ const electronAPI = {
     query: string,
     artist?: string,
     album?: string,
-    duration?: number
-  ): Promise<{ lrc: string | null; name: string; artist: string } | null> => {
-    return ipcRenderer.invoke('lyrics:search', query, artist, album, duration)
+    duration?: number,
+    options?: LyricsSearchOptions
+  ): Promise<LyricsSearchResult | null> => {
+    return ipcRenderer.invoke('lyrics:search', query, artist, album, duration, options)
   },
   searchOnlineTracks: async (
     query: string,
-    options?: { customSources?: Array<{ id: string; name: string; apiUrl: string; enabled: boolean }>; useNetease?: boolean; useQQ?: boolean }
-  ): Promise<
-    Array<{
-      id: string
-      title: string
-      artist: string
-      album: string
-      duration: number
-      coverUrl?: string
-      audioUrl: string
-      source: 'netease' | 'qq' | 'kugou' | 'custom'
-      sourceName?: string
-    }>
-  > => {
+    options?: OnlineSearchOptions
+  ): Promise<OnlineTrackSearchResult[]> => {
     return ipcRenderer.invoke('tracks:searchOnline', query, options)
   },
   getMetadata: async (filePath: string) => {

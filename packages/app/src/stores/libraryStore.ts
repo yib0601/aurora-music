@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Track, Album, Playlist, ViewMode, GlassMode, OnlineSourceConfig } from '@/types'
+import type { Track, Album, Playlist, ViewMode, GlassMode, OnlineSourceConfig, LyricsSourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 
 interface LibraryState {
@@ -14,10 +14,9 @@ interface LibraryState {
   currentView: 'library' | 'liked' | 'recent' | 'playlists' | 'search' | 'settings'
   searchQuery: string
   searchResults: Track[]
-  // 在线搜索配置
+  // 歌源配置（应用不内置任何源，全部由用户按协议配置）
   onlineSources: OnlineSourceConfig[]
-  useNeteaseSources: boolean
-  useQQSources: boolean
+  lyricsSources: LyricsSourceConfig[]
 
   setTracks: (tracks: Track[]) => void
   setAlbums: (albums: Album[]) => void
@@ -36,12 +35,14 @@ interface LibraryState {
   toggleLike: (trackId: string) => void
   likedTracks: Set<string>
   likedTrackIds?: string[]
-  // 在线搜索配置操作
+  // 音乐源配置操作
   addOnlineSource: (source: Omit<OnlineSourceConfig, 'id'>) => void
   updateOnlineSource: (id: string, updates: Partial<OnlineSourceConfig>) => void
   removeOnlineSource: (id: string) => void
-  setUseNeteaseSources: (use: boolean) => void
-  setUseQQSources: (use: boolean) => void
+  // 歌词源配置操作
+  addLyricsSource: (source: Omit<LyricsSourceConfig, 'id'>) => void
+  updateLyricsSource: (id: string, updates: Partial<LyricsSourceConfig>) => void
+  removeLyricsSource: (id: string) => void
 }
 
 export const useLibraryStore = create<LibraryState>()(
@@ -59,8 +60,7 @@ export const useLibraryStore = create<LibraryState>()(
       searchResults: [],
       likedTracks: new Set<string>(),
       onlineSources: [],
-      useNeteaseSources: true,
-      useQQSources: true,
+      lyricsSources: [],
 
       setTracks: (tracks) => {
         // 内容指纹比较：扫描完成事件每次 IPC 传来的都是全新对象引用，
@@ -131,8 +131,21 @@ export const useLibraryStore = create<LibraryState>()(
       removeOnlineSource: (id) => {
         set({ onlineSources: get().onlineSources.filter((s) => s.id !== id) })
       },
-      setUseNeteaseSources: (use) => set({ useNeteaseSources: use }),
-      setUseQQSources: (use) => set({ useQQSources: use }),
+
+      addLyricsSource: (source) => {
+        const id = `lrc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        set({ lyricsSources: [...get().lyricsSources, { ...source, id }] })
+      },
+      updateLyricsSource: (id, updates) => {
+        set({
+          lyricsSources: get().lyricsSources.map((s) =>
+            s.id === id ? { ...s, ...updates } : s
+          ),
+        })
+      },
+      removeLyricsSource: (id) => {
+        set({ lyricsSources: get().lyricsSources.filter((s) => s.id !== id) })
+      },
     }),
     {
       name: 'aurora-library-state',
@@ -143,19 +156,24 @@ export const useLibraryStore = create<LibraryState>()(
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
         onlineSources: state.onlineSources,
-        useNeteaseSources: state.useNeteaseSources,
-        useQQSources: state.useQQSources,
+        lyricsSources: state.lyricsSources,
       }),
-      // 旧版本（v1）用合并的 useBuiltinSources 字段；迁移为两个独立开关
+      // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
+      // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
       migrate: (persisted: any, version: number) => {
-        if (version < 2 && persisted && persisted.useBuiltinSources !== undefined) {
-          persisted.useNeteaseSources = persisted.useBuiltinSources
-          persisted.useQQSources = persisted.useBuiltinSources
-          delete persisted.useBuiltinSources
+        if (persisted) {
+          if (version < 3) {
+            delete persisted.useNeteaseSources
+            delete persisted.useQQSources
+            if (!Array.isArray(persisted.lyricsSources)) persisted.lyricsSources = []
+          }
+          if (version < 2 && persisted.useBuiltinSources !== undefined) {
+            delete persisted.useBuiltinSources
+          }
         }
         return persisted
       },
-      version: 2,
+      version: 3,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

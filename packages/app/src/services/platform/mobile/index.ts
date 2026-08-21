@@ -7,6 +7,8 @@ import type {
   WindowControls,
   OnlineTrackSearchResult,
   OnlineSearchOptions,
+  LyricsSearchOptions,
+  LyricsSearchResult,
   Track,
 } from '@/types'
 import { MobileDatabase } from './database'
@@ -16,6 +18,7 @@ import {
   saveLyricsFile,
 } from './scanner'
 import { searchOnlineTracks, searchLyrics } from './online'
+import { requestMediaPermissions } from '@/services/permission'
 
 // 单例数据库实例
 const db = new MobileDatabase()
@@ -114,7 +117,7 @@ async function runScan(folderPath: string): Promise<Track[]> {
     console.error('[Mobile] 扫描失败:', folderPath, err)
     emitScanError({
       folder: folderPath,
-      message: `扫描失败：文件夹「${folderPath}」不存在或无法读取`,
+      message: `扫描失败：文件夹「${folderPath}」不存在或无法读取（可能未授予存储权限）`,
     })
     throw err
   }
@@ -137,13 +140,25 @@ export function createMobilePlatform(): PlatformInterface & {
     query: string,
     artist?: string,
     album?: string,
-    duration?: number
-  ) => Promise<{ lrc: string | null; name: string; artist: string } | null>
+    duration?: number,
+    options?: LyricsSearchOptions
+  ) => Promise<LyricsSearchResult | null>
 } {
   return {
     platform: 'mobile',
 
     async pickFolder(): Promise<string | null> {
+      // 打开选择器前先确保存储权限：未授权时 readdir 读不到任何目录，
+      // 选择器目录树会是空的（用户会误以为手机里没有文件夹）
+      const granted = await requestMediaPermissions()
+      if (!granted) {
+        alert(
+          '未授予存储权限，无法浏览本地文件夹。\n' +
+            '请授予「音乐和音频」权限后重试；若系统不再弹出授权窗口，' +
+            '可在 系统设置 → 应用 → Aurora Music → 权限 中手动开启。'
+        )
+        return null
+      }
       // 走 UI 层注册的文件夹选择器（MobileFolderPicker），用户在目录树中点选，
       // 不再使用 window.prompt 手填路径。UI 未注册时降级为 prompt。
       if (folderPickerHandler) {
@@ -308,9 +323,9 @@ export function createMobilePlatform(): PlatformInterface & {
       return searchOnlineTracks(query, options)
     },
 
-    /** 在线歌词搜索（与桌面端 lyrics:search 一致） */
-    async searchLyrics(query, artist, album, duration) {
-      return searchLyrics(query, artist, album, duration)
+    /** 在线歌词搜索（与桌面端 lyrics:search 一致，源列表由调用方下传） */
+    async searchLyrics(query, artist, album, duration, options) {
+      return searchLyrics(query, artist, album, duration, options)
     },
 
     database: db,

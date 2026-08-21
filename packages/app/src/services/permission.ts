@@ -1,26 +1,27 @@
 import { isDesktop } from '@/lib/utils'
 
 /**
- * 移动端 Android MANAGE_EXTERNAL_STORAGE 特殊权限引导
+ * 移动端存储权限引导
  *
- * Android 11+（API 30）起，普通存储权限不再允许访问 /storage/emulated/0 下
- * 的任意目录。扫描本地音乐需要 MANAGE_EXTERNAL_STORAGE，但这是特殊权限，
- * 必须由用户在系统设置中手动授予，不能通过弹窗自动获取。
+ * 权限分两层（与原生 PermissionPlugin.kt 对应）：
+ * 1. 运行时媒体权限 READ_MEDIA_AUDIO（Android 13+；旧系统为 READ_EXTERNAL_STORAGE）
+ *    —— 系统弹窗一键授予，足以读取公共目录（Music/Download 等）中的音频文件。
+ *    注意：@capacitor/filesystem 在 Android 11+ 上认为存储权限恒为已授予，
+ *    不会真正申请 READ_MEDIA_AUDIO，因此必须走本模块的原生插件。
+ * 2. 特殊权限 MANAGE_EXTERNAL_STORAGE（「所有文件访问」，Android 11+）
+ *    —— 覆盖任意目录，但必须由用户在系统设置中手动授予，不能弹窗获取。
  *
- * 本模块通过 Capacitor 原生插件 PermissionPlugin 调用：
- *   - checkAllFilesAccess(): 检测当前是否已授权
- *   - openAllFilesAccessSettings(): 跳到系统「所有文件访问」设置页
+ * 推荐流程（App.tsx 启动时）：
+ *   requestMediaPermissions() 先弹系统一键授权 → 拒绝时再引导「所有文件访问」设置页。
  *
- * App.tsx 启动时调用 checkAllFilesAccess 检测，未授权则弹引导 Dialog，
- * 用户点「前往设置」后调用 openAllFilesAccessSettings 跳转；监听 @capacitor/app
- * 的 appStateChange(resume) 重新检测，已授权则触发扫描。
- *
- * 桌面端为空操作（直接返回 granted=true）。
+ * 桌面端所有函数均为空操作（直接返回 granted=true）。
  */
 
 interface NativePermissionPlugin {
   hasAllFilesAccess(): Promise<{ granted: boolean }>
   requestAllFilesAccess(): Promise<{ opened: boolean }>
+  hasMediaPermissions(): Promise<{ granted: boolean }>
+  requestMediaPermissions(): Promise<{ granted: boolean }>
 }
 
 function getPlugin(): NativePermissionPlugin | null {
@@ -58,6 +59,38 @@ export async function openAllFilesAccessSettings(): Promise<boolean> {
     return opened
   } catch (e) {
     console.warn('[Permission] requestAllFilesAccess 失败:', e)
+    return false
+  }
+}
+
+/**
+ * 检测是否拥有读取本地音频的能力：
+ * 运行时媒体权限已授予，或已拥有「所有文件访问」。
+ */
+export async function checkMediaPermissions(): Promise<boolean> {
+  const plugin = getPlugin()
+  if (!plugin) return true
+  try {
+    const { granted } = await plugin.hasMediaPermissions()
+    return granted
+  } catch (e) {
+    console.warn('[Permission] hasMediaPermissions 失败:', e)
+    return false
+  }
+}
+
+/**
+ * 弹系统对话框申请运行时媒体权限（READ_MEDIA_AUDIO）。
+ * 已具备读取能力时直接返回 true 不弹窗；用户拒绝时返回 false。
+ */
+export async function requestMediaPermissions(): Promise<boolean> {
+  const plugin = getPlugin()
+  if (!plugin) return true
+  try {
+    const { granted } = await plugin.requestMediaPermissions()
+    return granted
+  } catch (e) {
+    console.warn('[Permission] requestMediaPermissions 失败:', e)
     return false
   }
 }

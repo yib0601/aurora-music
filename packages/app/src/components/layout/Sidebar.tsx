@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { pickM3UFile, parseM3U, matchTracksByPaths } from '@/services/playlistIO.service'
+import { APP_VERSION } from '@/services/update.service'
 import {
   Dialog,
   DialogContent,
@@ -222,7 +223,7 @@ export function Sidebar() {
 
       {/* 版本号 */}
       <div className="px-4 py-3 border-t border-white/5">
-        <p className="font-text text-[11px] text-white/50 tracking-[-0.12px]">Aurora Music v0.1.9</p>
+        <p className="font-text text-[11px] text-white/50 tracking-[-0.12px]">Aurora Music v{APP_VERSION}</p>
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>

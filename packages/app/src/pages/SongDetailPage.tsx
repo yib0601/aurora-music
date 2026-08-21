@@ -52,10 +52,12 @@ function formatDate(ts?: number): string {
 }
 
 function sourceLabel(track: Track): string {
+  // 存量数据兼容：旧版本内置源的 onlineSource 值仍可识别展示
+  if (track.onlineSourceName) return track.onlineSourceName
   if (track.onlineSource === 'netease') return '网易云'
   if (track.onlineSource === 'qq') return 'QQ 音乐'
   if (track.onlineSource === 'kugou') return '酷狗'
-  return '本地'
+  return track.onlineSource ? '在线音乐' : '本地'
 }
 
 /** 歌词预览：按所查看曲目加载歌词，渲染为预览样式（聚焦当前播放行），自身订阅进度以同步高亮 */
