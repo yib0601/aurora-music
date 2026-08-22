@@ -1,10 +1,58 @@
-import { app, BrowserWindow, shell, globalShortcut, protocol } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut, protocol, Tray, Menu, nativeImage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
 import { closeDatabase } from './ipc/database'
 
 const isDev = !app.isPackaged
+
+// 托盘：点击窗口关闭按钮时最小化到托盘继续播放，从托盘菜单可真正退出
+let tray: Tray | null = null
+let isQuitting = false
+
+function getTrayIconPath(): string {
+  // 打包后图标随 extraResources 复制到 resources 目录；开发时直接读源码目录
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '../resources/icon.png')
+}
+
+function createTray(win: BrowserWindow) {
+  try {
+    const icon = nativeImage.createFromPath(getTrayIconPath())
+    tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
+  } catch (err) {
+    console.error('[Tray] 创建托盘失败:', err)
+    return
+  }
+  tray.setToolTip('Aurora Music')
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示主窗口',
+      click: () => {
+        if (win.isDestroyed()) return
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出 Aurora Music',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      },
+    },
+  ])
+  tray.setContextMenu(contextMenu)
+  tray.on('click', () => {
+    if (win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  })
+}
 
 // 主进程未捕获异常兜底：记录日志而不是直接崩溃，避免播放中静默退出
 process.on('uncaughtException', (err) => {
@@ -90,6 +138,15 @@ function createWindow() {
     win.webContents.send('window:maximized', false)
   })
 
+  // 关闭按钮 → 隐藏窗口到托盘继续播放，而不是直接退出
+  // 只有从托盘菜单选择「退出」时才真正关闭（isQuitting=true）
+  win.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault()
+      win.hide()
+    }
+  })
+
   return win
 }
 
@@ -171,6 +228,7 @@ if (!gotTheLock) {
 
     registerIpcHandlers()
     const win = createWindow()
+    createTray(win)
 
     if (process.platform === 'linux') {
       // Linux 上通过 MPRIS 协议（DBus）响应媒体键
@@ -206,8 +264,13 @@ if (!gotTheLock) {
     }
   })
 
-  // 退出清理：注销全局快捷键、关闭数据库（确保 WAL 落盘）
+  // 退出清理：注销全局快捷键、销毁托盘、关闭数据库（确保 WAL 落盘）
+  // 任何退出路径（托盘菜单、系统注销、Ctrl+C 之外的信号）都置 isQuitting，
+  // 保证窗口 close 拦截不再阻止窗口销毁
   app.on('before-quit', () => {
+    isQuitting = true
+    tray?.destroy()
+    tray = null
     globalShortcut.unregisterAll()
     closeDatabase()
   })
