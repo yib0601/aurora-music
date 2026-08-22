@@ -8,7 +8,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { LyricsView } from '@/components/lyrics/LyricsView'
-import { cn, formatTime } from '@/lib/utils'
+import { cn, formatTime, getTrackCoverSrc } from '@/lib/utils'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
@@ -232,10 +232,11 @@ export function SongDetailPage() {
     )
   }
 
-  const coverSrc = track.coverPath ? platform.getCoverSrc(track.coverPath) : null
+  const coverSrc = getTrackCoverSrc(track)
 
   return (
-    <div className="flex flex-col px-8 pt-8">
+    // 全屏/超宽屏限宽居中：与 PageLayout 保持一致，避免 Hero 与内容在全屏下过度拉伸
+    <div className="flex flex-col px-8 pt-8 mx-auto w-full max-w-[1200px]">
       {/* 返回按钮 */}
       <button
         onClick={() => navigate(-1)}
@@ -246,7 +247,7 @@ export function SongDetailPage() {
       </button>
 
       {/* Hero 区 */}
-      <div className="flex items-start gap-8">
+      <div className="flex items-center gap-8">
         {/* 封面 */}
         <div className="relative w-[220px] h-[220px] flex-shrink-0">
           <div
@@ -255,7 +256,7 @@ export function SongDetailPage() {
           />
           <div className="relative w-full h-full rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center overflow-hidden">
             {coverSrc ? (
-              <img src={coverSrc} alt={track.title} className="w-full h-full object-cover product-shadow" />
+              <img src={coverSrc} alt={track.title} className="w-full h-full object-cover product-shadow" referrerPolicy="no-referrer" />
             ) : (
               <Music2 className="h-20 w-20 text-mint/40" strokeWidth={1} />
             )}
@@ -269,8 +270,8 @@ export function SongDetailPage() {
         </div>
 
         {/* 标题 + 操作 */}
-        <div className="flex-1 min-w-0 pt-2">
-          <p className="font-text text-[12px] font-semibold uppercase tracking-wider text-mint/70 mb-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-text text-[12px] font-semibold uppercase tracking-wider text-mint/80 mb-2">
             {sourceLabel(track)} · 歌曲详情
           </p>
           <h1 className="font-display text-[34px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
@@ -278,7 +279,7 @@ export function SongDetailPage() {
           </h1>
           <p className="font-text text-[16px] text-white/55 mt-2 tracking-[-0.224px]">
             {track.artist}
-            {track.album ? <span className="text-white/35"> · {track.album}</span> : null}
+            {track.album ? <span className="text-white/50"> · {track.album}</span> : null}
           </p>
 
           {/* 操作按钮 */}
@@ -339,7 +340,7 @@ export function SongDetailPage() {
           </div>
 
           {track.path && (
-            <p className="flex items-center gap-1.5 mt-5 font-text text-[12px] text-white/30 truncate max-w-xl tracking-[-0.12px]">
+            <p className="flex items-center gap-1.5 mt-5 font-text text-[12px] text-white/45 truncate max-w-xl tracking-[-0.12px]">
               <Folder className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
               <span className="truncate">{track.path}</span>
             </p>
@@ -351,7 +352,7 @@ export function SongDetailPage() {
       <section className="mt-9">
         <button
           onClick={() => setShowMoreInfo((v) => !v)}
-          className="flex items-center gap-1.5 text-[12px] font-semibold text-white/40 uppercase tracking-wider hover:text-mint transition-colors duration-200 ease-apple"
+          className="flex items-center gap-1.5 text-[12px] font-semibold text-white/55 uppercase tracking-wider hover:text-mint transition-colors duration-200 ease-apple"
         >
           <ChevronDown
             className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
@@ -383,7 +384,7 @@ export function SongDetailPage() {
 
       {/* 歌词 */}
       <section className="mt-9">
-        <h2 className="font-text text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-3">
+        <h2 className="font-text text-[12px] font-semibold text-white/55 uppercase tracking-wider mb-3">
           歌词
         </h2>
         <div className="card-utility rounded-[18px] px-6 py-6">
@@ -394,7 +395,7 @@ export function SongDetailPage() {
       {/* 同专辑歌曲 */}
       {albumTracks.length > 0 && (
         <section className="mt-9">
-          <h2 className="font-text text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-3">
+          <h2 className="font-text text-[12px] font-semibold text-white/55 uppercase tracking-wider mb-3">
             来自专辑「{track.album}」
           </h2>
           <div className="card-utility overflow-hidden">
@@ -458,21 +459,24 @@ export function SongDetailPage() {
       )}
 
       {/* 内置播放功能框 — 粘性固定在详情页底部，无需滚动即可操作 */}
+      {/* 与主页面悬浮播放条同宽（640px）居中，避免全屏下播放条被拉成一条长横杆 */}
       <div className="sticky bottom-0 z-10 -mx-8 px-8 pt-5 pb-4 bg-gradient-to-t from-background/90 via-background/35 to-transparent">
-        <PlayerBar
-          currentTrack={currentTrack}
-          volume={volume}
-          muted={muted}
-          repeatMode={repeatMode}
-          shuffleMode={shuffleMode}
-          onTogglePlay={handleTogglePlay}
-          onNext={handleNext}
-          onPrevious={handlePrevious}
-          onSeek={handleSeek}
-          onVolumeChange={handleVolumeChange}
-          onToggleMute={handleToggleMute}
-          onCyclePlayMode={handleCyclePlayMode}
-        />
+        <div className="max-w-[640px] mx-auto">
+          <PlayerBar
+            currentTrack={currentTrack}
+            volume={volume}
+            muted={muted}
+            repeatMode={repeatMode}
+            shuffleMode={shuffleMode}
+            onTogglePlay={handleTogglePlay}
+            onNext={handleNext}
+            onPrevious={handlePrevious}
+            onSeek={handleSeek}
+            onVolumeChange={handleVolumeChange}
+            onToggleMute={handleToggleMute}
+            onCyclePlayMode={handleCyclePlayMode}
+          />
+        </div>
       </div>
 
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>

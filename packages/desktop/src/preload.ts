@@ -35,6 +35,14 @@ const electronAPI = {
   ): Promise<OnlineTrackSearchResult[]> => {
     return ipcRenderer.invoke('tracks:searchOnline', query, options)
   },
+  // 下载在线歌曲：主进程拉流写盘（渲染进程 fetch 会被歌源 CORS 拦截），
+  // headers 来自歌源配置（如 Referer/UA），保证下载请求与搜索请求一致
+  downloadOnlineTrack: async (
+    track: { audioUrl: string; title: string; artist?: string },
+    headers?: Record<string, string>
+  ): Promise<{ savedPath: string }> => {
+    return ipcRenderer.invoke('tracks:download', track, headers)
+  },
   getMetadata: async (filePath: string) => {
     return ipcRenderer.invoke('fs:readFile', filePath)
   },

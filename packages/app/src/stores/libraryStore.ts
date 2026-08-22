@@ -3,6 +3,9 @@ import { persist } from 'zustand/middleware'
 import type { Track, Album, Playlist, ViewMode, GlassMode, OnlineSourceConfig, LyricsSourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 
+/** 历史搜索记录最大保留条数 */
+const MAX_SEARCH_HISTORY = 20
+
 interface LibraryState {
   tracks: Track[]
   albums: Album[]
@@ -14,6 +17,8 @@ interface LibraryState {
   currentView: 'library' | 'liked' | 'recent' | 'playlists' | 'search' | 'settings'
   searchQuery: string
   searchResults: Track[]
+  /** 历史搜索记录（最新在前，最多保留 MAX_SEARCH_HISTORY 条） */
+  searchHistory: string[]
   // 歌源配置（应用不内置任何源，全部由用户按协议配置）
   onlineSources: OnlineSourceConfig[]
   lyricsSources: LyricsSourceConfig[]
@@ -31,6 +36,10 @@ interface LibraryState {
   setCurrentView: (view: LibraryState['currentView']) => void
   setSearchQuery: (query: string) => void
   setSearchResults: (results: Track[]) => void
+  // 历史搜索记录操作
+  addSearchHistory: (query: string) => void
+  removeSearchHistory: (query: string) => void
+  clearSearchHistory: () => void
   toggleLiked: (trackId: string) => void
   toggleLike: (trackId: string) => void
   likedTracks: Set<string>
@@ -58,6 +67,7 @@ export const useLibraryStore = create<LibraryState>()(
       currentView: 'library',
       searchQuery: '',
       searchResults: [],
+      searchHistory: [],
       likedTracks: new Set<string>(),
       onlineSources: [],
       lyricsSources: [],
@@ -100,6 +110,17 @@ export const useLibraryStore = create<LibraryState>()(
       setCurrentView: (view) => set({ currentView: view }),
       setSearchQuery: (query) => set({ searchQuery: query }),
       setSearchResults: (results) => set({ searchResults: results }),
+      addSearchHistory: (query) => {
+        const q = query.trim()
+        if (!q) return
+        // 去重并置顶：重复关键词移到最前（最近使用优先）
+        const rest = get().searchHistory.filter((item) => item !== q)
+        set({ searchHistory: [q, ...rest].slice(0, MAX_SEARCH_HISTORY) })
+      },
+      removeSearchHistory: (query) => {
+        set({ searchHistory: get().searchHistory.filter((item) => item !== query) })
+      },
+      clearSearchHistory: () => set({ searchHistory: [] }),
       toggleLiked: (trackId) => {
         const tracks = get().tracks.map((t) =>
           t.id === trackId ? { ...t, liked: !t.liked } : t
@@ -155,6 +176,7 @@ export const useLibraryStore = create<LibraryState>()(
         glassMode: state.glassMode,
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
+        searchHistory: state.searchHistory,
         onlineSources: state.onlineSources,
         lyricsSources: state.lyricsSources,
       }),

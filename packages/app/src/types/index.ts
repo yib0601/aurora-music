@@ -28,6 +28,8 @@ export interface Track {
   duration: number
   trackNumber?: number
   coverPath?: string
+  /** 在线歌曲封面 URL（本地歌曲为 undefined） */
+  coverUrl?: string
   fileSize?: number
   addedAt: number
   lastPlayedAt?: number

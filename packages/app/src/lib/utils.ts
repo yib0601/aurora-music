@@ -1,8 +1,20 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { platform } from '@/services/platform'
+import type { Track } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * 获取曲目封面图片 src：在线歌直接用 coverUrl，本地歌走 platform 协议转换
+ */
+export function getTrackCoverSrc(track: Track | null | undefined): string | null {
+  if (!track) return null
+  if (track.coverUrl) return track.coverUrl
+  if (track.coverPath) return platform.getCoverSrc(track.coverPath)
+  return null
 }
 
 export function formatTime(seconds: number): string {

@@ -55,8 +55,8 @@ export function LikedPage() {
           <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
             还没有收藏的歌曲
           </h2>
-          <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
-            去音乐库发现你喜欢的歌曲，点击爱心图标收藏
+          <p className="font-text text-[14px] text-white/50 mb-6 tracking-[-0.15px]">
+            在歌曲上点击爱心，它们会出现在这里
           </p>
           <button
             onClick={() => navigate('/library')}

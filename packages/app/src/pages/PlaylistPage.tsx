@@ -126,11 +126,11 @@ export function PlaylistPage() {
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={1.7} />
         </Button>
-        <div className="flex items-end gap-6">
+        <div className="flex items-center gap-6 max-w-4xl">
           <div className="w-44 h-44 rounded-lg glass-regular border border-white/10 flex items-center justify-center flex-shrink-0 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
             <ListMusic className="h-20 w-20 text-mint" strokeWidth={1.3} />
           </div>
-          <div className="flex-1 pb-2">
+          <div className="flex-1 min-w-0">
             <p className="font-text text-caption text-white/50 mb-2">播放列表</p>
             <h1 className="font-display text-[34px] font-semibold tracking-[-0.374px] text-white leading-tight mb-3">
               {playlist.name}
@@ -205,11 +205,12 @@ export function PlaylistPage() {
           </div>
         ) : (
           <div>
-            <div className="grid grid-cols-[40px_1fr_auto_auto] gap-3 px-4 py-3 font-text text-caption text-white/50 border-b border-white/10">
+            {/* 表头与数据行使用同一套列宽（3rem/4rem 固定尾列），保证对齐 */}
+            <div className="grid grid-cols-[40px_1fr_3rem_4rem] gap-3 px-4 py-3 font-text text-caption text-white/50 border-b border-white/10">
               <span>#</span>
               <span>标题</span>
-              <span>
-                <Clock className="h-3.5 w-3.5" strokeWidth={1.6} />
+              <span className="text-right">
+                <Clock className="h-3.5 w-3.5 inline-block" strokeWidth={1.6} />
               </span>
               <span></span>
             </div>
@@ -219,7 +220,7 @@ export function PlaylistPage() {
                 key={track.id}
                 onClick={() => handlePlayTrack(track, idx)}
                 className={cn(
-                  'grid grid-cols-[40px_1fr_auto_auto] gap-3 items-center px-4 py-2.5 cursor-pointer group row-hover border-b border-white/5 last:border-0',
+                  'grid grid-cols-[40px_1fr_3rem_4rem] gap-3 items-center px-4 py-2.5 cursor-pointer group row-hover border-b border-white/5 last:border-0',
                   isCurrentTrack(track.id) && 'bg-mint/[0.06]'
                 )}
               >

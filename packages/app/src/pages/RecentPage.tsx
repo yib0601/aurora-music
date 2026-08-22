@@ -62,7 +62,7 @@ export function RecentPage() {
           <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
             还没有播放记录
           </h2>
-          <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
+          <p className="font-text text-[14px] text-white/50 mb-6 tracking-[-0.15px]">
             导入音乐后，你播放的歌曲会出现在这里
           </p>
           <button

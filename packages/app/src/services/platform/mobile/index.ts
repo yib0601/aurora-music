@@ -18,7 +18,12 @@ import {
   saveLyricsFile,
 } from './scanner'
 import { searchOnlineTracks, searchLyrics } from './online'
-import { requestMediaPermissions } from '@/services/permission'
+import { sanitizeFileName, inferAudioExtFromUrl } from '@aurora/shared'
+import {
+  requestMediaPermissions,
+  checkAllFilesAccess,
+  openAllFilesAccessSettings,
+} from '@/services/permission'
 
 // 单例数据库实例
 const db = new MobileDatabase()
@@ -143,6 +148,10 @@ export function createMobilePlatform(): PlatformInterface & {
     duration?: number,
     options?: LyricsSearchOptions
   ) => Promise<LyricsSearchResult | null>
+  downloadOnlineTrack: (
+    track: { audioUrl: string; title: string; artist?: string },
+    headers?: Record<string, string>
+  ) => Promise<{ savedPath: string }>
 } {
   return {
     platform: 'mobile',
@@ -326,6 +335,49 @@ export function createMobilePlatform(): PlatformInterface & {
     /** 在线歌词搜索（与桌面端 lyrics:search 一致，源列表由调用方下传） */
     async searchLyrics(query, artist, album, duration, options) {
       return searchLyrics(query, artist, album, duration, options)
+    },
+
+    /**
+     * 下载在线歌曲到外部存储 Music/Aurora Music/ 目录
+     * - 使用 Capacitor Filesystem.downloadFile（native HTTP 下载，
+     *   不受 WebView CORS 限制，也不会像 readFile 那样把大文件转 base64 导致 OOM）
+     * - 写入公共目录需要「所有文件访问」权限（Android 11+），未授权时引导用户前往设置
+     */
+    async downloadOnlineTrack(track, headers) {
+      if (!track || typeof track.audioUrl !== 'string' || !/^https?:\/\//i.test(track.audioUrl)) {
+        throw new Error('下载地址无效')
+      }
+      // Android 11+ 写公共 Music 目录需 MANAGE_EXTERNAL_STORAGE
+      const hasAllFiles = await checkAllFilesAccess()
+      if (!hasAllFiles) {
+        alert(
+          '下载歌曲到 Music 目录需要「所有文件访问」权限。\n请在系统设置中授予该权限后重试。'
+        )
+        await openAllFilesAccessSettings()
+        throw new Error('缺少存储权限')
+      }
+
+      const fileName = `${sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)}${inferAudioExtFromUrl(track.audioUrl)}`
+      const dir = 'Music/Aurora Music'
+      try {
+        await Filesystem.mkdir({ path: dir, directory: Directory.ExternalStorage, recursive: true })
+      } catch (err: any) {
+        if (!err?.message || !/exist/i.test(err.message)) throw err
+      }
+      const savePath = `${dir}/${fileName}`
+      try {
+        await Filesystem.downloadFile({
+          url: track.audioUrl,
+          path: savePath,
+          directory: Directory.ExternalStorage,
+          headers: headers || {},
+        })
+      } catch (err) {
+        console.error('[Mobile] 下载失败:', err)
+        throw new Error('下载失败，请检查网络连接或稍后重试')
+      }
+      // 返回完整路径，便于提示与后续扫描定位
+      return { savedPath: `/storage/emulated/0/${savePath}` }
     },
 
     database: db,

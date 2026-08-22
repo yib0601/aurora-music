@@ -40,6 +40,11 @@ export interface PlatformExtension {
     duration?: number,
     options?: LyricsSearchOptions
   ) => Promise<LyricsSearchResult | null>
+  /** 下载在线歌曲到本地，返回保存路径；headers 为歌源配置的附加请求头 */
+  downloadOnlineTrack?: (
+    track: { audioUrl: string; title: string; artist?: string },
+    headers?: Record<string, string>
+  ) => Promise<{ savedPath: string }>
 }
 
 class NoopDatabase implements DatabaseAdapter {
@@ -165,6 +170,10 @@ export function createDesktopPlatform(): Platform {
     async searchLyrics(query, artist, album, duration, options) {
       if (!api?.searchLyrics) return null
       return api.searchLyrics(query, artist, album, duration, options)
+    },
+    async downloadOnlineTrack(track, headers) {
+      if (!api?.downloadOnlineTrack) throw new Error('当前版本不支持下载')
+      return api.downloadOnlineTrack(track, headers)
     },
   }
 }
