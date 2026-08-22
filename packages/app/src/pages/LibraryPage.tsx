@@ -140,7 +140,7 @@ export function LibraryPage() {
           <td className="py-2.5 px-3 font-text text-white/50 text-[14px] truncate max-w-40 tracking-[-0.224px] hidden md:table-cell">
             {track.artist}
           </td>
-          <td className="py-2.5 px-3 font-text text-white/40 text-[14px] truncate max-w-48 hidden md:table-cell tracking-[-0.224px]">
+          <td className="py-2.5 px-3 font-text text-white/45 text-[14px] truncate max-w-48 hidden md:table-cell tracking-[-0.224px]">
             {track.album}
           </td>
           <td className="py-2 px-1 md:py-2.5 md:px-2 w-10">
@@ -158,7 +158,7 @@ export function LibraryPage() {
               />
             </button>
           </td>
-          <td className="py-2 pr-1.5 pl-1 md:py-2.5 md:px-3 text-right font-text text-white/40 text-[12px] md:text-[13px] tabular-nums w-12 md:w-16 tracking-[-0.12px]">
+          <td className="py-2 pr-1.5 pl-1 md:py-2.5 md:px-3 text-right font-text text-white/45 text-[12px] md:text-[13px] tabular-nums w-12 md:w-16 tracking-[-0.12px]">
             {formatTime(track.duration)}
           </td>
         </tr>
@@ -291,11 +291,11 @@ export function LibraryPage() {
             {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
             <thead className="hidden md:table-header-group">
               <tr className="border-b border-white/10">
-                <th className="text-left py-2.5 px-3 font-semibold text-white/40 text-[12px] tracking-[-0.12px]">标题</th>
-                <th className="text-left py-2.5 px-3 font-semibold text-white/40 text-[12px] tracking-[-0.12px]">艺术家</th>
-                <th className="text-left py-2.5 px-3 font-semibold text-white/40 text-[12px] tracking-[-0.12px]">专辑</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">标题</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">艺术家</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">专辑</th>
                 <th className="w-10"></th>
-                <th className="text-right py-2.5 px-3 font-semibold text-white/40 text-[12px] w-16 tracking-[-0.12px]">时长</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-white/50 text-[12px] w-16 tracking-[-0.12px]">时长</th>
               </tr>
             </thead>
             <tbody>

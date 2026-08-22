@@ -1,12 +1,14 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { Readable } from 'stream'
+import { pipeline } from 'stream/promises'
 import { app } from 'electron'
 import { getAllTracks, getTrackById, initDatabase } from './database'
 import { scanFolder, ensureCover } from './scanner'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
-import { searchOnlineTracks, searchLyrics } from '@aurora/shared'
+import { searchOnlineTracks, searchLyrics, sanitizeFileName, inferAudioExtFromUrl } from '@aurora/shared'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -36,6 +38,24 @@ function isPathAllowed(target: string): boolean {
 /** trackId 仅允许字母数字与连字符（uuid / 源id-歌曲id），防止路径穿越 */
 function isValidTrackId(id: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/.test(id)
+}
+
+/** 从 Content-Type 推断音频扩展名，无法判断时回退到按 URL 推断 */
+function inferAudioExtension(url: string, contentType?: string): string {
+  const ct = (contentType || '').split(';')[0].trim().toLowerCase()
+  const ctMap: Record<string, string> = {
+    'audio/mpeg': '.mp3',
+    'audio/mp3': '.mp3',
+    'audio/flac': '.flac',
+    'audio/ogg': '.ogg',
+    'audio/wav': '.wav',
+    'audio/x-wav': '.wav',
+    'audio/aac': '.aac',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+  }
+  if (ctMap[ct]) return ctMap[ct]
+  return inferAudioExtFromUrl(url)
 }
 
 // 扫描队列：多个目录串行执行，避免并发写数据库、进度事件互相覆盖
@@ -223,6 +243,68 @@ export function registerIpcHandlers() {
     'tracks:searchOnline',
     async (_event, query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]> => {
       return searchOnlineTracks(query, options)
+    }
+  )
+
+  // 下载在线歌曲：主进程直接拉流（渲染进程 fetch 会被歌源服务器 CORS 拦截）
+  // 弹出保存对话框由用户选择保存位置，流式写盘避免大文件占用内存
+  ipcMain.handle(
+    'tracks:download',
+    async (
+      _event,
+      track: { audioUrl: string; title: string; artist?: string },
+      headers?: Record<string, string>
+    ): Promise<{ savedPath: string }> => {
+      if (!track || typeof track.audioUrl !== 'string' || !/^https?:\/\//i.test(track.audioUrl)) {
+        throw new Error('下载地址无效')
+      }
+      if (!mainWindow || mainWindow.isDestroyed()) throw new Error('窗口不可用')
+
+      const baseName = sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)
+      const defaultDir = (() => {
+        try {
+          return app.getPath('music')
+        } catch {
+          return app.getPath('downloads')
+        }
+      })()
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: '保存歌曲',
+        defaultPath: path.join(defaultDir, `${baseName}${inferAudioExtension(track.audioUrl)}`),
+      })
+      if (canceled || !filePath) throw new Error('已取消保存')
+
+      let resp: Response
+      try {
+        resp = await fetch(track.audioUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            ...(headers || {}),
+          },
+          // 下载大文件可能超过 1 分钟，给 10 分钟上限
+          signal: AbortSignal.timeout(600000),
+        })
+      } catch {
+        throw new Error('下载失败，请检查网络连接或稍后重试')
+      }
+      if (!resp.ok || !resp.body) {
+        throw new Error(`下载失败：服务器返回 HTTP ${resp.status}`)
+      }
+
+      // 扩展名以实际响应的 Content-Type 为准（对话框时只能按 URL 猜测）
+      const finalExt = inferAudioExtension(track.audioUrl, resp.headers.get('content-type') || undefined)
+      const savePath = path.extname(filePath) ? filePath : filePath + finalExt
+
+      try {
+        await pipeline(Readable.fromWeb(resp.body as any), fs.createWriteStream(savePath))
+      } catch (err) {
+        // 写盘失败时清理残留的部分文件
+        try { fs.unlinkSync(savePath) } catch {}
+        console.error('歌曲下载失败:', err)
+        throw new Error('下载失败，写入文件时出错')
+      }
+      return { savedPath: savePath }
     }
   )
 }

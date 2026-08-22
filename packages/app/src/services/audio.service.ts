@@ -85,6 +85,16 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
   const src = getPlatformSrc(rawPath)
   const isOnline = /^https?:\/\//i.test(rawPath)
 
+  if (isOnline) {
+    // howler 会复用 html5 Audio 元素池：曾被 createMediaElementSource 绑定的元素
+    // 输出永久走 AudioContext，在线流跨域时会被浏览器静音。播放在线流前把已包装的
+    // 元素从池中剔除，确保 howler 分配全新 Audio（可视化对在线流已降级跳过）
+    const pool = (Howler as any)?._html5AudioPool
+    if (Array.isArray(pool)) {
+      ;(Howler as any)._html5AudioPool = pool.filter((el: any) => !el?.__auroraSource)
+    }
+  }
+
   const howl = new Howl({
     src: [src],
     html5: true,
@@ -141,7 +151,7 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
     howl.volume(targetVolume)
   }
 
-  connectAnalyser(howl)
+  connectAnalyser(howl, isOnline)
 }
 
 /**
@@ -152,7 +162,10 @@ export function preloadNextTrack(_track: Track, _volume: number, _muted: boolean
   // 预留接口，暂不实现
 }
 
-function connectAnalyser(howl: Howl) {
+function connectAnalyser(howl: Howl, isOnline = false) {
+  // 在线流不接入 Web Audio：跨域音源无 CORS 头，createMediaElementSource 后
+  // 元素输出会被浏览器强制静音（进度正常走但没有声音），可视化对在线流降级跳过
+  if (isOnline) return
   if (!analyserNode) {
     initAudioAnalyser()
   }

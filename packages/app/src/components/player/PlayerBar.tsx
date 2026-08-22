@@ -1,11 +1,10 @@
 import React, { useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { cn, formatTime, isMobile } from '@/lib/utils'
+import { cn, formatTime, isMobile, getTrackCoverSrc } from '@/lib/utils'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { platform } from '@/services/platform'
 
 interface PlayerBarProps {
   currentTrack?: Track | null
@@ -122,11 +121,12 @@ export function PlayerBar({
           className="flex items-center gap-2.5 min-w-0 flex-1 py-1 active:scale-[0.99] transition"
         >
           <div className="w-10 h-10 rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
-            {currentTrack?.coverPath ? (
+            {getTrackCoverSrc(currentTrack) ? (
               <img
-                src={platform.getCoverSrc(currentTrack.coverPath)}
-                alt={currentTrack.title}
+                src={getTrackCoverSrc(currentTrack)!}
+                alt={currentTrack!.title}
                 className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
             ) : (
@@ -229,11 +229,12 @@ export function PlayerBar({
                 '0 6px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07)',
             }}
           >
-            {currentTrack?.coverPath ? (
+            {getTrackCoverSrc(currentTrack) ? (
               <img
-                src={platform.getCoverSrc(currentTrack.coverPath)}
-                alt={currentTrack.title}
+                src={getTrackCoverSrc(currentTrack)!}
+                alt={currentTrack!.title}
                 className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none'
                 }}

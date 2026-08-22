@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, FileText, ChevronDown } from 'lucide-react'
+import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, FileText, ChevronDown, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { PageLayout } from '@/components/PageLayout'
@@ -15,7 +15,7 @@ const themeOptions = [
   { value: 'system' as const, label: '跟随系统', icon: Monitor },
 ]
 
-/** 单个歌源编辑卡片：名称 + 接口地址 + 请求头（可选 JSON）+ 启用开关 + 删除 */
+/** 单个歌源卡片：默认仅展示名称 + 启用开关，点击编辑展开修改名称 / 地址 / 请求头 */
 function SourceEditorCard({
   name,
   apiUrl,
@@ -34,6 +34,7 @@ function SourceEditorCard({
   onRemove: () => void
 }) {
   const hasHeaders = headers != null && Object.keys(headers).length > 0
+  const [editing, setEditing] = useState(false)
   const [showHeaders, setShowHeaders] = useState(hasHeaders)
   const [headersDraft, setHeadersDraft] = useState(() => (hasHeaders ? JSON.stringify(headers, null, 2) : ''))
   const [headersInvalid, setHeadersInvalid] = useState(false)
@@ -66,14 +67,18 @@ function SourceEditorCard({
         enabled ? 'border-white/10' : 'border-white/10 opacity-60'
       }`}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <input
-          type="text"
-          value={name}
-          placeholder="源名称"
-          onChange={(e) => onUpdate({ name: e.target.value })}
-          className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-mint/50 transition-colors duration-200 py-1"
-        />
+      <div className={`flex items-center gap-2 ${editing ? 'mb-2' : ''}`}>
+        {editing ? (
+          <input
+            type="text"
+            value={name}
+            placeholder="源名称"
+            onChange={(e) => onUpdate({ name: e.target.value })}
+            className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-mint/50 transition-colors duration-200 py-1"
+          />
+        ) : (
+          <span className="flex-1 font-text text-caption-strong text-white/90 truncate py-1">{name || '未命名源'}</span>
+        )}
         <button
           type="button"
           role="switch"
@@ -92,49 +97,64 @@ function SourceEditorCard({
         <Button
           variant="ghost"
           size="icon"
+          title={editing ? '收起' : '编辑'}
+          className="h-7 w-7 text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
+          onClick={() => setEditing(!editing)}
+        >
+          {editing
+            ? <ChevronDown className="h-4 w-4 rotate-180" strokeWidth={1.6} />
+            : <Pencil className="h-4 w-4" strokeWidth={1.6} />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           className="h-7 w-7 text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
         </Button>
       </div>
-      <input
-        type="text"
-        value={apiUrl}
-        placeholder={placeholderUrl}
-        onChange={(e) => onUpdate({ apiUrl: e.target.value })}
-        className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200"
-      />
-      {/* 请求头：可选，折叠编辑 */}
-      <div className="mt-2">
-        <button
-          type="button"
-          onClick={() => setShowHeaders(!showHeaders)}
-          className="flex items-center gap-1 font-text text-caption text-white/40 hover:text-white/70 transition-colors duration-200"
-        >
-          <ChevronDown
-            className={`h-3 w-3 transition-transform duration-200 ease-mineradio ${showHeaders ? 'rotate-180' : ''}`}
-            strokeWidth={1.8}
+      {editing && (
+        <>
+          <input
+            type="text"
+            value={apiUrl}
+            placeholder={placeholderUrl}
+            onChange={(e) => onUpdate({ apiUrl: e.target.value })}
+            className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200"
           />
-          请求头{hasHeaders ? '（已配置）' : '（可选）'}
-        </button>
-        {showHeaders && (
-          <>
-            <textarea
-              value={headersDraft}
-              placeholder={'{"Authorization": "Bearer ..."}'}
-              onChange={(e) => handleHeadersChange(e.target.value)}
-              rows={2}
-              className={`mt-1.5 w-full bg-white/[0.03] border rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 resize-none ${
-                headersInvalid ? 'border-coral/60' : 'border-white/10'
-              }`}
-            />
-            {headersInvalid && (
-              <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
+          {/* 请求头：可选，折叠编辑 */}
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setShowHeaders(!showHeaders)}
+              className="flex items-center gap-1 font-text text-caption text-white/40 hover:text-white/70 transition-colors duration-200"
+            >
+              <ChevronDown
+                className={`h-3 w-3 transition-transform duration-200 ease-mineradio ${showHeaders ? 'rotate-180' : ''}`}
+                strokeWidth={1.8}
+              />
+              请求头{hasHeaders ? '（已配置）' : '（可选）'}
+            </button>
+            {showHeaders && (
+              <>
+                <textarea
+                  value={headersDraft}
+                  placeholder={'{"Authorization": "Bearer ..."}'}
+                  onChange={(e) => handleHeadersChange(e.target.value)}
+                  rows={2}
+                  className={`mt-1.5 w-full bg-white/[0.03] border rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 resize-none ${
+                    headersInvalid ? 'border-coral/60' : 'border-white/10'
+                  }`}
+                />
+                {headersInvalid && (
+                  <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
+                )}
+              </>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -344,12 +364,12 @@ export function SettingsPage() {
 
   return (
     <PageLayout header={
-      <div className="flex items-center gap-5 mb-8">
-        <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
-          <SettingsIcon className="h-9 w-9 text-mint" strokeWidth={1.4} />
+      <div className="flex items-center gap-5 mb-8 max-w-[720px]">
+        <div className="w-16 h-16 rounded-xl glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
+          <SettingsIcon className="h-8 w-8 text-mint" strokeWidth={1.4} />
         </div>
         <div>
-          <h1 className="font-display text-display-md text-white">设置</h1>
+          <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">设置</h1>
           <p className="font-text text-caption text-white/60 mt-1">自定义你的 Aurora Music</p>
         </div>
       </div>

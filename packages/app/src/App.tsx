@@ -37,7 +37,7 @@ import {
   markStartupBannerShown,
   type UpdateInfo,
 } from '@/services/update.service'
-import { cn, isMobile } from '@/lib/utils'
+import { cn, isMobile, getTrackCoverSrc } from '@/lib/utils'
 import type { Track } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
@@ -164,7 +164,8 @@ function AppLayout() {
   const glassMode = useLibraryStore((s) => s.glassMode)
 
   // 保留 themeColor hook 以维持封面色提取功能（用于 lyrics 渐变等非装饰场景）
-  useThemeColor(currentTrack?.coverPath)
+  // 在线歌用 coverUrl，本地歌用 coverPath
+  useThemeColor(currentTrack?.coverUrl || currentTrack?.coverPath)
 
   // 启动时检查软件更新：有新版本且本次会话未提示过时展示横幅
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
@@ -551,7 +552,7 @@ function AppLayout() {
 
             {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质；歌曲详情页隐藏（详情页已含完整歌词与歌曲信息） */}
             {currentTrack && !isSongDetail && (
-              <div className="w-72 flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
+              <div className="w-72 xl:w-80 2xl:w-[340px] flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
                 <div className="p-6 flex flex-col gap-4">
                   {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
                   <button
@@ -559,11 +560,12 @@ function AppLayout() {
                     title="查看歌曲详情"
                     className="relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02]"
                   >
-                    {currentTrack.coverPath ? (
+                    {getTrackCoverSrc(currentTrack) ? (
                       <img
-                        src={platform.getCoverSrc(currentTrack.coverPath)}
+                        src={getTrackCoverSrc(currentTrack)!}
                         alt={currentTrack.title}
                         className="w-full h-full object-cover product-shadow"
+                        referrerPolicy="no-referrer"
                       />
                     ) : (
                       <div className="text-4xl text-white/30">🎵</div>
