@@ -70,7 +70,7 @@ export function TitleBar() {
         </button>
         <button
           onClick={handleClose}
-          title="关闭"
+          title="关闭（最小化到托盘）"
           className={`${btnBase} hover:bg-[rgba(255,86,100,.86)] hover:text-white hover:shadow-[inset_0_0_2px_1px_rgba(255,255,255,.42),0_12px_34px_rgba(0,0,0,.22),0_0_18px_rgba(255,255,255,.06)]`}
         >
           <X className="h-3.5 w-3.5" strokeWidth={2} />

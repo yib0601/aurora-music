@@ -51,6 +51,12 @@
       "dist-electron/**/*",
       "app-dist/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      }
+    ],
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**"
     ],
