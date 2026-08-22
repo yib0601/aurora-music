@@ -1,5 +1,6 @@
 import type { LyricLine } from '@/types'
 import { platform } from '@/services/platform'
+import { useLibraryStore } from '@/stores/libraryStore'
 
 export function parseLRC(content: string): LyricLine[] {
   const lines = content.split(/\r?\n/)
@@ -81,8 +82,10 @@ export async function searchOnlineLyrics(
   duration?: number
 ): Promise<OnlineLyricsResult | null> {
   if (!platform.searchLyrics) return null
+  // 下传用户配置的歌词源：用户源优先生效，全部未命中时执行器内部回退到内置源兜底
+  const lyricsSources = useLibraryStore.getState().lyricsSources
   try {
-    return await platform.searchLyrics(query, artist, album, duration)
+    return await platform.searchLyrics(query, artist, album, duration, { sources: lyricsSources })
   } catch {
     return null
   }

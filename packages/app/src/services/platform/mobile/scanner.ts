@@ -65,25 +65,22 @@ async function processFile(
 ): Promise<Track | null> {
   try {
     const fileName = filePath.split('/').pop() || filePath
-    // 读取文件（base64 → Blob）
-    const readResult = await Filesystem.readFile({
-      path: filePath,
-      directory: Directory.ExternalStorage,
-    })
-    // data:application/octet-stream;base64,xxxx
-    const base64 = (readResult.data as string).split(',')[1] || (readResult.data as string)
-    const binary = atob(base64)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    const blob = new Blob([bytes])
 
     // 复用已有记录（与桌面端 scanner.ts 一致：按 path 查询已有记录，避免重复解析）
+    // 提前到读文件之前：已有记录无需任何 IO，避免每次扫描重复读大文件
     const existing = await db.getTrackByPath(filePath)
-    if (existing) {
-      // 移动端无法廉价地拿 fileSize（需读文件），简化处理：直接返回已有记录
-      // 若用户认为标签变了，可通过"重新扫描"按钮删除再插
-      return existing
+    if (existing) return existing
+
+    // 通过 Capacitor 本地文件协议 fetch 读取（流式解码），
+    // 不能用 Filesystem.readFile：它会把整个文件转成 base64 字符串，
+    // 大文件（如 40MB flac）原生侧需分配 ~1.4 倍文件大小的堆内存，直接 OOM 崩溃
+    const absPath = `/storage/emulated/0/${filePath.replace(/^\/+/, '')}`
+    const resp = await fetch(Capacitor.convertFileSrc(absPath))
+    if (!resp.ok) {
+      console.warn('读取音频文件失败:', filePath, resp.status)
+      return null
     }
+    const blob = await resp.blob()
 
     let metadata
     try {

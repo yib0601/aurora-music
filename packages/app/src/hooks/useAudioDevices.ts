@@ -14,16 +14,16 @@ export function useAudioDevices() {
 
     async function loadDevices() {
       try {
-        // 需要先请求权限才能获取完整 label
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        stream.getTracks().forEach((t) => t.stop())
-
+        // enumerateDevices 无需任何权限即可拿到输出设备列表（deviceId 可直接用于 setSinkId），
+        // 仅 label 需要授权才暴露。不请求麦克风权限（Electron 默认静默拒绝且音乐播放器
+        // 不应申请麦克风），label 为空时用序号兜底
         const list = await navigator.mediaDevices.enumerateDevices()
+        let index = 0
         const audioOutputs = list
           .filter((d) => d.kind === 'audiooutput')
           .map((d) => ({
             deviceId: d.deviceId,
-            label: d.label || `设备 ${d.deviceId.slice(0, 8)}`,
+            label: d.label || `输出设备 ${++index}`,
           }))
 
         if (mounted) {

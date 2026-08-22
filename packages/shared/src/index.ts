@@ -7,4 +7,4 @@ export type {
   LyricsSearchResult,
 } from './types'
 export { searchOnlineTracks, searchMusicSource } from './musicSource'
-export { searchLyrics, searchLyricsSource } from './lyricsSource'
+export { searchLyrics, searchLyricsSource, BUILTIN_LYRICS_SOURCE } from './lyricsSource'

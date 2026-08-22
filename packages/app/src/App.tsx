@@ -18,10 +18,10 @@ import { SettingsPage } from '@/pages/SettingsPage'
 import { PlaylistPage } from '@/pages/PlaylistPage'
 import { SongDetailPage } from '@/pages/SongDetailPage'
 import { LyricsView } from '@/components/lyrics/LyricsView'
-import { usePlayerStore } from '@/stores/playerStore'
+import { usePlayerStore, reconcileNativePlayback } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
-import { onMediaButtonEvent } from '@/services/mediaSession'
+import { isNativePlayerAvailable } from '@/services/mediaSession'
 import {
   checkMediaPermissions,
   requestMediaPermissions,
@@ -101,6 +101,9 @@ function AppLayout() {
     let cancelled = false
     CapApp.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) return
+      // 回到前台时与原生播放引擎对账：锁屏/后台期间 WebView 被冻结，
+      // 锁屏控件触发的切歌/暂停等变化无法通过事件送达 JS，需主动拉取快照同步 UI
+      reconcileNativePlayback().catch(() => {})
       checkMediaPermissions().then((granted) => {
         if (cancelled) return
         if (granted && needsPermissionRef.current) {
@@ -411,7 +414,10 @@ function AppLayout() {
   }, [])
 
   // Media Session API - 让 OS 识别媒体键并显示播放信息
+  // 移动端原生播放引擎自带系统级 MediaSession（锁屏/通知栏控件直接操作原生引擎），
+  // WebView 的 navigator.mediaSession 仅在桌面端/纯 Web 环境生效，避免两套控件冲突
   useEffect(() => {
+    if (isNativePlayerAvailable()) return
     if ('mediaSession' in navigator) {
       // 设置媒体操作处理器
       navigator.mediaSession.setActionHandler('play', () => {
@@ -444,8 +450,9 @@ function AppLayout() {
     }
   }, [])
 
-  // 更新 Media Session 元数据（曲目信息）
+  // 更新 Media Session 元数据（曲目信息）；原生引擎自行维护元数据，此处跳过
   useEffect(() => {
+    if (isNativePlayerAvailable()) return
     if ('mediaSession' in navigator && currentTrack) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title,
@@ -455,25 +462,6 @@ function AppLayout() {
       })
     }
   }, [currentTrack])
-
-  // 移动端原生 MediaSession：监听通知栏/锁屏按钮事件
-  // Honor/Huawei AudioHardening 要求 app 声明 foreground service 才会路由
-  // STREAM_MUSIC 到扬声器；通知栏按钮事件通过 MediaSessionPlugin 转发到这里
-  useEffect(() => {
-    let unsub = () => {}
-    onMediaButtonEvent((action) => {
-      const player = usePlayerStore.getState()
-      switch (action) {
-        case 'play': player.play(); break
-        case 'pause': player.pause(); break
-        case 'next': player.next(); break
-        case 'prev': player.previous(); break
-        case 'stop': player.clearQueue(); break
-        case 'seek': break // seek 需 position，已通过 navigator.mediaSession 处理
-      }
-    }).then((u) => { unsub = u })
-    return () => unsub()
-  }, [])
 
   // 更新 MPRIS 元数据（Linux 媒体键支持，桌面端专用）
   useEffect(() => {

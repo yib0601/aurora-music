@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, FileText, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { PageLayout } from '@/components/PageLayout'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
@@ -138,6 +139,147 @@ function SourceEditorCard({
   )
 }
 
+/** 添加源弹窗：填写名称 / 接口地址 / 请求头，校验通过后才保存进列表 */
+function SourceAddDialog({
+  open,
+  kind,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean
+  kind: 'music' | 'lyrics'
+  onOpenChange: (open: boolean) => void
+  onSave: (source: { name: string; apiUrl: string; headers?: Record<string, string> }) => void
+}) {
+  const [name, setName] = useState('')
+  const [apiUrl, setApiUrl] = useState('')
+  const [headersDraft, setHeadersDraft] = useState('')
+  const [headersInvalid, setHeadersInvalid] = useState(false)
+  const [headers, setHeaders] = useState<Record<string, string> | undefined>(undefined)
+
+  // 每次打开重置表单
+  useEffect(() => {
+    if (open) {
+      setName('')
+      setApiUrl('')
+      setHeadersDraft('')
+      setHeadersInvalid(false)
+      setHeaders(undefined)
+    }
+  }, [open])
+
+  const isLyrics = kind === 'lyrics'
+  const requiredPlaceholders = isLyrics ? ['{track}', '{artist}'] : ['{query}']
+  const missingPlaceholders = apiUrl.trim() ? requiredPlaceholders.filter((p) => !apiUrl.includes(p)) : []
+  const canSave = apiUrl.trim().length > 0 && missingPlaceholders.length === 0 && !headersInvalid
+
+  const handleHeadersChange = (text: string) => {
+    setHeadersDraft(text)
+    const trimmed = text.trim()
+    if (!trimmed) {
+      setHeadersInvalid(false)
+      setHeaders(undefined)
+      return
+    }
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        setHeadersInvalid(false)
+        setHeaders(parsed)
+      } else {
+        setHeadersInvalid(true)
+      }
+    } catch {
+      setHeadersInvalid(true)
+    }
+  }
+
+  const handleSave = () => {
+    if (!canSave) return
+    onSave({
+      name: name.trim() || (isLyrics ? '新歌词源' : '新音乐源'),
+      apiUrl: apiUrl.trim(),
+      headers,
+    })
+    onOpenChange(false)
+  }
+
+  const inputCls =
+    'w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-white text-tagline">{isLyrics ? '添加歌词源' : '添加音乐源'}</DialogTitle>
+          <DialogDescription className="font-text text-caption text-white/60">
+            {isLyrics
+              ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
+              : '接口地址需包含 {query} 占位符，保存后立即生效'}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <p className="font-text text-caption text-white/60 mb-1.5">名称（可选）</p>
+            <input
+              type="text"
+              value={name}
+              placeholder={isLyrics ? '如：LRCLIB' : '如：我的音乐接口'}
+              onChange={(e) => setName(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <p className="font-text text-caption text-white/60 mb-1.5">接口地址</p>
+            <input
+              type="text"
+              value={apiUrl}
+              placeholder={
+                isLyrics
+                  ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
+                  : 'https://your-api.com/search?q={query}'
+              }
+              onChange={(e) => setApiUrl(e.target.value)}
+              className={`${inputCls} ${missingPlaceholders.length > 0 ? 'border-coral/60' : ''}`}
+            />
+            {missingPlaceholders.length > 0 && (
+              <p className="font-text text-caption text-coral/70 mt-1">
+                地址需包含占位符：{missingPlaceholders.join('、')}
+              </p>
+            )}
+          </div>
+          <div>
+            <p className="font-text text-caption text-white/60 mb-1.5">请求头（可选，JSON 对象）</p>
+            <textarea
+              value={headersDraft}
+              placeholder={'{"Authorization": "Bearer ..."}'}
+              onChange={(e) => handleHeadersChange(e.target.value)}
+              rows={2}
+              className={`${inputCls} resize-none ${headersInvalid ? 'border-coral/60' : ''}`}
+            />
+            {headersInvalid && (
+              <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="sm:space-x-2">
+          <Button variant="ghost" size="sm" className="h-9 px-3.5 text-white/70" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button
+            size="sm"
+            className="h-9 px-3.5 bg-mint text-[#030608] font-semibold hover:bg-mint/90 disabled:opacity-40 disabled:hover:bg-mint"
+            disabled={!canSave}
+            onClick={handleSave}
+          >
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function SettingsPage() {
   const theme = useLibraryStore((s) => s.theme)
   const setTheme = useLibraryStore((s) => s.setTheme)
@@ -166,6 +308,10 @@ export function SettingsPage() {
   const [checking, setChecking] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [updateState, setUpdateState] = useState<'idle' | 'latest' | 'error'>('idle')
+
+  // 添加源弹窗开关：弹窗内校验通过后才写入 store，避免假地址被持久化
+  const [addMusicOpen, setAddMusicOpen] = useState(false)
+  const [addLyricsOpen, setAddLyricsOpen] = useState(false)
 
   const handleCheckUpdate = async () => {
     if (checking) return
@@ -288,18 +434,7 @@ export function SettingsPage() {
                     <p className="font-text text-caption-strong text-white/80">音乐源</p>
                     <p className="font-text text-caption text-white/60 mt-0.5">配置符合协议的搜索接口，可添加多个</p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-9 px-3.5"
-                    onClick={() =>
-                      addOnlineSource({
-                        name: '新音乐源',
-                        apiUrl: 'https://example.com/api/search?q={query}',
-                        enabled: true,
-                      })
-                    }
-                  >
+                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddMusicOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
                     添加
                   </Button>
@@ -328,25 +463,14 @@ export function SettingsPage() {
                 )}
               </div>
 
-              {/* 歌词源：按顺序依次尝试获取在线歌词 */}
+              {/* 歌词源：用户配置优先，未命中时回退到内置歌词源兜底 */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="font-text text-caption-strong text-white/80">歌词源</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">按顺序依次尝试，用于在线获取歌词（可选）</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">用户配置优先生效，未命中时自动回退到内置歌词源兜底</p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-9 px-3.5"
-                    onClick={() =>
-                      addLyricsSource({
-                        name: '新歌词源',
-                        apiUrl: 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}',
-                        enabled: true,
-                      })
-                    }
-                  >
+                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddLyricsOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
                     添加
                   </Button>
@@ -355,7 +479,7 @@ export function SettingsPage() {
                 {lyricsSources.length === 0 ? (
                   <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-md px-3.5 py-6 text-center">
                     <FileText className="h-6 w-6 text-white/30 mx-auto mb-2" strokeWidth={1.4} />
-                    <p className="font-text text-caption text-white/50">尚未配置歌词源，在线歌词将不可用</p>
+                    <p className="font-text text-caption text-white/50">尚未配置歌词源，将使用内置歌词源获取在线歌词</p>
                   </div>
                 ) : (
                   <div className="space-y-2.5">
@@ -402,7 +526,7 @@ export function SettingsPage() {
               <div>
                 <p className="font-text text-caption-strong mb-3 text-white/80">输出设备</p>
                 {devices.length === 0 ? (
-                  <p className="font-text text-caption text-white/60 py-2">需要授权后才能获取设备列表</p>
+                  <p className="font-text text-caption text-white/60 py-2">未检测到可用的输出设备</p>
                 ) : (
                   <select
                     value={selectedDeviceId}
@@ -471,6 +595,19 @@ export function SettingsPage() {
           </section>
         </div>
       </div>
+
+      <SourceAddDialog
+        open={addMusicOpen}
+        kind="music"
+        onOpenChange={setAddMusicOpen}
+        onSave={(source) => addOnlineSource({ ...source, enabled: true })}
+      />
+      <SourceAddDialog
+        open={addLyricsOpen}
+        kind="lyrics"
+        onOpenChange={setAddLyricsOpen}
+        onSave={(source) => addLyricsSource({ ...source, enabled: true })}
+      />
     </PageLayout>
   )
 }
