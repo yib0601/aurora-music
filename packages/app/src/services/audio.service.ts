@@ -2,11 +2,6 @@ import { Howl, Howler } from 'howler'
 import type { Track } from '@/types'
 import { audioEvents } from './audioEvents'
 import { platform } from '@/services/platform'
-import {
-  ensureMediaSessionStarted,
-  updateNativePlayback,
-  stopMediaSession,
-} from './mediaSession'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
@@ -107,34 +102,14 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
         audioContext.resume()
       }
       startTick(howl)
-      // 通知原生 MediaSession：正在播放（保持 foreground service 活跃 +
-      // Honor 系统才会把 STREAM_MUSIC 路由到扬声器而非 remote_submix）
-      updateNativePlayback({
-        isPlaying: true,
-        position: 0,
-        duration: howl.duration() || 0,
-        track,
-      }).catch(() => {})
     },
     onpause: () => {
       audioEvents.emit('pause', {})
       stopTick()
-      updateNativePlayback({
-        isPlaying: false,
-        position: howl.seek() as number,
-        duration: howl.duration() || 0,
-        track,
-      }).catch(() => {})
     },
     onstop: () => {
       audioEvents.emit('stop', {})
       stopTick()
-      updateNativePlayback({
-        isPlaying: false,
-        position: 0,
-        duration: howl.duration() || 0,
-        track,
-      }).catch(() => {})
     },
     onend: () => {
       stopTick()
@@ -156,19 +131,6 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
 
   currentHowl = howl
   audioEvents.emit('trackChange', { track })
-
-  // 启动原生 MediaSession foreground service（Android 14+ 要求播放后才能 start）
-  // 用 .catch 避免 fg service 启动失败影响播放本身
-  ensureMediaSessionStarted()
-    .then(() =>
-      updateNativePlayback({
-        isPlaying: autoplay,
-        position: 0,
-        duration: howl.duration() || 0,
-        track,
-      })
-    )
-    .catch(() => {})
 
   if (autoplay) {
     howl.play()
@@ -278,8 +240,6 @@ export function stopPlayback(): void {
     currentMediaSource = null
   }
   stopTick()
-  // 停止原生 MediaSession foreground service
-  stopMediaSession().catch(() => {})
 }
 
 function detectFormat(path: string): string | undefined {

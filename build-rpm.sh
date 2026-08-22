@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.1.2"
+VERSION=$(grep '"version"' packages/desktop/package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 APP_NAME="Aurora-Music"
 SOURCE_DIR="packages/desktop/release/linux-unpacked"
 OUTPUT_DIR="packages/desktop/release"

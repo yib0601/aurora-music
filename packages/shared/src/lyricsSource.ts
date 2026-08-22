@@ -6,6 +6,18 @@ const DEFAULT_HEADERS: Record<string, string> = {
   Accept: 'application/json',
 }
 
+/**
+ * 内置歌词源（LRCLIB，开放免费接口，返回 syncedLyrics / plainLyrics / duration 字段，
+ * 与本协议解析规则天然兼容）。
+ * 外部不可调整：不进入用户配置列表、不出现在设置页，仅作为所有用户源未命中时的兜底。
+ */
+export const BUILTIN_LYRICS_SOURCE: LyricsSourceConfig = {
+  id: 'builtin-lrclib',
+  name: '内置歌词源',
+  apiUrl: 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}',
+  enabled: true,
+}
+
 interface LyricsCandidate {
   /** 带时间标签的同步歌词（优先） */
   synced: string | null
@@ -97,8 +109,10 @@ export async function searchLyricsSource(
 }
 
 /**
- * 歌词聚合搜索：按配置顺序依次尝试各源，首个命中即返回
+ * 歌词聚合搜索：用户配置的源优先，按配置顺序依次尝试，首个命中即返回；
+ * 全部未命中（或未配置任何源）时回退到内置歌词源兜底。
  * - 单源失败（网络错误/404）跳过并尝试下一个源
+ * - 内置源固定排在末尾，外部不可调整
  */
 export async function searchLyrics(
   query: string,
@@ -108,8 +122,12 @@ export async function searchLyrics(
   options?: LyricsSearchOptions
 ): Promise<LyricsSearchResult | null> {
   const trimmed = (query || '').trim()
-  const sources = (options?.sources || []).filter((s) => s && s.enabled && s.apiUrl)
-  if (!trimmed || sources.length === 0) return null
+  if (!trimmed) return null
+  const userSources = (options?.sources || []).filter(
+    (s) => s && s.enabled && s.apiUrl && s.id !== BUILTIN_LYRICS_SOURCE.id
+  )
+  // 用户源优先，末尾追加内置源兜底
+  const sources: LyricsSourceConfig[] = [...userSources, BUILTIN_LYRICS_SOURCE]
 
   for (const source of sources) {
     try {
