@@ -87,11 +87,6 @@ class MediaPlaybackService : Service() {
     private var currentVolume = 0.7f
     private var pendingSeekMs = 0L
 
-    // MediaPlayer -38（invalid state）错误重试计数：
-    // 深度灭屏等场景下 MediaPlayer 偶发进入非法状态，直接报错会导致 JS 侧跳歌，
-    // 改为重建播放器重试当前曲目（最多 2 次），用户无感知
-    private var errorRetryCount = 0
-
     // 锁屏保活：播放期间持有 PARTIAL_WAKE_LOCK，防止 CPU 休眠
     private var wakeLock: PowerManager.WakeLock? = null
     private var audioManager: AudioManager? = null
@@ -230,39 +225,6 @@ class MediaPlaybackService : Service() {
             }
             watchdogHandler.postDelayed(this, 10_000)
         }
-    }
-
-    /**
-     * PlaybackState 周期刷新：锁屏后系统/锁屏控件展示的进度取自 MediaSession 的
-     * PlaybackState.position，而该值只在 play/pause/seek 时更新一次，
-     * 导致锁屏一段时间后控件上的进度条"冻结"。播放中每 5 秒刷新一次。
-     */
-    private var isSessionPlaying = false
-    private val sessionStateRefresher = object : Runnable {
-        override fun run() {
-            if (!isSessionPlaying) return
-            refreshSessionPosition()
-            mainHandler.postDelayed(this, 5_000)
-        }
-    }
-
-    private val playbackActions =
-        PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or
-        PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or PlaybackStateCompat.ACTION_STOP or
-        PlaybackStateCompat.ACTION_SEEK_TO
-
-    private fun refreshSessionPosition() {
-        val p = player ?: return
-        val playing = try { p.isPlaying } catch (_: Throwable) { false }
-        val positionMs = try { p.currentPosition.toLong() } catch (_: Throwable) { 0L }
-        val state = if (playing) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
-        mediaSession?.setPlaybackState(
-            PlaybackStateCompat.Builder()
-                .setActions(playbackActions)
-                .setState(state, positionMs, if (playing) 1.0f else 0.0f)
-                .build()
-        )
     }
 
     private val mediaButtonReceiver = object : BroadcastReceiver() {
@@ -466,8 +428,6 @@ class MediaPlaybackService : Service() {
         pendingSeekMs = positionMs
         lastWatchPositionMs = -1
         stallTicks = 0
-        errorRetryCount = 0
-        currentDurationMs = 0L
 
         val mp = MediaPlayer()
         player = mp
@@ -483,9 +443,6 @@ class MediaPlaybackService : Service() {
             mp.setOnPreparedListener { prepared ->
                 Log.i(TAG, "onPrepared: index=$currentIndex duration=${prepared.duration}")
                 if (prepared !== player) return@setOnPreparedListener
-                // 记录时长并补刷元数据（锁屏控件展示进度总时长需要 METADATA_KEY_DURATION）
-                currentDurationMs = try { prepared.duration.toLong() } catch (_: Throwable) { 0L }
-                updateMetadata(item)
                 if (pendingSeekMs > 0) {
                     try { prepared.seekTo(pendingSeekMs.toInt()) } catch (_: Throwable) {}
                     pendingSeekMs = 0
@@ -559,20 +516,7 @@ class MediaPlaybackService : Service() {
     }
 
     private fun handleError(what: Int, extra: Int) {
-        Log.e(TAG, "handleError: what=$what extra=$extra index=$currentIndex retry=$errorRetryCount")
-        // MediaPlayer ERROR_INVALID_STATE(-38) 等瞬时错误：重建播放器从当前位置重试，
-        // 避免直接向 JS 抛 error 导致跳歌/播放中断（锁屏深度灭屏场景偶发）
-        // what=1(MEDIA_ERROR_UNKNOWN) + extra=-38(invalid state) 是最常见的瞬时状态错误
-        if ((what == MediaPlayer.MEDIA_ERROR_UNKNOWN && extra == -38) || what == -38) {
-            if (errorRetryCount < 2 && queue.isNotEmpty() && currentIndex >= 0) {
-                errorRetryCount++
-                val pos = try { prefs.getLong("position", 0L) } catch (_: Throwable) { 0L }
-                Log.w(TAG, "handleError: -38 瞬时错误，重建播放器重试 (pos=${pos}ms)")
-                startCurrent(true, pos.coerceAtLeast(0L))
-                return
-            }
-        }
-        errorRetryCount = 0
+        Log.e(TAG, "handleError: what=$what extra=$extra index=$currentIndex")
         releasePlayer()
         releasePlaybackResources()
         emitEvent("error", mapOf(
@@ -718,32 +662,27 @@ class MediaPlaybackService : Service() {
 
     // ─── MediaSession / 通知栏 ──────────────────────────────────
 
-    /** 当前曲目时长（毫秒）：prepared 后由引擎记录，元数据用于锁屏控件展示总时长 */
-    private var currentDurationMs = 0L
-
     private fun updateMetadata(item: QueueItem) {
-        val builder = MediaMetadataCompat.Builder()
+        val metadata = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, item.title.ifEmpty { "Aurora Music" })
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, item.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, item.album)
-        if (currentDurationMs > 0) {
-            builder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)
-        }
-        mediaSession?.setMetadata(builder.build())
+            .build()
+        mediaSession?.setMetadata(metadata)
     }
 
     private fun updateSessionState(isPlaying: Boolean) {
         val positionMs = try { player?.currentPosition?.toLong() ?: 0L } catch (_: Throwable) { 0L }
         val state = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
         val stateBuilder = PlaybackStateCompat.Builder()
-            .setActions(playbackActions)
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or
+                PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or PlaybackStateCompat.ACTION_STOP or
+                PlaybackStateCompat.ACTION_SEEK_TO
+            )
             .setState(state, positionMs, if (isPlaying) 1.0f else 0.0f)
         mediaSession?.setPlaybackState(stateBuilder.build())
-
-        // 播放中启动周期刷新，保证锁屏/系统控件上的进度持续更新；暂停时停止
-        isSessionPlaying = isPlaying
-        mainHandler.removeCallbacks(sessionStateRefresher)
-        if (isPlaying) mainHandler.postDelayed(sessionStateRefresher, 5_000)
 
         val item = queue.getOrNull(currentIndex)
         getSystemService(NotificationManager::class.java)
@@ -792,7 +731,6 @@ class MediaPlaybackService : Service() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(playbackWatchdog)
-        mainHandler.removeCallbacks(sessionStateRefresher)
         try { unregisterReceiver(mediaButtonReceiver) } catch (_: Throwable) {}
         releasePlayer()
         releasePlaybackResources()
