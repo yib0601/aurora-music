@@ -17,10 +17,24 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // 固定签名：debug/release 统一使用项目内 keystore，
+    // 避免覆盖升级时因 debug.keystore 变化导致"签名不一致"
+    signingConfigs {
+        aurora {
+            storeFile file('aurora-music.keystore')
+            storePassword 'aurora-music-signing'
+            keyAlias 'aurora'
+            keyPassword 'aurora-music-signing'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.aurora
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.aurora
         }
     }
 }

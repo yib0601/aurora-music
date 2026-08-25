@@ -302,7 +302,7 @@ jobs:
             | Linux (AppImage) | `Aurora-Music-${{ steps.ver.outputs.version }}.AppImage` | 便携版，`chmod +x` 后双击或 `./Aurora-Music-*.AppImage` 运行 |
             | Linux (deb) | `Aurora-Music-${{ steps.ver.outputs.version }}.deb` | Debian/Ubuntu 系，`sudo dpkg -i` 安装 |
             | Linux (rpm) | `Aurora-Music-${{ steps.ver.outputs.version }}.rpm` | Fedora/RHEL 系，`sudo rpm -Uvh` 安装 |
-            | Android | `Aurora-Music-${{ steps.ver.outputs.version }}-android.apk` | 调试签名 APK，需在「设置 → 安全」允许未知来源后安装。使用固定 debug 签名，新版本可直接覆盖安装。 |
+            | Android | `Aurora-Music-${{ steps.ver.outputs.version }}-android.apk` | 固定签名 APK，需在「设置 → 安全」允许未知来源后安装。签名已固定，新版本可直接覆盖安装。 |
 
             ### 首次使用
 
@@ -311,7 +311,7 @@ jobs:
             - **Linux deb/rpm**: 用对应包管理器安装。
             - **Android**: 安装 APK 后，进入应用，点击「添加目录」在文件夹树中点选音乐目录。
 
-            > Android 版本为调试签名 APK，安装时需手动允许「未知来源」。生产签名版本将在后续发布。
+            > Android 版本为固定签名 APK（签名密钥入库统一管理），安装时需手动允许「未知来源」。
           draft: false
           prerelease: false
           generate_release_notes: false
