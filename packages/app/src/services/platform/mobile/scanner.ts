@@ -66,21 +66,18 @@ async function processFile(
   try {
     const fileName = filePath.split('/').pop() || filePath
 
-    // 复用已有记录（与桌面端 scanner.ts 一致：按 path 查询已有记录，避免重复解析）
-    // 提前到读文件之前：已有记录无需任何 IO，避免每次扫描重复读大文件
+    // 查重前置：已入库的歌曲直接复用记录，避免每次扫描重复读取大文件
     const existing = await db.getTrackByPath(filePath)
     if (existing) return existing
 
-    // 通过 Capacitor 本地文件协议 fetch 读取（流式解码），
-    // 不能用 Filesystem.readFile：它会把整个文件转成 base64 字符串，
-    // 大文件（如 40MB flac）原生侧需分配 ~1.4 倍文件大小的堆内存，直接 OOM 崩溃
-    const absPath = `/storage/emulated/0/${filePath.replace(/^\/+/, '')}`
-    const resp = await fetch(Capacitor.convertFileSrc(absPath))
-    if (!resp.ok) {
-      console.warn('读取音频文件失败:', filePath, resp.status)
-      return null
-    }
-    const blob = await resp.blob()
+    // 流式读取：Filesystem.readFile 会把整个文件转成 base64 字符串，
+    // 原生堆在 40MB 级 flac 上直接 OOM 崩溃；改用 fetch(convertFileSrc) 走流式
+    const cap = (window as any).Capacitor
+    const abs = `/storage/emulated/0/${filePath.replace(/^\/+/, '')}`
+    const src = cap ? cap.convertFileSrc(abs) : abs
+    const res = await fetch(src)
+    if (!res.ok) throw new Error(`读取文件失败: ${res.status}`)
+    const blob = await res.blob()
 
     let metadata
     try {

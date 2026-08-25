@@ -100,44 +100,17 @@ const useNative = () => isNativePlayerAvailable()
 /** 原生引擎是否已完成队列引导（服务已启动且队列已下发） */
 let nativeBootstrapped = false
 
-/**
- * 进度轮询（自愈式）：原生引擎不主动推 progress，播放中每 500ms 查询一次快照。
- * - 原生索引已变化（冻结期间自动切歌）但事件丢失：补同步当前曲目
- * - 引擎丢失（服务被杀且未恢复）而 UI 仍处于播放态：连续 4 次确认后
- *   自动重新下发队列从当前进度续播，避免"UI 显示播放中但永远没有进度"
- */
+/** 进度轮询：原生引擎不主动推 progress，播放中每 500ms 查询一次快照 */
 let nativeTicker: ReturnType<typeof setInterval> | null = null
-let engineLostPolls = 0
 function startNativeTicker() {
   if (nativeTicker || !useNative()) return
-  engineLostPolls = 0
   nativeTicker = setInterval(async () => {
     const st = usePlayerStore.getState()
     if (!st.isPlaying) return
     const snap = await nativeGetState()
-    if (snap.index < 0) {
-      engineLostPolls++
-      if (engineLostPolls >= 4 && st.currentTrack && !bootstrapInFlight) {
-        engineLostPolls = 0
-        nativeBootstrapped = false
-        nativeBootstrapPlay(st.progress, true)
-      }
-      return
+    if (snap.index >= 0) {
+      usePlayerStore.setState({ progress: snap.position, duration: snap.duration || st.duration })
     }
-    engineLostPolls = 0
-    if (snap.index !== st.currentIndex) {
-      const track = st.queue[snap.index]
-      if (track) {
-        usePlayerStore.setState({
-          currentIndex: snap.index,
-          currentTrack: track,
-          progress: snap.position,
-          duration: snap.duration || 0,
-        })
-        return
-      }
-    }
-    usePlayerStore.setState({ progress: snap.position, duration: snap.duration || st.duration })
   }, 500)
 }
 function stopNativeTicker() {
@@ -154,63 +127,12 @@ function syncNativeMirror() {
   nativeSyncQueue(toQueueItems(s.queue), s.currentIndex, s.shuffleMode, s.repeatMode)
 }
 
-/** 防止重复引导：自愈轮询与用户操作可能同时触发 bootstrap */
-let bootstrapInFlight = false
-
-/**
- * 切歌指令串行化 + 执行验证：
- * 锁屏/后台解冻后连续快速点击上/下一曲时，若多条指令并发下发可能互相干扰，
- * 且引擎丢失时指令会静默失败（原生侧 instance 为 null 直接 resolve）。
- * 因此所有切歌指令排队串行执行，执行后验证结果：
- * - 引擎丢失（index < 0）→ 重新下发队列从当前进度续播
- * - 指令未生效（索引/进度无变化）→ 重试一次
- */
-let nativeCmdQueue: Promise<void> = Promise.resolve()
-function enqueueNativeCmd(cmd: () => Promise<void>) {
-  nativeCmdQueue = nativeCmdQueue.then(cmd).catch(() => {})
-}
-
-async function nativeSkipWithVerify(direction: 'next' | 'prev') {
-  syncNativeMirror()
-  const before = await nativeGetState()
-  if (before.index < 0) {
-    // 引擎已丢失：重新引导续播（用户感知为"从当前位置继续"，再点一次即可切歌）
-    nativeBootstrapped = false
-    nativeBootstrapPlay(usePlayerStore.getState().progress, true)
-    return
-  }
-  if (direction === 'next') nativeNext()
-  else nativePrevious()
-  // 引擎异步处理（release → prepareAsync → start），稍候验证执行结果
-  await new Promise((r) => setTimeout(r, 800))
-  const after = await nativeGetState()
-  if (after.index < 0) {
-    nativeBootstrapped = false
-    nativeBootstrapPlay(usePlayerStore.getState().progress, true)
-    return
-  }
-  if (after.index === before.index) {
-    if (direction === 'next') {
-      // 未切歌：指令可能丢失（冻结期积压后丢弃），重试一次
-      nativeNext()
-    } else if (after.position >= before.position - 0.5) {
-      // 上一曲正常应切索引或回退到开头；两者都未发生说明指令丢失
-      nativePrevious()
-    }
-  }
-}
-
 /** 启动原生服务并下发队列开始播放 */
 function nativeBootstrapPlay(positionSec: number, autoplay = true) {
-  if (bootstrapInFlight) return
   const s = usePlayerStore.getState()
   if (s.queue.length === 0 || s.currentIndex < 0) return
-  bootstrapInFlight = true
   startNativeService().then((ok) => {
-    if (!ok) {
-      bootstrapInFlight = false
-      return
-    }
+    if (!ok) return
     nativePlayQueue(
       toQueueItems(s.queue),
       s.currentIndex,
@@ -221,7 +143,6 @@ function nativeBootstrapPlay(positionSec: number, autoplay = true) {
       s.repeatMode
     ).then(() => {
       nativeBootstrapped = true
-      bootstrapInFlight = false
       if (autoplay) startNativeTicker()
     })
   })
@@ -331,18 +252,8 @@ export const usePlayerStore = create<PlayerState>()(
             nativeBootstrapPlay(state.progress, true)
             return
           }
-          const shouldPause = state.isPlaying
-          enqueueNativeCmd(async () => {
-            if (shouldPause) nativePause()
-            else nativeResume()
-            // 引擎丢失时 pause/resume 会静默失败：稍候验证并重新引导续播
-            await new Promise((r) => setTimeout(r, 400))
-            const snap = await nativeGetState()
-            if (snap.index < 0 && usePlayerStore.getState().currentTrack && !bootstrapInFlight) {
-              nativeBootstrapped = false
-              nativeBootstrapPlay(usePlayerStore.getState().progress, true)
-            }
-          })
+          if (state.isPlaying) nativePause()
+          else nativeResume()
           return
         }
         // 如果 currentHowl 已被清理(如应用从后台恢复/StrictMode cleanup 后),
@@ -363,15 +274,7 @@ export const usePlayerStore = create<PlayerState>()(
           if (!nativeBootstrapped) {
             nativeBootstrapPlay(state.progress, true)
           } else {
-            enqueueNativeCmd(async () => {
-              nativeResume()
-              await new Promise((r) => setTimeout(r, 400))
-              const snap = await nativeGetState()
-              if (snap.index < 0 && usePlayerStore.getState().currentTrack && !bootstrapInFlight) {
-                nativeBootstrapped = false
-                nativeBootstrapPlay(usePlayerStore.getState().progress, true)
-              }
-            })
+            nativeResume()
           }
           return
         }
@@ -386,7 +289,7 @@ export const usePlayerStore = create<PlayerState>()(
 
       pause: () => {
         if (useNative()) {
-          if (get().isPlaying) enqueueNativeCmd(async () => nativePause())
+          if (get().isPlaying) nativePause()
           return
         }
         if (get().isPlaying) audioPausePlayback()
@@ -396,7 +299,8 @@ export const usePlayerStore = create<PlayerState>()(
         const state = get()
         if (state.queue.length === 0) return
         if (useNative()) {
-          enqueueNativeCmd(() => nativeSkipWithVerify('next'))
+          syncNativeMirror()
+          nativeNext()
           return
         }
 
@@ -675,18 +579,7 @@ export function stopNativePlayback() {
 export async function reconcileNativePlayback() {
   if (!isNativePlayerAvailable()) return
   const snap = await nativeGetState()
-  if (snap.index < 0) {
-    // 引擎已丢失（服务被杀且未自动恢复）：若 UI 仍显示播放中，重新引导续播；
-    // 否则仅把 UI 拉回暂停态，避免"播放图标亮着但点不动"
-    const st = usePlayerStore.getState()
-    if (st.isPlaying && st.currentTrack && !bootstrapInFlight) {
-      nativeBootstrapped = false
-      nativeBootstrapPlay(st.progress, true)
-    } else if (st.isPlaying) {
-      usePlayerStore.setState({ isPlaying: false })
-    }
-    return
-  }
+  if (snap.index < 0) return
   const st = usePlayerStore.getState()
   const updates: Partial<PlayerState> = { isPlaying: snap.isPlaying, progress: snap.position }
   if (snap.index !== st.currentIndex) {
