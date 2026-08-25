@@ -170,7 +170,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
               size="sm"
               onClick={handleConfirm}
               disabled={loading}
-              className="bg-mint text-[#030608] hover:bg-mint/90"
+              className="bg-mint text-mint-fg hover:bg-mint/90"
             >
               <Check className="h-4 w-4 mr-1.5" strokeWidth={1.8} />
               选择此目录

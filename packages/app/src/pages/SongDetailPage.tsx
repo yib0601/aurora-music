@@ -8,7 +8,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { LyricsView } from '@/components/lyrics/LyricsView'
-import { cn, formatTime, getTrackCoverSrc } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
@@ -222,7 +222,7 @@ export function SongDetailPage() {
           </p>
           <button
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-[#030608] font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-mint-fg font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
             返回上一页
@@ -232,7 +232,7 @@ export function SongDetailPage() {
     )
   }
 
-  const coverSrc = getTrackCoverSrc(track)
+  const coverSrc = track.coverPath ? platform.getCoverSrc(track.coverPath) : null
 
   return (
     // 全屏/超宽屏限宽居中：与 PageLayout 保持一致，避免 Hero 与内容在全屏下过度拉伸
@@ -252,7 +252,7 @@ export function SongDetailPage() {
         <div className="relative w-[220px] h-[220px] flex-shrink-0">
           <div
             className="absolute -inset-8 rounded-[40px] blur-3xl opacity-60"
-            style={{ background: 'radial-gradient(circle at 30% 30%, rgba(0,245,212,.16), transparent 70%)' }}
+            style={{ background: 'radial-gradient(circle at 30% 30%, rgba(var(--fc-accent-rgb),.16), transparent 70%)' }}
           />
           <div className="relative w-full h-full rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center overflow-hidden">
             {coverSrc ? (

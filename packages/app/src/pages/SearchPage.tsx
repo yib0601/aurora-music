@@ -214,11 +214,11 @@ export function SearchPage() {
             <div className="flex flex-col items-center justify-center h-full">
               <div className="relative mb-5">
                 <div className="absolute -inset-10 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
-                <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                  <SearchIcon className="h-10 w-10 text-mint/50" strokeWidth={1} />
+                <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                  <SearchIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
                 </div>
               </div>
-              <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">开始搜索</p>
+              <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">开始搜索</p>
               <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词搜索你的音乐库</p>
             </div>
           ) : (
@@ -294,11 +294,11 @@ export function SearchPage() {
                 <div className="flex flex-col items-center justify-center h-full">
                   <div className="relative mb-5">
                     <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                    <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                      <Music2 className="h-10 w-10 text-coral/50" strokeWidth={1} />
+                    <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                      <Music2 className="h-[52px] w-[52px] text-coral/60" strokeWidth={1} />
                     </div>
                   </div>
-                  <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">未找到结果</p>
+                  <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">未找到结果</p>
                   <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的本地歌曲</p>
                 </div>
               ) : (
@@ -410,11 +410,11 @@ export function SearchPage() {
               <div className="flex flex-col items-center justify-center h-full">
                 <div className="relative mb-5">
                   <div className="absolute -inset-10 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
-                  <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                    <Cloud className="h-10 w-10 text-mint/50" strokeWidth={1} />
+                  <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                    <Cloud className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
                   </div>
                 </div>
-                <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">未配置音乐源</p>
+                <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">未配置音乐源</p>
                 <p className="font-text text-[14px] text-white/40 tracking-[-0.15px] mb-5 text-center max-w-xs">
                   应用不内置任何音乐源，请先在设置中配置符合协议的搜索接口
                 </p>
@@ -434,23 +434,23 @@ export function SearchPage() {
               <div className="flex flex-col items-center justify-center h-full">
                 <div className="relative mb-5">
                   <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                  <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                    <Music2 className="h-10 w-10 text-coral/50" strokeWidth={1} />
+                  <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                    <Music2 className="h-[52px] w-[52px] text-coral/60" strokeWidth={1} />
                   </div>
                 </div>
-                <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">搜索失败</p>
+                <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">搜索失败</p>
                 <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">{onlineError}</p>
               </div>
             ) : onlineTracks.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full">
                 <div className="relative mb-5">
                   <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                  <div className="relative w-24 h-24 rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                    <Music2 className="h-10 w-10 text-coral/50" strokeWidth={1} />
+                  <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                    <Music2 className="h-[52px] w-[52px] text-coral/60" strokeWidth={1} />
                   </div>
                 </div>
-                <p className="font-display text-[20px] font-bold text-white/90 mb-1.5 tracking-[-0.3px]">未找到结果</p>
-                <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的在线歌曲</p>
+                <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">未找到结果</p>
+                  <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的在线歌曲</p>
               </div>
             ) : (
               <div className="space-y-5">

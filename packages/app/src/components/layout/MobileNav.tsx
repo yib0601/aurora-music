@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Menu, X, Music, Heart, Clock, Search, Settings } from 'lucide-react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
 /**
  * 移动端导航：顶部汉堡菜单 + 左侧抽屉
  * - 左上角菜单按钮，点击滑出左侧抽屉（替代底部 BottomTabBar）
- * - 顶栏显示当前页面标题
+ * - 顶栏展示品牌名（页面内容区已有大标题，不重复展示页面标题）
  * - 抽屉含 5 个主导航入口，点击切换路由并关闭抽屉
  * - 遮罩点击关闭；抽屉 glass 材质 + safe-area 适配
  */
@@ -18,27 +18,8 @@ const navItems = [
   { to: '/settings', icon: Settings, label: '设置' },
 ]
 
-const pageTitles: Array<[string, string]> = [
-  ['/library', '音乐库'],
-  ['/liked', '收藏'],
-  ['/recent', '最近播放'],
-  ['/search', '搜索'],
-  ['/settings', '设置'],
-  ['/playlist/', '播放列表'],
-  ['/song/', '歌曲详情'],
-]
-
-function resolveTitle(pathname: string): string {
-  for (const [prefix, title] of pageTitles) {
-    if (pathname.startsWith(prefix)) return title
-  }
-  return 'Aurora Music'
-}
-
 export function MobileNav() {
   const [open, setOpen] = useState(false)
-  const location = useLocation()
-  const title = resolveTitle(location.pathname)
 
   return (
     <>
@@ -54,8 +35,9 @@ export function MobileNav() {
         >
           <Menu className="h-5 w-5" strokeWidth={1.8} />
         </button>
+        {/* 顶栏展示品牌名而非页面标题：页面内容区已有同名大标题，重复展示显得冗余 */}
         <span className="font-display text-[15px] font-semibold text-white/90 tracking-[-0.2px]">
-          {title}
+          Aurora
         </span>
       </header>
 

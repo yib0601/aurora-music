@@ -3,7 +3,8 @@ import { X, Music2, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { cn, formatTime, getTrackCoverSrc } from '@/lib/utils'
+import { platform } from '@/services/platform'
+import { cn, formatTime } from '@/lib/utils'
 
 /**
  * Mineradio 深色风格 QueueView 浮层
@@ -66,8 +67,8 @@ export function QueueView() {
                   title="查看歌曲详情"
                   className="w-[38px] h-[38px] rounded-[7px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                 >
-                  {getTrackCoverSrc(track) ? (
-                    <img src={getTrackCoverSrc(track)!} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {track.coverPath ? (
+                    <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />
                   )}

@@ -116,8 +116,9 @@ export function PlaylistPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="p-8 pb-6">
+    // 与其他页面共享 1200px 居中内容轴（PageLayout 同款），避免全屏拉伸
+    <div className="flex flex-col h-full overflow-hidden mx-auto w-full max-w-[1200px]">
+      <div className="px-4 pt-4 md:px-8 md:pt-8 pb-6">
         <Button
           variant="ghost"
           size="icon"
@@ -192,7 +193,7 @@ export function PlaylistPage() {
       </div>
 
       {/* pb 为底部悬浮播放条让位，避免滚动到底时内容被遮挡 */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2 pb-[calc(100px+env(safe-area-inset-bottom))] lg:pb-32">
+      <div className="flex-1 overflow-y-auto scrollbar-thin px-4 md:px-8 pb-[calc(100px+env(safe-area-inset-bottom))] lg:pb-32">
         {playlistTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">

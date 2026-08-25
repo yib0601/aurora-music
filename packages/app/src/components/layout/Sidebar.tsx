@@ -88,7 +88,7 @@ export function Sidebar() {
       {/* 品牌区 */}
       <div className="flex items-center gap-3 px-4 py-5">
         <div className="w-8 h-8 rounded-md bg-mint flex items-center justify-center">
-          <Music className="h-4 w-4 text-[#030608]" strokeWidth={2} />
+          <Music className="h-4 w-4 text-mint-fg" strokeWidth={2} />
         </div>
         <div className="flex flex-col">
           <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-white/96 leading-tight">

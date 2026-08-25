@@ -35,6 +35,56 @@
     --champagne-deep: #9a6f2c;
     --coral: #ff5367;
 
+    color-scheme: dark;
+
+    /* ===== 主题感知基础色（RGB 三元组，供 Tailwind <alpha-value> 使用） =====
+     * white 在浅色主题下翻转为深墨色，让全站 text-white/* / bg-white/* 自动适配；
+     * mint / coral 在浅色主题下加深以保证浅底对比度 */
+    --tw-white: 255 255 255;
+    --tw-mint: 0 245 212;
+    --tw-coral: 255 83 103;
+    /* mint 按钮上的前景色：深色主题 mint 很亮用深墨字，浅色主题 mint 加深后用白字 */
+    --tw-mint-fg: 3 6 8;
+
+    /* ===== 主题感知表面/玻璃变量（浅色主题在 html:not(.dark) 中覆盖） ===== */
+    --glass-regular-bg: rgba(12,12,16,.55);
+    --glass-strong-bg: rgba(12,12,16,.72);
+    --glass-subtle-bg: rgba(12,12,16,.35);
+    --glass-edge-highlight: rgba(255,255,255,.16);
+    --glass-edge-highlight-strong: rgba(255,255,255,.18);
+    --glass-strong-shadow: 0 8px 32px rgba(0,0,0,.4);
+    --glass-floating-bg: linear-gradient(145deg, rgba(18,18,23,.82), rgba(8,8,12,.88));
+    --glass-floating-border: rgba(255,255,255,.075);
+    --glass-floating-shadow: 0 22px 70px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.065);
+    --glass-popover-bg: rgba(12,12,16,.78);
+    --glass-popover-border: rgba(255,255,255,.09);
+    --glass-popover-shadow: 0 18px 48px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.07);
+
+    --surface-card-bg: rgba(18,21,26,.55);
+    --surface-card-border: rgba(255,255,255,.06);
+    --surface-tile-1-bg: linear-gradient(142deg, rgba(18,21,26,.66), rgba(8,9,13,.76));
+    --surface-tile-2-bg: linear-gradient(145deg, rgba(36,33,39,.66), rgba(10,10,14,.76));
+    --surface-tile-fg: #ffffff;
+    --card-utility-shadow: 0 20px 64px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06);
+    --card-utility-hover-shadow: 0 28px 84px rgba(0,0,0,.36), 0 0 34px rgba(var(--fc-accent-rgb),.10), inset 0 1px 0 rgba(255,255,255,.085);
+
+    --btn-icon-color: rgba(255,255,255,.70);
+    --btn-icon-hover-color: #ffffff;
+    --btn-icon-hover-bg: rgba(255,255,255,.045);
+    --btn-pearl-color: rgba(255,255,255,.86);
+
+    --hero-color: rgba(255,255,255,.98);
+    --track-fill: rgba(255,255,255,.095);
+    --scrollbar-thumb: rgba(255,255,255,.18);
+    --scrollbar-thumb-hover: rgba(255,255,255,.32);
+
+    --titlebar-btn-bg: rgba(0,0,0,.10);
+    --titlebar-btn-fg: rgba(255,255,255,.72);
+    --titlebar-btn-shadow: inset 0 0 2px 1px rgba(255,255,255,.34), inset 0 0 10px 4px rgba(255,255,255,.13), 0 10px 30px rgba(0,0,0,.18);
+    --titlebar-btn-hover-bg: rgba(255,255,255,.055);
+    --titlebar-btn-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.42), inset 0 0 12px 5px rgba(255,255,255,.17), 0 12px 34px rgba(0,0,0,.22), 0 0 18px rgba(255,255,255,.06);
+    --titlebar-hover-accent: #fff1bd;
+
     /* shadcn 兼容变量（深色） */
     --background: 240 6% 4%;
     --foreground: 210 20% 92%;
@@ -113,8 +163,163 @@
     --ambient-from: rgba(0, 245, 212, 0.08);
     --ambient-to: rgba(244, 210, 138, 0.04);
     --ambient-glow: rgba(0, 245, 212, 0.06);
+
+    --tile-border-rgb: 255 255 255;
   }
 }
+
+/* ===== 浅色主题：html 未带 .dark 时整体翻转 =====
+ * 深色为默认（:root 中是暗色值）；用户选择浅色/系统浅色时，
+ * App.tsx 移除 .dark 类，此块翻转所有主题感知变量。
+ * 关键：--tw-white 翻转为深墨色，全站 text-white/* 、bg-white/* 、
+ * border-white/* 等 400+ 处硬编码"白"自动变为深色墨字/深色叠层。 */
+@layer base {
+  html:not(.dark) {
+    color-scheme: light;
+
+    --tw-white: 23 25 29;
+    --tw-mint: 0 156 136;
+    --tw-coral: 226 59 82;
+    --tw-mint-fg: 255 255 255;
+
+    --fc-bg: #F4F5F7;
+    --fc-paper: #FCFCFD;
+    --fc-ink: #16181D;
+    --fc-ink-2: #30343C;
+    --fc-muted: #626875;
+    --fc-hair: #E3E5E9;
+    --fc-hair-2: #D3D6DC;
+    --fc-accent: #009C88;
+    --fc-accent-hov: #008574;
+    --fc-accent-rgb: 0, 156, 136;
+
+    /* shadcn 兼容变量（浅色） */
+    --background: 220 14% 96%;
+    --foreground: 222 16% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 16% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 16% 10%;
+    --primary: 172 100% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 12% 91%;
+    --secondary-foreground: 222 16% 12%;
+    --muted: 220 12% 92%;
+    --muted-foreground: 220 8% 44%;
+    --accent: 220 12% 91%;
+    --accent-foreground: 222 16% 12%;
+    --destructive: 352 76% 47%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 10% 86%;
+    --input: 222 10% 86%;
+    --ring: 172 100% 30%;
+
+    /* 玻璃材质：磨砂白玻璃 */
+    --glass-regular-bg: rgba(255,255,255,.62);
+    --glass-strong-bg: rgba(255,255,255,.80);
+    --glass-subtle-bg: rgba(255,255,255,.42);
+    --glass-edge-highlight: rgba(255,255,255,.92);
+    --glass-edge-highlight-strong: rgba(255,255,255,.96);
+    --glass-strong-shadow: 0 8px 32px rgba(20,24,40,.10);
+    --glass-floating-bg: linear-gradient(145deg, rgba(255,255,255,.92), rgba(246,247,250,.94));
+    --glass-floating-border: rgba(15,20,30,.08);
+    --glass-floating-shadow: 0 22px 70px rgba(20,24,40,.16), inset 0 1px 0 rgba(255,255,255,.9);
+    --glass-popover-bg: rgba(255,255,255,.90);
+    --glass-popover-border: rgba(15,20,30,.08);
+    --glass-popover-shadow: 0 18px 48px rgba(20,24,40,.16), inset 0 1px 0 rgba(255,255,255,.85);
+
+    --glass-bg: linear-gradient(112deg, rgba(255,255,255,.72), rgba(244,246,249,.78) 48%, rgba(236,239,244,.84));
+    --glass-bg-focus: linear-gradient(112deg, rgba(255,255,255,.82), rgba(246,248,251,.86) 50%, rgba(239,242,246,.9));
+    --glass-border: rgba(0,156,136,.32);
+    --glass-border-soft: rgba(15,20,30,.10);
+    --glass-shadow: 0 22px 64px rgba(20,24,40,.10), 0 0 34px rgba(0,156,136,.05), inset 0 1px 0 rgba(255,255,255,.85), inset 0 -24px 58px rgba(20,24,40,.03);
+    --glass-shadow-focus: 0 24px 72px rgba(20,24,40,.14), 0 0 0 1px rgba(0,156,136,.15), 0 0 42px rgba(0,156,136,.10), inset 0 1px 0 rgba(255,255,255,.9);
+
+    --saved-panel-glass-bg: rgba(255,255,255,.38);
+    --saved-panel-glass-shadow: inset 0 0 2px 1px rgba(255,255,255,.55), inset 0 0 10px 4px rgba(255,255,255,.25), 0 4px 16px rgba(20,24,40,.06), 0 8px 24px rgba(20,24,40,.07), 0 16px 56px rgba(20,24,40,.09);
+    --saved-button-glass-bg: rgba(255,255,255,.42);
+    --saved-button-glass-shadow: inset 0 0 2px 1px rgba(255,255,255,.6), inset 0 0 10px 4px rgba(255,255,255,.22), 0 10px 30px rgba(20,24,40,.10);
+    --saved-button-glass-hover-bg: rgba(255,255,255,.60);
+    --saved-button-glass-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.7), inset 0 0 12px 5px rgba(255,255,255,.3), 0 12px 34px rgba(20,24,40,.14), 0 0 18px rgba(255,255,255,.35);
+
+    /* 表面分层 */
+    --surface-card-bg: rgba(255,255,255,.72);
+    --surface-card-border: rgba(15,20,30,.07);
+    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.86), rgba(244,246,249,.9));
+    --surface-tile-2-bg: linear-gradient(145deg, rgba(250,250,252,.88), rgba(241,243,247,.92));
+    --surface-tile-fg: #16181D;
+    --tile-border-rgb: 15 20 30;
+    --card-utility-shadow: 0 20px 64px rgba(20,24,40,.08), inset 0 1px 0 rgba(255,255,255,.9);
+    --card-utility-hover-shadow: 0 28px 84px rgba(20,24,40,.12), 0 0 34px rgba(var(--fc-accent-rgb),.12), inset 0 1px 0 rgba(255,255,255,.95);
+
+    --btn-icon-color: rgba(23,25,29,.68);
+    --btn-icon-hover-color: #16181D;
+    --btn-icon-hover-bg: rgba(23,25,29,.05);
+    --btn-pearl-color: rgba(23,25,29,.82);
+
+    --hero-color: rgba(23,25,29,.98);
+    --track-fill: rgba(23,25,29,.10);
+    --scrollbar-thumb: rgba(23,25,29,.18);
+    --scrollbar-thumb-hover: rgba(23,25,29,.32);
+
+    --titlebar-btn-bg: rgba(255,255,255,.35);
+    --titlebar-btn-fg: rgba(23,25,29,.70);
+    --titlebar-btn-shadow: inset 0 0 2px 1px rgba(255,255,255,.5), inset 0 0 10px 4px rgba(255,255,255,.2), 0 10px 30px rgba(20,24,40,.10);
+    --titlebar-btn-hover-bg: rgba(255,255,255,.55);
+    --titlebar-btn-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.6), inset 0 0 12px 5px rgba(255,255,255,.28), 0 12px 34px rgba(20,24,40,.14), 0 0 18px rgba(255,255,255,.4);
+    --titlebar-hover-accent: #8a6320;
+
+    /* ambient 光晕：浅色下稍增强，让白底玻璃有内容可折射 */
+    --ambient-from: rgba(0, 156, 136, 0.10);
+    --ambient-to: rgba(244, 210, 138, 0.14);
+    --ambient-glow: rgba(0, 156, 136, 0.08);
+  }
+}
+
+/* ===== 浅色主题组件级覆盖（无法通过变量翻转的细节） ===== */
+/* 歌词高亮：白→蓝渐变在浅底不可见，翻转为深墨→青渐变 */
+html:not(.dark) .lyric-active {
+  text-shadow: 0 0 14px rgba(0,156,136,.18), 0 0 36px rgba(0,132,155,.12);
+  background: linear-gradient(180deg, #14161A 0%, #0E7A6E 55%, #0A6B80 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 滑块在浅底上翻转为深色 */
+html:not(.dark) input[type='range']::-webkit-slider-thumb {
+  background: radial-gradient(circle at 34% 28%, #2A2E35 0, #16181D 28%, rgba(22,24,29,.86) 74%);
+  box-shadow: 0 0 0 1px rgba(23,25,29,.30), 0 0 12px rgba(0,156,136,.25);
+}
+html:not(.dark) input[type='range'].seek-bar::-webkit-slider-thumb {
+  background: rgb(var(--tw-mint));
+  box-shadow: 0 0 0 3px rgba(var(--tw-mint), .16), 0 0 12px rgba(var(--tw-mint), .45), 0 2px 8px rgba(20,24,40,.25);
+}
+html:not(.dark) input[type='range'].seek-bar:hover::-webkit-slider-thumb,
+html:not(.dark) input[type='range'].seek-bar:active::-webkit-slider-thumb {
+  box-shadow: 0 0 0 5px rgba(var(--tw-mint), .22), 0 0 16px rgba(var(--tw-mint), .55), 0 2px 8px rgba(20,24,40,.25);
+}
+
+/* 浅色下底部压暗层改为轻微的顶部提亮 + 底部微暗 */
+html:not(.dark) .ambient-backdrop::after {
+  background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(20,24,40,.05));
+  opacity: 0.5;
+}
+
+/* ===== 浅色主题可读性：低透明度文字加深 =====
+ * 深色主题里 text-white/30~60 是"暗灰白"，视觉层级靠亮度差；
+ * 翻转到浅底后同透明度变成"浅灰墨"，对比度不足（/40 仅 ~2.6:1）。
+ * 这里按透明度分档提升不透明度，保证次要文字 ≥ 4.5:1 对比度，
+ * 无需逐个修改组件里的 text-white 透明度类。
+ * 注意：只覆盖纯文本颜色类（text-white/xx），不动背景/边框等叠层。 */
+html:not(.dark) .text-white\/30,
+html:not(.dark) .text-white\/35 { color: rgb(var(--tw-white) / .52); }
+html:not(.dark) .text-white\/40,
+html:not(.dark) .text-white\/45 { color: rgb(var(--tw-white) / .62); }
+html:not(.dark) .text-white\/50,
+html:not(.dark) .text-white\/55 { color: rgb(var(--tw-white) / .72); }
+html:not(.dark) .text-white\/60 { color: rgb(var(--tw-white) / .78); }
+html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
 
 @layer base {
   * {
@@ -147,7 +352,7 @@
   .font-mono { font-family: var(--font-mono); }
 
   /* 文本语义类（简化，统一用 Tailwind 任意值更灵活） */
-  .text-hero { font-size: clamp(34px, 4.6vw, 58px); font-weight: 760; line-height: 0.98; letter-spacing: 0; color: rgba(255,255,255,.98); }
+  .text-hero { font-size: clamp(34px, 4.6vw, 58px); font-weight: 760; line-height: 0.98; letter-spacing: 0; color: var(--hero-color); }
   .text-display { font-size: 28px; font-weight: 700; line-height: 1.1; letter-spacing: -0.374px; }
   .text-tagline { font-size: 21px; font-weight: 600; line-height: 1.19; letter-spacing: 0.231px; }
   .text-body-strong { font-size: 17px; font-weight: 600; line-height: 1.24; letter-spacing: -0.374px; }
@@ -220,39 +425,39 @@
   }
 
   .glass-popover {
-    border: 1px solid rgba(255,255,255,.09);
-    background: rgba(12,12,16,.78);
+    border: 1px solid var(--glass-popover-border);
+    background: var(--glass-popover-bg);
     backdrop-filter: blur(24px) saturate(1.12);
     -webkit-backdrop-filter: blur(24px) saturate(1.12);
-    box-shadow: 0 18px 48px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.07);
+    box-shadow: var(--glass-popover-shadow);
   }
 
   .glass-floating {
-    border: 1px solid rgba(255,255,255,.075);
-    background: linear-gradient(145deg, rgba(18,18,23,.82), rgba(8,8,12,.88));
+    border: 1px solid var(--glass-floating-border);
+    background: var(--glass-floating-bg);
     backdrop-filter: blur(30px) saturate(1.08);
     -webkit-backdrop-filter: blur(30px) saturate(1.08);
-    box-shadow: 0 22px 70px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.065);
+    box-shadow: var(--glass-floating-shadow);
   }
 
   /* 通用玻璃面板（侧栏/标题栏/右侧 Now Playing） */
   .glass-regular {
-    background: rgba(12,12,16,.55);
+    background: var(--glass-regular-bg);
     backdrop-filter: blur(16px) saturate(1.4);
     -webkit-backdrop-filter: blur(16px) saturate(1.4);
-    box-shadow: inset 0 0.5px 0 0 rgba(255,255,255,.16);
+    box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
   .glass-strong {
-    background: rgba(12,12,16,.72);
+    background: var(--glass-strong-bg);
     backdrop-filter: blur(20px) saturate(1.5);
     -webkit-backdrop-filter: blur(20px) saturate(1.5);
-    box-shadow: inset 0 0.5px 0 0 rgba(255,255,255,.18), 0 8px 32px rgba(0,0,0,.4);
+    box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight-strong), var(--glass-strong-shadow);
   }
   .glass-subtle {
-    background: rgba(12,12,16,.35);
+    background: var(--glass-subtle-bg);
     backdrop-filter: blur(14px) saturate(1.3);
     -webkit-backdrop-filter: blur(14px) saturate(1.3);
-    box-shadow: inset 0 0.5px 0 0 rgba(255,255,255,.12);
+    box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
 }
 
@@ -260,34 +465,34 @@
 @layer components {
   .surface-canvas { background: var(--fc-bg); color: var(--fc-ink); }
   .surface-paper { background: var(--fc-paper); color: var(--fc-ink); }
-  .surface-card { background: rgba(18,21,26,.55); color: var(--fc-ink); border: 1px solid rgba(255,255,255,.06); }
-  .surface-tile-1 { background: linear-gradient(142deg, rgba(18,21,26,.66), rgba(8,9,13,.76)); color: #fff; border: 1px solid rgba(255,255,255,.075); }
-  .surface-tile-2 { background: linear-gradient(145deg, rgba(36,33,39,.66), rgba(10,10,14,.76)); color: #fff; border: 1px solid rgba(255,255,255,.08); }
+  .surface-card { background: var(--surface-card-bg); color: var(--fc-ink); border: 1px solid var(--surface-card-border); }
+  .surface-tile-1 { background: var(--surface-tile-1-bg); color: var(--surface-tile-fg); border: 1px solid rgba(var(--tile-border-rgb, 255 255 255) /.075); }
+  .surface-tile-2 { background: var(--surface-tile-2-bg); color: var(--surface-tile-fg); border: 1px solid rgba(var(--tile-border-rgb, 255 255 255) /.08); }
 
   .card-utility {
-    background: linear-gradient(142deg, rgba(18,21,26,.66), rgba(8,9,13,.76));
-    border: 1px solid rgba(255,255,255,.06);
+    background: var(--surface-tile-1-bg);
+    border: 1px solid var(--surface-card-border);
     border-radius: var(--r-lg);
     backdrop-filter: blur(20px) saturate(1.1);
     -webkit-backdrop-filter: blur(20px) saturate(1.1);
-    box-shadow: 0 20px 64px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06);
+    box-shadow: var(--card-utility-shadow);
     transition: transform .22s var(--ease-mineradio), border-color .22s, box-shadow .22s;
   }
   .card-utility:hover {
     transform: translateY(-2px);
     border-color: rgba(var(--fc-accent-rgb),.30);
-    box-shadow: 0 28px 84px rgba(0,0,0,.36), 0 0 34px rgba(var(--fc-accent-rgb),.10), inset 0 1px 0 rgba(255,255,255,.085);
+    box-shadow: var(--card-utility-hover-shadow);
   }
 
   /* 静态列表卡片：与 card-utility 同材质，但 hover 不上浮——
    * 用于包裹多行列表（搜索结果等），避免鼠标悬停任一行时整个列表位移 */
   .card-list {
-    background: linear-gradient(142deg, rgba(18,21,26,.66), rgba(8,9,13,.76));
-    border: 1px solid rgba(255,255,255,.06);
+    background: var(--surface-tile-1-bg);
+    border: 1px solid var(--surface-card-border);
     border-radius: var(--r-lg);
     backdrop-filter: blur(20px) saturate(1.1);
     -webkit-backdrop-filter: blur(20px) saturate(1.1);
-    box-shadow: 0 20px 64px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06);
+    box-shadow: var(--card-utility-shadow);
   }
 
   .product-shadow { filter: drop-shadow(0 5px 30px rgba(0,0,0,0.22)); }
@@ -327,7 +532,7 @@
     background: var(--saved-button-glass-bg);
     backdrop-filter: var(--saved-button-glass-filter);
     -webkit-backdrop-filter: var(--saved-button-glass-filter);
-    color: rgba(255,255,255,.86);
+    color: var(--btn-pearl-color);
     border: 0;
     border-radius: 13px;
     box-shadow: var(--saved-button-glass-shadow);
@@ -341,30 +546,30 @@
 
   .btn-icon {
     background: transparent;
-    color: rgba(255,255,255,.70);
+    color: var(--btn-icon-color);
     border: 0;
     border-radius: 11px;
     cursor: pointer;
     transition: color .18s, background .18s, transform .18s, text-shadow .18s, box-shadow .18s;
   }
-  .btn-icon:hover { color: #fff; background: rgba(255,255,255,.045); transform: translateY(-1px); text-shadow: 0 0 10px rgba(0,245,212,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.045); }
+  .btn-icon:hover { color: var(--btn-icon-hover-color); background: var(--btn-icon-hover-bg); transform: translateY(-1px); text-shadow: 0 0 10px rgba(var(--tw-mint),.12); box-shadow: inset 0 1px 0 rgba(var(--tw-white),.045); }
   .btn-icon:active { transform: translateY(0) scale(.96); }
 
   .link { color: var(--fc-accent); text-decoration: none; transition: opacity .2s; }
-  .link:hover { text-shadow: 0 0 14px rgba(0,245,212,.20); }
+  .link:hover { text-shadow: 0 0 14px rgba(var(--tw-mint),.20); }
 
-  .hairline { border-color: rgba(255,255,255,.06); }
+  .hairline { border-color: var(--surface-card-border); }
 
   .titlebar-drag { -webkit-app-region: drag; app-region: drag; }
   .titlebar-no-drag { -webkit-app-region: no-drag; app-region: no-drag; }
 
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
-  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
   .scrollbar-thin::-webkit-scrollbar { width: 3px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; margin: 6px 0; }
-  .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.32); }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 }
 
 /* ===== Range Slider — Mineradio 深色风格 ===== */
@@ -379,7 +584,7 @@ input[type='range'] {
 input[type='range']::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: rgba(255,255,255,.095);
+  background: var(--track-fill);
 }
 input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -412,9 +617,9 @@ input[type='range'].seek-bar::-webkit-slider-runnable-track {
   border-radius: 999px;
   background: linear-gradient(
     to right,
-    rgba(0, 245, 212, 0.30) 0%,
-    rgba(0, 245, 212, 0.95) var(--seek, 0%),
-    rgba(255, 255, 255, 0.10) var(--seek, 0%)
+    rgba(var(--tw-mint), 0.30) 0%,
+    rgba(var(--tw-mint), 0.95) var(--seek, 0%),
+    var(--track-fill) var(--seek, 0%)
   );
 }
 input[type='range'].seek-bar::-webkit-slider-thumb {

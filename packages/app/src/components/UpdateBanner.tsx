@@ -18,7 +18,8 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
   }
 
   return (
-    <div className="mx-4 md:mx-8 mb-3 flex items-center gap-3 rounded-xl border border-mint/25 bg-mint/[0.08] px-4 py-2.5 backdrop-blur-md">
+    <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 mb-3">
+      <div className="flex items-center gap-3 rounded-xl border border-mint/25 bg-mint/[0.08] px-4 py-2.5 backdrop-blur-md">
       <ArrowDownCircle className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
       <p className="font-text text-[13px] text-white/85 tracking-[-0.15px] min-w-0 truncate">
         发现新版本 <span className="text-mint font-semibold">v{info.version}</span>
@@ -27,7 +28,7 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
       </p>
       <button
         onClick={handleDownload}
-        className="ml-auto inline-flex flex-shrink-0 items-center gap-1.5 rounded-full bg-mint px-3.5 py-1.5 text-[12px] font-semibold text-[#030608] active:scale-95 transition"
+        className="ml-auto inline-flex flex-shrink-0 items-center gap-1.5 rounded-full bg-mint px-3.5 py-1.5 text-[12px] font-semibold text-mint-fg active:scale-95 transition"
       >
         <Download className="h-3.5 w-3.5" strokeWidth={1.8} />
         {downloading ? '已打开下载' : '下载更新'}
@@ -39,6 +40,7 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
       >
         <X className="h-4 w-4" strokeWidth={1.8} />
       </button>
+      </div>
     </div>
   )
 }

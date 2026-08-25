@@ -37,7 +37,7 @@ import {
   markStartupBannerShown,
   type UpdateInfo,
 } from '@/services/update.service'
-import { cn, isMobile, getTrackCoverSrc } from '@/lib/utils'
+import { cn, isMobile } from '@/lib/utils'
 import type { Track } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
@@ -164,8 +164,7 @@ function AppLayout() {
   const glassMode = useLibraryStore((s) => s.glassMode)
 
   // 保留 themeColor hook 以维持封面色提取功能（用于 lyrics 渐变等非装饰场景）
-  // 在线歌用 coverUrl，本地歌用 coverPath
-  useThemeColor(currentTrack?.coverUrl || currentTrack?.coverPath)
+  useThemeColor(currentTrack?.coverPath)
 
   // 启动时检查软件更新：有新版本且本次会话未提示过时展示横幅
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
@@ -303,17 +302,21 @@ function AppLayout() {
   }, [])
 
   useEffect(() => {
+    // 同步 <html> 的 dark 类与 meta theme-color（移动端状态栏颜色随主题翻转）
+    const apply = (isDark: boolean) => {
+      document.documentElement.classList.toggle('dark', isDark)
+      const meta = document.querySelector('meta[name="theme-color"]')
+      if (meta) meta.setAttribute('content', isDark ? '#08090B' : '#F4F5F7')
+    }
     if (theme === 'dark') {
-      document.documentElement.classList.add('dark')
+      apply(true)
     } else if (theme === 'light') {
-      document.documentElement.classList.remove('dark')
+      apply(false)
     } else {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      document.documentElement.classList.toggle('dark', prefersDark)
+      apply(prefersDark)
       const mq = window.matchMedia('(prefers-color-scheme: dark)')
-      const handler = (e: MediaQueryListEvent) => {
-        document.documentElement.classList.toggle('dark', e.matches)
-      }
+      const handler = (e: MediaQueryListEvent) => apply(e.matches)
       mq.addEventListener('change', handler)
       return () => mq.removeEventListener('change', handler)
     }
@@ -552,7 +555,7 @@ function AppLayout() {
 
             {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质；歌曲详情页隐藏（详情页已含完整歌词与歌曲信息） */}
             {currentTrack && !isSongDetail && (
-              <div className="w-72 xl:w-80 2xl:w-[340px] flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
+              <div className="w-72 flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
                 <div className="p-6 flex flex-col gap-4">
                   {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
                   <button
@@ -560,12 +563,11 @@ function AppLayout() {
                     title="查看歌曲详情"
                     className="relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02]"
                   >
-                    {getTrackCoverSrc(currentTrack) ? (
+                    {currentTrack.coverPath ? (
                       <img
-                        src={getTrackCoverSrc(currentTrack)!}
+                        src={platform.getCoverSrc(currentTrack.coverPath)}
                         alt={currentTrack.title}
                         className="w-full h-full object-cover product-shadow"
-                        referrerPolicy="no-referrer"
                       />
                     ) : (
                       <div className="text-4xl text-white/30">🎵</div>
@@ -618,7 +620,7 @@ function AppLayout() {
       {/* 移动端存储权限引导：扫描需要「音乐和音频」权限（或「所有文件访问」）时显示 */}
       {mobile && needsStoragePermission && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
-          <div className="w-full max-w-[340px] rounded-[20px] bg-[#0E1014] border border-white/10 p-6 flex flex-col items-center text-center shadow-[0_20px_60px_rgba(0,0,0,.5)]">
+          <div className="w-full max-w-[340px] rounded-[20px] bg-canvas-paper border border-white/10 p-6 flex flex-col items-center text-center shadow-[0_20px_60px_rgba(0,0,0,.5)]">
             <div className="w-14 h-14 rounded-full bg-mint/10 border border-mint/20 flex items-center justify-center mb-4">
               <ShieldAlert className="h-7 w-7 text-mint" strokeWidth={1.6} />
             </div>
@@ -630,7 +632,7 @@ function AppLayout() {
             </p>
             <button
               onClick={handleGrantStoragePermission}
-              className="w-full h-11 rounded-full bg-mint text-[#030608] font-semibold text-[14px] active:scale-[0.98] transition"
+              className="w-full h-11 rounded-full bg-mint text-mint-fg font-semibold text-[14px] active:scale-[0.98] transition"
             >
               授予权限
             </button>

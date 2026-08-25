@@ -226,33 +226,21 @@ export function LibraryPage() {
   TrackRow.displayName = 'TrackRow'
 
   return (
-    <PageLayout title="音乐库" subtitle={tracks.length === 0 ? '导入音乐，开始构建你的专属音乐库' : `${tracks.length} 首歌曲`}>
-      {tracks.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="relative mb-6">
-            <div className="absolute -inset-16 bg-gradient-to-b from-mint/8 to-transparent rounded-full blur-3xl" />
-            <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-              <MusicIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
-            </div>
+    <PageLayout
+      header={
+        // 标题与工具栏同行：工具栏右对齐到内容列边缘，与标题共享同一视觉轴，
+        // 替代旧版负 margin 悬浮方案（标题/工具栏错位且间距脆弱）
+        <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
+          <div className="min-w-0">
+            <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+              音乐库
+            </h1>
+            <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
+              {tracks.length === 0 ? '导入音乐，开始构建你的专属音乐库' : `${tracks.length} 首歌曲`}
+            </p>
           </div>
-          <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
-            还没有音乐
-          </h2>
-          <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
-            导入你的音乐文件夹，开始构建你的专属音乐库
-          </p>
-          <button
-            onClick={handlePickFolder}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-[#030608] font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
-          >
-            <FolderOpen className="h-4 w-4" strokeWidth={1.6} />
-            导入音乐
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-end mb-6 -mt-10 md:mb-8 md:-mt-12">
-            <div className="flex items-center gap-2">
+          {tracks.length > 0 && (
+            <div className="flex items-center gap-2 flex-shrink-0 pb-1">
               {scanFolders.length > 0 && (
                 <button
                   onClick={handleRescan}
@@ -283,8 +271,34 @@ export function LibraryPage() {
                 </button>
               </div>
             </div>
+          )}
+        </div>
+      }
+    >
+      {tracks.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="relative mb-6">
+            <div className="absolute -inset-16 bg-gradient-to-b from-mint/8 to-transparent rounded-full blur-3xl" />
+            <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+              <MusicIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
+            </div>
           </div>
-
+          <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
+            还没有音乐
+          </h2>
+          <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
+            导入你的音乐文件夹，开始构建你的专属音乐库
+          </p>
+          <button
+            onClick={handlePickFolder}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-mint-fg font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
+          >
+            <FolderOpen className="h-4 w-4" strokeWidth={1.6} />
+            导入音乐
+          </button>
+        </div>
+      ) : (
+        <>
           {viewMode === 'list' ? (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           <table className="w-full font-text">
