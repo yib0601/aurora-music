@@ -288,7 +288,7 @@ function SourceAddDialog({
           </Button>
           <Button
             size="sm"
-            className="h-9 px-3.5 bg-mint text-[#030608] font-semibold hover:bg-mint/90 disabled:opacity-40 disabled:hover:bg-mint"
+            className="h-9 px-3.5 bg-mint text-mint-fg font-semibold hover:bg-mint/90 disabled:opacity-40 disabled:hover:bg-mint"
             disabled={!canSave}
             onClick={handleSave}
           >
@@ -364,7 +364,8 @@ export function SettingsPage() {
 
   return (
     <PageLayout header={
-      <div className="flex items-center gap-5 mb-8 max-w-[720px]">
+      // 设置页内容列较窄（720px），居中放置与其他页面的 1200px 居中内容列共享同一视觉轴
+      <div className="flex items-center gap-5 mb-8 max-w-[720px] mx-auto w-full">
         <div className="w-16 h-16 rounded-xl glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
           <SettingsIcon className="h-8 w-8 text-mint" strokeWidth={1.4} />
         </div>
@@ -375,7 +376,7 @@ export function SettingsPage() {
       </div>
     }>
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
-        <div className="w-full max-w-[720px] space-y-5 pb-8">
+        <div className="w-full max-w-[720px] mx-auto space-y-5 pb-8">
           <section className="card-utility p-5">
             <h2 className="font-display text-tagline mb-5 text-white">外观</h2>
             <div className="space-y-6">
@@ -396,7 +397,7 @@ export function SettingsPage() {
                       }}
                       className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
                         theme === value
-                          ? 'bg-mint text-[#030608] font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
+                          ? 'bg-mint text-mint-fg font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
                           : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
                       }`}
                     >
@@ -554,7 +555,7 @@ export function SettingsPage() {
                     className="w-full bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-2.5 text-caption text-white/80 focus:outline-none focus:border-mint/50 transition-colors duration-200"
                   >
                     {devices.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId} className="bg-[#1a1a1a] text-white">
+                      <option key={d.deviceId} value={d.deviceId} className="bg-canvas-paper text-ink">
                         {d.label}
                       </option>
                     ))}
@@ -589,7 +590,7 @@ export function SettingsPage() {
                   </div>
                   <Button
                     size="sm"
-                    className="h-9 px-3.5 bg-mint text-[#030608] font-semibold hover:bg-mint/90"
+                    className="h-9 px-3.5 bg-mint text-mint-fg font-semibold hover:bg-mint/90"
                     onClick={() => openDownloadPage(updateInfo)}
                   >
                     <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />

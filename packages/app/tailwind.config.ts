@@ -14,6 +14,11 @@ const config: Config = {
         mono: ['"JetBrains Mono"', '"Geist Mono"', '"SF Mono"', 'ui-monospace', 'monospace'],
       },
       colors: {
+        // white 重定义为主题感知的"墨色"变量：深色主题下为白字/白底，
+        // 浅色主题下翻转为深墨色（见 globals.css 的 --tw-white），
+        // 从而让全站 400+ 处 text-white/* / bg-white/* / border-white/* 自动适配浅色
+        white: 'rgb(var(--tw-white) / <alpha-value>)',
+        // mint 同理：浅色主题下加深以保证浅底对比度（--tw-mint）
         // shadcn HSL 变量保留
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
@@ -27,25 +32,27 @@ const config: Config = {
         accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
         popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
-        // Mineradio 色板
-        ink: { DEFAULT: '#E8ECEF', muted: '#8A9099', deep: '#D2D7DC' },
-        canvas: { DEFAULT: '#08090B', paper: '#0E1014' },
+        // Mineradio 色板（fc/ink/canvas 全部走 CSS 变量，随主题翻转）
+        ink: { DEFAULT: 'var(--fc-ink)', muted: 'var(--fc-muted)', deep: 'var(--fc-ink-2)' },
+        canvas: { DEFAULT: 'var(--fc-bg)', paper: 'var(--fc-paper)' },
         fc: {
-          bg: '#08090B',
-          paper: '#0E1014',
-          ink: '#E8ECEF',
-          'ink-2': '#D2D7DC',
-          muted: '#8A9099',
-          hair: '#1A1D22',
-          'hair-2': '#262A31',
-          accent: '#00F5D4',
-          'accent-hov': '#00E0BE',
+          bg: 'var(--fc-bg)',
+          paper: 'var(--fc-paper)',
+          ink: 'var(--fc-ink)',
+          'ink-2': 'var(--fc-ink-2)',
+          muted: 'var(--fc-muted)',
+          hair: 'var(--fc-hair)',
+          'hair-2': 'var(--fc-hair-2)',
+          accent: 'var(--fc-accent)',
+          'accent-hov': 'var(--fc-accent-hov)',
           blue: '#2442ff',
           warm: '#f8f4ee',
         },
-        mint: '#00F5D4',
+        mint: 'rgb(var(--tw-mint) / <alpha-value>)',
+        // mint 按钮/徽章上的前景色：深色主题深墨字、浅色主题白字（随 --tw-mint-fg 翻转）
+        'mint-fg': 'rgb(var(--tw-mint-fg) / <alpha-value>)',
         champagne: '#f4d28a',
-        coral: '#ff5367',
+        coral: 'rgb(var(--tw-coral) / <alpha-value>)',
         chill: {
           cyan: '#8fe9ff',
           blue: '#73a7ff',

@@ -22,7 +22,7 @@ const buttonVariants = cva(
       variant: {
         // Mineradio primary: mint 实心 pill
         primary:
-          'bg-mint text-[#030608] rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-[#00E0BE] hover:-translate-y-px shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]',
+          'bg-mint text-mint-fg rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-[#00E0BE] hover:-translate-y-px shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]',
         // Mineradio secondary: 透明 + mint 边框 pill
         secondary:
           'bg-transparent text-mint border border-mint/34 rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-mint/[0.08] hover:border-mint/50',

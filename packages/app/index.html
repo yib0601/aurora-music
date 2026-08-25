@@ -6,6 +6,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#08090B" />
     <title>Aurora Music</title>
+    <script>
+      // 首屏主题脚本：在 React 挂载前读取持久化的主题偏好并设置 <html> 的 dark 类，
+      // 避免浅色主题用户看到深色首屏后再闪烁切换。与 libraryStore 的 persist key 保持一致。
+      ;(function () {
+        try {
+          var theme = 'dark'
+          var raw = localStorage.getItem('aurora-library-state')
+          if (raw) {
+            var parsed = JSON.parse(raw)
+            if (parsed && parsed.state && parsed.state.theme) theme = parsed.state.theme
+          }
+          var isDark =
+            theme === 'dark' ||
+            (theme === 'system' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', isDark)
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', isDark ? '#08090B' : '#F4F5F7')
+        } catch (e) {
+          document.documentElement.classList.add('dark')
+        }
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">

@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { cn, formatTime, isMobile, getTrackCoverSrc } from '@/lib/utils'
+import { cn, formatTime, isMobile } from '@/lib/utils'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { platform } from '@/services/platform'
 
 interface PlayerBarProps {
   currentTrack?: Track | null
@@ -110,8 +111,8 @@ export function PlayerBar({
             className="h-full rounded-r-full transition-[width] duration-300 ease-linear"
             style={{
               width: `${progressPercent}%`,
-              background: 'linear-gradient(to right, rgba(0,245,212,.35), rgba(0,245,212,.95))',
-              boxShadow: progressPercent > 0 ? '0 0 8px rgba(0,245,212,.5)' : 'none',
+              background: 'linear-gradient(to right, rgba(var(--fc-accent-rgb),.35), rgba(var(--fc-accent-rgb),.95))',
+              boxShadow: progressPercent > 0 ? '0 0 8px rgba(var(--fc-accent-rgb),.5)' : 'none',
             }}
           />
         </div>
@@ -121,12 +122,11 @@ export function PlayerBar({
           className="flex items-center gap-2.5 min-w-0 flex-1 py-1 active:scale-[0.99] transition"
         >
           <div className="w-10 h-10 rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
-            {getTrackCoverSrc(currentTrack) ? (
+            {currentTrack?.coverPath ? (
               <img
-                src={getTrackCoverSrc(currentTrack)!}
-                alt={currentTrack!.title}
+                src={platform.getCoverSrc(currentTrack.coverPath)}
+                alt={currentTrack.title}
                 className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
             ) : (
@@ -151,8 +151,9 @@ export function PlayerBar({
         >
           <SkipBack className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
         </button>
+        {/* 主播放按钮与全屏播放页保持一致：mint 实心圆 + 深色图标 */}
         <button
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-white/[0.08] text-white active:scale-95 transition disabled:opacity-40"
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_6px_18px_rgba(0,245,212,.28),inset_0_1px_0_rgba(255,255,255,.25)] active:scale-95 transition disabled:opacity-40"
           onClick={onTogglePlay}
           disabled={!currentTrack}
           aria-label={isPlaying ? '暂停' : '播放'}
@@ -229,12 +230,11 @@ export function PlayerBar({
                 '0 6px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07)',
             }}
           >
-            {getTrackCoverSrc(currentTrack) ? (
+            {currentTrack?.coverPath ? (
               <img
-                src={getTrackCoverSrc(currentTrack)!}
-                alt={currentTrack!.title}
+                src={platform.getCoverSrc(currentTrack.coverPath)}
+                alt={currentTrack.title}
                 className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none'
                 }}
@@ -294,7 +294,7 @@ export function PlayerBar({
             className="glass-saved-button w-[44px] h-[44px] rounded-full flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
             onClick={onTogglePlay}
             disabled={!currentTrack}
-            style={{ color: 'rgba(255,255,255,.96)' }}
+            style={{ color: 'rgb(var(--tw-white) / .96)' }}
           >
             {isPlaying ? (
               <Pause className="h-[18px] w-[18px]" fill="currentColor" strokeWidth={1.5} />
@@ -349,7 +349,7 @@ export function PlayerBar({
               onMouseLeave={() => seekingVolume && handleVolumeCommit()}
               className="w-full h-1 rounded-full appearance-none cursor-pointer"
               style={{
-                background: `linear-gradient(to right, rgba(0,245,212,.45) 0%, rgba(0,245,212,.9) ${volumePercent}%, rgba(255,255,255,.095) ${volumePercent}%, rgba(255,255,255,.095) 100%)`,
+                background: `linear-gradient(to right, rgba(var(--fc-accent-rgb),.45) 0%, rgba(var(--fc-accent-rgb),.9) ${volumePercent}%, var(--track-fill) ${volumePercent}%, var(--track-fill) 100%)`,
               }}
             />
           </div>

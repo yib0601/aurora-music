@@ -60,7 +60,7 @@ export function LikedPage() {
           </p>
           <button
             onClick={() => navigate('/library')}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-[#030608] font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-mint-fg font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
           >
             <Music className="h-4 w-4" strokeWidth={1.6} />
             去音乐库
@@ -72,11 +72,11 @@ export function LikedPage() {
             {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
             <thead className="hidden md:table-header-group">
               <tr className="border-b border-white/10">
-                <th className="text-left py-3.5 px-4 font-semibold text-white/50 text-caption">标题</th>
-                <th className="text-left py-3.5 px-4 font-semibold text-white/50 text-caption">艺术家</th>
-                <th className="text-left py-3.5 px-4 font-semibold text-white/50 text-caption">专辑</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">标题</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">艺术家</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">专辑</th>
                 <th className="w-10"></th>
-                <th className="text-right py-3.5 px-4 font-semibold text-white/50 text-caption w-16">时长</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-white/50 text-caption w-16">时长</th>
               </tr>
             </thead>
             <tbody>
@@ -87,7 +87,7 @@ export function LikedPage() {
                       className="row-hover cursor-pointer group border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
                       onClick={() => handlePlay(track, idx)}
                     >
-                      <td className="py-2 px-1.5 md:py-3 md:px-4 max-w-xs">
+                      <td className="py-2 px-1.5 md:py-2.5 md:px-3 max-w-xs">
                         <div className="flex items-center gap-3 min-w-0">
                           <button
                             onClick={(e) => {
@@ -110,9 +110,9 @@ export function LikedPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-white/50 truncate max-w-40 hidden md:table-cell">{track.artist}</td>
-                      <td className="py-3 px-4 text-white/50 truncate max-w-48 hidden md:table-cell">{track.album}</td>
-                      <td className="py-2 px-1 md:py-3 md:px-2 w-10">
+                      <td className="py-2.5 px-3 text-white/50 truncate max-w-40 hidden md:table-cell">{track.artist}</td>
+                      <td className="py-2.5 px-3 text-white/50 truncate max-w-48 hidden md:table-cell">{track.album}</td>
+                      <td className="py-2 px-1 md:py-2.5 md:px-2 w-10">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -127,7 +127,7 @@ export function LikedPage() {
                           />
                         </button>
                       </td>
-                      <td className="py-2 pr-1.5 pl-1 md:py-3 md:px-4 text-right text-white/50 text-caption tabular-nums w-12 md:w-16">{formatTime(track.duration)}</td>
+                      <td className="py-2 pr-1.5 pl-1 md:py-2.5 md:px-3 text-right text-white/50 text-caption tabular-nums w-12 md:w-16">{formatTime(track.duration)}</td>
                     </tr>
                   </ContextMenuTrigger>
                   <ContextMenuContent className="w-52">
