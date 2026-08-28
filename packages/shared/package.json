@@ -1,6 +1,6 @@
 {
   "name": "@aurora/shared",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Aurora Music 歌源协议规范与执行器（音乐源 / 歌词源）",
   "main": "dist/index.js",
