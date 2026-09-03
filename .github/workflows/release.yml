@@ -184,16 +184,6 @@ jobs:
           echo "Patched files:"
           grep -rn "proguard-android" node_modules/.pnpm/@capacitor*/node_modules/@capacitor/*/android/build.gradle node_modules/.pnpm/@capacitor*/node_modules/@capacitor/*/capacitor/build.gradle node_modules/.pnpm/@capacitor-community*/node_modules/@capacitor-community/*/android/build.gradle 2>/dev/null | head -20
 
-      - name: Install fixed debug keystore (signature stability across versions)
-        # GitHub Actions 的 runner 每次都是新的，默认 ~/.android/debug.keystore 会被重新生成，
-        # 导致不同版本的 APK 签名不一致，Android 拒绝覆盖安装。
-        # 用仓库里固定的 debug.keystore 覆盖之，保证每次构建的 APK 签名一致可覆盖安装。
-        # debug keystore 本身无安全价值（密码 android 是公开默认值），公开仓库可安全提交。
-        run: |
-          mkdir -p ~/.android
-          cp packages/mobile/debug.keystore ~/.android/debug.keystore
-          echo "已安装固定 debug keystore：" $(keytool -list -keystore ~/.android/debug.keystore -storepass android 2>/dev/null | head -5)
-
       - name: Make gradlew executable
         run: chmod +x packages/mobile/android/gradlew
 
