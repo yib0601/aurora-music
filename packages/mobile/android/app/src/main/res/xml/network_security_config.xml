@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全配置：
+  - 默认禁止明文 HTTP（Android 9+ 行为）
+  - 音乐源返回的音频/封面存在 http 直链（如酷我 car-er.kuwo.cn 等），
+    按域名白名单放行明文，避免「搜索正常但播放失败」
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <!-- 酷我音乐直链域名（含全部子域：car-er/car-r/mobi/antiserver 等） -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">kuwo.cn</domain>
+    </domain-config>
+</network-security-config>
