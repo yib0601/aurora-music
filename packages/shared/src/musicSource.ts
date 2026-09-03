@@ -1,4 +1,5 @@
 import type { OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
+import { fetchWithTimeout } from './fetchWithTimeout'
 
 // 统一默认请求头（部分接口对 UA 敏感），可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -40,10 +41,11 @@ export async function searchMusicSource(
   }
 
   const url = source.apiUrl.replace('{query}', encodeURIComponent(query))
-  const resp = await fetch(url, {
-    headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) },
-    signal: AbortSignal.timeout(10000),
-  })
+  const resp = await fetchWithTimeout(
+    url,
+    { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
+    10000
+  )
   if (!resp.ok) throw new Error(`源「${source.name}」返回 HTTP ${resp.status}`)
 
   const json = (await resp.json()) as any

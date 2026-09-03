@@ -1,4 +1,5 @@
 import type { LyricsSourceConfig, LyricsSearchOptions, LyricsSearchResult } from './types'
+import { fetchWithTimeout } from './fetchWithTimeout'
 
 // 统一默认请求头，可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -78,10 +79,11 @@ export async function searchLyricsSource(
     .replace(/\{album\}/g, encodeURIComponent(album || ''))
     .replace(/\{duration\}/g, duration && duration > 0 ? String(Math.round(duration)) : '')
 
-  const resp = await fetch(url, {
-    headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) },
-    signal: AbortSignal.timeout(8000),
-  })
+  const resp = await fetchWithTimeout(
+    url,
+    { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
+    8000
+  )
   if (!resp.ok) throw new Error(`歌词源「${source.name}」返回 HTTP ${resp.status}`)
 
   const json = (await resp.json()) as any
