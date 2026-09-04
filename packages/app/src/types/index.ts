@@ -92,6 +92,14 @@ export type ShuffleMode = 'off' | 'on'
 
 export type ViewMode = 'list' | 'grid'
 
+/** 音乐库浏览标签：全部歌曲 / 按专辑 / 按艺术家 */
+export type LibraryTab = 'songs' | 'albums' | 'artists'
+
+/** 音乐库排序字段；default 为数据库默认顺序（艺术家 → 专辑 → 曲号 → 标题） */
+export type SortField = 'default' | 'title' | 'artist' | 'album' | 'duration' | 'addedAt'
+
+export type SortOrder = 'asc' | 'desc'
+
 export type GlassMode = 'auto' | 'forced'
 
 export interface SearchResult {

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Track, Album, Playlist, ViewMode, GlassMode, OnlineSourceConfig, LyricsSourceConfig } from '@/types'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, GlassMode, OnlineSourceConfig, LyricsSourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 
 /** 历史搜索记录最大保留条数 */
@@ -12,6 +12,11 @@ interface LibraryState {
   playlists: Playlist[]
   scanFolders: string[]
   viewMode: ViewMode
+  /** 音乐库浏览标签：全部歌曲 / 按专辑 / 按艺术家 */
+  libraryTab: LibraryTab
+  /** 音乐库歌曲排序字段与方向 */
+  sortBy: SortField
+  sortOrder: SortOrder
   glassMode: GlassMode
   theme: 'light' | 'dark' | 'system'
   currentView: 'library' | 'liked' | 'recent' | 'playlists' | 'search' | 'settings'
@@ -31,6 +36,9 @@ interface LibraryState {
   addScanFolder: (path: string) => void
   removeScanFolder: (path: string) => void
   setViewMode: (mode: ViewMode) => void
+  setLibraryTab: (tab: LibraryTab) => void
+  setSortBy: (field: SortField) => void
+  setSortOrder: (order: SortOrder) => void
   setGlassMode: (mode: GlassMode) => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
   setCurrentView: (view: LibraryState['currentView']) => void
@@ -62,6 +70,9 @@ export const useLibraryStore = create<LibraryState>()(
       playlists: [],
       scanFolders: [],
       viewMode: 'list',
+      libraryTab: 'songs',
+      sortBy: 'default',
+      sortOrder: 'asc',
       glassMode: 'auto',
       theme: 'dark',
       currentView: 'library',
@@ -105,6 +116,9 @@ export const useLibraryStore = create<LibraryState>()(
         set({ scanFolders: get().scanFolders.filter((p) => p !== path) })
       },
       setViewMode: (mode) => set({ viewMode: mode }),
+      setLibraryTab: (tab) => set({ libraryTab: tab }),
+      setSortBy: (field) => set({ sortBy: field }),
+      setSortOrder: (order) => set({ sortOrder: order }),
       setGlassMode: (mode) => set({ glassMode: mode }),
       setTheme: (theme) => set({ theme }),
       setCurrentView: (view) => set({ currentView: view }),
@@ -173,6 +187,9 @@ export const useLibraryStore = create<LibraryState>()(
       partialize: (state) => ({
         scanFolders: state.scanFolders,
         viewMode: state.viewMode,
+        libraryTab: state.libraryTab,
+        sortBy: state.sortBy,
+        sortOrder: state.sortOrder,
         glassMode: state.glassMode,
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
