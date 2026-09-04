@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Menu, X, Music, Heart, Clock, Search, Settings } from 'lucide-react'
+import { Menu, X, Music, Heart, Clock, Settings } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
@@ -14,7 +14,6 @@ const navItems = [
   { to: '/library', icon: Music, label: '音乐库' },
   { to: '/liked', icon: Heart, label: '收藏' },
   { to: '/recent', icon: Clock, label: '最近播放' },
-  { to: '/search', icon: Search, label: '搜索' },
   { to: '/settings', icon: Settings, label: '设置' },
 ]
 

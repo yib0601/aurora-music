@@ -6,7 +6,6 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { cn, formatTime } from '@/lib/utils'
-import { PageLayout } from '@/components/PageLayout'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -20,8 +19,7 @@ import {
 import type { Track, OnlineTrackSearchResult } from '@/types'
 
 /**
- * Apple Liquid Glass SearchPage
- * - 标题用 display-md 字号
+ * Apple Liquid Glass SearchView（内嵌于音乐库页面，由头部搜索图标切换）
  * - 搜索框：Liquid Glass 浮层 + pill 圆角 + Action Blue 焦点环
  * - 结果行用 row-hover（仅颜色变化，无位移）+ hairline 分隔
  * - 封面缩略图 rounded-xs + bg-white/[0.04] + product-shadow（仅 img）
@@ -29,7 +27,7 @@ import type { Track, OnlineTrackSearchResult } from '@/types'
  * - 空状态使用 card-utility 容器（白底 + 1px hairline + 18px 圆角）+ tagline 文案
  * - 本地/在线双 tab：本地走内存过滤，在线按用户配置的歌源协议搜索
  */
-export function SearchPage() {
+export function SearchView() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -194,7 +192,7 @@ export function SearchPage() {
   }
 
   return (
-    <PageLayout title="搜索">
+    <>
       <div className="relative max-w-xl mb-5">
         <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-mint/70" strokeWidth={1.5} />
         <input
@@ -554,6 +552,6 @@ export function SearchPage() {
           </>
         )}
       </div>
-    </PageLayout>
+    </>
   )
 }

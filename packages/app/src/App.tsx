@@ -13,7 +13,6 @@ import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { LikedPage } from '@/pages/LikedPage'
 import { RecentPage } from '@/pages/RecentPage'
-import { SearchPage } from '@/pages/SearchPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { PlaylistPage } from '@/pages/PlaylistPage'
 import { SongDetailPage } from '@/pages/SongDetailPage'
@@ -516,7 +515,6 @@ function AppLayout() {
                   <Route path="/library" element={<LibraryPage />} />
                   <Route path="/liked" element={<LikedPage />} />
                   <Route path="/recent" element={<RecentPage />} />
-                  <Route path="/search" element={<SearchPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/playlist/:id" element={<PlaylistPage />} />
                   <Route path="/song/:id" element={<SongDetailPage />} />
