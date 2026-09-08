@@ -1,8 +1,8 @@
-import { useState, useCallback, useMemo, memo } from 'react'
+import { useState, useCallback, useMemo, useEffect, memo } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Heart,
   Play, Plus, ListPlus, ListEnd, Disc3, RefreshCw,
-  ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search, X,
+  ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -35,7 +35,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, formatTime, cn } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
-import { SearchView } from '@/components/SearchView'
+import { SearchOverlay } from '@/components/SearchOverlay'
 import { platform } from '@/services/platform'
 import type { Track, SortField, LibraryTab } from '@/types'
 
@@ -92,10 +92,22 @@ export function LibraryPage() {
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
   const [newPlName, setNewPlName] = useState('')
   const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
-  // 搜索模式：由头部搜索图标切换，开启后内容区替换为 SearchView（本地过滤 + 在线搜索）
+  // 搜索浮层：由头部搜索图标或 ⌘/Ctrl+K 唤起，覆盖在音乐库之上，底层列表/标签栏保持不变
   const [searchOpen, setSearchOpen] = useState(false)
   // 专辑/艺术家分组详情：非 null 时内容区替换为该组的歌曲列表
   const [selectedGroup, setSelectedGroup] = useState<{ type: 'album' | 'artist'; key: string } | null>(null)
+
+  // 全局快捷键 ⌘K / Ctrl+K 唤起搜索浮层
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const handlePickFolder = async () => {
     const folder = await platform.pickFolder()
@@ -386,20 +398,13 @@ export function LibraryPage() {
           {/* 工具栏：搜索图标常驻（本地无歌时也可用在线搜索）；重扫/视图切换仅列表态显示 */}
           <div className="flex items-center gap-2 flex-shrink-0 pb-1">
             <button
-              onClick={() => setSearchOpen((v) => !v)}
-              title={searchOpen ? '关闭搜索' : '搜索'}
-              className={cn(
-                'h-7 w-7 flex items-center justify-center rounded-[10px] transition-all duration-200 ease-apple',
-                searchOpen ? 'text-mint bg-mint/[0.12]' : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
-              )}
+              onClick={() => setSearchOpen(true)}
+              title="搜索 (⌘K)"
+              className="h-7 w-7 flex items-center justify-center rounded-[10px] text-white/60 hover:text-white hover:bg-white/[0.05] transition-all duration-200 ease-apple"
             >
-              {searchOpen ? (
-                <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-              ) : (
-                <Search className="h-3.5 w-3.5" strokeWidth={1.5} />
-              )}
+              <Search className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
-            {!searchOpen && tracks.length > 0 && libraryTab === 'songs' && (
+            {tracks.length > 0 && libraryTab === 'songs' && (
               <>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -433,7 +438,7 @@ export function LibraryPage() {
                 </button>
               </>
             )}
-            {!searchOpen && tracks.length > 0 && scanFolders.length > 0 && (
+            {tracks.length > 0 && scanFolders.length > 0 && (
               <button
                 onClick={handleRescan}
                 title="重新扫描，同步已删除的歌曲"
@@ -442,7 +447,7 @@ export function LibraryPage() {
                 <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
             )}
-            {!searchOpen && tracks.length > 0 && libraryTab === 'songs' && (
+            {tracks.length > 0 && libraryTab === 'songs' && (
               <div className="flex rounded-[10px] overflow-hidden border border-white/5 bg-white/[0.04] p-0.5">
                 <button
                   className={cn(
@@ -468,9 +473,7 @@ export function LibraryPage() {
         </div>
       }
     >
-      {searchOpen ? (
-        <SearchView />
-      ) : tracks.length === 0 ? (
+      {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative mb-6">
             <div className="absolute -inset-16 bg-gradient-to-b from-mint/8 to-transparent rounded-full blur-3xl" />
@@ -652,6 +655,9 @@ export function LibraryPage() {
       )}
       </>
     )}
+
+      {/* 搜索浮层：覆盖在音乐库之上，不替换底层内容 */}
+      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
 
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
         <DialogContent className="sm:max-w-sm">
