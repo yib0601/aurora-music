@@ -21,6 +21,10 @@ import { useLibraryStore } from '@/stores/libraryStore'
  *    由组件退避重试，避免一次瞬时失败导致封面整会话空白。
  * 3. 提取并发受限：首屏或扫描完成瞬间可能同时挂载上百个实例，
  *    无限制时会把几百个 IPC/音频解析同时打向主进程。
+ *
+ * 在线兜底：确认无内嵌封面后（含内嵌提取终态为 null 的曲目），
+ * 按标题/艺术家搜索用户配置的在线歌源下载封面。在线结果同样只缓存
+ * 「成功」与「确认无匹配」；在线没找到时本次会话不再重复请求，避免刷歌源。
  */
 
 /** 已完成提取的曲目：值为封面路径，null 表示确认该曲目无内嵌封面 */
@@ -72,6 +76,41 @@ function requestCover(trackId: string): Promise<string | null> {
   return task
 }
 
+/** 已完成在线获取的曲目：值为封面路径，null 表示确认在线也没找到匹配封面 */
+const resolvedOnlineCovers = new Map<string, string | null>()
+/** 进行中的在线获取，同一首歌的多个渲染实例复用同一个 Promise */
+const inflightOnlineCovers = new Map<string, Promise<string | null>>()
+
+function requestOnlineCover(trackId: string): Promise<string | null> {
+  if (resolvedOnlineCovers.has(trackId)) return Promise.resolve(resolvedOnlineCovers.get(trackId)!)
+  const running = inflightOnlineCovers.get(trackId)
+  if (running) return running
+
+  const task = withCoverSlot(() => {
+    // 无实现（移动端/Web）或未配置歌源时静默跳过
+    const sources = useLibraryStore.getState().onlineSources
+    if (!platform.fetchOnlineCover || !sources || sources.length === 0) {
+      return Promise.resolve(null)
+    }
+    return platform.fetchOnlineCover(trackId, { sources })
+  })
+    .then((result) => {
+      // 成功与"确认无匹配"都缓存：在线没找到时本次会话不再重复刷歌源
+      resolvedOnlineCovers.set(trackId, result ?? null)
+      return result ?? null
+    })
+    .catch(() => {
+      // 在线获取失败不缓存，等下次挂载再试
+      return null
+    })
+    .finally(() => {
+      inflightOnlineCovers.delete(trackId)
+    })
+
+  inflightOnlineCovers.set(trackId, task)
+  return task
+}
+
 /** 仅取封面相关字段，便于传入 playerStore 队列项等 Track 副本 */
 type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'onlineUrl'>
 
@@ -103,7 +142,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
     let retryTimer: ReturnType<typeof setTimeout> | undefined
 
     const attempt = (retryIndex: number) => {
-      requestCover(trackId!).then((path) => {
+      requestCover(trackId!).then(async (path) => {
         if (cancelled) return
         if (path) {
           setResolved(path)
@@ -111,10 +150,18 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
           updateTrack(trackId!, { coverPath: path })
           return
         }
-        // null 有两种：确认无封面（已入缓存，到此为止）与提取失败（未入缓存，退避重试）
-        if (!resolvedCovers.has(trackId!) && retryIndex < COVER_RETRY_DELAYS.length) {
-          retryTimer = setTimeout(() => attempt(retryIndex + 1), COVER_RETRY_DELAYS[retryIndex])
+        if (!resolvedCovers.has(trackId!)) {
+          // 内嵌提取失败（未入缓存）：退避重试
+          if (retryIndex < COVER_RETRY_DELAYS.length) {
+            retryTimer = setTimeout(() => attempt(retryIndex + 1), COVER_RETRY_DELAYS[retryIndex])
+          }
+          return
         }
+        // 确认无内嵌封面：在线歌源兜底（在线没找到则本次挂载到此为止）
+        const onlinePath = await requestOnlineCover(trackId!)
+        if (cancelled || !onlinePath) return
+        setResolved(onlinePath)
+        updateTrack(trackId!, { coverPath: onlinePath })
       })
     }
     attempt(0)

@@ -5,7 +5,7 @@ import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import { app } from 'electron'
 import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder } from './database'
-import { scanFolder, ensureCover } from './scanner'
+import { scanFolder, ensureCover, fetchOnlineCover } from './scanner'
 import { registerSystemIpc } from './system'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
@@ -57,6 +57,16 @@ function inferAudioExtension(url: string, contentType?: string): string {
   }
   if (ctMap[ct]) return ctMap[ct]
   return inferAudioExtFromUrl(url)
+}
+
+/** 生成不重名的保存路径：已存在同名文件时依次追加 " (1)" " (2)"… */
+async function uniqueSavePath(dir: string, fileName: string): Promise<string> {
+  const ext = path.extname(fileName)
+  const stem = fileName.slice(0, -ext.length)
+  for (let i = 0; ; i++) {
+    const candidate = path.join(dir, i === 0 ? fileName : `${stem} (${i})${ext}`)
+    if (!fs.existsSync(candidate)) return candidate
+  }
 }
 
 // 扫描队列：多个目录串行执行，避免并发写数据库、进度事件互相覆盖
@@ -230,6 +240,24 @@ export function registerIpcHandlers() {
     return ensureCover(track, app.getPath('userData'))
   })
 
+  // 在线补齐封面：文件无内嵌封面时，按标题/艺术家搜索用户配置的在线歌源，
+  // 取标题匹配（艺术家/时长加分）的候选封面下载缓存。无匹配返回 null。
+  ipcMain.handle(
+    'covers:fetchOnline',
+    async (_event, id: string, options?: OnlineSearchOptions): Promise<string | null> => {
+      // trackId 白名单校验：封面以 id 为文件名落盘，防路径穿越
+      if (typeof id !== 'string' || !isValidTrackId(id)) return null
+      // 标题/艺术家/时长一律以库内记录为准，不信任渲染层下传；记录未入库时同样等扫描落库
+      let track = getTrackById(id)
+      if (!track) {
+        await scanChain
+        track = getTrackById(id)
+        if (!track) return null
+      }
+      return fetchOnlineCover(track, app.getPath('userData'), options)
+    }
+  )
+
   // 读取本地歌词文件：路径 ${userData}/aurora-music/lyrics/${trackId}.lrc，不存在返回 null
   ipcMain.handle('lyrics:read', async (_event, trackId: string): Promise<string | null> => {
     try {
@@ -286,13 +314,15 @@ export function registerIpcHandlers() {
   )
 
   // 下载在线歌曲：主进程直接拉流（渲染进程 fetch 会被歌源服务器 CORS 拦截）
-  // 弹出保存对话框由用户选择保存位置，流式写盘避免大文件占用内存
+  // 传了默认下载目录（downloadDir）则免对话框直存并自动去重名；
+  // 未传时弹保存对话框由用户选择保存位置。流式写盘避免大文件占用内存
   ipcMain.handle(
     'tracks:download',
     async (
       _event,
       track: { audioUrl: string; title: string; artist?: string },
-      headers?: Record<string, string>
+      headers?: Record<string, string>,
+      downloadDir?: string
     ): Promise<{ savedPath: string }> => {
       if (!track || typeof track.audioUrl !== 'string' || !/^https?:\/\//i.test(track.audioUrl)) {
         throw new Error('下载地址无效')
@@ -300,18 +330,31 @@ export function registerIpcHandlers() {
       if (!mainWindow || mainWindow.isDestroyed()) throw new Error('窗口不可用')
 
       const baseName = sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)
-      const defaultDir = (() => {
-        try {
-          return app.getPath('music')
-        } catch {
-          return app.getPath('downloads')
-        }
-      })()
-      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-        title: '保存歌曲',
-        defaultPath: path.join(defaultDir, `${baseName}${inferAudioExtension(track.audioUrl)}`),
-      })
-      if (canceled || !filePath) throw new Error('已取消保存')
+
+      // 目标目录：默认目录直存 vs 对话框选择（对话框的扩展名此时只能按 URL 猜，最终以响应为准）
+      let fixedDir: string | null = null
+      let dialogFilePath: string | null = null
+      if (typeof downloadDir === 'string' && downloadDir.trim()) {
+        const dir = downloadDir.trim()
+        // 渲染层下传的目录必须是绝对路径，防相对路径/盘符异常
+        if (!path.isAbsolute(dir)) throw new Error('默认下载目录无效')
+        await fs.promises.mkdir(dir, { recursive: true })
+        fixedDir = dir
+      } else {
+        const systemMusicDir = (() => {
+          try {
+            return app.getPath('music')
+          } catch {
+            return app.getPath('downloads')
+          }
+        })()
+        const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+          title: '保存歌曲',
+          defaultPath: path.join(systemMusicDir, `${baseName}${inferAudioExtension(track.audioUrl)}`),
+        })
+        if (canceled || !filePath) throw new Error('已取消保存')
+        dialogFilePath = filePath
+      }
 
       let resp: Response
       try {
@@ -333,7 +376,11 @@ export function registerIpcHandlers() {
 
       // 扩展名以实际响应的 Content-Type 为准（对话框时只能按 URL 猜测）
       const finalExt = inferAudioExtension(track.audioUrl, resp.headers.get('content-type') || undefined)
-      const savePath = path.extname(filePath) ? filePath : filePath + finalExt
+      const savePath = fixedDir
+        ? await uniqueSavePath(fixedDir, `${baseName}${finalExt}`)
+        : path.extname(dialogFilePath!)
+          ? dialogFilePath!
+          : dialogFilePath! + finalExt
 
       try {
         await pipeline(Readable.fromWeb(resp.body as any), fs.createWriteStream(savePath))

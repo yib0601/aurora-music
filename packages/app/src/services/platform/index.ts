@@ -31,6 +31,12 @@ export interface PlatformExtension {
    */
   ensureCover?: (trackId: string) => Promise<string | null>
   /**
+   * 在线补齐封面（桌面端）：文件无内嵌封面时，按标题/艺术家搜索用户配置的
+   * 在线歌源，下载匹配候选的封面并缓存，返回封面绝对路径。无匹配返回 null。
+   * options.sources 为渲染层持有的歌源配置（应用不内置源）。
+   */
+  fetchOnlineCover?: (trackId: string, options?: OnlineSearchOptions) => Promise<string | null>
+  /**
    * 从音乐库移除某个扫描目录：连该目录下的曲目记录一起删除，返回移除后的全库曲目。
    * 目录条目本身由调用方从 scanFolders 中删除（库数据与配置分离）。
    */
@@ -53,10 +59,12 @@ export interface PlatformExtension {
     duration?: number,
     options?: LyricsSearchOptions
   ) => Promise<LyricsSearchResult | null>
-  /** 下载在线歌曲到本地，返回保存路径；headers 为歌源配置的附加请求头 */
+  /** 下载在线歌曲到本地，返回保存路径；headers 为歌源配置的附加请求头；
+   *  downloadDir 为默认下载目录（桌面端传了则免保存对话框直存，移动端忽略） */
   downloadOnlineTrack?: (
     track: { audioUrl: string; title: string; artist?: string },
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    downloadDir?: string
   ) => Promise<{ savedPath: string }>
 }
 
@@ -172,6 +180,10 @@ export function createDesktopPlatform(): Platform {
       if (!api?.ensureCover) return null
       return api.ensureCover(trackId)
     },
+    async fetchOnlineCover(trackId: string, options?: OnlineSearchOptions) {
+      if (!api?.fetchOnlineCover) return null
+      return api.fetchOnlineCover(trackId, options)
+    },
     async removeFolder(folderPath: string) {
       if (!api?.removeFolder) return []
       return api.removeFolder(folderPath)
@@ -202,9 +214,9 @@ export function createDesktopPlatform(): Platform {
       if (!api?.searchLyrics) return null
       return api.searchLyrics(query, artist, album, duration, options)
     },
-    async downloadOnlineTrack(track, headers) {
+    async downloadOnlineTrack(track, headers, downloadDir) {
       if (!api?.downloadOnlineTrack) throw new Error('当前版本不支持下载')
-      return api.downloadOnlineTrack(track, headers)
+      return api.downloadOnlineTrack(track, headers, downloadDir)
     },
   }
 }

@@ -23,6 +23,9 @@ const electronAPI = {
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),
   // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）
   ensureCover: (id: string): Promise<string | null> => ipcRenderer.invoke('covers:ensure', id),
+  // 在线补齐封面（文件无内嵌封面时按标题/艺术家搜索在线歌源）
+  fetchOnlineCover: (id: string, options?: OnlineSearchOptions): Promise<string | null> =>
+    ipcRenderer.invoke('covers:fetchOnline', id, options),
   saveCover: async (coverData: ArrayBuffer, trackId: string): Promise<string> => {
     return ''
   },
@@ -48,12 +51,14 @@ const electronAPI = {
     return ipcRenderer.invoke('tracks:searchOnline', query, options)
   },
   // 下载在线歌曲：主进程拉流写盘（渲染进程 fetch 会被歌源 CORS 拦截），
-  // headers 来自歌源配置（如 Referer/UA），保证下载请求与搜索请求一致
+  // headers 来自歌源配置的附加请求头，保证下载请求与搜索请求一致；
+  // downloadDir 为用户配置的默认下载目录，传了则免保存对话框直存
   downloadOnlineTrack: async (
     track: { audioUrl: string; title: string; artist?: string },
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    downloadDir?: string
   ): Promise<{ savedPath: string }> => {
-    return ipcRenderer.invoke('tracks:download', track, headers)
+    return ipcRenderer.invoke('tracks:download', track, headers, downloadDir)
   },
   getMetadata: async (filePath: string) => {
     return ipcRenderer.invoke('fs:readFile', filePath)

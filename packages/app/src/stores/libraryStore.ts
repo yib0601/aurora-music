@@ -27,6 +27,8 @@ interface LibraryState {
   // 歌源配置（应用不内置任何源，全部由用户按协议配置）
   onlineSources: OnlineSourceConfig[]
   lyricsSources: LyricsSourceConfig[]
+  /** 默认下载目录：null 表示每次下载都弹保存对话框询问 */
+  downloadDir: string | null
 
   setTracks: (tracks: Track[]) => void
   setAlbums: (albums: Album[]) => void
@@ -60,6 +62,7 @@ interface LibraryState {
   addLyricsSource: (source: Omit<LyricsSourceConfig, 'id'>) => void
   updateLyricsSource: (id: string, updates: Partial<LyricsSourceConfig>) => void
   removeLyricsSource: (id: string) => void
+  setDownloadDir: (dir: string | null) => void
 }
 
 export const useLibraryStore = create<LibraryState>()(
@@ -82,6 +85,7 @@ export const useLibraryStore = create<LibraryState>()(
       likedTracks: new Set<string>(),
       onlineSources: [],
       lyricsSources: [],
+      downloadDir: null,
 
       setTracks: (tracks) => {
         // 内容指纹比较：扫描完成事件每次 IPC 传来的都是全新对象引用，
@@ -181,6 +185,7 @@ export const useLibraryStore = create<LibraryState>()(
       removeLyricsSource: (id) => {
         set({ lyricsSources: get().lyricsSources.filter((s) => s.id !== id) })
       },
+      setDownloadDir: (dir) => set({ downloadDir: dir || null }),
     }),
     {
       name: 'aurora-library-state',
@@ -196,6 +201,7 @@ export const useLibraryStore = create<LibraryState>()(
         searchHistory: state.searchHistory,
         onlineSources: state.onlineSources,
         lyricsSources: state.lyricsSources,
+        downloadDir: state.downloadDir,
       }),
       // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
