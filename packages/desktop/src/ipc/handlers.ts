@@ -4,7 +4,7 @@ import path from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import { app } from 'electron'
-import { getAllTracks, getTrackById, initDatabase } from './database'
+import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder } from './database'
 import { scanFolder, ensureCover } from './scanner'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
@@ -72,7 +72,19 @@ async function runScan(folderPath: string): Promise<Track[]> {
   const userData = app.getPath('userData')
 
   try {
-    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    if (!isReadableDir(folderPath)) {
+      // 扫描目录本身已不存在：区分「确实被删除」与「外置盘未挂载/临时不可访问」
+      // - 父目录仍在 → 目录被用户删除，清理其曲目并通知 UI 移除该扫描目录，
+      //   否则音乐库里会残留已删目录的歌曲（数量对不上）
+      // - 父目录也不在 → 更可能是外置盘未挂载，保留曲目记录，仅报错跳过，避免误删音乐库
+      if (fs.existsSync(path.dirname(folderPath))) {
+        const removed = deleteTracksByFolder(folderPath)
+        console.log('扫描目录已不存在，清理其曲目:', folderPath, removed)
+        const remaining = getAllTracks()
+        sendToRenderer('scan:complete', remaining)
+        sendToRenderer('scan:folder-missing', { folder: folderPath, removed })
+        return remaining
+      }
       throw new Error('文件夹不存在或不可访问')
     }
     allowedRoots.add(path.resolve(folderPath))
@@ -91,6 +103,14 @@ async function runScan(folderPath: string): Promise<Track[]> {
       message: `扫描失败：文件夹「${folderPath}」不存在或无法读取`,
     })
     throw err
+  }
+}
+
+function isReadableDir(dirPath: string): boolean {
+  try {
+    return fs.statSync(dirPath).isDirectory()
+  } catch {
+    return false
   }
 }
 
@@ -177,6 +197,16 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle('db:getAllTracks', () => {
+    return getAllTracks()
+  })
+
+  // 从音乐库移除某个扫描目录：删除该目录下的全部曲目记录（含封面缓存），
+  // 返回移除后的全库列表，渲染进程直接用它刷新音乐库
+  ipcMain.handle('library:removeFolder', (_event, folderPath: string): Track[] => {
+    if (typeof folderPath !== 'string' || !folderPath.trim()) return getAllTracks()
+    allowedRoots.delete(path.resolve(folderPath))
+    const removed = deleteTracksByFolder(folderPath)
+    if (removed > 0) console.log('已移除扫描目录并清理曲目:', folderPath, removed)
     return getAllTracks()
   })
 

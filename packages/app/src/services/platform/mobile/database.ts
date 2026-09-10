@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite'
+import { Filesystem, Directory } from '@capacitor/filesystem'
 import type { DatabaseAdapter, Track, Album, Playlist } from '@/types'
 
 const DB_NAME = 'aurora-music-library'
@@ -418,11 +419,37 @@ export class MobileDatabase implements DatabaseAdapter {
       [prefix + '%']
     )
     const stale = rows.filter((r) => r.path.startsWith(prefix) && !existingPaths.has(r.path))
-    if (stale.length === 0) return 0
-    for (const t of stale) {
+    return this.deleteTrackRows(stale)
+  }
+
+  /** 删除某个扫描目录下的全部曲目（用户移除该目录 / 目录已从磁盘消失时调用） */
+  async deleteTracksByFolder(rootPath: string): Promise<number> {
+    const prefix = rootPath.endsWith('/') ? rootPath : rootPath + '/'
+    const rows = await this.query<{ id: string; path: string; cover_path: string | null }>(
+      'SELECT id, path, cover_path FROM tracks WHERE path LIKE ?',
+      [prefix + '%']
+    )
+    return this.deleteTrackRows(rows.filter((r) => r.path.startsWith(prefix)))
+  }
+
+  /** 逐条删除曲目记录并清理封面缓存文件，返回删除数量 */
+  private async deleteTrackRows(
+    rows: Array<{ id: string; path: string; cover_path: string | null }>
+  ): Promise<number> {
+    if (rows.length === 0) return 0
+    for (const t of rows) {
       await this.run('DELETE FROM tracks WHERE id = ?', [t.id])
+      // 封面以 trackId 命名，随曲目一起清理，避免应用私有目录磁盘泄漏
+      const coverPath = t.cover_path?.split('/').pop()
+      if (coverPath) {
+        try {
+          await Filesystem.deleteFile({ path: `aurora-music/covers/${coverPath}`, directory: Directory.Data })
+        } catch {
+          // 封面不存在或已被清理，忽略
+        }
+      }
     }
-    return stale.length
+    return rows.length
   }
 
   /** 应用退出时关闭连接 */

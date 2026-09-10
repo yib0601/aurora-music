@@ -28,7 +28,7 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
       </p>
       <button
         onClick={handleDownload}
-        className="ml-auto inline-flex flex-shrink-0 items-center gap-1.5 rounded-full bg-mint px-3.5 py-1.5 text-[12px] font-semibold text-mint-fg active:scale-95 transition"
+        className="ml-auto flex-shrink-0 pill pill-sm pill-mint"
       >
         <Download className="h-3.5 w-3.5" strokeWidth={1.8} />
         {downloading ? '已打开下载' : '下载更新'}
@@ -36,7 +36,7 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
       <button
         onClick={onClose}
         aria-label="关闭更新提示"
-        className="flex-shrink-0 rounded-full p-1 text-white/50 hover:text-white hover:bg-white/10 active:scale-95 transition"
+        className="btn-icon rounded-full text-white/50 hover:text-white"
       >
         <X className="h-4 w-4" strokeWidth={1.8} />
       </button>

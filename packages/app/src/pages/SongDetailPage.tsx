@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, Heart, Plus, ListEnd, ListMusic, Music2, ArrowLeft,
   BarChart3, Clock, Calendar, Tag, HardDrive, Layers, History, MoreHorizontal,
-  Disc3, Radio, Folder, ChevronDown,
+  Disc3, Radio, Folder, ChevronDown, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PlayerBar } from '@/components/player/PlayerBar'
@@ -13,7 +13,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { loadLyricsForTrack } from '@/services/lyrics.service'
-import { platform } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
@@ -190,17 +190,26 @@ export function SongDetailPage() {
     }
   }
 
+  // 歌曲属性（展示区直接可见）：年份 / 流派 / 时长 / 音轨号，
+  // 缺失项不渲染，避免出现「流派 —」这类空占位
+  const quickFacts = useMemo(() => {
+    if (!track) return [] as { icon: LucideIcon; label: string; value: string }[]
+    const facts: { icon: LucideIcon; label: string; value: string }[] = []
+    if (track.year) facts.push({ icon: Calendar, label: '年份', value: String(track.year) })
+    if (track.genre) facts.push({ icon: Tag, label: '流派', value: track.genre })
+    if (track.duration) facts.push({ icon: Clock, label: '时长', value: formatTime(track.duration) })
+    if (track.trackNumber) facts.push({ icon: Layers, label: '音轨', value: `#${track.trackNumber}` })
+    return facts
+  }, [track])
+
+  // 音乐库属性（默认收起，展开后与歌曲展示同处一张面板）
   const statItems = useMemo(() => {
-    if (!track) return []
+    if (!track) return [] as { icon: LucideIcon; label: string; value: string }[]
     return [
       { icon: BarChart3, label: '播放次数', value: `${track.playCount || 0} 次` },
-      { icon: Clock, label: '时长', value: formatTime(track.duration) },
-      { icon: Calendar, label: '年份', value: track.year ? String(track.year) : '—' },
-      { icon: Tag, label: '流派', value: track.genre || '—' },
-      { icon: Layers, label: '音轨号', value: track.trackNumber ? `#${track.trackNumber}` : '—' },
       { icon: HardDrive, label: '文件大小', value: formatBytes(track.fileSize) },
       { icon: History, label: '添加时间', value: formatDate(track.addedAt) },
-      { icon: History, label: '最后播放', value: formatDate(track.lastPlayedAt) },
+      { icon: History, label: '最后播放', value: track.lastPlayedAt ? formatDate(track.lastPlayedAt) : '从未播放' },
     ]
   }, [track])
 
@@ -222,7 +231,7 @@ export function SongDetailPage() {
           </p>
           <button
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-mint-fg font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
+            className="pill pill-lg pill-mint"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
             返回上一页
@@ -231,8 +240,6 @@ export function SongDetailPage() {
       </div>
     )
   }
-
-  const coverSrc = track.coverPath ? platform.getCoverSrc(track.coverPath) : null
 
   return (
     // 全屏/超宽屏限宽居中：与 PageLayout 保持一致，避免 Hero 与内容在全屏下过度拉伸
@@ -246,140 +253,166 @@ export function SongDetailPage() {
         返回
       </button>
 
-      {/* Hero 区 */}
-      <div className="flex items-center gap-8">
-        {/* 封面 */}
-        <div className="relative w-[220px] h-[220px] flex-shrink-0">
-          <div
-            className="absolute -inset-8 rounded-[40px] blur-3xl opacity-60"
-            style={{ background: 'radial-gradient(circle at 30% 30%, rgba(var(--fc-accent-rgb),.16), transparent 70%)' }}
-          />
-          <div className="relative w-full h-full rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center overflow-hidden">
-            {coverSrc ? (
-              <img src={coverSrc} alt={track.title} className="w-full h-full object-cover product-shadow" referrerPolicy="no-referrer" />
-            ) : (
-              <Music2 className="h-20 w-20 text-mint/40" strokeWidth={1} />
+      {/* 歌曲展示 + 歌曲信息统一面板：
+          封面/标题/操作/属性与「更多信息」同处一张玻璃卡片，并与下方歌词、
+          专辑面板共用 card-list 材质与圆角，消除展示区与信息区之间的割裂感 */}
+      <section className="card-list relative overflow-hidden">
+        {/* 封面色调光晕：让面板与封面同色系，与下方玻璃面板呼应 */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-24 -top-28 h-80 w-80 rounded-full blur-3xl opacity-70"
+          style={{ background: 'radial-gradient(circle at 50% 50%, rgba(var(--fc-accent-rgb),.16), transparent 70%)' }}
+        />
+
+        <div className="relative p-6 md:p-7">
+          <div className="flex flex-col sm:flex-row gap-6 md:gap-8">
+            {/* 封面 */}
+            <div className="relative w-[150px] h-[150px] sm:w-[184px] sm:h-[184px] flex-shrink-0">
+              <div
+                className="absolute -inset-5 rounded-[36px] blur-2xl opacity-70"
+                style={{ background: 'radial-gradient(circle at 32% 28%, rgba(var(--fc-accent-rgb),.20), transparent 72%)' }}
+              />
+              <div className="relative w-full h-full rounded-[20px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center overflow-hidden">
+                <CoverImage
+                  track={track}
+                  alt={track.title}
+                  className="w-full h-full object-cover product-shadow"
+                  referrerPolicy="no-referrer"
+                  fallback={<Music2 className="h-16 w-16 text-mint/40" strokeWidth={1} />}
+                />
+              </div>
+              {track.onlineUrl && (
+                <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md text-[11px] font-semibold text-mint">
+                  <Radio className="h-3 w-3" strokeWidth={1.8} />
+                  {sourceLabel(track)}
+                </span>
+              )}
+            </div>
+
+            {/* 标题 + 操作 + 属性 */}
+            <div className="flex-1 min-w-0 flex flex-col">
+              <p className="font-text text-[11px] font-semibold uppercase tracking-[0.16em] text-mint/80 mb-2">
+                {sourceLabel(track)} · 歌曲详情
+              </p>
+              <h1 className="font-display text-[28px] md:text-[32px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
+                {track.title}
+              </h1>
+              <p className="font-text text-[15px] text-white/55 mt-2 tracking-[-0.224px]">
+                {track.artist}
+                {track.album ? <span className="text-white/45"> · {track.album}</span> : null}
+              </p>
+
+              {/* 操作按钮 */}
+              <div className="flex items-center gap-2.5 mt-5">
+                <Button variant="primary" size="lg" onClick={handlePlay}>
+                  {isCurrent && isPlaying ? (
+                    <Pause className="h-4 w-4 mr-1.5" fill="currentColor" strokeWidth={1.5} />
+                  ) : (
+                    <Play className="h-4 w-4 mr-1.5 ml-0.5" fill="currentColor" strokeWidth={1.5} />
+                  )}
+                  {isCurrent && isPlaying ? '暂停' : '播放'}
+                </Button>
+
+                <Button
+                  variant="utility"
+                  size="icon"
+                  className={cn('h-11 w-11', isLiked && 'text-coral')}
+                  onClick={() => toggleLike(track.id)}
+                  title={isLiked ? '取消收藏' : '收藏'}
+                >
+                  <Heart className={cn('h-[18px] w-[18px]', isLiked && 'fill-coral')} strokeWidth={1.6} />
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="utility" size="icon" className="h-11 w-11" title="更多操作">
+                      <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    <DropdownMenuItem onClick={handlePlayNext}>
+                      <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                      下一首播放
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleAddToQueue}>
+                      <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                      添加到队列
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {playlists.length > 0 &&
+                      playlists.map((pl) => (
+                        <DropdownMenuItem key={pl.id} onClick={() => handleAddToPlaylist(pl.id)}>
+                          <ListMusic className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
+                          {pl.name}
+                        </DropdownMenuItem>
+                      ))}
+                    <DropdownMenuItem onClick={() => setShowNewPlaylistDialog(true)}>
+                      <Plus className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
+                      新建播放列表并添加
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => toggleLike(track.id)}>
+                      <Heart className={cn('h-4 w-4 mr-2', isLiked && 'fill-coral text-coral')} strokeWidth={1.5} />
+                      {isLiked ? '取消收藏' : '收藏'}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              {/* 歌曲属性：让「展示」和「信息」连起来，一眼看到年份/流派/时长/音轨 */}
+              {quickFacts.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-5">
+                  {quickFacts.map(({ icon: Icon, label, value }) => (
+                    <span
+                      key={label}
+                      className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-3 rounded-full bg-white/[0.045] border border-white/[0.07]"
+                    >
+                      <Icon className="h-3.5 w-3.5 text-mint/60 flex-shrink-0" strokeWidth={1.6} />
+                      <span className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</span>
+                      <span className="font-text text-[12px] font-semibold text-white/85 tracking-[-0.12px]">{value}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {track.path && (
+                <p className="flex items-center gap-1.5 mt-3 font-text text-[12px] text-white/40 truncate tracking-[-0.12px]">
+                  <Folder className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
+                  <span className="truncate">{track.path}</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 更多信息 — 与展示同卡，分隔线以下展开，默认收起保持紧凑 */}
+          <div className="mt-6 pt-5 border-t border-white/[0.07]">
+            <button
+              onClick={() => setShowMoreInfo((v) => !v)}
+              className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/50 hover:text-mint transition-colors duration-200 ease-apple"
+            >
+              <ChevronDown
+                className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
+                strokeWidth={1.8}
+              />
+              更多信息
+            </button>
+            {showMoreInfo && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-5 mt-5">
+                {statItems.map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="flex items-center gap-3 min-w-0">
+                    <Icon className="h-4 w-4 text-mint/60 flex-shrink-0" strokeWidth={1.5} />
+                    <div className="min-w-0">
+                      <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</p>
+                      <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
+                        {value}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-          {track.onlineUrl && (
-            <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md text-[11px] font-semibold text-mint">
-              <Radio className="h-3 w-3" strokeWidth={1.8} />
-              {sourceLabel(track)}
-            </span>
-          )}
         </div>
-
-        {/* 标题 + 操作 */}
-        <div className="flex-1 min-w-0">
-          <p className="font-text text-[12px] font-semibold uppercase tracking-wider text-mint/80 mb-2">
-            {sourceLabel(track)} · 歌曲详情
-          </p>
-          <h1 className="font-display text-[34px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
-            {track.title}
-          </h1>
-          <p className="font-text text-[16px] text-white/55 mt-2 tracking-[-0.224px]">
-            {track.artist}
-            {track.album ? <span className="text-white/50"> · {track.album}</span> : null}
-          </p>
-
-          {/* 操作按钮 */}
-          <div className="flex items-center gap-2.5 mt-6">
-            <Button variant="primary" size="lg" onClick={handlePlay}>
-              {isCurrent && isPlaying ? (
-                <Pause className="h-4 w-4 mr-1.5" fill="currentColor" strokeWidth={1.5} />
-              ) : (
-                <Play className="h-4 w-4 mr-1.5 ml-0.5" fill="currentColor" strokeWidth={1.5} />
-              )}
-              {isCurrent && isPlaying ? '暂停' : '播放'}
-            </Button>
-
-            <Button
-              variant="utility"
-              size="icon"
-              className={cn('h-11 w-11', isLiked && 'text-coral')}
-              onClick={() => toggleLike(track.id)}
-              title={isLiked ? '取消收藏' : '收藏'}
-            >
-              <Heart className={cn('h-[18px] w-[18px]', isLiked && 'fill-coral')} strokeWidth={1.6} />
-            </Button>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="utility" size="icon" className="h-11 w-11" title="更多操作">
-                  <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={1.6} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-52">
-                <DropdownMenuItem onClick={handlePlayNext}>
-                  <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                  下一首播放
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleAddToQueue}>
-                  <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                  添加到队列
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {playlists.length > 0 &&
-                  playlists.map((pl) => (
-                    <DropdownMenuItem key={pl.id} onClick={() => handleAddToPlaylist(pl.id)}>
-                      <ListMusic className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
-                      {pl.name}
-                    </DropdownMenuItem>
-                  ))}
-                <DropdownMenuItem onClick={() => setShowNewPlaylistDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
-                  新建播放列表并添加
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => toggleLike(track.id)}>
-                  <Heart className={cn('h-4 w-4 mr-2', isLiked && 'fill-coral text-coral')} strokeWidth={1.5} />
-                  {isLiked ? '取消收藏' : '收藏'}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {track.path && (
-            <p className="flex items-center gap-1.5 mt-5 font-text text-[12px] text-white/45 truncate max-w-xl tracking-[-0.12px]">
-              <Folder className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
-              <span className="truncate">{track.path}</span>
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* 更多信息 — 默认收起，展开查看详细统计 */}
-      <section className="mt-9">
-        <button
-          onClick={() => setShowMoreInfo((v) => !v)}
-          className="flex items-center gap-1.5 text-[12px] font-semibold text-white/55 uppercase tracking-wider hover:text-mint transition-colors duration-200 ease-apple"
-        >
-          <ChevronDown
-            className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
-            strokeWidth={1.8}
-          />
-          更多信息
-        </button>
-        {showMoreInfo && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-            {statItems.map(({ icon: Icon, label, value }) => (
-              <div
-                key={label}
-                className="card-utility rounded-[16px] px-4 py-3.5 flex items-center gap-3"
-              >
-                <div className="w-9 h-9 rounded-[10px] bg-white/[0.05] flex items-center justify-center flex-shrink-0">
-                  <Icon className="h-4 w-4 text-mint/70" strokeWidth={1.5} />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</p>
-                  <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
-                    {value}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </section>
 
       {/* 歌词 */}
@@ -387,7 +420,7 @@ export function SongDetailPage() {
         <h2 className="font-text text-[12px] font-semibold text-white/55 uppercase tracking-wider mb-3">
           歌词
         </h2>
-        <div className="card-utility rounded-[18px] px-6 py-6">
+        <div className="card-utility px-6 py-6">
           <TrackLyrics track={track} onLineClick={(t) => usePlayerStore.getState().seekTo(t)} />
         </div>
       </section>
@@ -420,18 +453,14 @@ export function SongDetailPage() {
                     e.stopPropagation()
                     navigate(`/song/${t.id}`)
                   }}
-                  className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden transition-transform duration-200 ease-apple hover:scale-105"
+                  className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden transition-transform duration-200 ease-apple hover:scale-105"
                   title="查看歌曲详情"
                 >
-                  {t.coverPath ? (
-                    <img
-                      src={platform.getCoverSrc(t.coverPath)}
-                      alt=""
-                      className="w-full h-full object-cover product-shadow"
-                    />
-                  ) : (
-                    <Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
-                  )}
+                <CoverImage
+                  track={t}
+                  className="w-full h-full object-cover product-shadow"
+                  fallback={<Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
+                />
                 </button>
                 <button
                   onClick={() => navigate(`/song/${t.id}`)}

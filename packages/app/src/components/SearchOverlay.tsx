@@ -6,6 +6,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 import { cn, formatTime } from '@/lib/utils'
 import {
   ContextMenu,
@@ -283,12 +284,12 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 inputRef.current?.focus()
               }}
               title="清空"
-              className="p-1 rounded-full text-white/35 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple flex-shrink-0"
+              className="h-7 w-7 flex items-center justify-center rounded-full text-white/35 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple flex-shrink-0"
             >
               <X className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
           )}
-          <kbd className="hidden sm:flex items-center h-6 px-2 rounded-[7px] bg-white/[0.06] border border-white/[0.08] font-text text-[11px] text-white/40 flex-shrink-0">
+          <kbd className="hidden sm:flex items-center h-7 px-2 rounded-[8px] bg-white/[0.06] border border-white/[0.08] font-text text-[11px] text-white/40 flex-shrink-0">
             Esc
           </kbd>
         </div>
@@ -326,7 +327,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                   {searchHistory.map((item) => (
                     <div
                       key={item}
-                      className="group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.1] transition-colors duration-200 ease-apple cursor-pointer"
+                      className="group flex items-center gap-1 h-7 pl-3 pr-1 rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.1] transition-colors duration-200 ease-apple cursor-pointer"
                       onClick={() => handleHistoryClick(item)}
                     >
                       <span className="font-text text-[13px] text-white/75 tracking-[-0.15px] max-w-48 truncate">{item}</span>
@@ -336,7 +337,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                           removeSearchHistory(item)
                         }}
                         title="删除该记录"
-                        className="p-1 rounded-full text-white/30 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple"
+                        className="h-5 w-5 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple"
                       >
                         <X className="h-3 w-3" strokeWidth={2} />
                       </button>
@@ -352,7 +353,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 <button
                   onClick={() => setTab('local')}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold tracking-[-0.12px] transition-colors duration-200 ease-apple',
+                    'flex items-center gap-1.5 h-7 px-3.5 rounded-full text-[12px] font-semibold tracking-[-0.12px] transition-colors duration-200 ease-apple',
                     tab === 'local'
                       ? 'bg-mint/[0.12] text-mint'
                       : 'text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
@@ -364,7 +365,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 <button
                   onClick={() => setTab('online')}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold tracking-[-0.12px] transition-colors duration-200 ease-apple',
+                    'flex items-center gap-1.5 h-7 px-3.5 rounded-full text-[12px] font-semibold tracking-[-0.12px] transition-colors duration-200 ease-apple',
                     tab === 'online'
                       ? 'bg-mint/[0.12] text-mint'
                       : 'text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
@@ -428,13 +429,13 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                                     onClose()
                                   }}
                                   title="查看歌曲详情"
-                                  className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+                                  className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                                 >
-                                  {track.coverPath ? (
-                                    <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover product-shadow" />
-                                  ) : (
-                                    <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.6} />
-                                  )}
+                                  <CoverImage
+                                    track={track}
+                                    className="w-full h-full object-cover product-shadow"
+                                    fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.6} />}
+                                  />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="font-text text-[14px] font-semibold truncate text-white/92 tracking-[-0.224px]">{track.title}</p>
@@ -451,7 +452,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                                     e.stopPropagation()
                                     toggleLike(track.id)
                                   }}
-                                  className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-apple hover:bg-mint/[0.075] rounded-xs"
+                                  className="h-7 w-7 flex items-center justify-center rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-apple hover:bg-mint/[0.075]"
                                 >
                                   <Heart
                                     className={cn('h-3.5 w-3.5', likedTracks.has(track.id) ? 'text-coral fill-coral' : 'text-white/40')}
@@ -515,7 +516,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                       navigate('/settings')
                       onClose()
                     }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-mint/[0.12] text-mint text-[13px] font-semibold hover:bg-mint/20 transition-colors duration-200 ease-apple"
+                    className="pill pill-md bg-mint/[0.12] text-mint hover:bg-mint/20"
                   >
                     前往设置音乐源
                   </button>
@@ -579,7 +580,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                                     </span>
                                     <Play className="w-3 h-3 absolute text-mint opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
                                   </span>
-                                  <div className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                  <div className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden">
                                     {onlineResults[resultIdx]?.coverUrl ? (
                                       <img src={onlineResults[resultIdx].coverUrl} alt="" className="w-full h-full object-cover product-shadow" referrerPolicy="no-referrer" />
                                     ) : (
@@ -605,7 +606,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                                     title="下载歌曲"
                                     disabled={downloadingIds.has(track.id)}
                                     className={cn(
-                                      'p-1.5 rounded-xs transition-opacity duration-200 ease-apple',
+                                      'h-7 w-7 flex items-center justify-center rounded-[8px] transition-opacity duration-200 ease-apple',
                                       downloadingIds.has(track.id)
                                         ? 'opacity-100 text-mint'
                                         : 'opacity-0 group-hover:opacity-100 hover:bg-mint/[0.075] text-white/40'

@@ -235,20 +235,42 @@ function removeCoverFile(coverPath?: string | null): void {
  */
 export function deleteTracksWithMissingFiles(rootPath: string, existingPaths: ReadonlySet<string>): number {
   const d = getDb()
-  const prefix = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep
+  const prefix = pathPrefix(rootPath)
   // 只取前缀范围内的记录，避免全表加载到 JS 层
   const rows = d.prepare('SELECT id, path, cover_path FROM tracks WHERE path LIKE ?').all(prefix + '%') as Array<{ id: string; path: string; cover_path?: string }>
   // LIKE 的通配符可能匹配到额外字符，用 startsWith 精确校验前缀
   const stale = rows.filter((r) => r.path.startsWith(prefix) && !existingPaths.has(r.path))
-  if (stale.length === 0) return 0
+  return deleteTrackRows(stale)
+}
+
+/**
+ * 删除某个扫描目录下的全部曲目（用户从设置里移除该目录时调用）。
+ * 与逐文件清理复用同一套前缀校验与封面清理逻辑，返回删除数量。
+ */
+export function deleteTracksByFolder(rootPath: string): number {
+  const d = getDb()
+  const prefix = pathPrefix(rootPath)
+  const rows = d.prepare('SELECT id, path, cover_path FROM tracks WHERE path LIKE ?').all(prefix + '%') as Array<{ id: string; path: string; cover_path?: string }>
+  return deleteTrackRows(rows.filter((r) => r.path.startsWith(prefix)))
+}
+
+/** 目录前缀统一补分隔符，避免 /Music 误匹配 /Music2 下的曲目 */
+function pathPrefix(rootPath: string): string {
+  return rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep
+}
+
+/** 事务批量删除曲目记录，并同步清理封面缓存文件 */
+function deleteTrackRows(rows: Array<{ id: string; path: string; cover_path?: string }>): number {
+  if (rows.length === 0) return 0
+  const d = getDb()
   const stmt = d.prepare('DELETE FROM tracks WHERE id = ?')
   const delMany = d.transaction((ids: string[]) => {
     for (const id of ids) stmt.run(id)
   })
-  delMany(stale.map((t) => t.id))
+  delMany(rows.map((t) => t.id))
   // 同步清理被删曲目的封面缓存文件，避免磁盘泄漏
-  for (const t of stale) removeCoverFile(t.cover_path)
-  return stale.length
+  for (const t of rows) removeCoverFile(t.cover_path)
+  return rows.length
 }
 
 export function insertAlbum(album: Album): void {

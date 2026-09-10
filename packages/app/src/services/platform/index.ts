@@ -24,12 +24,25 @@ export interface PlatformExtension {
   scanFolder?: (folderPath: string) => Promise<Track[]>
   /** 获取所有已扫描曲目 */
   getAllTracks?: () => Promise<Track[]>
+  /**
+   * 按需补齐封面（桌面端）：扫描阶段用 skipCovers 跳过内嵌图片读取以提速，
+   * 记录中无 coverPath 时由 UI 调用本方法单独提取并缓存，返回封面绝对路径。
+   * 曲目无内嵌封面时返回 null。移动端扫描阶段已内联提取，故不实现此方法。
+   */
+  ensureCover?: (trackId: string) => Promise<string | null>
+  /**
+   * 从音乐库移除某个扫描目录：连该目录下的曲目记录一起删除，返回移除后的全库曲目。
+   * 目录条目本身由调用方从 scanFolders 中删除（库数据与配置分离）。
+   */
+  removeFolder?: (folderPath: string) => Promise<Track[]>
   /** 扫描完成事件订阅 */
   onTracksScanned?: (cb: (tracks: Track[]) => void) => () => void
   /** 单曲扫描完成事件订阅（渐进式刷新：每解析完一首立即通知，UI 追加而非等全部完成） */
   onTrackScanned?: (cb: (track: Track) => void) => () => void
   /** 扫描失败事件订阅（静默扫描：仅用于记录日志） */
   onScanError?: (cb: (e: { folder: string; message: string }) => void) => () => void
+  /** 扫描时发现目录已从磁盘删除（主进程/移动端已清理其曲目），UI 据此移除目录条目 */
+  onFolderMissing?: (cb: (e: { folder: string; removed: number }) => void) => () => void
   /** 系统媒体键事件订阅（桌面端来自 globalShortcut/MPRIS，移动端来自 mediaSession） */
   onMediaControl?: (cb: (action: string) => void) => () => void
   /** 在线歌词搜索（按用户配置的歌词源依次尝试） */
@@ -155,13 +168,31 @@ export function createDesktopPlatform(): Platform {
       if (!api?.getAllTracks) return []
       return api.getAllTracks()
     },
+    async ensureCover(trackId: string) {
+      if (!api?.ensureCover) return null
+      return api.ensureCover(trackId)
+    },
+    async removeFolder(folderPath: string) {
+      if (!api?.removeFolder) return []
+      return api.removeFolder(folderPath)
+    },
     onTracksScanned(cb: (tracks: Track[]) => void) {
       if (!api?.onTracksScanned) return () => {}
       return api.onTracksScanned(cb)
     },
+    // 渐进式扫描：主进程每解析完一首就推 track:scanned，这里转发给 UI，
+    // 让音乐库边扫描边显示（此前只转发了 scan:complete，该能力在桌面端一直是失效的）
+    onTrackScanned(cb: (track: Track) => void) {
+      if (!api?.onTrackScanned) return () => {}
+      return api.onTrackScanned(cb)
+    },
     onScanError(cb: (e: { folder: string; message: string }) => void) {
       if (!api?.onScanError) return () => {}
       return api.onScanError(cb)
+    },
+    onFolderMissing(cb: (e: { folder: string; removed: number }) => void) {
+      if (!api?.onFolderMissing) return () => {}
+      return api.onFolderMissing(cb)
     },
     onMediaControl(cb: (action: string) => void) {
       if (!api?.onMediaControl) return () => {}

@@ -194,12 +194,54 @@ jobs:
             packages/mobile/android/gradle/wrapper/gradle-wrapper.properties
           cat packages/mobile/android/gradle/wrapper/gradle-wrapper.properties
 
+      - name: Determine version (versionName / versionCode)
+        # versionCode 必须随版本单调递增，否则 Android 不把新包当作升级。
+        # 编码规则：major*10000 + minor*100 + patch（0.1.8 → 108）
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF#refs/tags/v}"
+          else
+            V=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+          fi
+          CODE=$(echo "$V" | awk -F. '{printf "%d", ($1*10000)+($2*100)+$3}')
+          echo "version=$V" >> $GITHUB_OUTPUT
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+          echo "Android versionName=$V versionCode=$CODE"
+
       - name: Build APK (debug)
         run: |
           cd packages/mobile/android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon \
+            -PauroraVersionName=${{ steps.ver.outputs.version }} \
+            -PauroraVersionCode=${{ steps.ver.outputs.code }}
         env:
           JAVA_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Verify APK signature and version
+        # 签名校验是发布前的硬闸门：APK 签名密钥一旦变化，已安装用户无法覆盖升级。
+        # 历史上该问题静默复发过多次（CI 成功、用户安装失败），因此这里直接让构建失败。
+        env:
+          EXPECTED_NAME: ${{ steps.ver.outputs.version }}
+          EXPECTED_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          set -euo pipefail
+          APK=$(find packages/mobile/android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "APK: $APK"
+          bash scripts/verify-apk-signature.sh "$APK"
+
+          AAPT2=$(ls -1 "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"/build-tools/*/aapt2 | sort -V | tail -1)
+          BADGING=$("$AAPT2" dump badging "$APK" | head -1)
+          echo "$BADGING"
+          ACTUAL_NAME=$(echo "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          ACTUAL_CODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+          if [ "$ACTUAL_NAME" != "$EXPECTED_NAME" ] || [ "$ACTUAL_CODE" != "$EXPECTED_CODE" ]; then
+            echo "::error::APK 版本号不符：期望 $EXPECTED_NAME($EXPECTED_CODE)，实际 $ACTUAL_NAME($ACTUAL_CODE)"
+            exit 1
+          fi
+          echo "✅ versionName=$ACTUAL_NAME versionCode=$ACTUAL_CODE"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
@@ -302,6 +344,23 @@ jobs:
             - **Android**: 安装 APK 后，进入应用，点击「添加目录」在文件夹树中点选音乐目录。
 
             > Android 版本为固定签名 APK（签名密钥入库统一管理），安装时需手动允许「未知来源」。
+
+            #### ⚠️ 从 v0.1.4 及更早版本升级请先卸载
+
+            v0.1.4 及更早的 APK 由 CI 每次构建时随机生成的调试密钥签名（每个版本都不同），
+            因此**无法覆盖安装**，会提示「签名不一致」「应用未安装」。
+
+            v0.1.5 起已改用入库的固定发布密钥（SHA-256 `eb4e48a9…db435b`），
+            本次及以后的所有版本签名一致，可直接覆盖升级。
+
+            从 v0.1.4 或更早版本升级时，请**先卸载旧版本再安装本版本**（仅需一次）：
+
+            ```bash
+            adb uninstall com.aurora.music   # 或在手机上长按图标 → 卸载
+            ```
+
+            卸载会清除应用数据（音乐库索引、收藏、播放记录；本地音乐文件不受影响），
+            重新安装后再点「添加目录」导入一次即可。
           draft: false
           prerelease: false
           generate_release_notes: false

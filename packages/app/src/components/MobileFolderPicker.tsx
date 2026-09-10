@@ -115,7 +115,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
             <div className="flex flex-col items-center justify-center h-full text-white/60 gap-3 px-6 text-center">
               <AlertCircle className="h-8 w-8 text-coral" strokeWidth={1.6} />
               <p className="font-text text-caption">{error}</p>
-              <Button variant="secondary" size="sm" onClick={() => loadDir(currentPath)}>
+              <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => loadDir(currentPath)}>
                 重试
               </Button>
             </div>
@@ -162,7 +162,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
             当前：{currentPath || '存储根目录'}
           </span>
           <div className="flex gap-2 flex-shrink-0">
-            <Button variant="ghost" size="sm" onClick={onClose} className="text-white/70">
+            <Button variant="ghost" size="sm" onClick={onClose} className="h-9 px-3.5 text-white/70">
               取消
             </Button>
             <Button
@@ -170,7 +170,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
               size="sm"
               onClick={handleConfirm}
               disabled={loading}
-              className="bg-mint text-mint-fg hover:bg-mint/90"
+              className="h-9 px-3.5 bg-mint text-mint-fg hover:bg-mint/90"
             >
               <Check className="h-4 w-4 mr-1.5" strokeWidth={1.8} />
               选择此目录

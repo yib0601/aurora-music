@@ -98,7 +98,7 @@ function SourceEditorCard({
           variant="ghost"
           size="icon"
           title={editing ? '收起' : '编辑'}
-          className="h-7 w-7 text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
+          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
           onClick={() => setEditing(!editing)}
         >
           {editing
@@ -108,7 +108,7 @@ function SourceEditorCard({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -362,6 +362,32 @@ export function SettingsPage() {
     }
   }
 
+  /**
+   * 移除扫描目录：除了解除目录配置，还要把该目录下的曲目从音乐库中删除，
+   * 否则音乐库会残留已移除目录的歌曲（数量对不上、点进去还能播放）。
+   * 磁盘文件不受影响，只是不再属于音乐库。
+   */
+  const handleRemoveFolder = async (folder: string) => {
+    const prefix = folder.endsWith('/') || folder.endsWith('\\') ? folder : folder + '/'
+    const affected = useLibraryStore
+      .getState()
+      .tracks.filter((t) => t.path === folder || t.path.startsWith(prefix) || t.path.startsWith(prefix.replace(/\//g, '\\'))).length
+    const ok = window.confirm(
+      affected > 0
+        ? `移除扫描目录「${folder}」？\n该目录下的 ${affected} 首歌曲会同时从音乐库中移除（磁盘文件不会被删除）。`
+        : `移除扫描目录「${folder}」？`
+    )
+    if (!ok) return
+    // 先解除目录配置，避免移除过程中后台扫描又把曲目写回
+    removeScanFolder(folder)
+    try {
+      const remaining = await platform.removeFolder?.(folder)
+      if (remaining) useLibraryStore.getState().setTracks(remaining)
+    } catch (err) {
+      console.warn('移除目录曲目失败，已解除该目录的扫描配置:', err)
+    }
+  }
+
   return (
     <PageLayout header={
       // 设置页内容列较窄（720px），居中放置与其他页面的 1200px 居中内容列共享同一视觉轴
@@ -371,7 +397,7 @@ export function SettingsPage() {
         </div>
         <div>
           <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">设置</h1>
-          <p className="font-text text-caption text-white/60 mt-1">自定义你的 Aurora Music</p>
+          <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">自定义你的 Aurora Music</p>
         </div>
       </div>
     }>
@@ -395,10 +421,8 @@ export function SettingsPage() {
                           document.documentElement.classList.toggle('dark', prefersDark)
                         }
                       }}
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-pill text-caption font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio active:scale-95 ${
-                        theme === value
-                          ? 'bg-mint text-mint-fg font-semibold shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]'
-                          : 'bg-white/[0.05] text-white/80 border border-white/10 hover:bg-white/[0.09] hover:border-white/16 hover:-translate-y-px'
+                      className={`pill pill-md ${
+                        theme === value ? 'pill-mint' : 'pill-soft'
                       }`}
                     >
                       <Icon className="h-4 w-4" strokeWidth={1.6} />
@@ -433,8 +457,9 @@ export function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
-                        onClick={() => removeScanFolder(folder)}
+                        title="移除目录（同时从音乐库移除该目录下的歌曲）"
+                        className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+                        onClick={() => handleRemoveFolder(folder)}
                       >
                         <Trash2 className="h-4 w-4" strokeWidth={1.6} />
                       </Button>

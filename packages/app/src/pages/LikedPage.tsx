@@ -6,7 +6,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
-import { platform } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -60,7 +60,7 @@ export function LikedPage() {
           </p>
           <button
             onClick={() => navigate('/library')}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-mint text-mint-fg font-semibold text-[14px] hover:brightness-110 transition-all duration-200 active:scale-95"
+            className="pill pill-lg pill-mint"
           >
             <Music className="h-4 w-4" strokeWidth={1.6} />
             去音乐库
@@ -95,13 +95,13 @@ export function LikedPage() {
                               navigate(`/song/${track.id}`)
                             }}
                             title="查看歌曲详情"
-                            className="w-11 h-11 md:w-9 md:h-9 rounded-lg md:rounded-[6px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+                            className="w-11 h-11 md:w-9 md:h-9 rounded-[8px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
                           >
-                            {track.coverPath ? (
-                              <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover product-shadow" />
-                            ) : (
-                              <Heart className="h-4 w-4 text-coral/50" strokeWidth={1.5} />
-                            )}
+                            <CoverImage
+                              track={track}
+                              className="w-full h-full object-cover product-shadow"
+                              fallback={<Heart className="h-4 w-4 text-coral/50" strokeWidth={1.5} />}
+                            />
                           </button>
                           <div className="min-w-0">
                             <span className="block font-semibold text-[14px] truncate text-white">{track.title}</span>
@@ -119,7 +119,7 @@ export function LikedPage() {
                             toggleLiked(track.id)
                           }}
                           // 移动端无 hover，收藏按钮需常显；桌面端保持 hover 显示
-                          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-200 ease-apple p-1.5 hover:bg-mint/[0.075] rounded-sm"
+                          className="btn-icon opacity-100 md:opacity-0 md:group-hover:opacity-100"
                         >
                           <Heart
                             className={cn('h-4 w-4', track.liked ? 'text-coral fill-coral' : 'text-white/40')}
