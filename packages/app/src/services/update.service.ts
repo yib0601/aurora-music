@@ -1,4 +1,12 @@
-import { isMobile } from '@/lib/utils'
+import { isDesktop, isMobile } from '@/lib/utils'
+import {
+  ASSET_LABEL,
+  assetInstallHint,
+  assetPreferenceOrder,
+  pickAsset,
+  type AssetKind,
+  type SystemInfoLike,
+} from './update-asset'
 
 // 当前版本号：构建期由 vite define 注入（package.json version），
 // 开发环境回退到 import.meta.env，最终兜底硬编码
@@ -17,8 +25,14 @@ export interface UpdateInfo {
   version: string
   notes: string
   url: string
-  /** 按当前平台匹配到的安装包下载地址（可能为空，此时回退到 release 页面） */
+  /** 按当前系统匹配到的安装包下载地址（可能为空，此时回退到 release 页面） */
   assetUrl: string | null
+  /** 匹配到的安装包类型，无匹配包时为 null */
+  assetKind: AssetKind | null
+  /** 安装包类型展示名（如「RPM 包」），无匹配包时为 null */
+  assetLabel: string | null
+  /** 覆盖安装命令提示（仅当前是系统包管理器安装时给出），否则 null */
+  installHint: string | null
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -31,24 +45,18 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** 按平台从 release assets 中挑选对应安装包 */
-function pickAsset(assets: Array<{ name: string; browser_download_url: string }>): string | null {
-  const names = assets.map((a) => a.name.toLowerCase())
-  const pick = (test: (n: string) => boolean) => {
-    const idx = names.findIndex(test)
-    return idx >= 0 ? assets[idx].browser_download_url : null
+/**
+ * 读取桌面端主进程探测到的系统环境（发行版包格式 / 安装形态）。
+ * Web 与移动端没有这个能力，返回 null，由 update-asset 走 userAgent 兜底。
+ */
+async function getSystemInfo(): Promise<SystemInfoLike | null> {
+  if (!isDesktop()) return null
+  try {
+    const info = await (window as any).electronAPI?.getSystemInfo?.()
+    return info && typeof info === 'object' ? (info as SystemInfoLike) : null
+  } catch {
+    return null
   }
-  if (isMobile()) {
-    return pick((n) => n.endsWith('.apk'))
-  }
-  const ua = navigator.userAgent.toLowerCase()
-  if (ua.includes('win')) {
-    return pick((n) => n.endsWith('.exe'))
-  }
-  if (ua.includes('linux')) {
-    return pick((n) => n.endsWith('.appimage')) || pick((n) => n.endsWith('.deb')) || pick((n) => n.endsWith('.rpm'))
-  }
-  return null
 }
 
 /** 请求 GitHub Releases API 检测新版本；无新版本时返回 null */
@@ -64,11 +72,24 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     const data = await res.json()
     const latest = String(data.tag_name || '').replace(/^v/i, '')
     if (!latest || compareVersions(latest, APP_VERSION) <= 0) return null
+
+    // 系统环境只用于挑选安装包，探测失败不能影响「有没有新版本」的判断
+    const system = await getSystemInfo().catch(() => null)
+    const order = assetPreferenceOrder({
+      isMobile: isMobile(),
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      system,
+    })
+    const picked = pickAsset(Array.isArray(data.assets) ? data.assets : [], order)
+
     return {
       version: latest,
       notes: typeof data.body === 'string' ? data.body : '',
       url: typeof data.html_url === 'string' ? data.html_url : RELEASES_PAGE,
-      assetUrl: pickAsset(Array.isArray(data.assets) ? data.assets : []),
+      assetUrl: picked?.url ?? null,
+      assetKind: picked?.kind ?? null,
+      assetLabel: picked ? ASSET_LABEL[picked.kind] : null,
+      installHint: picked ? assetInstallHint(picked.kind, system) : null,
     }
   } finally {
     clearTimeout(timer)

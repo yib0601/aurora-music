@@ -7,6 +7,16 @@ const electronAPI = {
   readFile: (filePath: string): Promise<ArrayBuffer> => ipcRenderer.invoke('fs:readFile', filePath),
   scanFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('scan:start', folderPath),
   getUserDataPath: (): Promise<string> => ipcRenderer.invoke('app:getUserDataPath'),
+  // 系统环境：发行版包格式（rpm/deb）与当前安装形态（AppImage/系统包/便携），
+  // 供渲染层在「检查更新」时挑选匹配当前系统的安装包
+  getSystemInfo: (): Promise<{
+    platform: string
+    arch: string
+    distroId: string | null
+    distroName: string | null
+    pkgFamily: 'rpm' | 'deb' | 'unknown'
+    installKind: 'appimage' | 'system-package' | 'portable' | 'unknown'
+  }> => ipcRenderer.invoke('system:getInfo'),
   getAllTracks: (): Promise<any[]> => ipcRenderer.invoke('db:getAllTracks'),
   // 从音乐库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
   removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),

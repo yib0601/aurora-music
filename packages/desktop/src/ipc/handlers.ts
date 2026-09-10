@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises'
 import { app } from 'electron'
 import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder } from './database'
 import { scanFolder, ensureCover } from './scanner'
+import { registerSystemIpc } from './system'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
 import { searchOnlineTracks, searchLyrics, sanitizeFileName, inferAudioExtFromUrl } from '@aurora/shared'
@@ -116,6 +117,8 @@ function isReadableDir(dirPath: string): boolean {
 
 export function registerIpcHandlers() {
   initDatabase()
+  // 系统环境探测（发行版包格式 / 安装形态）：渲染层据此挑选匹配的安装包
+  registerSystemIpc()
 
   ipcMain.handle('dialog:openFolder', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return null
