@@ -7,6 +7,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform } from '@/services/platform'
+import { isDesktop } from '@/lib/utils'
 import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 
 const themeOptions = [
@@ -305,6 +306,8 @@ export function SettingsPage() {
   const setTheme = useLibraryStore((s) => s.setTheme)
 
   const scanFolders = useLibraryStore((s) => s.scanFolders)
+  const downloadDir = useLibraryStore((s) => s.downloadDir)
+  const setDownloadDir = useLibraryStore((s) => s.setDownloadDir)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
 
   // 歌源配置（应用不内置任何源，音乐源/歌词源均由用户按协议配置）
@@ -360,6 +363,12 @@ export function SettingsPage() {
       useLibraryStore.getState().addScanFolder(folder)
       await platform.scanFolder?.(folder)
     }
+  }
+
+  // 选择默认下载目录：设置后下载在线歌曲免对话框直存
+  const handlePickDownloadDir = async () => {
+    const folder = await platform.pickFolder()
+    if (folder) setDownloadDir(folder)
   }
 
   /**
@@ -469,6 +478,37 @@ export function SettingsPage() {
               )}
             </div>
           </section>
+
+          {/* 下载目录仅桌面端可配：移动端下载固定存入 Music/Aurora Music */}
+          {isDesktop() && (
+            <section className="card-utility p-5">
+              <h2 className="font-display text-tagline mb-4 text-white">下载</h2>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-text text-caption-strong text-white/80">默认下载目录</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">
+                      设置后下载在线歌曲直接存入该目录，不再弹保存对话框
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {downloadDir && (
+                      <Button variant="ghost" size="sm" className="h-9 px-3.5" onClick={() => setDownloadDir(null)}>
+                        清除
+                      </Button>
+                    )}
+                    <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
+                      <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                      {downloadDir ? '更换目录' : '选择目录'}
+                    </Button>
+                  </div>
+                </div>
+                <p className="font-text text-caption text-white/60 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 truncate">
+                  {downloadDir ?? '未设置（每次下载都会询问保存位置）'}
+                </p>
+              </div>
+            </section>
+          )}
 
           <section className="card-utility p-5">
             <h2 className="font-display text-tagline mb-4 text-white">在线搜索</h2>

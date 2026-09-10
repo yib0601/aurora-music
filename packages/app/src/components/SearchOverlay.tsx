@@ -194,18 +194,29 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     usePlayerStore.getState().addToQueue(track)
   }
 
-  // 下载在线歌曲：桌面端弹保存对话框，移动端存到 Music/Aurora Music 目录
+  // 下载在线歌曲：桌面端有默认下载目录则直存，否则弹保存对话框（可勾选后续记住）；
+  // 移动端存到 Music/Aurora Music 目录
   const handleDownload = async (track: Track) => {
     if (!track.onlineUrl || downloadingIds.has(track.id)) return
     setDownloadingIds((prev) => new Set(prev).add(track.id))
     try {
       // 取该曲来源配置的附加请求头（Referer/UA 等），保证下载与搜索请求一致
       const source = onlineSources.find((s) => s.id === track.onlineSource)
+      const downloadDir = useLibraryStore.getState().downloadDir
       const { savedPath } = await platform.downloadOnlineTrack!(
         { audioUrl: track.onlineUrl, title: track.title, artist: track.artist },
-        source?.headers
+        source?.headers,
+        downloadDir || undefined
       )
-      alert(`下载完成\n已保存到：${savedPath}`)
+      if (downloadDir) {
+        alert(`下载完成\n已保存到：${savedPath}`)
+      } else {
+        // 本次走了保存对话框：询问是否把所选目录设为默认下载目录
+        const dir = savedPath.replace(/[\\/][^\\/]*$/, '')
+        if (window.confirm(`下载完成\n已保存到：${savedPath}\n\n后续下载都保存到「${dir}」，不再询问吗？\n（可随时在「设置 → 下载」中修改）`)) {
+          useLibraryStore.getState().setDownloadDir(dir)
+        }
+      }
     } catch (err: any) {
       // 用户在保存对话框点了取消，不算失败
       if (err?.message !== '已取消保存' && err?.message !== '缺少存储权限') {

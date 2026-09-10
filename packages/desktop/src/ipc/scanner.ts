@@ -5,6 +5,8 @@ import iconv from 'iconv-lite'
 import { v4 as uuidv4 } from 'uuid'
 import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, updateTrack } from './database'
+import { searchOnlineTracks, fetchWithTimeout } from '@aurora/shared'
+import type { OnlineSearchOptions, OnlineTrackSearchResult } from '@aurora/shared'
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus'])
 
@@ -235,4 +237,83 @@ export async function ensureCover(track: Track, userData: string): Promise<strin
     console.warn('封面提取失败:', track.path, err)
     throw err
   }
+}
+
+/** 归一化标题/艺术家用于宽松匹配（去大小写、空白与常见标点） */
+function normalizeForMatch(s?: string): string {
+  return (s || '').toLowerCase().replace(/[\s\-_·,，.。!！?？'"""''（）()【】\[\]@]/g, '')
+}
+
+/**
+ * 在线封面候选挑选：标题必须匹配（归一化后相等或互相包含），
+ * 艺术家匹配 +1、时长差 ≤3s +2，取总分最高且带封面 URL 者。
+ * 标题不匹配的一律排除，宁可无图也不贴错封面。
+ */
+function pickOnlineCoverCandidate(
+  candidates: OnlineTrackSearchResult[],
+  track: Track
+): OnlineTrackSearchResult | null {
+  const wantTitle = normalizeForMatch(track.title)
+  const wantArtist = normalizeForMatch(track.artist)
+  let best: OnlineTrackSearchResult | null = null
+  let bestScore = 0
+  for (const c of candidates) {
+    if (!c.coverUrl || !/^https?:\/\//i.test(c.coverUrl)) continue
+    const ct = normalizeForMatch(c.title)
+    if (!wantTitle || !ct) continue
+    if (ct !== wantTitle && !ct.includes(wantTitle) && !wantTitle.includes(ct)) continue
+    let score = 2
+    const ca = normalizeForMatch(c.artist)
+    if (wantArtist && ca && (ca === wantArtist || ca.includes(wantArtist) || wantArtist.includes(ca))) score += 1
+    if (track.duration > 0 && c.duration > 0 && Math.abs(c.duration - track.duration) <= 3) score += 2
+    if (score > bestScore) {
+      best = c
+      bestScore = score
+    }
+  }
+  return best
+}
+
+/** 扫描/标签里的占位值，搜索时剔除避免污染关键词 */
+const META_PLACEHOLDERS = new Set(['未知艺术家', '未知专辑', '未知歌曲'])
+
+/**
+ * 在线补齐封面：文件无内嵌封面时的兜底。
+ * 用「艺术家 + 标题」搜索用户配置的在线歌源，取标题匹配（艺术家/时长加分）
+ * 的候选封面下载并落盘缓存。无匹配返回 null；网络/下载失败抛错
+ * （渲染层按"失败可重试"处理，不会当作无封面缓存）。
+ */
+export async function fetchOnlineCover(
+  track: Track,
+  userData: string,
+  options?: OnlineSearchOptions
+): Promise<string | null> {
+  if (track.coverPath) return track.coverPath
+  const artist = META_PLACEHOLDERS.has(track.artist) ? '' : track.artist
+  const title = META_PLACEHOLDERS.has(track.title) ? '' : track.title
+  const query = `${artist} ${title}`.trim()
+  if (!query) return null
+
+  const candidates = await searchOnlineTracks(query, options)
+  const best = pickOnlineCoverCandidate(candidates, track)
+  if (!best?.coverUrl) return null
+
+  const resp = await fetchWithTimeout(
+    best.coverUrl,
+    {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    },
+    15000
+  )
+  if (!resp.ok) throw new Error(`封面下载失败：HTTP ${resp.status}`)
+  const buf = new Uint8Array(await resp.arrayBuffer())
+  if (buf.length < 100) throw new Error('封面下载失败：内容不是有效图片')
+
+  const coverDest = getCoverCachePath(userData, track.id, coverExtensionFor(buf))
+  await fs.promises.writeFile(coverDest, buf)
+  updateTrack(track.id, { coverPath: coverDest })
+  return coverDest
 }
