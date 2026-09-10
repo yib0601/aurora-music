@@ -611,7 +611,14 @@ export function SettingsPage() {
                     <p className="font-text text-caption-strong text-white/90">
                       发现新版本 <span className="text-mint font-semibold">v{updateInfo.version}</span>
                     </p>
-                    <p className="font-text text-caption text-white/60 mt-0.5 truncate">点击下载对应平台的安装包</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5 truncate">
+                      {updateInfo.assetLabel
+                        ? `点击下载对应系统的安装包（${updateInfo.assetLabel}）`
+                        : '点击下载对应平台的安装包'}
+                    </p>
+                    {updateInfo.installHint && (
+                      <p className="font-text text-caption text-white/45 mt-1 truncate">{updateInfo.installHint}</p>
+                    )}
                   </div>
                   <Button
                     size="sm"
