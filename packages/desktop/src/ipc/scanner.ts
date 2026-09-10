@@ -230,7 +230,9 @@ export async function ensureCover(track: Track, userData: string): Promise<strin
     updateTrack(track.id, { coverPath: coverDest })
     return coverDest
   } catch (err) {
+    // 抛错而非返回 null：渲染层只对"确认无内嵌封面"缓存结果，
+    // 失败（文件暂不可读/解析异常）不缓存，会退避重试
     console.warn('封面提取失败:', track.path, err)
-    return null
+    throw err
   }
 }

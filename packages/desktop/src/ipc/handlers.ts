@@ -219,8 +219,14 @@ export function registerIpcHandlers() {
 
   // 按需补齐封面：扫描时为提速跳过了嵌入图片读取，UI 需要时单独提取并缓存
   ipcMain.handle('covers:ensure', async (_event, id: string): Promise<string | null> => {
-    const track = getTrackById(id)
-    if (!track) return null
+    let track = getTrackById(id)
+    if (!track) {
+      // 渐进式扫描期间 UI 可能先于批量入库请求封面：等当前扫描队列落库后重查一次，
+      // 避免把"记录尚未写入"误判成"无封面"（渲染层会把 null 缓存一整个会话）
+      await scanChain
+      track = getTrackById(id)
+      if (!track) return null
+    }
     return ensureCover(track, app.getPath('userData'))
   })
 

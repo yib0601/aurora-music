@@ -12,12 +12,15 @@ import { useLibraryStore } from '@/stores/libraryStore'
  * 因此渲染层必须在 `coverPath` 缺失时主动触发一次提取，否则新入库曲目的
  * 封面永远是空的（UI 全部走 `coverPath ? <img> : <占位>` 分支）。
  *
- * 两个关键设计点：
+ * 三个关键设计点：
  * 1. 结果同时写入「组件本地 state」与 libraryStore。playerStore 的 queue /
  *    currentTrack 是 Track 的独立副本，与 libraryStore 不同源，只更新 store
  *    无法刷新播放条与队列里的封面。
- * 2. 同一首歌的提取按 trackId 合并为一次请求，并缓存结果（含"确认无封面"），
- *    避免列表里同一首歌多次渲染时重复解析同一个音频文件。
+ * 2. 同一首歌的提取按 trackId 合并为一次请求；只缓存「成功」与「确认无封面」
+ *    两种终态。提取失败（扫描期间记录尚未入库、文件暂不可读等）不缓存，
+ *    由组件退避重试，避免一次瞬时失败导致封面整会话空白。
+ * 3. 提取并发受限：首屏或扫描完成瞬间可能同时挂载上百个实例，
+ *    无限制时会把几百个 IPC/音频解析同时打向主进程。
  */
 
 /** 已完成提取的曲目：值为封面路径，null 表示确认该曲目无内嵌封面 */
@@ -25,19 +28,40 @@ const resolvedCovers = new Map<string, string | null>()
 /** 进行中的提取，供同一首歌的多个渲染实例复用同一个 Promise */
 const inflightCovers = new Map<string, Promise<string | null>>()
 
+/** 封面提取并发上限：防止大批量挂载时 IPC/解析瞬间打满主进程 */
+const MAX_CONCURRENT_COVERS = 4
+let activeCoverRequests = 0
+const coverSlotQueue: Array<() => void> = []
+
+async function withCoverSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (activeCoverRequests >= MAX_CONCURRENT_COVERS) {
+    await new Promise<void>((resolve) => coverSlotQueue.push(resolve))
+  }
+  activeCoverRequests++
+  try {
+    return await task()
+  } finally {
+    activeCoverRequests--
+    coverSlotQueue.shift()?.()
+  }
+}
+
+/** 提取失败后的退避重试间隔（ms），重试耗尽后等下次挂载再试 */
+const COVER_RETRY_DELAYS = [2000, 4000, 8000]
+
 function requestCover(trackId: string): Promise<string | null> {
   if (resolvedCovers.has(trackId)) return Promise.resolve(resolvedCovers.get(trackId)!)
   const running = inflightCovers.get(trackId)
   if (running) return running
 
-  const task = Promise.resolve(platform.ensureCover?.(trackId))
+  const task = withCoverSlot(() => Promise.resolve(platform.ensureCover?.(trackId)))
     .then((result) => {
-      // 失败或无封面都记 null：避免每次渲染反复触发 IPC 解析
+      // 成功与"确认无内嵌封面"都是终态，缓存避免重复解析同一音频文件
       resolvedCovers.set(trackId, result ?? null)
       return result ?? null
     })
     .catch(() => {
-      resolvedCovers.set(trackId, null)
+      // 失败不缓存：交给组件退避重试 / 下次挂载重新提取
       return null
     })
     .finally(() => {
@@ -76,14 +100,28 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
   useEffect(() => {
     if (!needsExtraction || !platform.ensureCover) return
     let cancelled = false
-    requestCover(trackId!).then((path) => {
-      if (cancelled || !path) return
-      setResolved(path)
-      // 回写 store：其他列表位置立即复用（DB 持久化由主进程 ensureCover 完成）
-      updateTrack(trackId!, { coverPath: path })
-    })
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+
+    const attempt = (retryIndex: number) => {
+      requestCover(trackId!).then((path) => {
+        if (cancelled) return
+        if (path) {
+          setResolved(path)
+          // 回写 store：其他列表位置立即复用（DB 持久化由主进程 ensureCover 完成）
+          updateTrack(trackId!, { coverPath: path })
+          return
+        }
+        // null 有两种：确认无封面（已入缓存，到此为止）与提取失败（未入缓存，退避重试）
+        if (!resolvedCovers.has(trackId!) && retryIndex < COVER_RETRY_DELAYS.length) {
+          retryTimer = setTimeout(() => attempt(retryIndex + 1), COVER_RETRY_DELAYS[retryIndex])
+        }
+      })
+    }
+    attempt(0)
+
     return () => {
       cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
     }
   }, [trackId, needsExtraction, updateTrack])
 
