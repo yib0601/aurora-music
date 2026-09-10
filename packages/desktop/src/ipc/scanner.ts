@@ -39,12 +39,39 @@ function decodeGbk(buffer: Buffer): string {
   }
 }
 
-function getCoverCachePath(userData: string, trackId: string): string {
+/**
+ * 判断封面扩展名：以**真实字节**为准，声明类型仅作兜底。
+ * 不能只信 pic.format——部分打标工具会在 FLAC/MP3 里把 PNG 封面声明成
+ * image/jpeg（实测曲库中确有此类文件），按声明存成 .jpg 会让 cover-local
+ * 协议以错误的 Content-Type 提供图片。
+ */
+function coverExtensionFor(data: Uint8Array, declaredFormat?: string): string {
+  if (data && data.length >= 12) {
+    if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return '.jpg'
+    if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return '.png'
+    if (
+      data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+      data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50
+    ) {
+      return '.webp'
+    }
+    if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return '.gif'
+    if (data[0] === 0x42 && data[1] === 0x4d) return '.bmp'
+  }
+  const m = (declaredFormat || '').toLowerCase()
+  if (m.includes('png')) return '.png'
+  if (m.includes('webp')) return '.webp'
+  if (m.includes('gif')) return '.gif'
+  if (m.includes('bmp')) return '.bmp'
+  return '.jpg'
+}
+
+function getCoverCachePath(userData: string, trackId: string, ext = '.jpg'): string {
   const dir = path.join(userData, 'aurora-music', 'covers')
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }
-  return path.join(dir, `${trackId}.jpg`)
+  return path.join(dir, `${trackId}${ext}`)
 }
 
 /**
@@ -197,8 +224,9 @@ export async function ensureCover(track: Track, userData: string): Promise<strin
     const metadata = await parseFile(track.path, { duration: false })
     const pic = metadata.common.picture?.[0]
     if (!pic) return null
-    const coverDest = getCoverCachePath(userData, track.id)
-    await fs.promises.writeFile(coverDest, pic.data)
+    const data = pic.data instanceof Uint8Array ? pic.data : new Uint8Array(pic.data)
+    const coverDest = getCoverCachePath(userData, track.id, coverExtensionFor(data, pic.format))
+    await fs.promises.writeFile(coverDest, data)
     updateTrack(track.id, { coverPath: coverDest })
     return coverDest
   } catch (err) {

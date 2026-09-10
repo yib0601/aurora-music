@@ -35,8 +35,33 @@ async function walkDir(dirPath: string, files: string[] = []): Promise<string[]>
   return files
 }
 
+/**
+ * 判断封面扩展名：以**真实字节**为准，声明类型仅作兜底。
+ * 部分打标工具会把 PNG 封面声明成 image/jpeg，只信 pic.format 会存错扩展名。
+ */
+function coverExtensionFor(data: Uint8Array, declaredFormat?: string): string {
+  if (data && data.length >= 12) {
+    if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return '.jpg'
+    if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return '.png'
+    if (
+      data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+      data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50
+    ) {
+      return '.webp'
+    }
+    if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return '.gif'
+    if (data[0] === 0x42 && data[1] === 0x4d) return '.bmp'
+  }
+  const m = (declaredFormat || '').toLowerCase()
+  if (m.includes('png')) return '.png'
+  if (m.includes('webp')) return '.webp'
+  if (m.includes('gif')) return '.gif'
+  if (m.includes('bmp')) return '.bmp'
+  return '.jpg'
+}
+
 /** 获取封面缓存目录路径（应用专属目录下 aurora-music/covers） */
-async function getCoverCachePath(trackId: string): Promise<string> {
+async function getCoverCachePath(trackId: string, ext = '.jpg'): Promise<string> {
   const dir = 'aurora-music/covers'
   try {
     await Filesystem.mkdir({ path: dir, directory: Directory.Data, recursive: true })
@@ -44,7 +69,7 @@ async function getCoverCachePath(trackId: string): Promise<string> {
     // 目录已存在不报错
     if (err?.message && !/exist/i.test(err.message)) throw err
   }
-  return `${dir}/${trackId}.jpg`
+  return `${dir}/${trackId}${ext}`
 }
 
 /** 获取歌词缓存目录路径（应用专属目录下 aurora-music/lyrics） */
@@ -94,13 +119,21 @@ async function processFile(
     const trackId = crypto.randomUUID()
     let coverPath: string | undefined
 
+    // 专辑级封面复用键：仅在专辑与艺术家标签都真实存在时才启用。
+    // 否则所有无标签曲目都会落到「未知专辑|未知艺术家」同一个键上，
+    // 导致彼此串用封面（显示成别人的封面）。
+    const albumKey =
+      metadata.common.album && metadata.common.artist
+        ? `${metadata.common.album}|${metadata.common.artist}`
+        : null
+
     if (metadata.common.picture && metadata.common.picture.length > 0) {
       const pic = metadata.common.picture[0]
       try {
-        const coverDest = await getCoverCachePath(trackId)
         // 将 pic.data (Uint8Array) 转 base64 写入
         let bin = ''
         const buf = pic.data instanceof Uint8Array ? pic.data : new Uint8Array(pic.data)
+        const coverDest = await getCoverCachePath(trackId, coverExtensionFor(buf, pic.format))
         const chunk = 0x8000
         for (let i = 0; i < buf.length; i += chunk) {
           bin += String.fromCharCode.apply(null, buf.subarray(i, i + chunk) as any)
@@ -118,13 +151,14 @@ async function processFile(
         // 直接存可访问 URL 到 coverPath，UI 层 getCoverSrc 原样返回即可
         const { uri } = await Filesystem.getUri({ path: coverDest, directory: Directory.Data })
         coverPath = Capacitor.convertFileSrc(uri)
-        coverCache.set(album + '|' + artist, coverPath)
+        if (albumKey) coverCache.set(albumKey, coverPath)
       } catch (err) {
         console.warn('保存封面失败:', err)
       }
-    } else {
-      const key = album + '|' + artist
-      if (coverCache.has(key)) coverPath = coverCache.get(key)
+    } else if (albumKey) {
+      // 本曲无内嵌封面时借用同专辑已缓存的封面
+      const cached = coverCache.get(albumKey)
+      if (cached) coverPath = cached
     }
 
     const track: Track = {

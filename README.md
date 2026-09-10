@@ -182,6 +182,24 @@ cd android && ./gradlew assembleDebug
 
 ---
 
+## CI / CD
+
+仓库有两个 GitHub Actions 工作流，职责严格分开：
+
+| 工作流 | 触发条件 | 做什么 |
+| --- | --- | --- |
+| `ci.yml` | push 到任意分支、PR 到 `main`、手动 dispatch | 只校验，不发布 |
+| `release.yml` | 推送 `v*` tag、手动 dispatch | 构建全平台产物并创建 GitHub Release |
+
+`ci.yml` 的两个任务：
+
+- **Typecheck & Build (app/desktop)** — `shared` 构建 + 三端类型检查（`shared` / `app` / `desktop` electron），再跑 `vite build` 与 electron 主进程编译，确认「类型对得上、包能构建出来」。
+- **Verify Android build & signing** — `cap sync` 后编译 debug APK，并用 `scripts/verify-apk-signature.sh` 校验签名指纹与版本号。签名密钥被换掉、版本号没跟着涨这类问题，历史上多次出现「CI 全绿、用户装不上」，现在会在 PR 阶段直接失败。
+
+tag 推送由 `ci.yml` 的 `tags-ignore` 让路给 `release.yml`，同一提交不会重复跑。
+
+---
+
 ## 构建分发
 
 ### Linux（RPM）
@@ -225,9 +243,41 @@ pnpm build:desktop
 pnpm build:app
 cd packages/mobile && npx cap sync android
 cd android && ./gradlew assembleRelease   # 或 assembleDebug
+
+# 校验产物签名（发布前必做，CI 已自动执行）
+cd ../.. && bash scripts/verify-apk-signature.sh android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 > 推送 `v*` tag 会触发 GitHub Actions 自动构建全平台产物并发布 Release。
+> CI 会先用 `scripts/verify-apk-signature.sh` 校验 APK 签名与版本号，不符即中止发布。
+
+#### 发布签名密钥（重要）
+
+所有版本的 APK 统一由仓库内的 `packages/mobile/android/app/aurora-music.keystore` 签名，
+证书 SHA-256 指纹固定为：
+
+```
+eb4e48a95587ed954789b81b20fc23689cc702e602ebac08050d308eabdb435b
+```
+
+> ⚠️ **该密钥文件必须永久保持不变。** 一旦缺失或被重新生成（哪怕别名、密码相同），
+> 所有已安装用户都会因签名不一致而无法覆盖升级，只能卸载重装。
+> `app/build.gradle` 在密钥缺失时会直接让构建失败，CI 也会校验指纹，以此杜绝静默换钥。
+
+版本号由发布流程注入：`versionCode = major*10000 + minor*100 + patch`（如 `0.1.8` → `108`），
+`versionName` 取自 tag。本地不带参数构建时回退为 `1` / `1.0`。
+
+#### 从 v0.1.4 及更早版本升级
+
+v0.1.4 及更早的 APK 由 CI 每次构建随机生成的调试密钥签名（**每个版本都不同**），因此无法覆盖安装。
+v0.1.5 起已改为固定发布密钥。从 v0.1.4 或更早版本升级时，需**先卸载旧版本再安装**（仅需一次）：
+
+```bash
+adb uninstall com.aurora.music   # 或在手机上长按图标 → 卸载
+```
+
+卸载会清除应用数据（音乐库索引、收藏、播放记录；本地音乐文件不受影响），
+重装后再点「添加目录」导入一次即可。
 
 ---
 

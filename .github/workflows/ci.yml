@@ -1,0 +1,205 @@
+name: CI
+
+# 日常提交流水线：只做「能不能构建 / 类型是否对 / 发布链路是否健全」的校验，
+# 不产出安装包、不做（也不允许做）发布。
+# tag 推送交给 release.yml 全权处理，这里用 tags-ignore 跳过，避免同一提交跑两遍。
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支的新推送取消上一次仍在跑的 CI，省额度也省等待。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '9.15.0'
+
+jobs:
+  # ============ 应用 + 桌面端：类型检查与可构建性 ============
+  verify:
+    name: Typecheck & Build (app/desktop)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # --ignore-scripts：跳过 better-sqlite3 等原生模块的编译。
+      # CI 只做类型检查与前端产物构建，不需要可运行的 native 二进制，
+      # 编译它反而要装一堆编译工具（也拖慢流水线）。
+      - name: Install deps
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # @aurora/app 与 @aurora/desktop 的 types 都指向 @aurora/shared/dist，
+      # 必须先构建 shared，否则后续 tsc 会报 "Cannot find module '@aurora/shared'"。
+      - name: Build shared
+        run: pnpm --filter @aurora/shared build
+
+      - name: Typecheck shared
+        run: pnpm --filter @aurora/shared typecheck
+
+      - name: Typecheck app
+        run: pnpm --filter @aurora/app exec tsc --noEmit
+
+      - name: Typecheck desktop main (electron)
+        run: pnpm --filter @aurora/desktop typecheck
+
+      - name: Build app bundle (vite)
+        run: pnpm --filter @aurora/app build
+
+      - name: Compile desktop main (tsc)
+        run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
+
+      - name: Upload web bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: web-dist
+          path: packages/app/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ============ Android：APK 能构建 + 签名/版本号符合发布要求 ============
+  # 签名密钥一旦被换掉，已安装用户就无法覆盖升级，而这个问题历史上多次
+  # 「CI 全绿、用户装不上」静默复发。所以这里不只构建，还复用发布时的
+  # 校验脚本把指纹与版本号都卡死，让问题在 PR 阶段就暴露。
+  android:
+    name: Verify Android build & signing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Java 21
+        # AGP 9.2 要求 JDK 17+，推荐 JDK 21；同时支持 Kotlin 1.9 编译
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 platforms;android-34'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared
+        run: pnpm --filter @aurora/shared build
+
+      - name: Build app bundle (vite)
+        run: pnpm --filter @aurora/app build
+
+      - name: Sync app dist to mobile webDir
+        run: |
+          mkdir -p packages/mobile/dist
+          cp -r packages/app/dist/* packages/mobile/dist/
+
+      - name: Sync web assets and Capacitor config to Android project
+        run: |
+          cd packages/mobile
+          npx cap sync android
+        env:
+          CAPACITOR_ANDROID_LICENSE_PROMPT: auto
+
+      - name: Patch Capacitor libraries for AGP 9.x compatibility
+        # AGP 9.x 移除了对 getDefaultProguardFile('proguard-android.txt') 的支持，
+        # 但 Capacitor 6.x 各包仍使用旧文件名，需在 cap sync 后批量替换。
+        run: |
+          find node_modules/.pnpm/@capacitor*/node_modules -name "build.gradle" \
+            -exec sed -i "s|proguard-android\.txt|proguard-android-optimize.txt|g" {} \;
+          find node_modules/.pnpm/@capacitor-community*/node_modules -name "build.gradle" \
+            -exec sed -i "s|proguard-android\.txt|proguard-android-optimize.txt|g" {} \;
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('packages/mobile/android/**/*.gradle', 'packages/mobile/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Make gradlew executable
+        run: chmod +x packages/mobile/android/gradlew
+
+      - name: Switch Gradle distribution to official source
+        # 本地用腾讯云镜像加速，CI（境外）改回官方源更稳定
+        run: |
+          sed -i 's|https\\://mirrors.cloud.tencent.com/gradle/|https\\://services.gradle.org/distributions/|' \
+            packages/mobile/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Determine version (versionName / versionCode)
+        # 与 release.yml 同一套编码规则，保证 CI 校验的正是发布时会用的号：
+        # major*10000 + minor*100 + patch（0.1.8 → 108）
+        id: ver
+        run: |
+          V=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+          CODE=$(echo "$V" | awk -F. '{printf "%d", ($1*10000)+($2*100)+$3}')
+          echo "version=$V" >> $GITHUB_OUTPUT
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+          echo "versionName=$V versionCode=$CODE"
+
+      - name: Build APK (debug)
+        run: |
+          cd packages/mobile/android
+          ./gradlew assembleDebug --no-daemon \
+            -PauroraVersionName=${{ steps.ver.outputs.version }} \
+            -PauroraVersionCode=${{ steps.ver.outputs.code }}
+
+      - name: Verify APK signature and version
+        # 与 release.yml 使用同一脚本、同一期望值：CI 通过 == 发布不会被签名/版本号卡住。
+        env:
+          EXPECTED_NAME: ${{ steps.ver.outputs.version }}
+          EXPECTED_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          set -euo pipefail
+          APK=$(find packages/mobile/android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "APK: $APK"
+          bash scripts/verify-apk-signature.sh "$APK"
+
+          AAPT2=$(ls -1 "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"/build-tools/*/aapt2 | sort -V | tail -1)
+          BADGING=$("$AAPT2" dump badging "$APK" | head -1)
+          echo "$BADGING"
+          ACTUAL_NAME=$(echo "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          ACTUAL_CODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+          if [ "$ACTUAL_NAME" != "$EXPECTED_NAME" ] || [ "$ACTUAL_CODE" != "$EXPECTED_CODE" ]; then
+            echo "::error::APK 版本号不符：期望 $EXPECTED_NAME($EXPECTED_CODE)，实际 $ACTUAL_NAME($ACTUAL_CODE)"
+            exit 1
+          fi
+          echo "✅ versionName=$ACTUAL_NAME versionCode=$ACTUAL_CODE"
+
+      - name: Upload APK (debug)
+        uses: actions/upload-artifact@v5
+        with:
+          name: android-apk-debug
+          path: packages/mobile/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7

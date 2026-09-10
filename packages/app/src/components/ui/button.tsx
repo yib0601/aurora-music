@@ -22,13 +22,13 @@ const buttonVariants = cva(
       variant: {
         // Mineradio primary: mint 实心 pill
         primary:
-          'bg-mint text-mint-fg rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-[#00E0BE] hover:-translate-y-px shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]',
+          'bg-mint text-mint-fg rounded-full text-[14px] font-semibold tracking-[-0.224px] hover:bg-[var(--fc-accent-hov)] hover:-translate-y-px shadow-[0_10px_30px_rgba(0,245,212,.18),inset_0_1px_0_rgba(255,255,255,.20)]',
         // Mineradio secondary: 透明 + mint 边框 pill
         secondary:
-          'bg-transparent text-mint border border-mint/34 rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-mint/[0.08] hover:border-mint/50',
+          'bg-transparent text-mint border border-mint/34 rounded-full text-[14px] font-semibold tracking-[-0.224px] hover:bg-mint/[0.08] hover:border-mint/50',
         // Mineradio utility: 暗色玻璃胶囊
         utility:
-          'bg-white/[0.06] text-white/86 border border-white/10 rounded-md text-[14px] font-medium tracking-[-0.224px] hover:bg-white/[0.10] hover:border-white/16 hover:-translate-y-px',
+          'bg-white/[0.06] text-white/86 border border-white/10 rounded-[10px] text-[14px] font-medium tracking-[-0.224px] hover:bg-white/[0.10] hover:border-white/16 hover:-translate-y-px',
         // Mineradio pearl: 玻璃珍珠按钮（Saved Button 质感）
         pearl:
           'bg-[rgba(0,0,0,.10)] backdrop-blur-[12px] saturate-[1.8] text-white/86 border-0 rounded-[13px] text-[13px] font-semibold tracking-[-0.12px] shadow-[inset_0_0_2px_1px_rgba(255,255,255,.34),inset_0_0_10px_4px_rgba(255,255,255,.13),0_10px_30px_rgba(0,0,0,.18)] hover:bg-[rgba(255,255,255,.055)] hover:shadow-[inset_0_0_2px_1px_rgba(255,255,255,.42),inset_0_0_12px_5px_rgba(255,255,255,.17),0_12px_34px_rgba(0,0,0,.22),0_0_18px_rgba(255,255,255,.06)] hover:-translate-y-px',
@@ -36,7 +36,7 @@ const buttonVariants = cva(
         ghost: 'bg-transparent text-white/70 hover:bg-white/[0.06] hover:text-white rounded-sm',
         // destructive: 珊瑚红 pill
         destructive:
-          'bg-coral text-white rounded-pill text-[14px] font-semibold tracking-[-0.224px] hover:bg-coral/90 hover:-translate-y-px',
+          'bg-coral text-white rounded-full text-[14px] font-semibold tracking-[-0.224px] hover:bg-coral/90 hover:-translate-y-px',
         // link
         link: 'bg-transparent text-mint underline-offset-4 hover:underline rounded-none',
         // outline: 暗色玻璃边框
@@ -44,9 +44,10 @@ const buttonVariants = cva(
           'bg-transparent border border-white/10 text-white/80 rounded-sm text-[14px] hover:bg-white/[0.05] hover:border-white/18',
       },
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 px-3 text-[13px]',
-        lg: 'h-11 px-6 text-[15px]',
+        // 统一三档高度：xs 28 / md 36 / lg 44（与 globals.css 的 .pill-* 一致）
+        default: 'h-9 px-4',
+        sm: 'h-7 px-3 text-[12px]',
+        lg: 'h-11 px-6 text-[14px]',
         icon: 'h-9 w-9 rounded-full p-0',
         'icon-sm': 'h-7 w-7 rounded-full p-0',
       },

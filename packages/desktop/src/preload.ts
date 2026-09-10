@@ -8,6 +8,8 @@ const electronAPI = {
   scanFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('scan:start', folderPath),
   getUserDataPath: (): Promise<string> => ipcRenderer.invoke('app:getUserDataPath'),
   getAllTracks: (): Promise<any[]> => ipcRenderer.invoke('db:getAllTracks'),
+  // 从音乐库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
+  removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),
   // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）
   ensureCover: (id: string): Promise<string | null> => ipcRenderer.invoke('covers:ensure', id),
@@ -70,6 +72,12 @@ const electronAPI = {
     const handler = (_event: unknown, error: { folder: string; message: string }) => callback(error)
     ipcRenderer.on('scan:error', handler)
     return () => ipcRenderer.removeListener('scan:error', handler)
+  },
+  // 扫描时发现目录已从磁盘删除：主进程已清理其曲目，渲染进程据此移除该扫描目录条目
+  onFolderMissing: (callback: (payload: { folder: string; removed: number }) => void) => {
+    const handler = (_event: unknown, payload: { folder: string; removed: number }) => callback(payload)
+    ipcRenderer.on('scan:folder-missing', handler)
+    return () => ipcRenderer.removeListener('scan:folder-missing', handler)
   },
   onMediaControl: (callback: (action: string) => void) => {
     const handler = (_event: unknown, action: string) => callback(action)

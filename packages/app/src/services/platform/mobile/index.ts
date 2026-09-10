@@ -63,11 +63,13 @@ type ScanCompleteCb = (tracks: Track[]) => void
 type ScanErrorCb = (e: { folder: string; message: string }) => void
 type MediaControlCb = (action: string) => void
 type TrackScannedCb = (track: Track) => void
+type FolderMissingCb = (e: { folder: string; removed: number }) => void
 
 const scanCompleteCbs = new Set<ScanCompleteCb>()
 const scanErrorCbs = new Set<ScanErrorCb>()
 const mediaControlCbs = new Set<MediaControlCb>()
 const trackScannedCbs = new Set<TrackScannedCb>()
+const folderMissingCbs = new Set<FolderMissingCb>()
 
 function emitScanComplete(tracks: Track[]) {
   scanCompleteCbs.forEach((cb) => cb(tracks))
@@ -77,6 +79,9 @@ function emitScanError(e: { folder: string; message: string }) {
 }
 function emitTrackScanned(track: Track) {
   trackScannedCbs.forEach((cb) => cb(track))
+}
+function emitFolderMissing(e: { folder: string; removed: number }) {
+  folderMissingCbs.forEach((cb) => cb(e))
 }
 
 /**
@@ -107,6 +112,19 @@ async function runScan(folderPath: string): Promise<Track[]> {
     try {
       await Filesystem.readdir({ path: folderPath, directory: Directory.ExternalStorage })
     } catch {
+      // readdir 失败可能是权限不足，也可能是目录已删除：用 stat 区分。
+      // 目录确实不存在才清理其曲目；权限问题必须保留记录，避免误删音乐库
+      const exists = await Filesystem.stat({ path: folderPath, directory: Directory.ExternalStorage })
+        .then(() => true)
+        .catch(() => false)
+      if (!exists) {
+        const removed = await db.deleteTracksByFolder(folderPath)
+        console.log('[Mobile] 扫描目录已不存在，清理其曲目:', folderPath, removed)
+        const remaining = await db.getAllTracks()
+        emitScanComplete(remaining)
+        emitFolderMissing({ folder: folderPath, removed })
+        return remaining
+      }
       throw new Error('文件夹不存在或不可访问')
     }
     // 渐进式扫描：每解析完一首立即通知 UI 追加显示
@@ -138,9 +156,11 @@ export function createMobilePlatform(): PlatformInterface & {
   onTracksScanned: (cb: (tracks: Track[]) => void) => () => void
   onTrackScanned: (cb: (track: Track) => void) => () => void
   onScanError: (cb: ScanErrorCb) => () => void
+  onFolderMissing: (cb: FolderMissingCb) => () => void
   onMediaControl: (cb: MediaControlCb) => () => void
   scanFolder: (folderPath: string) => Promise<Track[]>
   getAllTracks: () => Promise<Track[]>
+  removeFolder: (folderPath: string) => Promise<Track[]>
   searchLyrics: (
     query: string,
     artist?: string,
@@ -389,6 +409,14 @@ export function createMobilePlatform(): PlatformInterface & {
       return db.getAllTracks()
     },
 
+    /** 移除扫描目录：删除该目录下的全部曲目，返回移除后的全库列表 */
+    async removeFolder(folderPath: string) {
+      await ensureDbInited()
+      const removed = await db.deleteTracksByFolder(folderPath)
+      if (removed > 0) console.log('[Mobile] 已移除扫描目录并清理曲目:', folderPath, removed)
+      return db.getAllTracks()
+    },
+
     async scanFolder(folderPath: string) {
       if (typeof folderPath !== 'string' || !folderPath.trim()) {
         emitScanError({ folder: '', message: '扫描失败：未指定文件夹' })
@@ -410,6 +438,11 @@ export function createMobilePlatform(): PlatformInterface & {
     onScanError(cb: ScanErrorCb) {
       scanErrorCbs.add(cb)
       return () => scanErrorCbs.delete(cb)
+    },
+
+    onFolderMissing(cb: FolderMissingCb) {
+      folderMissingCbs.add(cb)
+      return () => folderMissingCbs.delete(cb)
     },
 
     onMediaControl(cb: MediaControlCb) {

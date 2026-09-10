@@ -8,8 +8,12 @@ android {
         applicationId "com.aurora.music"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // 版本号由发布流程注入（CI 取自 release tag，见 .github/workflows/release.yml），
+        // 本地不带参数构建时回退到默认值。若恒为 1，Android 无法把新包识别为「升级」。
+        versionCode project.hasProperty('auroraVersionCode')
+                ? project.property('auroraVersionCode').toString().toInteger() : 1
+        versionName project.hasProperty('auroraVersionName')
+                ? project.property('auroraVersionName').toString() : "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -19,9 +23,19 @@ android {
     }
     // 固定签名：debug/release 统一使用项目内 keystore，
     // 避免覆盖升级时因 debug.keystore 变化导致"签名不一致"
+    //
+    // ⚠️ aurora-music.keystore 是发布密钥，必须入库并永久保持不变。
+    // 一旦重新生成（哪怕别名/密码相同），所有已安装用户都会因签名不一致而无法覆盖升级，
+    // 只能卸载重装。CI 会用 scripts/verify-apk-signature.sh 校验其指纹，指纹不符即中止发布。
     signingConfigs {
         aurora {
-            storeFile file('aurora-music.keystore')
+            def keystoreFile = file('aurora-music.keystore')
+            if (!keystoreFile.exists()) {
+                throw new GradleException(
+                        "缺少发布签名密钥 ${keystoreFile}。请从 git 恢复该文件，" +
+                        "切勿重新生成——重新生成会导致所有已安装用户无法覆盖升级。")
+            }
+            storeFile keystoreFile
             storePassword 'aurora-music-signing'
             keyAlias 'aurora'
             keyPassword 'aurora-music-signing'

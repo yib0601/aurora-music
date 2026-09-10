@@ -86,7 +86,7 @@ export function Sidebar() {
     <div className="flex-1 flex flex-col min-h-0 h-full">
       {/* 品牌区 */}
       <div className="flex items-center gap-3 px-4 py-5">
-        <div className="w-8 h-8 rounded-md bg-mint flex items-center justify-center">
+        <div className="w-8 h-8 rounded-[10px] bg-mint flex items-center justify-center">
           <Music className="h-4 w-4 text-mint-fg" strokeWidth={2} />
         </div>
         <div className="flex flex-col">
@@ -107,7 +107,7 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2.5 px-3 py-[7px] rounded-md text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
+                'flex items-center gap-2.5 h-9 px-3 rounded-[10px] text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
                 isActive
                   ? 'bg-white/[0.08] border-white/10 text-white [text-shadow:0_0_12px_rgba(0,245,212,.18)] shadow-[inset_0_1px_0_rgba(255,255,255,.08)]'
                   : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
@@ -126,25 +126,23 @@ export function Sidebar() {
           <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
             播放列表
           </span>
-          <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-white/40 hover:text-mint"
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="btn-icon"
               onClick={handleImportPlaylist}
               title="导入播放列表"
             >
               <Upload className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-white/40 hover:text-mint"
+            </button>
+            <button
+              type="button"
+              className="btn-icon"
               onClick={() => setShowCreateDialog(true)}
               title="新建播放列表"
             >
               <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </Button>
+            </button>
           </div>
         </div>
         <div className="flex flex-col gap-px">
@@ -163,14 +161,14 @@ export function Sidebar() {
                       if (e.key === 'Enter') handleRename(pl.id)
                       if (e.key === 'Escape') { setEditingId(null); setEditingName('') }
                     }}
-                    className="h-7 text-[13px] px-2.5 py-0.5 flex-1"
+                    className="h-7 text-[13px] px-2.5 py-0.5 flex-1 rounded-[8px]"
                   />
                 ) : (
                   <NavLink
                     to={`/playlist/${pl.id}`}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center gap-2.5 px-3 py-[7px] rounded-md flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
+                        'flex items-center gap-2.5 h-9 px-3 rounded-[10px] flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
                         isActive
                           ? 'bg-white/[0.08] border-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.08)]'
                           : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
@@ -189,7 +187,7 @@ export function Sidebar() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-white flex-shrink-0"
+                      className="rounded-[8px] opacity-0 group-hover:opacity-100 text-white/40 hover:text-white flex-shrink-0"
                     >
                       <MoreHorizontal className="h-3 w-3" strokeWidth={1.5} />
                     </Button>

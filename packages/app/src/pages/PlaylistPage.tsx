@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { platform } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 import {
   Play,
   Pause,
@@ -119,14 +119,12 @@ export function PlaylistPage() {
     // 与其他页面共享 1200px 居中内容轴（PageLayout 同款），避免全屏拉伸
     <div className="flex flex-col h-full overflow-hidden mx-auto w-full max-w-[1200px]">
       <div className="px-4 pt-4 md:px-8 md:pt-8 pb-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="mb-4 transition-all duration-200 ease-apple"
+        <button
+          className="btn-icon mb-4"
           onClick={() => navigate(-1)}
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={1.7} />
-        </Button>
+        </button>
         <div className="flex items-center gap-6 max-w-4xl">
           <div className="w-44 h-44 rounded-lg glass-regular border border-white/10 flex items-center justify-center flex-shrink-0 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
             <ListMusic className="h-20 w-20 text-mint" strokeWidth={1.3} />
@@ -155,7 +153,7 @@ export function PlaylistPage() {
           <Button
             variant="primary"
             size="icon"
-            className="w-12 h-12 rounded-full p-0"
+            className="w-11 h-11 rounded-full p-0"
             onClick={handlePlayAll}
             disabled={playlistTracks.length === 0}
           >
@@ -163,7 +161,7 @@ export function PlaylistPage() {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="w-11 h-11">
                 <MoreHorizontal className="h-5 w-5" strokeWidth={1.6} />
               </Button>
             </DropdownMenuTrigger>
@@ -242,12 +240,12 @@ export function PlaylistPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xs bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden product-shadow">
-                    {track.coverPath ? (
-                      <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <Music2 className="h-4 w-4 text-white/40" strokeWidth={1.6} />
-                    )}
+                  <div className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden product-shadow">
+                    <CoverImage
+                      track={track}
+                      className="w-full h-full object-cover"
+                      fallback={<Music2 className="h-4 w-4 text-white/40" strokeWidth={1.6} />}
+                    />
                   </div>
                   <div className="min-w-0">
                     <p
@@ -271,7 +269,7 @@ export function PlaylistPage() {
                       toggleLike(track.id)
                     }}
                     className={cn(
-                      'p-1.5 rounded-sm hover:bg-mint/[0.075] transition-all duration-200 ease-apple',
+                      'h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-mint/[0.075] transition-all duration-200 ease-apple',
                       likedTracks.has(track.id) ? 'text-coral' : 'text-white/40'
                     )}
                   >
@@ -285,7 +283,7 @@ export function PlaylistPage() {
                     <DropdownMenuTrigger asChild>
                       <button
                         onClick={(e) => e.stopPropagation()}
-                        className="p-1.5 rounded-sm hover:bg-mint/[0.075] text-white/50 transition-all duration-200 ease-apple"
+                        className="h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-mint/[0.075] text-white/50 transition-all duration-200 ease-apple"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.7} />
                       </button>

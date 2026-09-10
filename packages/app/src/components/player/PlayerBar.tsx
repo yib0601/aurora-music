@@ -5,7 +5,7 @@ import { cn, formatTime, isMobile } from '@/lib/utils'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { platform } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 
 interface PlayerBarProps {
   currentTrack?: Track | null
@@ -28,7 +28,7 @@ interface PlayerBarProps {
  * - 胶囊形玻璃面板（glass-saved-panel）
  * - 顶部进度条 + 三列控制网格（曲目信息 / 播放控制 / 音量）
  * - 主播放按钮使用 glass-saved-button 圆形玻璃
- * - 普通控制按钮使用 btn-icon（36×36，11px 圆角）
+ * - 普通控制按钮使用 btn-icon（28×28，8px 圆角）
  *
  * ⚠️ 性能：isPlaying / progress / duration 在此自行订阅，
  * 避免向上冒泡到 AppLayout 触发整树重渲染
@@ -121,17 +121,13 @@ export function PlayerBar({
           title="展开播放器"
           className="flex items-center gap-2.5 min-w-0 flex-1 py-1 active:scale-[0.99] transition"
         >
-          <div className="w-10 h-10 rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
-            {currentTrack?.coverPath ? (
-              <img
-                src={platform.getCoverSrc(currentTrack.coverPath)}
-                alt={currentTrack.title}
-                className="w-full h-full object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
-            ) : (
-              <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
-            )}
+          <div className="w-10 h-10 rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
+            <CoverImage
+              track={currentTrack}
+              alt={currentTrack?.title}
+              className="w-full h-full object-cover"
+              fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
+            />
           </div>
           <div className="min-w-0 flex flex-col">
             <p className="text-[13px] font-bold text-white/92 truncate tracking-[-0.224px]">
@@ -224,24 +220,18 @@ export function PlayerBar({
           <button
             onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
             title="查看歌曲详情"
-            className="w-[40px] h-[40px] rounded-[9px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+            className="w-[40px] h-[40px] rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
             style={{
               boxShadow:
                 '0 6px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07)',
             }}
           >
-            {currentTrack?.coverPath ? (
-              <img
-                src={platform.getCoverSrc(currentTrack.coverPath)}
-                alt={currentTrack.title}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none'
-                }}
-              />
-            ) : (
-              <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />
-            )}
+            <CoverImage
+              track={currentTrack}
+              alt={currentTrack?.title}
+              className="w-full h-full object-cover"
+              fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
+            />
           </button>
           <div className="min-w-0 flex flex-col gap-0.5">
             <p className="text-[12.5px] font-bold text-white/92 truncate hover:text-white hover:[text-shadow:0_0_12px_rgba(0,245,212,.16)] transition-all">
@@ -257,7 +247,7 @@ export function PlayerBar({
         <div className="flex items-center gap-2 justify-center">
           <button
             className={cn(
-              'btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center',
+              'btn-icon',
               playModeActive &&
                 'text-mint [text-shadow:0_0_8px_rgba(0,245,212,.12)]',
             )}
@@ -283,7 +273,7 @@ export function PlayerBar({
             )}
           </button>
           <button
-            className="btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center"
+            className="btn-icon"
             onClick={onPrevious}
             disabled={!currentTrack}
           >
@@ -303,7 +293,7 @@ export function PlayerBar({
             )}
           </button>
           <button
-            className="btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center"
+            className="btn-icon"
             onClick={onNext}
             disabled={!currentTrack}
           >
@@ -311,8 +301,8 @@ export function PlayerBar({
           </button>
           <button
             className={cn(
-              'btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center',
-              showQueuePanel && 'text-mint bg-mint/[0.08]',
+              'btn-icon',
+              showQueuePanel && 'is-on',
             )}
             onClick={toggleQueuePanel}
             title="队列"
@@ -324,7 +314,7 @@ export function PlayerBar({
         {/* 右列：音量控制 */}
         <div className="flex items-center gap-2 justify-end">
           <button
-            className="btn-icon w-7 h-7 rounded-[8px] flex items-center justify-center"
+            className="btn-icon"
             onClick={onToggleMute}
             title={muted || volume === 0 ? '取消静音' : '静音'}
           >
@@ -334,7 +324,7 @@ export function PlayerBar({
               <Volume2 className="h-[14px] w-[14px]" strokeWidth={1.5} />
             )}
           </button>
-          <div className="w-24 h-3 flex items-center">
+          <div className="w-24 h-4 flex items-center">
             <input
               type="range"
               min={0}
@@ -347,10 +337,8 @@ export function PlayerBar({
               onMouseUp={handleVolumeCommit}
               onTouchEnd={handleVolumeCommit}
               onMouseLeave={() => seekingVolume && handleVolumeCommit()}
-              className="w-full h-1 rounded-full appearance-none cursor-pointer"
-              style={{
-                background: `linear-gradient(to right, rgba(var(--fc-accent-rgb),.45) 0%, rgba(var(--fc-accent-rgb),.9) ${volumePercent}%, var(--track-fill) ${volumePercent}%, var(--track-fill) 100%)`,
-              }}
+              className="volume-bar w-full rounded-full cursor-pointer"
+              style={{ '--volume': `${volumePercent}%` } as React.CSSProperties}
             />
           </div>
         </div>

@@ -9,7 +9,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { LyricsView } from '@/components/lyrics/LyricsView'
-import { platform } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 
 interface Props {
   open: boolean
@@ -62,7 +62,6 @@ export function MobileNowPlaying({ open, onClose }: Props) {
   const progressPercent = duration > 0 ? (displayedProgress / duration) * 100 : 0
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
   const isLiked = currentTrack ? likedTracks.has(currentTrack.id) : false
-  const coverSrc = currentTrack?.coverPath ? platform.getCoverSrc(currentTrack.coverPath) : null
 
   const handleSeekStart = () => { setSeeking(true); setSeekValue(progress) }
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => setSeekValue(parseFloat(e.target.value))
@@ -105,11 +104,12 @@ export function MobileNowPlaying({ open, onClose }: Props) {
             style={{ background: 'radial-gradient(circle at 30% 30%, rgba(var(--fc-accent-rgb),.20), transparent 70%)' }}
           />
           <div className="relative w-full h-full rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center overflow-hidden product-shadow">
-            {coverSrc ? (
-              <img src={coverSrc} alt={currentTrack?.title || ''} className="w-full h-full object-cover" />
-            ) : (
-              <Music2 className="h-20 w-20 text-mint/40" strokeWidth={1} />
-            )}
+            <CoverImage
+              track={currentTrack}
+              alt={currentTrack?.title || ''}
+              className="w-full h-full object-cover"
+              fallback={<Music2 className="h-20 w-20 text-mint/40" strokeWidth={1} />}
+            />
           </div>
         </div>
       </div>

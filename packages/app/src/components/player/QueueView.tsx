@@ -3,7 +3,7 @@ import { X, Music2, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { platform } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 import { cn, formatTime } from '@/lib/utils'
 
 /**
@@ -39,7 +39,7 @@ export function QueueView() {
         </span>
         <button
           onClick={() => setQueuePanel(false)}
-          className="w-7 h-7 rounded-sm flex items-center justify-center text-foreground/60 hover:text-coral hover:bg-white/20 dark:hover:bg-white/10 transition-colors duration-200 ease-apple"
+          className="btn-icon text-foreground/60 hover:text-coral"
         >
           <X className="h-4 w-4" strokeWidth={1.5} />
         </button>
@@ -65,13 +65,13 @@ export function QueueView() {
                 <button
                   onClick={() => navigate(`/song/${track.id}`)}
                   title="查看歌曲详情"
-                  className="w-[38px] h-[38px] rounded-[7px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+                  className="w-10 h-10 rounded-[8px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                 >
-                  {track.coverPath ? (
-                    <img src={platform.getCoverSrc(track.coverPath)} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />
-                  )}
+                  <CoverImage
+                    track={track}
+                    className="w-full h-full object-cover"
+                    fallback={<Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />}
+                  />
                 </button>
                 <button
                   onClick={() => handlePlayTrack(idx)}
@@ -91,7 +91,7 @@ export function QueueView() {
                 </button>
                 <button
                   onClick={() => handleRemoveTrack(idx)}
-                  className="w-6 h-6 rounded-sm flex items-center justify-center text-foreground/30 opacity-0 group-hover:opacity-100 hover:bg-coral/78 hover:text-white transition-all duration-200 ease-apple"
+                  className="btn-icon text-foreground/30 opacity-0 group-hover:opacity-100 hover:bg-coral/78 hover:text-white"
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </button>

@@ -28,6 +28,7 @@ import {
 } from '@/services/permission'
 import { useThemeColor } from '@/hooks/useThemeColor'
 import { platform, setFolderPickerHandler } from '@/services/platform'
+import { CoverImage } from '@/components/common/CoverImage'
 import { MobileFolderPicker } from '@/components/MobileFolderPicker'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import {
@@ -41,6 +42,25 @@ import type { Track } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
 let initialScanTriggered = false
+
+// 扫描增量入库的批量阈值：攒满 SCAN_BATCH_SIZE 首、或距首次入队超过 SCAN_FLUSH_MS 毫秒，
+// 才写一次 store。逐首写入意味着「N 首歌 = N 次整表重渲染」，是歌曲多时卡顿的主因。
+const SCAN_BATCH_SIZE = 80
+const SCAN_FLUSH_MS = 300
+let pendingScanned: Track[] = []
+let scanFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 把攒下的扫描结果一次性写入音乐库（addTracks 按 id 去重，重复扫描无副作用） */
+function flushScannedTracks() {
+  if (scanFlushTimer) {
+    clearTimeout(scanFlushTimer)
+    scanFlushTimer = null
+  }
+  if (pendingScanned.length === 0) return
+  const batch = pendingScanned
+  pendingScanned = []
+  useLibraryStore.getState().addTracks(batch)
+}
 
 /**
  * Apple Liquid Glass AppLayout
@@ -204,15 +224,38 @@ function AppLayout() {
     if (platform.onTracksScanned) {
       unsubscribers.push(
         platform.onTracksScanned((scannedTracks: Track[]) => {
+          flushScannedTracks()
           useLibraryStore.getState().setTracks(scannedTracks)
         })
       )
     }
-    // 渐进式刷新：每解析完一首立即追加到音乐库（addTracks 按 id 去重，重复扫描无副作用）
+    // 渐进式刷新：扫描期间每解析完一首平台都会推送一次。逐首写 store 会让每次
+    // 都触发一次整表重渲染（上千首时直接卡死），因此在这里合并成批：
+    // 攒满 SCAN_BATCH_SIZE 首或距首次入队超过 SCAN_FLUSH_MS 才写一次。
     if (platform.onTrackScanned) {
       unsubscribers.push(
         platform.onTrackScanned((track: Track) => {
-          useLibraryStore.getState().addTracks([track])
+          pendingScanned.push(track)
+          if (pendingScanned.length >= SCAN_BATCH_SIZE) {
+            flushScannedTracks()
+          } else if (!scanFlushTimer) {
+            scanFlushTimer = setTimeout(flushScannedTracks, SCAN_FLUSH_MS)
+          }
+        })
+      )
+      unsubscribers.push(() => {
+        if (scanFlushTimer) clearTimeout(scanFlushTimer)
+        scanFlushTimer = null
+        pendingScanned = []
+      })
+    }
+    // 扫描时发现目录已从磁盘删除：主进程已清理该目录的曲目并推送最新列表，
+    // 这里同步移除目录配置，避免每次启动都重复扫描一个不存在的目录
+    if (platform.onFolderMissing) {
+      unsubscribers.push(
+        platform.onFolderMissing(({ folder, removed }) => {
+          console.warn(`[Scan] 目录已不存在，已从音乐库清理 ${removed} 首曲目并移除该扫描目录:`, folder)
+          useLibraryStore.getState().removeScanFolder(folder)
         })
       )
     }
@@ -561,15 +604,12 @@ function AppLayout() {
                     title="查看歌曲详情"
                     className="relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02]"
                   >
-                    {currentTrack.coverPath ? (
-                      <img
-                        src={platform.getCoverSrc(currentTrack.coverPath)}
-                        alt={currentTrack.title}
-                        className="w-full h-full object-cover product-shadow"
-                      />
-                    ) : (
-                      <div className="text-4xl text-white/30">🎵</div>
-                    )}
+                    <CoverImage
+                      track={currentTrack}
+                      alt={currentTrack.title}
+                      className="w-full h-full object-cover product-shadow"
+                      fallback={<div className="text-4xl text-white/30">🎵</div>}
+                    />
                   </button>
 
                   <div className="text-center">
