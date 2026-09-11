@@ -18,7 +18,8 @@ export function useThemeColor(coverPath: string | undefined) {
     if (coverPath === lastPathRef.current) return
     lastPathRef.current = coverPath
 
-    const url = platform.getCoverSrc(coverPath)
+    // 远端封面（在线曲目）直接用 https 地址，本地路径才走 cover-local 协议
+    const url = /^https?:\/\//i.test(coverPath) ? coverPath : platform.getCoverSrc(coverPath)
 
     extractColorsFromUrl(url).then((colors) => {
       if (!colors) return

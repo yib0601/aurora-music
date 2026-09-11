@@ -112,7 +112,7 @@ function requestOnlineCover(trackId: string): Promise<string | null> {
 }
 
 /** 仅取封面相关字段，便于传入 playerStore 队列项等 Track 副本 */
-type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'onlineUrl'>
+type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'coverUrl' | 'onlineUrl'>
 
 export interface CoverImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   track?: CoverTrack | null
@@ -134,7 +134,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
   useEffect(() => {
     setResolved(null)
     setFailed(false)
-  }, [trackId, coverPath])
+  }, [trackId, coverPath, track?.coverUrl])
 
   useEffect(() => {
     if (!needsExtraction || !platform.ensureCover) return
@@ -173,14 +173,18 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
   }, [trackId, needsExtraction, updateTrack])
 
   const src = coverPath || resolved
+  // 在线曲目无本地封面时直接用源提供的远端 coverUrl（本地路径才走 cover-local 协议）
+  const remoteSrc = !src && track?.coverUrl && /^https?:\/\//i.test(track.coverUrl) ? track.coverUrl : null
   // 封面文件缺失/损坏时回退到占位图，而不是留一个碎图或空框
-  if (!src || failed) return <>{fallback}</>
+  if ((!src && !remoteSrc) || failed) return <>{fallback}</>
 
   return (
     <img
       {...imgProps}
-      src={platform.getCoverSrc(src)}
+      src={src ? platform.getCoverSrc(src) : remoteSrc!}
       alt={alt}
+      // 远端封面常有防盗链，不发送 Referer（与搜索列表一致）
+      referrerPolicy={remoteSrc ? 'no-referrer' : imgProps.referrerPolicy}
       onError={(e) => {
         setFailed(true)
         imgProps.onError?.(e)
