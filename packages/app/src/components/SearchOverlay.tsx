@@ -7,6 +7,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
+import { toast } from '@/components/common/Toast'
 import { cn, formatTime } from '@/lib/utils'
 import {
   ContextMenu,
@@ -296,7 +297,7 @@ interface SearchOverlayProps {
 /**
  * Spotlight 风格搜索浮层（Liquid Glass）
  * - 以 portal 挂到 body，覆盖在音乐库之上，底层界面完全不改动
- * - 顶部玻璃面板：搜索框 + 本地/在线结果，Esc / 点击遮罩关闭
+ * - 顶部玻璃面板：搜索框 + 结果区（本地在上、在线在下同屏展示），Esc / 点击遮罩关闭
  * - 键盘：↑/↓ 移动高亮、Enter 播放高亮项（无高亮时记录搜索历史）
  * - 结果行用 row-hover + hairline 分隔；封面 rounded-xs + product-shadow
  * - 本地走内存过滤，在线按用户配置的歌源协议搜索
@@ -309,7 +310,6 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [tab, setTab] = useState<'local' | 'online'>('local')
   const [onlineResults, setOnlineResults] = useState<OnlineTrackSearchResult[]>([])
   const [onlineLoading, setOnlineLoading] = useState(false)
   const [onlineError, setOnlineError] = useState<string | null>(null)
@@ -373,12 +373,14 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     )
   }, [debouncedQuery, tracks])
 
-  // 在线搜索：tab=online 且 query 非空时触发
+  // 在线搜索：query 非空即触发（本地/在线结果同屏展示，无 tab 切换）；
+  // 未配置源时跳过，避免无效 IPC
   useEffect(() => {
     const q = debouncedQuery.trim()
-    if (tab !== 'online' || !q) {
+    if (!q || enabledSourceCount === 0) {
       setOnlineResults([])
       setOnlineError(null)
+      setOnlineLoading(false)
       return
     }
     const seq = ++searchSeqRef.current
@@ -403,7 +405,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
         if (seq !== searchSeqRef.current) return
         setOnlineLoading(false)
       })
-  }, [debouncedQuery, tab, onlineSources, downloadQuality])
+  }, [debouncedQuery, onlineSources, downloadQuality, enabledSourceCount])
 
   // 在线结果转 Track（复用播放器逻辑）：path 置空，onlineUrl 携带播放地址
   const onlineTracks: Track[] = useMemo(() => {
@@ -440,10 +442,13 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     return Array.from(groupMap.values())
   }, [onlineTracks])
 
-  // 键盘可操作的结果列表（本地只展示前 30 条，需与渲染保持一致）
+  // 本地只展示前 30 条（渲染与键盘导航共用同一份切片，保持一致）
+  const localSlice = useMemo(() => localResults.slice(0, 30), [localResults])
+
+  // 键盘可操作的结果列表：本地在上、在线在下，与渲染顺序一致
   const activeList = useMemo(
-    () => (tab === 'local' ? localResults.slice(0, 30) : onlineLoading || onlineError ? [] : onlineTracks),
-    [tab, localResults, onlineTracks, onlineLoading, onlineError]
+    () => [...localSlice, ...onlineTracks],
+    [localSlice, onlineTracks]
   )
 
   // 行 id → 全局下标：分组渲染时 O(1) 换算键盘高亮位置，避免每行 findIndex 的 O(n²)
@@ -453,10 +458,10 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     return map
   }, [activeList])
 
-  // 查询/标签变化后旧的高亮已失效，重置
+  // 查询变化后旧的高亮已失效，重置
   useEffect(() => {
     setActiveIdx(-1)
-  }, [debouncedQuery, tab])
+  }, [debouncedQuery])
 
   // 高亮移动时把对应行滚入可视区
   useEffect(() => {
@@ -535,18 +540,24 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
           downloadDir || undefined
         )
         if (downloadDir) {
-          alert(`下载完成\n已保存到：${savedPath}`)
+          toast(`下载完成\n已保存到：${savedPath}`)
         } else {
-          // 本次走了保存对话框：询问是否把所选目录设为默认下载目录
+          // 本次走了保存对话框：提供「设为默认下载目录」操作，点击后不再每次询问
           const dir = savedPath.replace(/[\\/][^\\/]*$/, '')
-          if (window.confirm(`下载完成\n已保存到：${savedPath}\n\n后续下载都保存到「${dir}」，不再询问吗？\n（可随时在「设置 → 下载」中修改）`)) {
-            useLibraryStore.getState().setDownloadDir(dir)
-          }
+          toast(`下载完成\n已保存到：${savedPath}`, {
+            action: {
+              label: '设为默认下载目录',
+              onClick: () => {
+                useLibraryStore.getState().setDownloadDir(dir)
+                toast(`后续下载将直接保存到「${dir}」，可在「设置 → 下载」中修改`)
+              },
+            },
+          })
         }
       } catch (err: any) {
         // 用户在保存对话框点了取消，不算失败
         if (err?.message !== '已取消保存' && err?.message !== '缺少存储权限') {
-          alert(err?.message || '下载失败，请稍后重试')
+          toast(err?.message || '下载失败，请稍后重试', { type: 'error' })
         }
       } finally {
         setDownloadingIds((prev) => {
@@ -572,7 +583,13 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     } else if (e.key === 'Enter') {
       const track = activeIdx >= 0 ? activeList[activeIdx] : undefined
       if (track) {
-        handlePlayOnline(track, activeIdx, activeList)
+        // activeList 本地在前、在线在后：按下标区分播放队列
+        const localCount = localSlice.length
+        if (activeIdx < localCount) {
+          handlePlayLocal(track, activeIdx)
+        } else {
+          handlePlayOnline(track, activeIdx - localCount, onlineTracks)
+        }
         onClose()
       } else {
         addSearchHistory(query)
@@ -678,164 +695,118 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
               </section>
             )
           ) : (
-            <>
-              {/* 本地/在线 tab 切换 */}
-              <div className="flex items-center gap-1 mb-3 px-1">
-                <button
-                  onClick={() => setTab('local')}
-                  className={cn(
-                    'flex items-center gap-1.5 h-7 px-3.5 rounded-full text-[12px] font-semibold tracking-[-0.12px] transition-colors duration-200 ease-apple',
-                    tab === 'local'
-                      ? 'bg-mint/[0.12] text-mint'
-                      : 'text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
+            /* 本地/在线结果同屏：本地在上、在线在下 */
+            <div className="space-y-5">
+              {/* 本地结果 */}
+              <section>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/40 tracking-[-0.12px]">
+                    <HardDrive className="h-3 w-3" strokeWidth={1.8} />
+                    本地 ({localResults.length})
+                  </h2>
+                  {localResults.length > 30 && (
+                    <span className="font-text text-[12px] text-white/35 tracking-[-0.12px]">
+                      仅显示前 30 条
+                    </span>
                   )}
-                >
-                  <HardDrive className="h-3 w-3" strokeWidth={1.8} />
-                  本地 ({localResults.length})
-                </button>
-                <button
-                  onClick={() => setTab('online')}
-                  className={cn(
-                    'flex items-center gap-1.5 h-7 px-3.5 rounded-full text-[12px] font-semibold tracking-[-0.12px] transition-colors duration-200 ease-apple',
-                    tab === 'online'
-                      ? 'bg-mint/[0.12] text-mint'
-                      : 'text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
-                  )}
-                >
+                </div>
+                {localResults.length === 0 ? (
+                  <p className="px-1 py-4 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
+                    没有匹配 "{query}" 的本地歌曲
+                  </p>
+                ) : (
+                  <div className="card-list overflow-hidden">
+                    {localSlice.map((track, idx) => (
+                      <LocalResultRow
+                        key={track.id}
+                        track={track}
+                        idx={idx}
+                        isActive={idx === activeIdx}
+                        isLiked={likedTracks.has(track.id)}
+                        playlists={playlists}
+                        onHover={handleHoverRow}
+                        onPlay={handlePlayLocal}
+                        onPlayNext={handlePlayNext}
+                        onAddToQueue={handleAddToQueue}
+                        onToggleLike={handleToggleLike}
+                        onAddToPlaylist={handleAddToPlaylist}
+                        onOpenDetail={handleOpenDetail}
+                        registerRow={registerRow}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* 在线结果 */}
+              <section>
+                <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/40 mb-3 px-1 tracking-[-0.12px]">
                   <Cloud className="h-3 w-3" strokeWidth={1.8} />
                   在线
-                </button>
-              </div>
-
-              {tab === 'local' ? (
-                localResults.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center min-h-[280px]">
-                    <div className="relative mb-5">
-                      <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                      <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                        <Music2 className="h-[52px] w-[52px] text-coral/60" strokeWidth={1} />
-                      </div>
-                    </div>
-                    <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">未找到结果</p>
-                    <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的本地歌曲</p>
+                  {onlineLoading && (
+                    <Loader2 className="h-3 w-3 text-mint/70 animate-spin" strokeWidth={1.8} />
+                  )}
+                </h2>
+                {enabledSourceCount === 0 ? (
+                  <div className="px-1 py-4 flex flex-col items-center gap-3">
+                    <p className="font-text text-[13px] text-white/35 tracking-[-0.15px] text-center">
+                      应用不内置任何音乐源，请先在设置中配置符合协议的搜索接口
+                    </p>
+                    <button
+                      onClick={() => {
+                        navigate('/settings')
+                        onClose()
+                      }}
+                      className="pill pill-md bg-mint/[0.12] text-mint hover:bg-mint/20"
+                    >
+                      前往设置音乐源
+                    </button>
                   </div>
+                ) : onlineError ? (
+                  <p className="px-1 py-4 text-center font-text text-[13px] text-coral/70 tracking-[-0.15px]">
+                    {onlineError}
+                  </p>
+                ) : onlineLoading && onlineTracks.length === 0 ? (
+                  <div className="px-1 py-4 flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 text-mint/60 animate-spin" strokeWidth={1.5} />
+                    <span className="font-text text-[13px] text-white/40 tracking-[-0.15px]">正在搜索在线音乐...</span>
+                  </div>
+                ) : onlineTracks.length === 0 ? (
+                  <p className="px-1 py-4 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
+                    没有匹配 "{query}" 的在线歌曲
+                  </p>
                 ) : (
                   <div className="space-y-5">
-                    <section>
-                      {/* 结果计数收束：让单条/少量结果不再悬空 */}
-                      <div className="flex items-center justify-between mb-3 px-1">
-                        <h2 className="font-text text-[12px] font-semibold text-white/50 tracking-[-0.12px]">
-                          共 {localResults.length} 条结果
+                    {onlineGroups.map((group) => (
+                      <section key={group.key}>
+                        <h2 className="font-text text-[12px] font-semibold text-white/40 mb-3 px-1 tracking-[-0.12px]">
+                          {group.label} ({group.tracks.length})
                         </h2>
-                        {localResults.length > 30 && (
-                          <span className="font-text text-[12px] text-white/35 tracking-[-0.12px]">
-                            仅显示前 30 条
-                          </span>
-                        )}
-                      </div>
-                      <div className="card-list overflow-hidden">
-                        {localResults.slice(0, 30).map((track, idx) => (
-                          <LocalResultRow
-                            key={track.id}
-                            track={track}
-                            idx={idx}
-                            isActive={idx === activeIdx}
-                            isLiked={likedTracks.has(track.id)}
-                            playlists={playlists}
-                            onHover={handleHoverRow}
-                            onPlay={handlePlayLocal}
-                            onPlayNext={handlePlayNext}
-                            onAddToQueue={handleAddToQueue}
-                            onToggleLike={handleToggleLike}
-                            onAddToPlaylist={handleAddToPlaylist}
-                            onOpenDetail={handleOpenDetail}
-                            registerRow={registerRow}
-                          />
-                        ))}
-                      </div>
-                    </section>
+                        <div className="card-list overflow-hidden">
+                          {group.tracks.map((track, idx) => (
+                            <OnlineResultRow
+                              key={track.id}
+                              track={track}
+                              idx={idx}
+                              flatIdx={flatIdxById.get(track.id) ?? 0}
+                              queue={group.tracks}
+                              isActive={activeIdx >= 0 && flatIdxById.get(track.id) === activeIdx}
+                              isDownloading={downloadingIds.has(track.id)}
+                              onHover={handleHoverRow}
+                              onPlay={handlePlayOnline}
+                              onPlayNext={handlePlayNext}
+                              onAddToQueue={handleAddToQueue}
+                              onDownload={handleDownload}
+                              registerRow={registerRow}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
                   </div>
-                )
-              ) : enabledSourceCount === 0 ? (
-                <div className="flex flex-col items-center justify-center min-h-[280px]">
-                  <div className="relative mb-5">
-                    <div className="absolute -inset-10 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
-                    <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                      <Cloud className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
-                    </div>
-                  </div>
-                  <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">未配置音乐源</p>
-                  <p className="font-text text-[14px] text-white/40 tracking-[-0.15px] mb-5 text-center max-w-xs">
-                    应用不内置任何音乐源，请先在设置中配置符合协议的搜索接口
-                  </p>
-                  <button
-                    onClick={() => {
-                      navigate('/settings')
-                      onClose()
-                    }}
-                    className="pill pill-md bg-mint/[0.12] text-mint hover:bg-mint/20"
-                  >
-                    前往设置音乐源
-                  </button>
-                </div>
-              ) : onlineLoading ? (
-                <div className="flex flex-col items-center justify-center min-h-[280px]">
-                  <Loader2 className="h-10 w-10 text-mint/60 animate-spin mb-4" strokeWidth={1.5} />
-                  <p className="font-text text-[14px] text-white/50 tracking-[-0.15px]">正在搜索在线音乐...</p>
-                </div>
-              ) : onlineError ? (
-                <div className="flex flex-col items-center justify-center min-h-[280px]">
-                  <div className="relative mb-5">
-                    <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                    <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                      <Music2 className="h-[52px] w-[52px] text-coral/60" strokeWidth={1} />
-                    </div>
-                  </div>
-                  <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">搜索失败</p>
-                  <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">{onlineError}</p>
-                </div>
-              ) : onlineTracks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center min-h-[280px]">
-                  <div className="relative mb-5">
-                    <div className="absolute -inset-10 bg-gradient-to-b from-coral/10 to-transparent rounded-full blur-3xl" />
-                    <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
-                      <Music2 className="h-[52px] w-[52px] text-coral/60" strokeWidth={1} />
-                    </div>
-                  </div>
-                  <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">未找到结果</p>
-                  <p className="font-text text-[14px] text-white/40 tracking-[-0.15px]">没有匹配 "{query}" 的在线歌曲</p>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  {onlineGroups.map((group) => (
-                    <section key={group.key}>
-                      <h2 className="font-text text-[12px] font-semibold text-white/40 mb-3 px-1 tracking-[-0.12px]">
-                        {group.label} ({group.tracks.length})
-                      </h2>
-                      <div className="card-list overflow-hidden">
-                        {group.tracks.map((track, idx) => (
-                          <OnlineResultRow
-                            key={track.id}
-                            track={track}
-                            idx={idx}
-                            flatIdx={flatIdxById.get(track.id) ?? 0}
-                            queue={group.tracks}
-                            isActive={activeIdx >= 0 && flatIdxById.get(track.id) === activeIdx}
-                            isDownloading={downloadingIds.has(track.id)}
-                            onHover={handleHoverRow}
-                            onPlay={handlePlayOnline}
-                            onPlayNext={handlePlayNext}
-                            onAddToQueue={handleAddToQueue}
-                            onDownload={handleDownload}
-                            registerRow={registerRow}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              )}
-            </>
+                )}
+              </section>
+            </div>
           )}
         </div>
       </div>

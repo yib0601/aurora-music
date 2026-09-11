@@ -10,6 +10,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { QueueView } from '@/components/player/QueueView'
 import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
+import { ToastHost } from '@/components/common/Toast'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { LikedPage } from '@/pages/LikedPage'
 import { RecentPage } from '@/pages/RecentPage'
@@ -522,6 +523,9 @@ function AppLayout() {
     <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground ambient-backdrop">
       {/* Mineradio SVG 色差玻璃滤镜定义（隐藏，仅注入 DOM 让 url(#...) 引用生效） */}
       <GlassSvgFilter />
+
+      {/* 软件内轻量提示挂载点：替代系统 alert/confirm 弹窗 */}
+      <ToastHost />
 
       <TitleBar />
 
