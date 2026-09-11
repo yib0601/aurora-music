@@ -60,9 +60,10 @@ export interface PlatformExtension {
     options?: LyricsSearchOptions
   ) => Promise<LyricsSearchResult | null>
   /** 下载在线歌曲到本地，返回保存路径；headers 为歌源配置的附加请求头；
-   *  downloadDir 为默认下载目录（桌面端传了则免保存对话框直存，移动端忽略） */
+   *  downloadDir 为默认下载目录（桌面端传了则免保存对话框直存，移动端忽略）；
+   *  album/coverUrl 用于下载后把文本标签与封面嵌入文件（源直链的音频大多无内嵌封面） */
   downloadOnlineTrack?: (
-    track: { audioUrl: string; title: string; artist?: string },
+    track: { audioUrl: string; title: string; artist?: string; album?: string; coverUrl?: string },
     headers?: Record<string, string>,
     downloadDir?: string
   ) => Promise<{ savedPath: string }>

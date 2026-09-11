@@ -3,6 +3,7 @@ import type {
   OnlineSourceConfig,
   OnlineSearchOptions,
   OnlineTrackSearchResult,
+  DownloadQuality,
   LyricsSourceConfig,
   LyricsSearchOptions,
   LyricsSearchResult,
@@ -12,6 +13,7 @@ export type {
   OnlineSourceConfig,
   OnlineSearchOptions,
   OnlineTrackSearchResult,
+  DownloadQuality,
   LyricsSourceConfig,
   LyricsSearchOptions,
   LyricsSearchResult,
@@ -35,6 +37,10 @@ export interface Track {
   liked: boolean
   // 在线歌曲扩展字段（本地歌曲为 undefined）
   onlineUrl?: string
+  /** 在线封面地址（源提供时才有），下载时随文件嵌入 */
+  coverUrl?: string
+  /** 多音质地址（源提供时才有；键为音质档位 128 / 320 / flac），下载时按音质设置挑选 */
+  onlineQualityUrls?: Partial<Record<DownloadQuality, string>>
   /** 来源标识（源配置的 id） */
   onlineSource?: string
   /** 来源展示名（源配置的 name） */

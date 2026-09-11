@@ -9,7 +9,7 @@ import { scanFolder, ensureCover, fetchOnlineCover } from './scanner'
 import { registerSystemIpc } from './system'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
-import { searchOnlineTracks, searchLyrics, sanitizeFileName, inferAudioExtFromUrl } from '@aurora/shared'
+import { searchOnlineTracks, searchLyrics, sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, fetchWithTimeout } from '@aurora/shared'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -320,7 +320,7 @@ export function registerIpcHandlers() {
     'tracks:download',
     async (
       _event,
-      track: { audioUrl: string; title: string; artist?: string },
+      track: { audioUrl: string; title: string; artist?: string; album?: string; coverUrl?: string },
       headers?: Record<string, string>,
       downloadDir?: string
     ): Promise<{ savedPath: string }> => {
@@ -389,6 +389,40 @@ export function registerIpcHandlers() {
         try { fs.unlinkSync(savePath) } catch {}
         console.error('歌曲下载失败:', err)
         throw new Error('下载失败，写入文件时出错')
+      }
+
+      // 源直链的音频大多不带内嵌封面（实测仅有文本标签），下载后无封面可提取。
+      // 用搜索结果里的 coverUrl 把封面嵌入文件（MP3 写 ID3v2 APIC，FLAC 写 PICTURE 块）。
+      // 嵌入失败只记日志、保留原文件，不影响下载结果。
+      if (typeof track.coverUrl === 'string' && /^https?:\/\//i.test(track.coverUrl)) {
+        try {
+          const coverResp = await fetchWithTimeout(
+            track.coverUrl,
+            {
+              headers: {
+                'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                ...(headers || {}),
+              },
+            },
+            15000
+          )
+          if (coverResp.ok) {
+            const coverData = new Uint8Array(await coverResp.arrayBuffer())
+            if (coverData.length >= 100) {
+              const fileData = new Uint8Array(await fs.promises.readFile(savePath))
+              const embedded = embedCoverIntoAudio(
+                fileData,
+                path.extname(savePath),
+                { title: track.title, artist: track.artist, album: track.album },
+                { data: coverData, mime: detectImageMime(coverData) }
+              )
+              if (embedded) await fs.promises.writeFile(savePath, embedded)
+            }
+          }
+        } catch (err) {
+          console.warn('封面嵌入失败（不影响下载）:', track.coverUrl, err)
+        }
       }
       return { savedPath: savePath }
     }

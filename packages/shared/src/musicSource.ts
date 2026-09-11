@@ -1,4 +1,4 @@
-import type { OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
+import type { DownloadQuality, OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
 import { fetchWithTimeout } from './fetchWithTimeout'
 
 // 统一默认请求头（部分接口对 UA 敏感），可被源配置的 headers 覆盖
@@ -27,20 +27,53 @@ function extractItems(json: any): any[] {
   return []
 }
 
+/** 音质档位的常见扁平字段命名（宽松兼容），值为该音质的播放/下载地址 */
+const QUALITY_FIELD_NAMES: Record<DownloadQuality, string[]> = {
+  '128': ['url_128', 'url128', '128k', 'lqUrl'],
+  '320': ['url_320', 'url320', '320k', 'hqUrl'],
+  flac: ['url_flac', 'urlflac', 'flacUrl', 'sqUrl', 'losslessUrl'],
+}
+
+/** 从结果项提取多音质地址：优先 qualityUrls 对象，其次常见扁平字段；均无则 undefined */
+function extractQualityUrls(item: any): Partial<Record<DownloadQuality, string>> | undefined {
+  const urls: Partial<Record<DownloadQuality, string>> = {}
+  // qualityUrls / quality_urls 对象：{ "128": url, "320": url, "flac": url }
+  const obj = item.qualityUrls || item.quality_urls
+  if (obj && typeof obj === 'object') {
+    for (const q of ['128', '320', 'flac'] as DownloadQuality[]) {
+      if (typeof obj[q] === 'string' && obj[q]) urls[q] = obj[q]
+    }
+  }
+  for (const q of ['128', '320', 'flac'] as DownloadQuality[]) {
+    if (urls[q]) continue
+    for (const field of QUALITY_FIELD_NAMES[q]) {
+      const v = item[field]
+      if (typeof v === 'string' && v) {
+        urls[q] = v
+        break
+      }
+    }
+  }
+  return Object.keys(urls).length > 0 ? urls : undefined
+}
+
 /**
  * 单个音乐源搜索（协议执行器核心）
- * - apiUrl 中 {query} 替换为 URL 编码后的搜索词
+ * - apiUrl 中 {query} 替换为 URL 编码后的搜索词；可选 {quality} 替换为音质档位（128/320/flac）
  * - 响应宽松解析：无播放地址的条目跳过，字段名多种命名兼容
  */
 export async function searchMusicSource(
   source: OnlineSourceConfig,
-  query: string
+  query: string,
+  quality?: DownloadQuality
 ): Promise<OnlineTrackSearchResult[]> {
   if (!source.apiUrl || !source.apiUrl.includes('{query}')) {
     throw new Error(`源「${source.name}」的接口地址无效，必须包含 {query} 占位符`)
   }
 
-  const url = source.apiUrl.replace('{query}', encodeURIComponent(query))
+  const url = source.apiUrl
+    .replace('{query}', encodeURIComponent(query))
+    .replace('{quality}', quality || '128')
   const resp = await fetchWithTimeout(
     url,
     { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
@@ -68,6 +101,7 @@ export async function searchMusicSource(
       coverUrl:
         item.coverUrl || item.cover || item.picUrl || item.pic || item.albumPic || undefined,
       audioUrl,
+      qualityUrls: extractQualityUrls(item),
       source: source.id,
       sourceName: source.name,
     })
@@ -88,7 +122,7 @@ export async function searchOnlineTracks(
   if (!trimmed || sources.length === 0) return []
 
   const settled = await Promise.allSettled(
-    sources.map((s) => searchMusicSource(s, trimmed))
+    sources.map((s) => searchMusicSource(s, trimmed, options?.quality))
   )
   const results: OnlineTrackSearchResult[] = []
   let allFailed = true

@@ -1,5 +1,5 @@
 import { Filesystem, Directory, FileInfo as CapFileInfo } from '@capacitor/filesystem'
-import { Capacitor } from '@capacitor/core'
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import type {
   PlatformInterface,
   FileInfo,
@@ -18,7 +18,7 @@ import {
   saveLyricsFile,
 } from './scanner'
 import { searchOnlineTracks, searchLyrics } from './online'
-import { sanitizeFileName, inferAudioExtFromUrl } from '@aurora/shared'
+import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime } from '@aurora/shared'
 import {
   requestMediaPermissions,
   checkAllFilesAccess,
@@ -53,6 +53,65 @@ class NoopWindowControls implements WindowControls {
   async isMaximized() {
     return false
   }
+}
+
+function uint8ArrayToBase64(data: Uint8Array): string {
+  let bin = ''
+  const chunk = 0x8000
+  for (let i = 0; i < data.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, data.subarray(i, i + chunk) as any)
+  }
+  return btoa(bin)
+}
+
+function base64ToUint8Array(b64: string): Uint8Array {
+  const bin = atob(b64)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+/**
+ * 把封面嵌入刚下载的音频文件（downloadOnlineTrack 的后置步骤）
+ * - 读文件用 fetch(convertFileSrc) 流式读，避免 Filesystem.readFile 的 base64 OOM
+ * - 封面拉取用 CapacitorHttp（原生 HTTP，不受 WebView CORS 限制）
+ * - 文件超过 100MB 跳过嵌入，避免一次性 base64 写回撑爆内存
+ */
+async function embedCoverIntoDownloaded(
+  savePath: string,
+  track: { title: string; artist?: string; album?: string; coverUrl?: string }
+): Promise<void> {
+  const abs = `/storage/emulated/0/${savePath}`
+  const fileRes = await fetch(Capacitor.convertFileSrc(abs))
+  if (!fileRes.ok) throw new Error(`读取下载文件失败: ${fileRes.status}`)
+  const fileData = new Uint8Array(await fileRes.arrayBuffer())
+  if (fileData.length > 100 * 1024 * 1024) return
+
+  const coverResp = await CapacitorHttp.get({
+    url: track.coverUrl!,
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
+    responseType: 'blob',
+  })
+  if (coverResp.status < 200 || coverResp.status >= 300 || typeof coverResp.data !== 'string') return
+  const coverData = base64ToUint8Array(coverResp.data)
+  if (coverData.length < 100) return
+
+  const ext = savePath.slice(savePath.lastIndexOf('.'))
+  const embedded = embedCoverIntoAudio(
+    fileData,
+    ext,
+    { title: track.title, artist: track.artist, album: track.album },
+    { data: coverData, mime: detectImageMime(coverData) }
+  )
+  if (!embedded) return
+  await Filesystem.writeFile({
+    path: savePath,
+    directory: Directory.ExternalStorage,
+    data: uint8ArrayToBase64(embedded),
+  })
 }
 
 /**
@@ -169,7 +228,7 @@ export function createMobilePlatform(): PlatformInterface & {
     options?: LyricsSearchOptions
   ) => Promise<LyricsSearchResult | null>
   downloadOnlineTrack: (
-    track: { audioUrl: string; title: string; artist?: string },
+    track: { audioUrl: string; title: string; artist?: string; album?: string; coverUrl?: string },
     headers?: Record<string, string>
   ) => Promise<{ savedPath: string }>
 } {
@@ -395,6 +454,16 @@ export function createMobilePlatform(): PlatformInterface & {
       } catch (err) {
         console.error('[Mobile] 下载失败:', err)
         throw new Error('下载失败，请检查网络连接或稍后重试')
+      }
+
+      // 源直链的音频大多不带内嵌封面，下载后用搜索结果里的 coverUrl 嵌入封面
+      // （MP3 写 ID3v2 APIC，FLAC 写 PICTURE 块）。失败只记日志、保留原文件。
+      if (typeof track.coverUrl === 'string' && /^https?:\/\//i.test(track.coverUrl)) {
+        try {
+          await embedCoverIntoDownloaded(savePath, track)
+        } catch (err) {
+          console.warn('[Mobile] 封面嵌入失败（不影响下载）:', err)
+        }
       }
       // 返回完整路径，便于提示与后续扫描定位
       return { savedPath: `/storage/emulated/0/${savePath}` }

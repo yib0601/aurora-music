@@ -16,6 +16,13 @@ const themeOptions = [
   { value: 'system' as const, label: '跟随系统', icon: Monitor },
 ]
 
+/** 下载音质档位：值对应歌源协议的 {quality} 占位符与 qualityUrls 键 */
+const downloadQualityOptions = [
+  { value: '128' as const, label: '标准 128k' },
+  { value: '320' as const, label: '高品质 320k' },
+  { value: 'flac' as const, label: '无损 FLAC' },
+]
+
 /** 单个歌源卡片：默认仅展示名称 + 启用开关，点击编辑展开修改名称 / 地址 / 请求头 */
 function SourceEditorCard({
   name,
@@ -308,6 +315,8 @@ export function SettingsPage() {
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const downloadDir = useLibraryStore((s) => s.downloadDir)
   const setDownloadDir = useLibraryStore((s) => s.setDownloadDir)
+  const downloadQuality = useLibraryStore((s) => s.downloadQuality)
+  const setDownloadQuality = useLibraryStore((s) => s.setDownloadQuality)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
 
   // 歌源配置（应用不内置任何源，音乐源/歌词源均由用户按协议配置）
@@ -479,36 +488,57 @@ export function SettingsPage() {
             </div>
           </section>
 
-          {/* 下载目录仅桌面端可配：移动端下载固定存入 Music/Aurora Music */}
-          {isDesktop() && (
-            <section className="card-utility p-5">
-              <h2 className="font-display text-tagline mb-4 text-white">下载</h2>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-text text-caption-strong text-white/80">默认下载目录</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">
-                      设置后下载在线歌曲直接存入该目录，不再弹保存对话框
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {downloadDir && (
-                      <Button variant="ghost" size="sm" className="h-9 px-3.5" onClick={() => setDownloadDir(null)}>
-                        清除
-                      </Button>
-                    )}
-                    <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
-                      <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                      {downloadDir ? '更换目录' : '选择目录'}
-                    </Button>
-                  </div>
-                </div>
-                <p className="font-text text-caption text-white/60 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 truncate">
-                  {downloadDir ?? '未设置（每次下载都会询问保存位置）'}
+          <section className="card-utility p-5">
+            <h2 className="font-display text-tagline mb-4 text-white">下载</h2>
+            <div className="space-y-4">
+              <div>
+                <p className="font-text text-caption-strong text-white/80">默认下载音质</p>
+                <p className="font-text text-caption text-white/60 mt-0.5 mb-3">
+                  需歌源支持：接口地址含 {'{quality}'} 占位符或返回多音质地址（qualityUrls / url_320 / url_flac 等），不支持时按源默认地址下载
                 </p>
+                <div className="flex gap-2">
+                  {downloadQualityOptions.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      onClick={() => setDownloadQuality(value)}
+                      className={`pill pill-md ${
+                        downloadQuality === value ? 'pill-mint' : 'pill-soft'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </section>
-          )}
+              {/* 下载目录仅桌面端可配：移动端下载固定存入 Music/Aurora Music */}
+              {isDesktop() && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-text text-caption-strong text-white/80">默认下载目录</p>
+                      <p className="font-text text-caption text-white/60 mt-0.5">
+                        设置后下载在线歌曲直接存入该目录，不再弹保存对话框
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {downloadDir && (
+                        <Button variant="ghost" size="sm" className="h-9 px-3.5" onClick={() => setDownloadDir(null)}>
+                          清除
+                        </Button>
+                      )}
+                      <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
+                        <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                        {downloadDir ? '更换目录' : '选择目录'}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="font-text text-caption text-white/60 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 truncate">
+                    {downloadDir ?? '未设置（每次下载都会询问保存位置）'}
+                  </p>
+                </>
+              )}
+            </div>
+          </section>
 
           <section className="card-utility p-5">
             <h2 className="font-display text-tagline mb-4 text-white">在线搜索</h2>
@@ -590,9 +620,11 @@ export function SettingsPage() {
                 <p className="font-text text-caption-strong text-white/70">歌源协议规范</p>
                 <p className="font-text text-caption text-white/50 leading-relaxed">
                   <span className="text-white/70">音乐源：</span>
-                  接口地址需包含 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{query}`}</code> 占位符（搜索时替换为 URL 编码后的关键词）。
+                  接口地址需包含 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{query}`}</code> 占位符（搜索时替换为 URL 编码后的关键词）；
+                  可选 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{quality}`}</code> 占位符（替换为下载音质设置：128 / 320 / flac）。
                   响应为 JSON，支持数组或 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{results:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{data:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{songs:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{list:[]}`}</code> 包裹。
-                  每项字段：<span className="text-white/70">audioUrl（必填）、title / artist / album / duration（秒）/ coverUrl</span>。
+                  每项字段：<span className="text-white/70">audioUrl（必填）、title / artist / album / duration（秒）/ coverUrl</span>；
+                  可选多音质地址 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`qualityUrls: { "128": url, "320": url, "flac": url }`}</code> 或扁平字段 url_128 / url_320 / url_flac，下载时按音质设置挑选。
                 </p>
                 <p className="font-text text-caption text-white/50 leading-relaxed">
                   <span className="text-white/70">歌词源：</span>
