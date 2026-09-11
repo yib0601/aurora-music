@@ -189,7 +189,12 @@ if (!gotTheLock) {
     protocol.handle('cover-local', async (request) => {
       try {
         const url = new URL(request.url)
-        const filePath = decodeURIComponent(url.pathname)
+        let filePath = decodeURIComponent(url.pathname)
+        // Windows：渲染层把盘符路径转成 /C:/... 形式传入（否则盘符会被 URL
+        // 吞进 host/port 部分），这里去掉前导斜杠还原成真实文件路径
+        if (process.platform === 'win32' && /^\/[A-Za-z]:[\\/]/.test(filePath)) {
+          filePath = filePath.slice(1)
+        }
         const ext = path.extname(filePath).toLowerCase()
         // 支持音频 Range 请求（html5 <audio> seek 需要）
         const stat = await fs.promises.stat(filePath)
