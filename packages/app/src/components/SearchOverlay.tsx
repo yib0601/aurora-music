@@ -18,7 +18,25 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import type { Track, OnlineTrackSearchResult } from '@/types'
+import type { Track, OnlineTrackSearchResult, DownloadQuality } from '@/types'
+
+/** 音质回退链：设置的档位不可用时，依次尝试其余档位，最终回退到源默认地址 */
+const QUALITY_FALLBACK: Record<DownloadQuality, DownloadQuality[]> = {
+  '128': ['128', '320', 'flac'],
+  '320': ['320', 'flac', '128'],
+  flac: ['flac', '320', '128'],
+}
+
+/** 按下载音质设置挑选下载地址：源未提供多音质地址时直接用默认地址 */
+function pickDownloadUrl(track: Track, preferred: DownloadQuality): string {
+  const urls = track.onlineQualityUrls
+  if (urls) {
+    for (const q of QUALITY_FALLBACK[preferred]) {
+      if (urls[q]) return urls[q]!
+    }
+  }
+  return track.onlineUrl!
+}
 
 interface SearchOverlayProps {
   /** 关闭浮层（Esc / 点击遮罩 / 选中结果后调用） */
@@ -57,6 +75,8 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   // 歌源配置：应用不内置任何源，全部由用户按协议配置
   const onlineSources = useLibraryStore((s) => s.onlineSources)
+  // 默认下载音质：搜索时替换源地址 {quality} 占位符，下载时挑选多音质地址
+  const downloadQuality = useLibraryStore((s) => s.downloadQuality)
   // 已启用的源（空数组 = 用户尚未配置任何源，搜索页需给出引导）
   const enabledSourceCount = useMemo(
     () => onlineSources.filter((s) => s.enabled && s.apiUrl).length,
@@ -113,6 +133,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     platform
       .searchOnlineTracks(q, {
         sources: onlineSources,
+        quality: downloadQuality,
       })
       .then((res) => {
         if (seq !== searchSeqRef.current) return
@@ -128,7 +149,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
         if (seq !== searchSeqRef.current) return
         setOnlineLoading(false)
       })
-  }, [debouncedQuery, tab, onlineSources])
+  }, [debouncedQuery, tab, onlineSources, downloadQuality])
 
   // 在线结果转 Track（复用播放器逻辑）：path 置空，onlineUrl 携带播放地址
   const onlineTracks: Track[] = useMemo(() => {
@@ -143,6 +164,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       playCount: 0,
       liked: false,
       onlineUrl: r.audioUrl,
+      onlineQualityUrls: r.qualityUrls,
       coverUrl: r.coverUrl,
       onlineSource: r.source,
       onlineSourceName: r.sourceName,
@@ -203,8 +225,11 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       // 取该曲来源配置的附加请求头（Referer/UA 等），保证下载与搜索请求一致
       const source = onlineSources.find((s) => s.id === track.onlineSource)
       const downloadDir = useLibraryStore.getState().downloadDir
+      // 按设置的下载音质挑选地址（源未提供多音质地址时回退默认地址）
+      const audioUrl = pickDownloadUrl(track, useLibraryStore.getState().downloadQuality)
       const { savedPath } = await platform.downloadOnlineTrack!(
-        { audioUrl: track.onlineUrl, title: track.title, artist: track.artist },
+        // 带上专辑与封面地址：下载完成后封面随文件嵌入（源直链的音频大多无内嵌封面）
+        { audioUrl, title: track.title, artist: track.artist, album: track.album, coverUrl: track.coverUrl },
         source?.headers,
         downloadDir || undefined
       )

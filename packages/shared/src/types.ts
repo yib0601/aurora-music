@@ -8,18 +8,25 @@
  * 协议同时适用于桌面端（Electron 主进程）与移动端（WebView），实现仅有此一份。
  */
 
+/** 在线音质档位：标准 128k / 高品质 320k / 无损 FLAC */
+export type DownloadQuality = '128' | '320' | 'flac'
+
 /** 音乐源配置 */
 export interface OnlineSourceConfig {
   id: string
   name: string
   /**
-   * 搜索接口地址，需包含 {query} 占位符（调用时替换为 URL 编码后的搜索词）
+   * 搜索接口地址，需包含 {query} 占位符（调用时替换为 URL 编码后的搜索词）；
+   * 可选 {quality} 占位符（替换为用户设置的下载音质：128 / 320 / flac，
+   * 源不支持该占位符时音质设置对此源无效）。
    * 响应需为 JSON，支持以下任一结构（容错解析）：
    *   1) 数组：[{...}]
    *   2) { results: [{...}] } / { data: [{...}] } / { data: { song: { list: [{...}] } } }
    *      / { songs: [{...}] } / { list: [{...}] }
    * 每项字段（字段名宽松兼容）：audioUrl（必填）、id、title、artist、album、
-   * duration（秒）、coverUrl
+   * duration（秒）、coverUrl；
+   * 可选多音质地址：qualityUrls 对象（{ "128": url, "320": url, "flac": url }）
+   * 或扁平字段 url_128 / url_320 / url_flac 等，下载时按音质设置挑选
    */
   apiUrl: string
   /** 附加请求头（如鉴权 Token、Referer、User-Agent），同名头覆盖默认值 */
@@ -30,6 +37,8 @@ export interface OnlineSourceConfig {
 export interface OnlineSearchOptions {
   /** 源列表（仅 enabled=true 的会被调用） */
   sources?: OnlineSourceConfig[]
+  /** 下载音质设置：替换源地址中的 {quality} 占位符（不含占位符的源不受影响） */
+  quality?: DownloadQuality
 }
 
 export interface OnlineTrackSearchResult {
@@ -40,6 +49,8 @@ export interface OnlineTrackSearchResult {
   duration: number
   coverUrl?: string
   audioUrl: string
+  /** 多音质地址（源提供时才有；键为音质档位 128 / 320 / flac） */
+  qualityUrls?: Partial<Record<DownloadQuality, string>>
   /** 来源标识（源配置的 id） */
   source: string
   /** 来源展示名（源配置的 name） */

@@ -52,9 +52,10 @@ const electronAPI = {
   },
   // 下载在线歌曲：主进程拉流写盘（渲染进程 fetch 会被歌源 CORS 拦截），
   // headers 来自歌源配置的附加请求头，保证下载请求与搜索请求一致；
-  // downloadDir 为用户配置的默认下载目录，传了则免保存对话框直存
+  // downloadDir 为用户配置的默认下载目录，传了则免保存对话框直存；
+  // album/coverUrl 由主进程在下载后嵌入文件（文本标签 + 封面）
   downloadOnlineTrack: async (
-    track: { audioUrl: string; title: string; artist?: string },
+    track: { audioUrl: string; title: string; artist?: string; album?: string; coverUrl?: string },
     headers?: Record<string, string>,
     downloadDir?: string
   ): Promise<{ savedPath: string }> => {
