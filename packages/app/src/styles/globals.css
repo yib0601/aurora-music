@@ -182,13 +182,13 @@
     --tw-coral: 226 59 82;
     --tw-mint-fg: 255 255 255;
 
-    --fc-bg: #F4F5F7;
+    --fc-bg: #ECEEF1;
     --fc-paper: #FCFCFD;
     --fc-ink: #16181D;
     --fc-ink-2: #30343C;
-    --fc-muted: #626875;
-    --fc-hair: #E3E5E9;
-    --fc-hair-2: #D3D6DC;
+    --fc-muted: #565D6B;
+    --fc-hair: #D8DBE1;
+    --fc-hair-2: #C4C9D2;
     --fc-accent: #009C88;
     --fc-accent-hov: #008574;
     --fc-accent-rgb: 0, 156, 136;
@@ -205,13 +205,13 @@
     --secondary: 220 12% 91%;
     --secondary-foreground: 222 16% 12%;
     --muted: 220 12% 92%;
-    --muted-foreground: 220 8% 44%;
+    --muted-foreground: 220 8% 38%;
     --accent: 220 12% 91%;
     --accent-foreground: 222 16% 12%;
     --destructive: 352 76% 47%;
     --destructive-foreground: 0 0% 100%;
-    --border: 222 10% 86%;
-    --input: 222 10% 86%;
+    --border: 222 10% 80%;
+    --input: 222 10% 80%;
     --ring: 172 100% 30%;
 
     /* 玻璃材质：磨砂白玻璃 */
@@ -220,7 +220,7 @@
     --glass-subtle-bg: rgba(255,255,255,.42);
     --glass-edge-highlight: rgba(255,255,255,.92);
     --glass-edge-highlight-strong: rgba(255,255,255,.96);
-    --glass-strong-shadow: 0 8px 32px rgba(20,24,40,.10);
+    --glass-strong-shadow: 0 8px 32px rgba(20,24,40,.14);
     --glass-floating-bg: linear-gradient(145deg, rgba(255,255,255,.92), rgba(246,247,250,.94));
     --glass-floating-border: rgba(15,20,30,.08);
     --glass-floating-shadow: 0 22px 70px rgba(20,24,40,.16), inset 0 1px 0 rgba(255,255,255,.9);
@@ -231,7 +231,7 @@
     --glass-bg: linear-gradient(112deg, rgba(255,255,255,.72), rgba(244,246,249,.78) 48%, rgba(236,239,244,.84));
     --glass-bg-focus: linear-gradient(112deg, rgba(255,255,255,.82), rgba(246,248,251,.86) 50%, rgba(239,242,246,.9));
     --glass-border: rgba(0,156,136,.32);
-    --glass-border-soft: rgba(15,20,30,.10);
+    --glass-border-soft: rgba(15,20,30,.14);
     --glass-shadow: 0 22px 64px rgba(20,24,40,.10), 0 0 34px rgba(0,156,136,.05), inset 0 1px 0 rgba(255,255,255,.85), inset 0 -24px 58px rgba(20,24,40,.03);
     --glass-shadow-focus: 0 24px 72px rgba(20,24,40,.14), 0 0 0 1px rgba(0,156,136,.15), 0 0 42px rgba(0,156,136,.10), inset 0 1px 0 rgba(255,255,255,.9);
 
@@ -243,16 +243,16 @@
     --saved-button-glass-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.7), inset 0 0 12px 5px rgba(255,255,255,.3), 0 12px 34px rgba(20,24,40,.14), 0 0 18px rgba(255,255,255,.35);
 
     /* 表面分层 */
-    --surface-card-bg: rgba(255,255,255,.72);
-    --surface-card-border: rgba(15,20,30,.07);
+    --surface-card-bg: rgba(255,255,255,.78);
+    --surface-card-border: rgba(15,20,30,.10);
     --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.86), rgba(244,246,249,.9));
     --surface-tile-2-bg: linear-gradient(145deg, rgba(250,250,252,.88), rgba(241,243,247,.92));
     --surface-tile-fg: #16181D;
     --tile-border-rgb: 15 20 30;
-    --card-utility-shadow: 0 20px 64px rgba(20,24,40,.08), inset 0 1px 0 rgba(255,255,255,.9);
-    --card-utility-hover-shadow: 0 28px 84px rgba(20,24,40,.12), 0 0 34px rgba(var(--fc-accent-rgb),.12), inset 0 1px 0 rgba(255,255,255,.95);
+    --card-utility-shadow: 0 20px 64px rgba(20,24,40,.11), inset 0 1px 0 rgba(255,255,255,.9);
+    --card-utility-hover-shadow: 0 28px 84px rgba(20,24,40,.15), 0 0 34px rgba(var(--fc-accent-rgb),.12), inset 0 1px 0 rgba(255,255,255,.95);
 
-    --btn-icon-color: rgba(23,25,29,.68);
+    --btn-icon-color: rgba(23,25,29,.75);
     --btn-icon-hover-color: #16181D;
     --btn-icon-hover-bg: rgba(23,25,29,.05);
     --btn-pearl-color: rgba(23,25,29,.82);

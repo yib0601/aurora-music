@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Play,
-  RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search, Disc3,
+  RefreshCw, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search, Disc3,
 } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,7 @@ import { PageLayout } from '@/components/PageLayout'
 import { SearchOverlay } from '@/components/SearchOverlay'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
+import { toast } from '@/components/common/Toast'
 import { VirtualTrackTable, VirtualTrackRow } from '@/components/VirtualTrackTable'
 import { VirtualCardGrid } from '@/components/VirtualCardGrid'
 import type { Track, SortField, LibraryTab } from '@/types'
@@ -134,6 +136,12 @@ export function LibraryPage() {
   }, [])
 
   const handlePickFolder = async () => {
+    // 不支持 File System Access API 的浏览器（Firefox/Safari）无法访问本地文件系统，
+    // Noop 平台不提供 scanFolder，这里给出轻量提示而非静默无响应
+    if (!platform.scanFolder) {
+      toast('当前浏览器不支持访问本地文件，请使用 Chrome/Edge 或桌面版、安卓版', { type: 'error' })
+      return
+    }
     const folder = await platform.pickFolder()
     if (folder) {
       useLibraryStore.getState().addScanFolder(folder)
@@ -350,7 +358,11 @@ export function LibraryPage() {
                       title="排序方式"
                       className="btn-icon w-auto px-2.5 gap-1.5"
                     >
-                      <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      {sortOrder === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      )}
                       <span className="font-text text-[12px] hidden sm:inline">{SORT_LABELS[sortBy]}</span>
                     </button>
                   </DropdownMenuTrigger>
@@ -361,19 +373,17 @@ export function LibraryPage() {
                         {sortBy === field && <Check className="h-3.5 w-3.5 text-mint" strokeWidth={2} />}
                       </DropdownMenuItem>
                     ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
+                      <span className="flex-1">{sortOrder === 'asc' ? '升序' : '降序'}</span>
+                      {sortOrder === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-mint" strokeWidth={2} />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5 text-mint" strokeWidth={2} />
+                      )}
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <button
-                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  title={sortOrder === 'asc' ? '当前升序，点击切换为降序' : '当前降序，点击切换为升序'}
-                  className="btn-icon"
-                >
-                  {sortOrder === 'asc' ? (
-                    <ArrowUp className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  ) : (
-                    <ArrowDown className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  )}
-                </button>
               </>
             )}
             {tracks.length > 0 && scanFolders.length > 0 && (

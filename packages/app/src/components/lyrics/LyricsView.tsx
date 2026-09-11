@@ -117,11 +117,13 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
       ref={containerRef}
       // h-full：撑满父级分配的高度，确保容器自身可滚动（桌面右栏父级无 overflow-hidden，
       // 缺省高度会撑成内容高度导致 scrollTo 失效、当前行无法居中）
-      // before/after 50% 占位：替代固定 padding，让首行/末行也能滚动到区域正中央
+      // before 仅留小段顶部留白：歌曲开头歌词从顶部自然起排，避免「首行强制居中」导致上半区大片空白；
+      // 当前行超过中线后滚动逻辑自动接管居中（前几行居中目标为负值，被 clamp 到 0）
+      // after 50% 占位：保证末行也能滚动到区域正中央
       // （伪元素不计入 container.children，不影响按索引定位歌词行）
       className={cn(
         'h-full overflow-y-auto scrollbar-hide px-4 space-y-6 text-center',
-        'before:block before:h-1/2 before:content-[""] after:block after:h-1/2 after:content-[""]',
+        'before:block before:h-16 before:content-[""] after:block after:h-1/2 after:content-[""]',
         className
       )}
       style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}

@@ -99,12 +99,8 @@ function TrackLyrics({ track, onLineClick, className }: { track: Track; onLineCl
 function VinylCover({ track, spinning }: { track: Track; spinning: boolean }) {
   return (
     <div className="relative">
-      {/* 封面色光晕：唱片下方铺一层主题色氛围光 */}
-      <div
-        aria-hidden
-        className="absolute -inset-10 rounded-full blur-3xl opacity-60"
-        style={{ background: 'radial-gradient(circle at 40% 35%, rgba(var(--fc-accent-rgb),.22), transparent 70%)' }}
-      />
+      {/* 注意：此处不铺 blur 光晕——光晕溢出唱片顶部时会被滚动容器顶边裁切，
+          在标题栏下方形成一条横向亮度断层线；氛围光由 App 层沉浸背景统一提供 */}
       {/* 唱片本体：旋转层 */}
       <div className={cn('vinyl-disc relative aspect-square rounded-full', spinning && 'is-playing')}>
         <div className="absolute inset-0 flex items-center justify-center">
@@ -285,21 +281,21 @@ export function SongDetailPage() {
     <div className="relative flex flex-col min-h-full">
       {/* 沉浸式封面背景已提升到 App 层（覆盖标题栏区域），此处仅渲染前景内容 */}
       {/* 前景内容：收窄居中成列，Hero/歌词/专辑共用同一视觉轴，避免宽屏下内容松散 */}
-      <div className="relative mx-auto w-full max-w-[880px] px-4 md:px-8 pt-4 md:pt-8 pb-6">
-        {/* 返回：圆形玻璃按钮，融入沉浸背景 */}
+      <div className="relative mx-auto w-full max-w-[1080px] px-4 md:px-8 pt-4 md:pt-8 pb-6">
+        {/* 返回：圆形玻璃按钮，绝对定位悬浮左上角，与 Hero 同行，不独占一行以压缩纵向空间 */}
         <button
           onClick={() => navigate(-1)}
           aria-label="返回"
           title="返回"
-          className="glass-saved-button mb-6 md:mb-8 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
+          className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-4 z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
         >
           <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={1.6} />
         </button>
 
         {/* Hero：黑胶唱片 + 歌曲信息 */}
-        <section className="flex flex-col md:flex-row items-center gap-6 md:gap-10">
+        <section className="flex flex-col md:flex-row items-center gap-6 md:gap-12">
           {/* 唱片：移动端居中缩小，桌面端放大 */}
-          <div className="w-[min(56vw,220px)] md:w-[220px] xl:w-[250px] flex-shrink-0">
+          <div className="w-[min(56vw,240px)] md:w-[260px] xl:w-[300px] flex-shrink-0">
             <VinylCover track={track} spinning={isCurrent && isPlaying} />
           </div>
 
@@ -309,7 +305,7 @@ export function SongDetailPage() {
               <Radio className="h-3 w-3" strokeWidth={1.8} />
               {sourceLabel(track)} · 歌曲详情
             </p>
-            <h1 className="font-display text-[26px] md:text-[32px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
+            <h1 className="font-display text-[26px] md:text-[36px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
               {track.title}
             </h1>
             <p className="font-text text-[15px] md:text-[16px] text-white/55 mt-2 tracking-[-0.224px]">
@@ -395,10 +391,7 @@ export function SongDetailPage() {
 
         {/* 歌词：独占整行，当前行居中滚动 */}
         <section className="mt-10 md:mt-12">
-          <h2 className="font-text text-[12px] font-semibold text-white/55 uppercase tracking-wider mb-3">
-            歌词
-          </h2>
-          <div className="card-utility px-4 py-5 h-[360px] md:h-[420px]">
+          <div className="card-utility px-4 py-5 h-[360px] md:h-[480px]">
             <TrackLyrics
               track={track}
               className="h-full"
