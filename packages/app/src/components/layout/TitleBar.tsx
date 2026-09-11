@@ -33,14 +33,11 @@ export function TitleBar() {
   }
   const handleClose = () => api.windowControls.close()
 
-  // 按钮通用样式：38×30px，圆角 10px，Mineradio 玻璃珍珠按钮底
+  // 按钮通用样式：38×30px 点击区，无边框无背景，仅展示图标
+  // 颜色走主题感知的 text-white（浅色模式下自动翻转为深墨色）
   const btnBase =
     'w-[38px] h-[30px] rounded-[10px] flex items-center justify-center ' +
-    'bg-[rgba(0,0,0,.10)] text-[rgba(255,255,255,.72)] ' +
-    'backdrop-blur-[12px] saturate-[1.8] ' +
-    'shadow-[inset_0_0_2px_1px_rgba(255,255,255,.34),inset_0_0_10px_4px_rgba(255,255,255,.13),0_10px_30px_rgba(0,0,0,.18)] ' +
-    'hover:-translate-y-px hover:bg-[rgba(255,255,255,.055)] ' +
-    'hover:shadow-[inset_0_0_2px_1px_rgba(255,255,255,.42),inset_0_0_12px_5px_rgba(255,255,255,.17),0_12px_34px_rgba(0,0,0,.22),0_0_18px_rgba(255,255,255,.06)] ' +
+    'text-white/70 hover:text-white ' +
     'transition-all active:scale-95'
 
   return (
@@ -53,14 +50,14 @@ export function TitleBar() {
         <button
           onClick={handleMinimize}
           title="最小化"
-          className={`${btnBase} hover:text-[#fff1bd]`}
+          className={`${btnBase} hover:text-white dark:hover:text-[#fff1bd]`}
         >
           <Minus className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
         <button
           onClick={handleMaximize}
           title={isMaximized ? '还原' : '最大化'}
-          className={`${btnBase} hover:text-[#fff1bd]`}
+          className={`${btnBase} hover:text-white dark:hover:text-[#fff1bd]`}
         >
           {isMaximized ? (
             <PanelTopClose className="h-3 w-3" strokeWidth={2} />
@@ -71,7 +68,7 @@ export function TitleBar() {
         <button
           onClick={handleClose}
           title="关闭（最小化到托盘）"
-          className={`${btnBase} hover:bg-[rgba(255,86,100,.86)] hover:text-white hover:shadow-[inset_0_0_2px_1px_rgba(255,255,255,.42),0_12px_34px_rgba(0,0,0,.22),0_0_18px_rgba(255,255,255,.06)]`}
+          className={`${btnBase} hover:text-coral`}
         >
           <X className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
