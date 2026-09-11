@@ -92,7 +92,12 @@ async function processFile(
     if (existing) {
       // 文件未变化（大小一致）直接复用，保留播放统计/收藏等用户数据；
       // 文件被修改（重新打标签/替换）则继续往下重新解析
-      if (existing.fileSize === stat.size) return existing
+      if (existing.fileSize === stat.size) {
+        // 老版本未按「艺术家 - 歌名」拆分文件名留下的占位记录，
+        // 重扫时补一次重解析修正元数据（幂等，修正后即不再触发）
+        const legacyUntagged = existing.artist === '未知艺术家' && existing.title.includes('-')
+        if (!legacyUntagged) return existing
+      }
     }
 
     let metadata
@@ -103,8 +108,19 @@ async function processFile(
       return null
     }
 
-    let title = metadata.common.title || path.basename(filePath, path.extname(filePath))
-    const artist = metadata.common.artist || '未知艺术家'
+    const stem = path.basename(filePath, path.extname(filePath))
+    let title = metadata.common.title || stem
+    let artist = metadata.common.artist || ''
+    if (!artist) {
+      // 无艺术家标签时按「艺术家 - 歌名」文件名惯例拆分（音乐平台下载的常见命名）；
+      // 否则 artist=未知艺术家 会让在线封面/歌词的匹配查询完全失效
+      const m = stem.match(/^(.{1,50}?)\s*-\s*(.{1,100})$/)
+      if (m) {
+        artist = m[1].trim()
+        if (!metadata.common.title) title = m[2].trim()
+      }
+    }
+    if (!artist) artist = '未知艺术家'
     const album = metadata.common.album || '未知专辑'
 
     if (metadata.common.title && /[\u0000-\u001f]/.test(metadata.common.title)) {
