@@ -89,7 +89,7 @@ export const useLibraryStore = create<LibraryState>()(
       onlineSources: [],
       lyricsSources: [],
       downloadDir: null,
-      downloadQuality: '128',
+      downloadQuality: 'flac',
 
       setTracks: (tracks) => {
         // 内容指纹比较：扫描完成事件每次 IPC 传来的都是全新对象引用，
@@ -211,8 +211,12 @@ export const useLibraryStore = create<LibraryState>()(
       }),
       // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
+      // v4 默认下载音质改为无损 FLAC：清除旧持久值，让新默认值生效
       migrate: (persisted: any, version: number) => {
         if (persisted) {
+          if (version < 4) {
+            delete persisted.downloadQuality
+          }
           if (version < 3) {
             delete persisted.useNeteaseSources
             delete persisted.useQQSources
@@ -224,7 +228,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 3,
+      version: 4,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)
