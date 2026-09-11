@@ -778,6 +778,25 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 .apple-press { transition: transform 0.18s var(--ease-mineradio); }
 .apple-press:active { transform: scale(0.96); }
 
+/* ===== 旋转黑胶唱片（歌曲详情页封面） =====
+ * 播放中匀速旋转；暂停用 animation-play-state 停转，避免回跳
+ */
+.vinyl-disc {
+  background: repeating-radial-gradient(circle at 50% 50%, #1a1b20 0px, #1a1b20 1px, #0f1013 2px, #0f1013 4px);
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, .45),
+    inset 0 1px 0 rgba(255, 255, 255, .06),
+    0 0 0 1px rgba(255, 255, 255, .05);
+  animation: vinyl-spin 24s linear infinite;
+  animation-play-state: paused;
+}
+.vinyl-disc.is-playing {
+  animation-play-state: running;
+}
+@keyframes vinyl-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ===== ambient-backdrop（封面色光晕） =====
  * 玻璃材质需要背后有可折射的内容；当背景纯色时玻璃看起来"假"。
  * 此类挂在 App 根容器，渲染柔和的色斑（用封面提取色驱动，或回退到默认薄荷青+香槟金），
