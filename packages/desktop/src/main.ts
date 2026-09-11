@@ -161,8 +161,12 @@ function createWindow() {
 // 注意：ozone-platform 必须用命令行参数 --ozone-platform=x11 在 desktop 文件中设置，
 // app.commandLine.appendSwitch 在 Electron 43 上太晚（Chromium 已选 Wayland）
 // --disable-gpu：AMD Radeon Vega APU 在 Wayland 下 GPU 进程会 SIGSEGV (exit 139)
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
-app.commandLine.appendSwitch('disable-gpu')
+// ⚠️ 仅限 Linux：Windows/macOS 禁用 GPU 会强制软件渲染，全屏 backdrop-blur /
+// SVG 玻璃滤镜全走 CPU，整个 UI 明显掉帧卡顿
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
+  app.commandLine.appendSwitch('disable-gpu')
+}
 
 // 单实例锁：用户重复点击图标时聚焦已有窗口，而不是启动新进程
 const gotTheLock = app.requestSingleInstanceLock()
