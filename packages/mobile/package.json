@@ -1,6 +1,6 @@
 {
   "name": "@aurora/mobile",
-  "version": "0.2.4",
+  "version": "0.2.8",
   "private": true,
   "dependencies": {
     "@capacitor/android": "^6.2.0",
