@@ -128,9 +128,13 @@ export function createDesktopPlatform(): Platform {
     },
 
     getCoverSrc(path: string): string {
-      // 桌面端用自定义 cover-local 协议，绕过 webSecurity 对 file:// 的限制
-      // 使用 localhost 作为 host，确保路径被正确解析为 pathname
-      return `cover-local://localhost${path}`
+      // 桌面端用自定义 cover-local 协议，绕过 webSecurity 对 file:// 的限制。
+      // Windows 绝对路径（C:\...）需统一成 /C:/... 形式：直接拼接会让盘符被吞进
+      // URL 的 host/port 部分，图片请求 404（Linux 路径以 / 开头不受影响）。
+      // 逐段 encode 兼容中文用户名、空格等特殊字符（主进程侧 decodeURIComponent）
+      const normalized = path.replace(/\\/g, '/')
+      const abs = normalized.startsWith('/') ? normalized : `/${normalized}`
+      return `cover-local://localhost${abs.split('/').map(encodeURIComponent).join('/')}`
     },
 
     async getMetadata(path: string): Promise<AudioMetadata> {
