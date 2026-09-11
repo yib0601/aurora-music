@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Aurora repro</title>
+<script src="howler.js"></script>
+<style>body{font-family:monospace;background:#111;color:#0f0;padding:16px}button{margin:4px;padding:8px 16px;cursor:pointer}#log{white-space:pre-wrap;font-size:12px;margin-top:12px;border-top:1px solid #333;padding-top:8px}</style>
+</head>
+<body>
+<h3>Repro: 切歌不自动播放 / 进度卡 00:00</h3>
+<button id="playA">Play A</button>
+<button id="playB">Play B (next)</button>
+<button id="reset">Reset</button>
+<pre id="log">-- logs --</pre>
+
+<script>
+// ====== 与 packages/app/src/services/audio.service.ts 保持一致的逻辑 ======
+let audioContext = null
+let analyserNode = null
+let currentMediaSource = null
+let currentHowl = null
+let tick = null
+const FADE_DURATION = 800
+
+const logEl = document.getElementById('log')
+function log(msg) {
+  const line = `[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}.${String(Date.now() % 1000).padStart(3, '0')}] ${msg}`
+  logEl.textContent += '\n' + line
+  console.log(line)
+}
+
+function initAudioAnalyser() {
+  const AC = window.AudioContext || window.webkitAudioContext
+  if (!AC) return null
+  if (!audioContext) {
+    audioContext = new AC()
+    analyserNode = audioContext.createAnalyser()
+    analyserNode.fftSize = 2048
+    analyserNode.smoothingTimeConstant = 0.8
+    analyserNode.connect(audioContext.destination)
+  }
+  return analyserNode
+}
+
+// FIXED 版本：命中 __auroraSource 缓存时也重新连接 analyser（howler 会复用 html5 Audio 元素）
+function connectAnalyser(howl) {
+  if (!analyserNode) initAudioAnalyser()
+  if (!analyserNode || !audioContext) return
+  try {
+    const audioEl = howl._sounds[0]._node
+    if (audioEl && audioEl instanceof HTMLMediaElement) {
+      let source = audioEl.__auroraSource
+      if (!source) {
+        source = audioContext.createMediaElementSource(audioEl)
+        audioEl.__auroraSource = source
+        log('  connectAnalyser: 新元素创建 source 并连接 analyser')
+      } else {
+        log('  connectAnalyser: 命中缓存 __auroraSource，重新连接 analyser')
+      }
+      try { source.disconnect() } catch {}
+      source.connect(analyserNode)
+      currentMediaSource = source
+    }
+  } catch (e) {
+    log('  connectAnalyser error: ' + e.message)
+  }
+}
+
+function startTick(howl) {
+  clearInterval(tick)
+  tick = setInterval(() => {
+    const p = howl.seek()
+    const playing = howl.playing()
+    log(`  tick seek=${(typeof p === 'number' ? p.toFixed(2) : p)} playing=${playing}`)
+  }, 500)
+}
+function stopTick() { clearInterval(tick); tick = null }
+
+function playTrack(track) {
+  log(`>> playTrack(${track.name})`)
+  if (currentHowl) {
+    const oldHowl = currentHowl
+    oldHowl.volume(0)
+    oldHowl.unload()
+    currentHowl = null
+    log('  旧 Howl 已 unload')
+  }
+  if (currentMediaSource) {
+    try { currentMediaSource.disconnect() } catch {}
+    currentMediaSource = null
+    log('  旧 MediaElementSource 已 disconnect')
+  }
+  stopTick()
+
+  const howl = new Howl({
+    src: [track.src],
+    html5: true,
+    volume: 0,
+    onplay: () => {
+      log('  onplay fired -> ' + track.name)
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume()
+        log('  audioContext.resume() called, state was suspended')
+      }
+      startTick(howl)
+    },
+    onload: () => log('  onload dur=' + howl.duration()),
+    onloaderror: (_i, e) => log('  onloaderror: ' + JSON.stringify(e)),
+    onplayerror: (_i, e) => log('  onplayerror: ' + JSON.stringify(e)),
+  })
+  currentHowl = howl
+  howl.play()
+  howl.fade(0, 0.7, FADE_DURATION)
+  connectAnalyser(howl)
+}
+
+// ====== WAV 生成（避免依赖外部音频文件） ======
+function makeWav(freq, dur) {
+  const sampleRate = 22050
+  const n = sampleRate * dur
+  const buf = new ArrayBuffer(44 + n * 2)
+  const dv = new DataView(buf)
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)) }
+  ws(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ')
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true)
+  dv.setUint32(24, sampleRate, true); dv.setUint32(28, sampleRate * 2, true)
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true)
+  ws(36, 'data'); dv.setUint32(40, n * 2, true)
+  let o = 44
+  for (let i = 0; i < n; i++) {
+    dv.setInt16(o, Math.sin(2 * Math.PI * freq * i / sampleRate) * 0.3 * 32767, true); o += 2
+  }
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))
+}
+
+const trackA = { name: 'A(440Hz)', src: makeWav(440, 6) }
+const trackB = { name: 'B(880Hz)', src: makeWav(880, 6) }
+
+document.getElementById('playA').onclick = () => { initAudioAnalyser(); playTrack(trackA) }
+document.getElementById('playB').onclick = () => playTrack(trackB)
+document.getElementById('reset').onclick = () => {
+  if (currentHowl) { currentHowl.unload(); currentHowl = null }
+  if (currentMediaSource) { try { currentMediaSource.disconnect() } catch {} currentMediaSource = null }
+  clearInterval(tick)
+  log('-- reset --')
+}
+</script>
+</body>
+</html>
