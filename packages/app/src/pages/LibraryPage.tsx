@@ -1,10 +1,9 @@
-import { useState, useCallback, useMemo, useEffect, useRef, memo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
-  FolderOpen, List, Grid3X3, Music as MusicIcon, Heart,
-  Play, Plus, ListPlus, ListEnd, Disc3, RefreshCw,
-  ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search,
+  FolderOpen, List, Grid3X3, Music as MusicIcon, Play,
+  RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search, Disc3,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -20,24 +19,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { isDesktop, formatTime, cn } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchOverlay } from '@/components/SearchOverlay'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
+import { VirtualTrackTable, VirtualTrackRow } from '@/components/VirtualTrackTable'
+import { VirtualCardGrid } from '@/components/VirtualCardGrid'
 import type { Track, SortField, LibraryTab } from '@/types'
 
 /** 排序字段展示名 */
@@ -72,165 +63,11 @@ interface TrackGroup {
 const EMPTY_GROUPS: TrackGroup[] = []
 
 /**
- * 「添加到播放列表」子菜单内容。
- * 单独抽成组件订阅 playlistStore：播放列表增删只重渲染这个小组件，
- * 不会牵连整张歌曲表（数千行时一次全表重渲染就是几百毫秒的卡顿）。
+ * 歌曲列表滚动位置缓存：滚动时随手记录，页面重挂载后恢复。
+ * 详情页返回场景由 App 层的常驻挂载直接保住 DOM 与滚动位置；
+ * 这里兜底其他会触发重挂载的路径（如去了「我喜欢的」再回来）。
  */
-const PlaylistSubmenuItems = memo(function PlaylistSubmenuItems({
-  trackId,
-  onCreatePlaylist,
-}: {
-  trackId: string
-  onCreatePlaylist: (trackId: string) => void
-}) {
-  const playlists = usePlaylistStore((s) => s.playlists)
-
-  if (playlists.length === 0) {
-    return (
-      <ContextMenuItem onClick={() => onCreatePlaylist(trackId)}>
-        <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        新建播放列表...
-      </ContextMenuItem>
-    )
-  }
-
-  return (
-    <>
-      {playlists.map((pl) => (
-        <ContextMenuItem
-          key={pl.id}
-          onClick={() => usePlaylistStore.getState().addTracksToPlaylist(pl.id, [trackId])}
-        >
-          <ListPlus className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
-          {pl.name}
-        </ContextMenuItem>
-      ))}
-      <ContextMenuSeparator />
-      <ContextMenuItem onClick={() => onCreatePlaylist(trackId)}>
-        <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        新建播放列表...
-      </ContextMenuItem>
-    </>
-  )
-})
-
-/**
- * 音乐库歌曲行。
- * ⚠️ 必须定义在 LibraryPage 之外：若写在组件体内，每次父组件 render 都会生成
- * 新的组件类型，React 会把整张表的行全部卸载重建 —— 数千行时单次更新要数秒，
- * 且已打开的右键菜单（含「添加到播放列表」子菜单）会随之被销毁而"点不动"。
- * 只接收可比较的基本类型/稳定引用 props，其余动作直接走 store.getState()。
- */
-const TrackRow = memo(function TrackRow({
-  track,
-  idx,
-  liked,
-  onPlay,
-  onCreatePlaylist,
-}: {
-  track: Track
-  idx: number
-  liked: boolean
-  onPlay: (idx: number) => void
-  onCreatePlaylist: (trackId: string) => void
-}) {
-  const navigate = useNavigate()
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <tr
-          className="row-hover cursor-pointer border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
-          // 移动端无 hover/double-click 概念，改用单击触发播放；
-          // 桌面端保留双击（避免误触，且单击只是 hover 显示播放图标）
-          onClick={isDesktop() ? undefined : () => onPlay(idx)}
-          onDoubleClick={isDesktop() ? () => onPlay(idx) : undefined}
-        >
-          <td className="py-2 px-1.5 md:py-2.5 md:px-3 max-w-xs">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  navigate(`/song/${track.id}`)
-                }}
-                title="查看歌曲详情"
-                className="w-11 h-11 md:w-9 md:h-9 rounded-[8px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
-              >
-                <CoverImage
-                  track={track}
-                  className="w-full h-full object-cover product-shadow"
-                  fallback={<Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
-                />
-              </button>
-              <div className="min-w-0">
-                <span className="block font-text font-semibold text-[14px] truncate text-white tracking-[-0.224px]">
-                  {track.title}
-                </span>
-                {/* 移动端隐藏艺术家列，改为标题下方第二行展示 */}
-                <span className="block md:hidden font-text text-[12px] text-white/40 truncate mt-0.5 tracking-[-0.12px]">
-                  {track.artist}
-                </span>
-              </div>
-            </div>
-          </td>
-          <td className="py-2.5 px-3 font-text text-white/50 text-[14px] truncate max-w-40 tracking-[-0.224px] hidden md:table-cell">
-            {track.artist}
-          </td>
-          <td className="py-2.5 px-3 font-text text-white/45 text-[14px] truncate max-w-48 hidden md:table-cell tracking-[-0.224px]">
-            {track.album}
-          </td>
-          <td className="py-2 px-1 md:py-2.5 md:px-2 w-10">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                useLibraryStore.getState().toggleLike(track.id)
-              }}
-              // 移动端无 hover，收藏按钮需常显；桌面端保持 hover 显示
-              className="btn-icon opacity-100 md:opacity-0 md:group-hover:opacity-100"
-            >
-              <Heart
-                className={cn('h-4 w-4 md:h-3.5 md:w-3.5', liked ? 'text-coral fill-coral' : 'text-white/40')}
-                strokeWidth={1.5}
-              />
-            </button>
-          </td>
-          <td className="py-2 pr-1.5 pl-1 md:py-2.5 md:px-3 text-right font-text text-white/45 text-[12px] md:text-[13px] tabular-nums w-12 md:w-16 tracking-[-0.12px]">
-            {formatTime(track.duration)}
-          </td>
-        </tr>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-52">
-        <ContextMenuItem onClick={() => onPlay(idx)}>
-          <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          立即播放
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => usePlayerStore.getState().addToPlayNext(track)}>
-          <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          下一首播放
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => usePlayerStore.getState().addToQueue(track)}>
-          <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          添加到队列
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-            添加到播放列表
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent className="w-48">
-            <PlaylistSubmenuItems trackId={track.id} onCreatePlaylist={onCreatePlaylist} />
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => useLibraryStore.getState().toggleLike(track.id)}>
-          <Heart className={cn('h-4 w-4 mr-2', liked && 'fill-coral text-coral')} strokeWidth={1.5} />
-          {liked ? '取消收藏' : '收藏'}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  )
-})
+const savedScrollPositions: Record<string, number> = {}
 
 /**
  * Apple 风格 LibraryPage
@@ -238,14 +75,15 @@ const TrackRow = memo(function TrackRow({
  * - 表格无 glass，仅 hairline 分隔行
  * - 网格卡片用 card-utility（白底 + 1px hairline + 18px 圆角）
  * - 按钮统一 Apple 风格
+ *
+ * 性能：歌曲列表/网格均已虚拟化（@tanstack/react-virtual），
+ * 只渲染可视区域内的行，数千首歌曲不再一次性创建全部节点。
  */
 export function LibraryPage() {
-  const navigate = useNavigate()
   const tracks = useLibraryStore((s) => s.tracks)
   const viewMode = useLibraryStore((s) => s.viewMode)
   const setViewMode = useLibraryStore((s) => s.setViewMode)
   const scanFolders = useLibraryStore((s) => s.scanFolders)
-  const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const libraryTab = useLibraryStore((s) => s.libraryTab)
   const setLibraryTab = useLibraryStore((s) => s.setLibraryTab)
@@ -263,13 +101,33 @@ export function LibraryPage() {
   // 专辑/艺术家分组详情：非 null 时内容区替换为该组的歌曲列表
   const [selectedGroup, setSelectedGroup] = useState<{ type: 'album' | 'artist'; key: string } | null>(null)
 
-  // 全局快捷键 ⌘K / Ctrl+K 唤起搜索浮层
+  // 歌曲列表滚动位置：滚动时记录，重挂载/视图切换后恢复
+  const songsScrollRef = useRef<HTMLDivElement>(null)
+  const viewModeRef = useRef(viewMode)
+  useEffect(() => { viewModeRef.current = viewMode }, [viewMode])
+
+  const handleSongsScroll = useCallback(() => {
+    const el = songsScrollRef.current
+    if (el) savedScrollPositions[viewModeRef.current] = el.scrollTop
+  }, [])
+
+  useEffect(() => {
+    const el = songsScrollRef.current
+    if (el) el.scrollTop = savedScrollPositions[viewMode] ?? 0
+  }, [viewMode, libraryTab, selectedGroup])
+
+  // 全局快捷键 ⌘K / Ctrl+K 唤起搜索浮层。
+  // 注意：音乐库页为常驻挂载（进入其他页面仅隐藏不卸载），
+  // 页面不可见时不能响应快捷键，否则搜索浮层会悄悄打开在不可见层里
+  const pathname = useLocation().pathname
+  const pathnameRef = useRef(pathname)
+  useEffect(() => { pathnameRef.current = pathname }, [pathname])
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setSearchOpen(true)
-      }
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return
+      if (pathnameRef.current !== '/library') return
+      e.preventDefault()
+      setSearchOpen(true)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -424,7 +282,7 @@ export function LibraryPage() {
     }
   }, [])
 
-  // 专辑/艺术家分组网格卡片
+  // 专辑/艺术家分组网格卡片（分组数量远小于歌曲总数，保持平铺渲染）
   const renderGroupGrid = (groups: TrackGroup[], type: 'album' | 'artist') => (
     <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -588,7 +446,7 @@ export function LibraryPage() {
           </div>
 
           {activeGroup ? (
-        // 分组详情：返回 + 组信息 + 播放全部 + 该组歌曲列表
+        // 分组详情：返回 + 组信息 + 播放全部 + 该组歌曲列表（单组歌曲量小，直接平铺）
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           <div className="flex items-center gap-3 mb-4 md:mb-5">
             <button
@@ -614,135 +472,48 @@ export function LibraryPage() {
               播放全部
             </button>
           </div>
-          <table className="w-full font-text">
-            <tbody>
-              {activeGroup.tracks.map((track, idx) => (
-                <TrackRow
-                  key={track.id}
-                  track={track}
-                  idx={idx}
-                  liked={likedTracks.has(track.id)}
-                  onPlay={handlePlayRow}
-                  onCreatePlaylist={openCreatePlaylistDialog}
-                />
-              ))}
-            </tbody>
-          </table>
+          <div className="w-full font-text">
+            {activeGroup.tracks.map((track, idx) => (
+              <VirtualTrackRow
+                key={track.id}
+                track={track}
+                idx={idx}
+                liked={likedTracks.has(track.id)}
+                onPlay={handlePlayRow}
+                onCreatePlaylist={openCreatePlaylistDialog}
+              />
+            ))}
+          </div>
         </div>
       ) : libraryTab === 'albums' ? (
         renderGroupGrid(albumGroups, 'album')
       ) : libraryTab === 'artists' ? (
         renderGroupGrid(artistGroups, 'artist')
       ) : viewMode === 'list' ? (
-        <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
-          <table className="w-full font-text">
-            {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
-            <thead className="hidden md:table-header-group">
-              <tr className="border-b border-white/10">
-                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">标题</th>
-                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">艺术家</th>
-                <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">专辑</th>
-                <th className="w-10"></th>
-                <th className="text-right py-2.5 px-3 font-semibold text-white/50 text-[12px] w-16 tracking-[-0.12px]">时长</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTracks.map((track, idx) => (
-                <TrackRow
-                  key={track.id}
-                  track={track}
-                  idx={idx}
-                  liked={likedTracks.has(track.id)}
-                  onPlay={handlePlayRow}
-                  onCreatePlaylist={openCreatePlaylistDialog}
-                />
-              ))}
-            </tbody>
-          </table>
+        <div
+          ref={songsScrollRef}
+          onScroll={handleSongsScroll}
+          className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2"
+        >
+          <VirtualTrackTable
+            tracks={filteredTracks}
+            scrollRef={songsScrollRef}
+            onPlayRow={handlePlayRow}
+            onCreatePlaylist={openCreatePlaylistDialog}
+          />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {filteredTracks.map((track, idx) => (
-              <ContextMenu key={track.id}>
-                <ContextMenuTrigger asChild>
-                  <div
-                    className="group card-utility p-2.5 cursor-pointer"
-                    // 移动端单击卡片即播放；桌面端保留双击，封面单击仍进详情
-                    onClick={isDesktop() ? undefined : () => handlePlayRow(idx)}
-                    onDoubleClick={() => handlePlayRow(idx)}
-                  >
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        navigate(`/song/${track.id}`)
-                      }}
-                      title="查看歌曲详情"
-                      className="aspect-square rounded-[8px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer transition-transform duration-200 ease-apple group-hover:scale-[1.02]"
-                    >
-                      <CoverImage
-                        track={track}
-                        alt={track.title}
-                        className="w-full h-full object-cover product-shadow"
-                        fallback={<MusicIcon className="h-8 w-8 text-white/20" strokeWidth={1.5} />}
-                      />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleLike(track.id)
-                        }}
-                        // 移动端无 hover：已收藏的红心常显，未收藏的保持隐藏避免遮挡封面
-                        className={cn(
-                          'absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full transition-opacity duration-200 ease-apple bg-black/40 hover:scale-105',
-                          likedTracks.has(track.id) ? 'opacity-100 md:opacity-0 md:group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        )}
-                      >
-                        <Heart
-                          className={cn('h-3.5 w-3.5', likedTracks.has(track.id) ? 'text-coral fill-coral' : 'text-white')}
-                          strokeWidth={1.5}
-                        />
-                      </button>
-                    </div>
-                    <p className="font-text text-[14px] font-semibold truncate text-white tracking-[-0.224px]">
-                      {track.title}
-                    </p>
-                    <p className="font-text text-[12px] text-white/50 truncate mt-0.5 tracking-[-0.12px]">
-                      {track.artist}
-                    </p>
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent className="w-52">
-                  <ContextMenuItem onClick={() => handlePlayRow(idx)}>
-                    <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                    立即播放
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={() => usePlayerStore.getState().addToPlayNext(track)}>
-                    <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                    下一首播放
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={() => usePlayerStore.getState().addToQueue(track)}>
-                    <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                    添加到队列
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuSub>
-                    <ContextMenuSubTrigger>
-                      <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                      添加到播放列表
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent className="w-48">
-                      <PlaylistSubmenuItems trackId={track.id} onCreatePlaylist={openCreatePlaylistDialog} />
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => toggleLike(track.id)}>
-                    <Heart className={cn('h-4 w-4 mr-2', likedTracks.has(track.id) && 'fill-coral text-coral')} strokeWidth={1.5} />
-                    {likedTracks.has(track.id) ? '取消收藏' : '收藏'}
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            ))}
-          </div>
+        <div
+          ref={songsScrollRef}
+          onScroll={handleSongsScroll}
+          className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2"
+        >
+          <VirtualCardGrid
+            tracks={filteredTracks}
+            scrollRef={songsScrollRef}
+            onPlayRow={handlePlayRow}
+            onCreatePlaylist={openCreatePlaylistDialog}
+          />
         </div>
       )}
       </>

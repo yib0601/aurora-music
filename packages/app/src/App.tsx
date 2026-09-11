@@ -521,6 +521,22 @@ function AppLayout() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground ambient-backdrop">
+      {/* 歌曲详情页沉浸背景：封面模糊背景提升到窗口级，覆盖顶部标题栏区域，消除顶部黑边 */}
+      {isSongDetail && currentTrack && (
+        <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
+          <CoverImage
+            track={currentTrack}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover scale-125 blur-[64px] opacity-55"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/50 to-background/95" />
+          <div
+            className="absolute inset-0"
+            style={{ background: 'radial-gradient(ellipse 60% 45% at 28% 18%, rgba(var(--fc-accent-rgb),.10), transparent 65%)' }}
+          />
+        </div>
+      )}
+
       {/* Mineradio SVG 色差玻璃滤镜定义（隐藏，仅注入 DOM 让 url(#...) 引用生效） */}
       <GlassSvgFilter />
 
@@ -556,16 +572,33 @@ function AppLayout() {
                   <UpdateBanner info={updateInfo} onClose={() => setUpdateInfo(null)} />
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto scrollbar-thin">
-                <Routes>
-                  <Route path="/" element={<Navigate to="/library" replace />} />
-                  <Route path="/library" element={<LibraryPage />} />
-                  <Route path="/liked" element={<LikedPage />} />
-                  <Route path="/recent" element={<RecentPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/playlist/:id" element={<PlaylistPage />} />
-                  <Route path="/song/:id" element={<SongDetailPage />} />
-                </Routes>
+              <div className="relative flex-1 min-h-0">
+                {/*
+                  音乐库常驻挂载：离开 /library（如进入歌曲详情）时不卸载，
+                  用 visibility 隐藏而非 display —— 布局尺寸与滚动容器全程保留，
+                  虚拟列表不会因容器失焦归零而停摆，返回时零重建、零空白、滚动位置原样恢复。
+                */}
+                <div
+                  className={cn(
+                    'h-full overflow-y-auto scrollbar-thin',
+                    location.pathname !== '/library' && 'invisible',
+                  )}
+                >
+                  <LibraryPage />
+                </div>
+                {/* 其他路由按需渲染，绝对定位铺满容器，与常驻的音乐库层共存互不影响 */}
+                {location.pathname !== '/library' && (
+                  <div className="absolute inset-0 overflow-y-auto scrollbar-thin">
+                    <Routes>
+                      <Route path="/" element={<Navigate to="/library" replace />} />
+                      <Route path="/liked" element={<LikedPage />} />
+                      <Route path="/recent" element={<RecentPage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/playlist/:id" element={<PlaylistPage />} />
+                      <Route path="/song/:id" element={<SongDetailPage />} />
+                    </Routes>
+                  </div>
+                )}
               </div>
 
               {/* Mineradio 悬浮胶囊控制台 — 歌曲详情页已内嵌播放功能框，此处隐藏避免重复 */}
