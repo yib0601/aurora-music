@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import App from './App'
 import './styles/globals.css'
-import { platform } from './services/platform'
+import { platform } from '@/services/platform'
 
 // Polyfill: music-metadata-browser 内部使用 Node.js 的 Buffer 和 global，
 // 在移动端 WebView（无 Node 全局）下会 ReferenceError。注入 buffer 包作为 Buffer，

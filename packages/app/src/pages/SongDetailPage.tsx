@@ -283,21 +283,7 @@ export function SongDetailPage() {
 
   return (
     <div className="relative flex flex-col min-h-full">
-      {/* 沉浸式封面背景：封面放大模糊铺满整页内容高度，滚动无接缝 */}
-      <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
-        <CoverImage
-          track={track}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover scale-125 blur-[64px] opacity-55"
-        />
-        {/* 压暗/提亮遮罩：保证前景文字可读，并随主题（深/浅）自动适配 */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/50 to-background/95" />
-        <div
-          className="absolute inset-0"
-          style={{ background: 'radial-gradient(ellipse 60% 45% at 28% 18%, rgba(var(--fc-accent-rgb),.10), transparent 65%)' }}
-        />
-      </div>
-
+      {/* 沉浸式封面背景已提升到 App 层（覆盖标题栏区域），此处仅渲染前景内容 */}
       {/* 前景内容：收窄居中成列，Hero/歌词/专辑共用同一视觉轴，避免宽屏下内容松散 */}
       <div className="relative mx-auto w-full max-w-[880px] px-4 md:px-8 pt-4 md:pt-8 pb-6">
         {/* 返回：圆形玻璃按钮，融入沉浸背景 */}
@@ -404,42 +390,6 @@ export function SongDetailPage() {
               </div>
             )}
 
-            {/* 更多信息 — 默认收起保持紧凑 */}
-            <div className="mt-5 w-full">
-              <button
-                onClick={() => setShowMoreInfo((v) => !v)}
-                className="inline-flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/50 hover:text-mint transition-colors duration-200 ease-apple"
-              >
-                <ChevronDown
-                  className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
-                  strokeWidth={1.8}
-                />
-                更多信息
-              </button>
-              {showMoreInfo && (
-                <div className="mt-4 rounded-2xl bg-white/[0.035] border border-white/[0.07] backdrop-blur-md p-5">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-5">
-                    {statItems.map(({ icon: Icon, label, value }) => (
-                      <div key={label} className="flex items-center gap-3 min-w-0">
-                        <Icon className="h-4 w-4 text-mint/60 flex-shrink-0" strokeWidth={1.5} />
-                        <div className="min-w-0">
-                          <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</p>
-                          <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
-                            {value}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {track.path && (
-                    <p className="flex items-center gap-1.5 mt-4 font-text text-[12px] text-white/40 tracking-[-0.12px]">
-                      <Folder className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
-                      <span className="truncate">{track.path}</span>
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
         </section>
 
@@ -455,6 +405,43 @@ export function SongDetailPage() {
               onLineClick={(t) => usePlayerStore.getState().seekTo(t)}
             />
           </div>
+        </section>
+
+        {/* 更多信息 — 默认收起保持紧凑，置于歌词下方 */}
+        <section className="mt-6 md:mt-8">
+          <button
+            onClick={() => setShowMoreInfo((v) => !v)}
+            className="inline-flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/50 hover:text-mint transition-colors duration-200 ease-apple"
+          >
+            <ChevronDown
+              className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
+              strokeWidth={1.8}
+            />
+            更多信息
+          </button>
+          {showMoreInfo && (
+            <div className="mt-4 rounded-2xl bg-white/[0.035] border border-white/[0.07] backdrop-blur-md p-5">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-5">
+                {statItems.map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="flex items-center gap-3 min-w-0">
+                    <Icon className="h-4 w-4 text-mint/60 flex-shrink-0" strokeWidth={1.5} />
+                    <div className="min-w-0">
+                      <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</p>
+                      <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
+                        {value}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {track.path && (
+                <p className="flex items-center gap-1.5 mt-4 font-text text-[12px] text-white/40 tracking-[-0.12px]">
+                  <Folder className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
+                  <span className="truncate">{track.path}</span>
+                </p>
+              )}
+            </div>
+          )}
         </section>
 
         {/* 同专辑歌曲：独立成行，置于歌词下方 */}

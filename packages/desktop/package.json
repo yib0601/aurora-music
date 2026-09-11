@@ -47,9 +47,27 @@
       "output": "release"
     },
     "artifactName": "Aurora-Music-${version}.${ext}",
+    "electronLanguages": [
+      "en-US",
+      "zh-CN"
+    ],
     "files": [
       "dist-electron/**/*",
-      "app-dist/**/*"
+      "app-dist/**/*",
+      "!**/node_modules/better-sqlite3/binding.gyp",
+      "!**/node_modules/better-sqlite3/bin/**",
+      "!**/node_modules/better-sqlite3/deps/**",
+      "!**/node_modules/better-sqlite3/src/**",
+      "!**/node_modules/better-sqlite3/build/Release/obj/**",
+      "!**/node_modules/better-sqlite3/build/Release/obj.target/**",
+      "!**/node_modules/better-sqlite3/build/deps/**",
+      "!**/node_modules/better-sqlite3/build/Release/*.iobj",
+      "!**/node_modules/better-sqlite3/build/Release/*.ipdb",
+      "!**/node_modules/better-sqlite3/build/Release/*.pdb",
+      "!**/node_modules/better-sqlite3/build/Release/*.lib",
+      "!**/node_modules/better-sqlite3/build/Release/*.exp",
+      "!**/node_modules/better-sqlite3/build/Release/*.tlog",
+      "!**/node_modules/better-sqlite3/build/Release/test_extension*"
     ],
     "extraResources": [
       {
@@ -58,7 +76,7 @@
       }
     ],
     "asarUnpack": [
-      "**/node_modules/better-sqlite3/**"
+      "**/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
     ],
     "npmRebuild": true,
     "buildDependenciesFromSource": false,
