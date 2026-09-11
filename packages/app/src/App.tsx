@@ -184,7 +184,8 @@ function AppLayout() {
   const glassMode = useLibraryStore((s) => s.glassMode)
 
   // 保留 themeColor hook 以维持封面色提取功能（用于 lyrics 渐变等非装饰场景）
-  useThemeColor(currentTrack?.coverPath)
+  // 在线曲目无本地 coverPath 时回退到远端 coverUrl
+  useThemeColor(currentTrack?.coverPath || currentTrack?.coverUrl)
 
   // 启动时检查软件更新：有新版本且本次会话未提示过时展示横幅
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
@@ -661,11 +662,6 @@ function AppLayout() {
                 </div>
 
                 <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-6">
-                  <div className="px-2 pt-2 pb-1.5">
-                    <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
-                      歌词
-                    </span>
-                  </div>
                   <div className="flex-1 min-h-0">
                     <LyricsView onLineClick={(time) => usePlayerStore.getState().seekTo(time)} />
                   </div>

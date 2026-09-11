@@ -11,6 +11,7 @@ import type {
   Track,
 } from '@/types'
 import { createMobilePlatform as createMobilePlatformImpl, setFolderPickerHandler } from './mobile'
+import { createWebPlatform, isFileSystemAccessSupported } from './web'
 
 // 重新导出：UI 层（SettingsPage）注册移动端文件夹选择器回调，
 // 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）
@@ -236,11 +237,20 @@ export function createPlatform(): Platform {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
     return createDesktopPlatform()
   }
-  // 仅在 Capacitor 可用时才走移动端实现；否则降级为只读 Noop
-  if (typeof window !== 'undefined' && (window as any).Capacitor) {
+  // 仅当运行在 Capacitor 原生容器（Android/iOS WebView）时才走移动端实现。
+  // 注意：@capacitor/core 在普通浏览器里也会注入 window.Capacitor（platform: 'web'），
+  // 不能只凭全局对象是否存在判断，必须用 isNativePlatform()，
+  // 否则浏览器会误走移动端分支（如弹出 Android 存储路径输入框）。
+  const cap = typeof window !== 'undefined' ? (window as any).Capacitor : null
+  if (cap?.isNativePlatform?.()) {
     return createMobilePlatform()
   }
-  // Web 浏览器或未知环境：返回最小 Noop 实现，避免运行时崩
+  // Web 浏览器：支持 File System Access API（Chrome/Edge）时走 Web 平台实现，
+  // 可导入本地目录、解析元数据并播放；曲目与 objectURL 仅当前会话有效
+  if (isFileSystemAccessSupported()) {
+    return createWebPlatform()
+  }
+  // 其他未知环境：返回最小 Noop 实现，避免运行时崩
   return {
     platform: 'desktop' as const, // 占位类型，无 electronAPI 时无副作用
     async pickFolder() { return null },
