@@ -175,7 +175,7 @@ function SourceAddDialog({
   onSave,
 }: {
   open: boolean
-  kind: 'music' | 'lyrics'
+  kind: 'music' | 'lyrics' | 'playlist'
   onOpenChange: (open: boolean) => void
   onSave: (source: { name: string; apiUrl: string; headers?: Record<string, string> }) => void
 }) {
@@ -197,7 +197,8 @@ function SourceAddDialog({
   }, [open])
 
   const isLyrics = kind === 'lyrics'
-  const requiredPlaceholders = isLyrics ? ['{track}', '{artist}'] : ['{query}']
+  const isPlaylist = kind === 'playlist'
+  const requiredPlaceholders = isPlaylist ? ['{url}'] : isLyrics ? ['{track}', '{artist}'] : ['{query}']
   const missingPlaceholders = apiUrl.trim() ? requiredPlaceholders.filter((p) => !apiUrl.includes(p)) : []
   const canSave = apiUrl.trim().length > 0 && missingPlaceholders.length === 0 && !headersInvalid
 
@@ -225,7 +226,7 @@ function SourceAddDialog({
   const handleSave = () => {
     if (!canSave) return
     onSave({
-      name: name.trim() || (isLyrics ? '新歌词源' : '新音乐源'),
+      name: name.trim() || (isPlaylist ? '新歌单解析源' : isLyrics ? '新歌词源' : '新音乐源'),
       apiUrl: apiUrl.trim(),
       headers,
     })
@@ -239,11 +240,15 @@ function SourceAddDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-white text-tagline">{isLyrics ? '添加歌词源' : '添加音乐源'}</DialogTitle>
+          <DialogTitle className="text-white text-tagline">
+            {isPlaylist ? '添加歌单解析源' : isLyrics ? '添加歌词源' : '添加音乐源'}
+          </DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
-            {isLyrics
-              ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
-              : '接口地址需包含 {query} 占位符，保存后立即生效'}
+            {isPlaylist
+              ? '接口地址需包含 {url} 占位符（替换为歌单分享链接），保存后立即生效'
+              : isLyrics
+                ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
+                : '接口地址需包含 {query} 占位符，保存后立即生效'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -252,7 +257,7 @@ function SourceAddDialog({
             <input
               type="text"
               value={name}
-              placeholder={isLyrics ? '如：LRCLIB' : '如：我的音乐接口'}
+              placeholder={isPlaylist ? '如：我的歌单解析接口' : isLyrics ? '如：LRCLIB' : '如：我的音乐接口'}
               onChange={(e) => setName(e.target.value)}
               className={inputCls}
             />
@@ -263,9 +268,11 @@ function SourceAddDialog({
               type="text"
               value={apiUrl}
               placeholder={
-                isLyrics
-                  ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
-                  : 'https://your-api.com/search?q={query}'
+                isPlaylist
+                  ? 'https://your-api.com/resolve?url={url}'
+                  : isLyrics
+                    ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
+                    : 'https://your-api.com/search?q={query}'
               }
               onChange={(e) => setApiUrl(e.target.value)}
               className={`${inputCls} ${missingPlaceholders.length > 0 ? 'border-coral/60' : ''}`}
@@ -328,6 +335,11 @@ export function SettingsPage() {
   const addLyricsSource = useLibraryStore((s) => s.addLyricsSource)
   const updateLyricsSource = useLibraryStore((s) => s.updateLyricsSource)
   const removeLyricsSource = useLibraryStore((s) => s.removeLyricsSource)
+  // 歌单解析源（歌单导入：应用不内置任何平台抓取器，解析接口由用户按协议配置）
+  const playlistResolverSources = useLibraryStore((s) => s.playlistResolverSources)
+  const addPlaylistResolverSource = useLibraryStore((s) => s.addPlaylistResolverSource)
+  const updatePlaylistResolverSource = useLibraryStore((s) => s.updatePlaylistResolverSource)
+  const removePlaylistResolverSource = useLibraryStore((s) => s.removePlaylistResolverSource)
 
   const { devices, selectedDeviceId, setSelectedDeviceId } = useAudioDevices()
 
@@ -344,6 +356,7 @@ export function SettingsPage() {
   // 添加源弹窗开关：弹窗内校验通过后才写入 store，避免假地址被持久化
   const [addMusicOpen, setAddMusicOpen] = useState(false)
   const [addLyricsOpen, setAddLyricsOpen] = useState(false)
+  const [addPlaylistOpen, setAddPlaylistOpen] = useState(false)
 
   const handleCheckUpdate = async () => {
     if (checking) return
@@ -615,6 +628,44 @@ export function SettingsPage() {
                 )}
               </div>
 
+              {/* 歌单解析源：歌单导入时解析分享链接；应用不内置任何平台抓取器 */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="font-text text-caption-strong text-white/80">歌单解析源</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">
+                      导入歌单时把分享链接解析为歌曲列表；不配置也可用纯文本粘贴导入
+                    </p>
+                  </div>
+                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddPlaylistOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                    添加
+                  </Button>
+                </div>
+
+                {playlistResolverSources.length === 0 ? (
+                  <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-md px-3.5 py-6 text-center">
+                    <Cloud className="h-6 w-6 text-white/30 mx-auto mb-2" strokeWidth={1.4} />
+                    <p className="font-text text-caption text-white/50">尚未配置歌单解析源，分享链接导入不可用（纯文本导入不受影响）</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {playlistResolverSources.map((src) => (
+                      <SourceEditorCard
+                        key={src.id}
+                        name={src.name}
+                        apiUrl={src.apiUrl}
+                        headers={src.headers}
+                        enabled={src.enabled}
+                        placeholderUrl="https://your-api.com/resolve?url={url}"
+                        onUpdate={(updates) => updatePlaylistResolverSource(src.id, updates)}
+                        onRemove={() => removePlaylistResolverSource(src.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* 协议规范说明 */}
               <div className="bg-white/[0.02] border border-white/[0.06] rounded-md px-3.5 py-3 space-y-2">
                 <p className="font-text text-caption-strong text-white/70">歌源协议规范</p>
@@ -630,6 +681,12 @@ export function SettingsPage() {
                   <span className="text-white/70">歌词源：</span>
                   占位符 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{track}`}</code>（歌曲名）/ <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{artist}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{album}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{duration}`}</code>（秒）。
                   响应支持单对象或数组，歌词字段兼容 syncedLyrics / lrc / plainLyrics。
+                </p>
+                <p className="font-text text-caption text-white/50 leading-relaxed">
+                  <span className="text-white/70">歌单解析源：</span>
+                  占位符 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{url}`}</code>（替换为歌单分享链接）。
+                  响应为 JSON，支持数组或 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{results:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{data:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{songs:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{list:[]}`}</code> 包裹；
+                  可选 name 字段提供歌单标题。每项字段：<span className="text-white/70">title / artist</span>（兼容 name / songName / singer）。
                 </p>
                 <p className="font-text text-caption text-white/50 leading-relaxed">
                   请求头为可选 JSON 对象，用于需要鉴权或特定 Referer / User-Agent 的接口。
@@ -732,6 +789,12 @@ export function SettingsPage() {
         kind="lyrics"
         onOpenChange={setAddLyricsOpen}
         onSave={(source) => addLyricsSource({ ...source, enabled: true })}
+      />
+      <SourceAddDialog
+        open={addPlaylistOpen}
+        kind="playlist"
+        onOpenChange={setAddPlaylistOpen}
+        onSave={(source) => addPlaylistResolverSource({ ...source, enabled: true })}
       />
     </PageLayout>
   )
