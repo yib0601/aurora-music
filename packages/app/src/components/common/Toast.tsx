@@ -68,7 +68,8 @@ export function ToastHost() {
         <div
           key={t.id}
           role="status"
-          className="pointer-events-auto flex max-w-full items-start gap-2.5 rounded-xl glass-floating px-4 py-2.5 shadow-lg animate-in fade-in-0 slide-in-from-top-2 zoom-in-95 duration-200"
+          /* 入场仅淡入：位移/缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧 */
+          className="pointer-events-auto flex max-w-full items-start gap-2.5 rounded-xl glass-floating px-4 py-2.5 shadow-lg animate-in fade-in-0 duration-200"
         >
           {t.type === 'error' ? (
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-coral" strokeWidth={1.8} />

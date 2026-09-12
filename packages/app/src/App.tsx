@@ -81,7 +81,7 @@ function AppLayout() {
   const isSongDetail = location.pathname.startsWith('/song/')
 
   // 沉浸背景延迟挂载开关：进入详情页时先让侧栏/瓷砖折叠动画跑完（300ms）再渲染
-  // 全屏 blur-[64px] 背景，避免软件渲染下动画期间每帧重算全屏模糊导致掉帧
+  // 全屏模糊背景，避免软件渲染下动画期间每帧重算全屏模糊导致掉帧
   const [backdropReady, setBackdropReady] = useState(false)
   useEffect(() => {
     if (!isSongDetail) {
@@ -90,6 +90,21 @@ function AppLayout() {
     }
     const t = setTimeout(() => setBackdropReady(true), 320)
     return () => clearTimeout(t)
+  }, [isSongDetail])
+
+  // 进出详情页过渡期玻璃降级：侧栏/瓷砖宽度折叠动画（300ms）期间，
+  // 玻璃模糊区域尺寸每帧变化，软件渲染下每帧重算模糊导致全屏进出场卡顿。
+  // 过渡开始即挂 .glass-perf-lite 临时关闭所有玻璃 backdrop-filter，
+  // 动画结束后恢复，静态视觉几乎无差异（背景色仍在，仅模糊消失 300ms）
+  useEffect(() => {
+    document.documentElement.classList.add('glass-perf-lite')
+    const t = setTimeout(() => {
+      document.documentElement.classList.remove('glass-perf-lite')
+    }, 400)
+    return () => {
+      clearTimeout(t)
+      document.documentElement.classList.remove('glass-perf-lite')
+    }
   }, [isSongDetail])
 
   // 移动端文件夹选择器：在 App 层全局注册 handler，让 LibraryPage 与 SettingsPage
