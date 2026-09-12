@@ -492,6 +492,16 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     box-shadow: var(--card-utility-hover-shadow);
   }
 
+  /* 实色列表卡片：与 card-utility 同观感但无 backdrop-filter——
+   * 背景渐变本身已近不透明（.66/.76），blur 折射收益极小，
+   * 而大面积 backdrop-filter 在滚动时逐帧重采样是详情页卡顿主因 */
+  .card-solid {
+    background: var(--surface-tile-1-bg);
+    border: 1px solid var(--surface-card-border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--card-utility-shadow);
+  }
+
   /* 静态列表卡片：与 card-utility 同材质，但 hover 不上浮——
    * 用于包裹多行列表（搜索结果等），避免鼠标悬停任一行时整个列表位移 */
   .card-list {
@@ -772,6 +782,19 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
     0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
+/* ===== 大屏（≥1500px）播放控件放大 =====
+ * 全屏/大窗口下底部播放控制台（btn-icon / 进度条 / 音量条）整体放大一档，
+ * 小窗口保持原紧凑尺寸。仅作用于带 -xl 修饰类的播放条控件，不影响页面其他 btn-icon。 */
+@media (min-width: 1500px) {
+  .btn-icon.btn-xl { width: 34px; height: 34px; border-radius: 10px; }
+  input[type='range'].seek-bar.seek-xl { height: 28px; }
+  input[type='range'].seek-bar.seek-xl::-webkit-slider-runnable-track { height: 6px; }
+  input[type='range'].seek-bar.seek-xl::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -4px; }
+  input[type='range'].volume-bar.volume-xl { height: 20px; }
+  input[type='range'].volume-bar.volume-xl::-webkit-slider-runnable-track { height: 6px; }
+  input[type='range'].volume-bar.volume-xl::-webkit-slider-thumb { width: 13px; height: 13px; margin-top: -3.5px; }
+}
+
 .row-hover { transition: background 0.18s var(--ease-mineradio); }
 .row-hover:hover { background: rgba(0,245,212,.075); }
 
@@ -795,6 +818,12 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 }
 @keyframes vinyl-spin {
   to { transform: rotate(360deg); }
+}
+/* 详情页沉浸背景：侧栏/瓷砖折叠动画期间（300ms）不渲染全屏 blur-[64px] 背景，
+   动画结束后再淡入，避免软件渲染下每帧重算全屏模糊导致展开/收起过程掉帧 */
+@keyframes backdrop-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ===== ambient-backdrop（封面色光晕） =====

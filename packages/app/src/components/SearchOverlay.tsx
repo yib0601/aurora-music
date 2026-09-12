@@ -7,7 +7,6 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
-import { toast } from '@/components/common/Toast'
 import { cn, formatTime } from '@/lib/utils'
 import {
   ContextMenu,
@@ -19,25 +18,8 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import type { Track, OnlineTrackSearchResult, DownloadQuality, Playlist } from '@/types'
-
-/** 音质回退链：设置的档位不可用时，依次尝试其余档位，最终回退到源默认地址 */
-const QUALITY_FALLBACK: Record<DownloadQuality, DownloadQuality[]> = {
-  '128': ['128', '320', 'flac'],
-  '320': ['320', 'flac', '128'],
-  flac: ['flac', '320', '128'],
-}
-
-/** 按下载音质设置挑选下载地址：源未提供多音质地址时直接用默认地址 */
-function pickDownloadUrl(track: Track, preferred: DownloadQuality): string {
-  const urls = track.onlineQualityUrls
-  if (urls) {
-    for (const q of QUALITY_FALLBACK[preferred]) {
-      if (urls[q]) return urls[q]!
-    }
-  }
-  return track.onlineUrl!
-}
+import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
+import type { Track, OnlineTrackSearchResult, Playlist } from '@/types'
 
 /** 行 DOM 注册：键盘高亮移动时把目标行滚动到可视区 */
 type RegisterRow = (id: string, el: HTMLDivElement | null) => void
@@ -313,8 +295,8 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const [onlineResults, setOnlineResults] = useState<OnlineTrackSearchResult[]>([])
   const [onlineLoading, setOnlineLoading] = useState(false)
   const [onlineError, setOnlineError] = useState<string | null>(null)
-  // 正在下载中的曲目 id 集合（同一首歌不重复触发，图标显示加载态）
-  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set())
+  // 在线歌曲下载（共享 hook）：downloadingIds 驱动行内加载态
+  const { downloadingIds, download: handleDownload } = useDownloadOnlineTrack()
   // 键盘高亮项下标（-1 = 无高亮）；随查询/标签切换重置
   const [activeIdx, setActiveIdx] = useState(-1)
   const tracks = useLibraryStore((s) => s.tracks)
@@ -516,59 +498,6 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   )
 
   const handleHoverRow = useCallback((idx: number) => setActiveIdx(idx), [])
-
-  // 下载 guard 用 ref 镜像：开始/结束下载不重建回调，仅通过 isDownloading prop 更新对应行
-  const downloadingIdsRef = useRef(downloadingIds)
-  downloadingIdsRef.current = downloadingIds
-
-  // 下载在线歌曲：桌面端有默认下载目录则直存，否则弹保存对话框（可勾选后续记住）；
-  // 移动端存到 Music/Aurora Music 目录
-  const handleDownload = useCallback(
-    async (track: Track) => {
-      if (!track.onlineUrl || downloadingIdsRef.current.has(track.id)) return
-      setDownloadingIds((prev) => new Set(prev).add(track.id))
-      try {
-        // 取该曲来源配置的附加请求头（Referer/UA 等），保证下载与搜索请求一致
-        const source = onlineSources.find((s) => s.id === track.onlineSource)
-        const downloadDir = useLibraryStore.getState().downloadDir
-        // 按设置的下载音质挑选地址（源未提供多音质地址时回退默认地址）
-        const audioUrl = pickDownloadUrl(track, useLibraryStore.getState().downloadQuality)
-        const { savedPath } = await platform.downloadOnlineTrack!(
-          // 带上专辑与封面地址：下载完成后封面随文件嵌入（源直链的音频大多无内嵌封面）
-          { audioUrl, title: track.title, artist: track.artist, album: track.album, coverUrl: track.coverUrl },
-          source?.headers,
-          downloadDir || undefined
-        )
-        if (downloadDir) {
-          toast(`下载完成\n已保存到：${savedPath}`)
-        } else {
-          // 本次走了保存对话框：提供「设为默认下载目录」操作，点击后不再每次询问
-          const dir = savedPath.replace(/[\\/][^\\/]*$/, '')
-          toast(`下载完成\n已保存到：${savedPath}`, {
-            action: {
-              label: '设为默认下载目录',
-              onClick: () => {
-                useLibraryStore.getState().setDownloadDir(dir)
-                toast(`后续下载将直接保存到「${dir}」，可在「设置 → 下载」中修改`)
-              },
-            },
-          })
-        }
-      } catch (err: any) {
-        // 用户在保存对话框点了取消，不算失败
-        if (err?.message !== '已取消保存' && err?.message !== '缺少存储权限') {
-          toast(err?.message || '下载失败，请稍后重试', { type: 'error' })
-        }
-      } finally {
-        setDownloadingIds((prev) => {
-          const next = new Set(prev)
-          next.delete(track.id)
-          return next
-        })
-      }
-    },
-    [onlineSources]
-  )
 
   // 输入框键盘：↑/↓ 移动高亮，Enter 播放高亮项或记录搜索历史
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {

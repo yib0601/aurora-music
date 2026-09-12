@@ -183,11 +183,12 @@ export function PlayerBar({
   }
 
   // ───────────────────────── 桌面端三列网格（原布局） ─────────────────────────
+  // 大屏（≥1500px，如 1080p@125% 全屏）整体放大一档，避免全屏下控件显得过小
   return (
-    <div className="glass-saved-panel rounded-[24px] px-[18px] py-2 flex flex-col gap-1.5">
+    <div className="glass-saved-panel rounded-[24px] px-[18px] min-[1500px]:px-6 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
       {/* 进度条 - 居中 */}
       <div className="flex items-center gap-3">
-        <span className="text-[12px] text-white/50 w-12 text-right tabular-nums">
+        <span className="text-[12px] min-[1500px]:text-[13px] text-white/50 w-12 text-right tabular-nums">
           {formatTime(displayedProgress)}
         </span>
         <div className="flex-1 relative flex items-center">
@@ -204,11 +205,11 @@ export function PlayerBar({
             onMouseUp={handleSeekCommit}
             onTouchEnd={handleSeekCommit}
             onMouseLeave={() => seeking && handleSeekCommit()}
-            className="seek-bar w-full cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+            className="seek-bar seek-xl w-full cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
             style={{ '--seek': `${progressPercent}%` } as React.CSSProperties}
           />
         </div>
-        <span className="text-[12px] text-white/50 w-12 tabular-nums">
+        <span className="text-[12px] min-[1500px]:text-[13px] text-white/50 w-12 tabular-nums">
           {formatTime(duration)}
         </span>
       </div>
@@ -220,7 +221,7 @@ export function PlayerBar({
           <button
             onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
             title="查看歌曲详情"
-            className="w-[40px] h-[40px] rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+            className="w-[40px] h-[40px] min-[1500px]:w-12 min-[1500px]:h-12 rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
             style={{
               boxShadow:
                 '0 6px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07)',
@@ -234,20 +235,20 @@ export function PlayerBar({
             />
           </button>
           <div className="min-w-0 flex flex-col gap-0.5">
-            <p className="text-[12.5px] font-bold text-white/92 truncate hover:text-white hover:[text-shadow:0_0_12px_rgba(0,245,212,.16)] transition-all">
+            <p className="text-[12.5px] min-[1500px]:text-[14px] font-bold text-white/92 truncate hover:text-white hover:[text-shadow:0_0_12px_rgba(0,245,212,.16)] transition-all">
               {currentTrack?.title || '未在播放'}
             </p>
-            <p className="text-[10.5px] text-white/48 truncate">
+            <p className="text-[10.5px] min-[1500px]:text-[12px] text-white/48 truncate">
               {currentTrack?.artist || '选择一首歌曲开始'}
             </p>
           </div>
         </div>
 
         {/* 中列：播放控制（shuffle / prev / play / next / queue） */}
-        <div className="flex items-center gap-2 justify-center">
+        <div className="flex items-center gap-2 min-[1500px]:gap-2.5 justify-center">
           <button
             className={cn(
-              'btn-icon',
+              'btn-icon btn-xl',
               playModeActive &&
                 'text-mint [text-shadow:0_0_8px_rgba(0,245,212,.12)]',
             )}
@@ -263,68 +264,68 @@ export function PlayerBar({
             }
           >
             {shuffleMode === 'on' ? (
-              <Shuffle className="h-[16px] w-[16px]" strokeWidth={1.5} />
+              <Shuffle className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
             ) : repeatMode === 'one' ? (
-              <Repeat1 className="h-[16px] w-[16px]" strokeWidth={1.5} />
+              <Repeat1 className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
             ) : repeatMode === 'all' ? (
-              <Repeat className="h-[16px] w-[16px]" strokeWidth={1.5} />
+              <Repeat className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
             ) : (
-              <Shuffle className="h-[16px] w-[16px]" strokeWidth={1.5} />
+              <Shuffle className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
             )}
           </button>
           <button
-            className="btn-icon"
+            className="btn-icon btn-xl"
             onClick={onPrevious}
             disabled={!currentTrack}
           >
-            <SkipBack className="h-[16px] w-[16px]" strokeWidth={1.5} />
+            <SkipBack className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
           </button>
           {/* 主播放按钮：圆形 glass-saved-button，44×44 */}
           <button
-            className="glass-saved-button w-[44px] h-[44px] rounded-full flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+            className="glass-saved-button w-[44px] h-[44px] min-[1500px]:w-[52px] min-[1500px]:h-[52px] rounded-full flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
             onClick={onTogglePlay}
             disabled={!currentTrack}
             style={{ color: 'rgb(var(--tw-white) / .96)' }}
           >
             {isPlaying ? (
-              <Pause className="h-[18px] w-[18px]" fill="currentColor" strokeWidth={1.5} />
+              <Pause className="h-[18px] w-[18px] min-[1500px]:h-[22px] min-[1500px]:w-[22px]" fill="currentColor" strokeWidth={1.5} />
             ) : (
-              <Play className="h-[18px] w-[18px] ml-0.5" fill="currentColor" strokeWidth={1.5} />
+              <Play className="h-[18px] w-[18px] ml-0.5 min-[1500px]:h-[22px] min-[1500px]:w-[22px]" fill="currentColor" strokeWidth={1.5} />
             )}
           </button>
           <button
-            className="btn-icon"
+            className="btn-icon btn-xl"
             onClick={onNext}
             disabled={!currentTrack}
           >
-            <SkipForward className="h-[16px] w-[16px]" strokeWidth={1.5} />
+            <SkipForward className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
           </button>
           <button
             className={cn(
-              'btn-icon',
+              'btn-icon btn-xl',
               showQueuePanel && 'is-on',
             )}
             onClick={toggleQueuePanel}
             title="队列"
           >
-            <ListMusic className="h-[16px] w-[16px]" strokeWidth={1.5} />
+            <ListMusic className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
           </button>
         </div>
 
         {/* 右列：音量控制 */}
         <div className="flex items-center gap-2 justify-end">
           <button
-            className="btn-icon"
+            className="btn-icon btn-xl"
             onClick={onToggleMute}
             title={muted || volume === 0 ? '取消静音' : '静音'}
           >
             {muted || volume === 0 ? (
-              <VolumeX className="h-[14px] w-[14px]" strokeWidth={1.5} />
+              <VolumeX className="h-[14px] w-[14px] min-[1500px]:h-4 min-[1500px]:w-4" strokeWidth={1.5} />
             ) : (
-              <Volume2 className="h-[14px] w-[14px]" strokeWidth={1.5} />
+              <Volume2 className="h-[14px] w-[14px] min-[1500px]:h-4 min-[1500px]:w-4" strokeWidth={1.5} />
             )}
           </button>
-          <div className="w-24 h-4 flex items-center">
+          <div className="w-24 min-[1500px]:w-32 h-4 min-[1500px]:h-5 flex items-center">
             <input
               type="range"
               min={0}
@@ -337,7 +338,7 @@ export function PlayerBar({
               onMouseUp={handleVolumeCommit}
               onTouchEnd={handleVolumeCommit}
               onMouseLeave={() => seekingVolume && handleVolumeCommit()}
-              className="volume-bar w-full rounded-full cursor-pointer"
+              className="volume-bar volume-xl w-full rounded-full cursor-pointer"
               style={{ '--volume': `${volumePercent}%` } as React.CSSProperties}
             />
           </div>

@@ -38,7 +38,7 @@ import {
   markStartupBannerShown,
   type UpdateInfo,
 } from '@/services/update.service'
-import { cn, isMobile } from '@/lib/utils'
+import { cn, isMobile, isDesktop } from '@/lib/utils'
 import type { Track } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
@@ -76,8 +76,21 @@ function AppLayout() {
   // 移动端全屏 Now Playing 视图：由 PlayerBar 封面/标题点击触发
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
   const mobile = isMobile()
+  const desktop = isDesktop()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
   const isSongDetail = location.pathname.startsWith('/song/')
+
+  // 沉浸背景延迟挂载开关：进入详情页时先让侧栏/瓷砖折叠动画跑完（300ms）再渲染
+  // 全屏 blur-[64px] 背景，避免软件渲染下动画期间每帧重算全屏模糊导致掉帧
+  const [backdropReady, setBackdropReady] = useState(false)
+  useEffect(() => {
+    if (!isSongDetail) {
+      setBackdropReady(false)
+      return
+    }
+    const t = setTimeout(() => setBackdropReady(true), 320)
+    return () => clearTimeout(t)
+  }, [isSongDetail])
 
   // 移动端文件夹选择器：在 App 层全局注册 handler，让 LibraryPage 与 SettingsPage
   // 的"导入音乐"按钮共用同一个 MobileFolderPicker（替代旧版每页各自注册的方案）
@@ -523,13 +536,25 @@ function AppLayout() {
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground ambient-backdrop">
       {/* 歌曲详情页沉浸背景：封面模糊背景提升到窗口级，覆盖顶部标题栏区域，消除顶部黑边 */}
-      {isSongDetail && currentTrack && (
-        <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
-          <CoverImage
-            track={currentTrack}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover scale-125 blur-[64px] opacity-55"
-          />
+      {/* 延迟 320ms 挂载：等侧栏/瓷砖折叠动画结束再渲染背景，
+          否则动画期间每帧重算模糊，展开过程严重掉帧；
+          详情页内切歌时 backdropReady 已为 true，背景立即随新封面更新 */}
+      {isSongDetail && currentTrack && backdropReady && (
+        <div
+          aria-hidden
+          className="absolute inset-0 overflow-hidden pointer-events-none animate-[backdrop-fade-in_.45s_ease]"
+        >
+          {/* 预糊化：封面先渲染进 64px 小层（光栅化成本极低），再由合成层 transform
+              放大铺满全屏，双线性采样天然平滑≈强模糊。注意不能加 CSS blur——
+              滤镜会按变换后尺寸光栅化（全屏级），等于把模糊成本加回来。
+              替代旧的全屏 blur-[64px]——后者每帧全屏光栅化模糊，
+              是详情页滚动卡顿主因（实测同环境 15fps→56fps） */}
+          <div
+            className="absolute left-1/2 top-1/2 w-16 h-16 opacity-55"
+            style={{ transform: 'translate(-50%, -50%) scale(60)' }}
+          >
+            <CoverImage track={currentTrack} alt="" className="w-full h-full object-cover" />
+          </div>
           <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/50 to-background/95" />
           <div
             className="absolute inset-0"
@@ -554,19 +579,38 @@ function AppLayout() {
 
       {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* 桌面端侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上；歌曲详情页隐藏 */}
+        {/* 桌面端侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上 */}
         {/* 移动端导航改为顶部汉堡菜单 + 左侧抽屉（MobileNav），不再用底部 Tab 或固定侧栏 */}
-        {!isSongDetail && !mobile && (
-          <aside className="w-56 flex-shrink-0 flex flex-col glass-regular border-r border-white/5">
-            <Sidebar />
+        {/* 详情页不卸载而是宽度折叠动画：直接卸载会让内容列宽度突变，
+            居中的悬浮播放条瞬间横移（跳动）；折叠动画让播放条平滑过渡 */}
+        {!mobile && (
+          <aside
+            className={cn(
+              'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
+              'glass-regular',
+              isSongDetail ? 'w-0 border-r-0' : 'w-56 border-r border-white/5',
+            )}
+          >
+            <div className="w-56 h-full flex flex-col">
+              <Sidebar />
+            </div>
           </aside>
         )}
 
         {/* 主内容区 */}
-        <main className="relative flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
-          <div className="flex-1 flex overflow-hidden">
+        {/* 歌曲详情页（桌面端）放开 overflow 裁切：详情滚动容器需上延到窗口顶，
+            把裁切边移到窗口边界，否则内容阴影/光晕滚过标题栏底边时会形成横向断层线 */}
+        {/* 详情页放开 overflow 时需用 min-h-0 抵消 flex 子项 min-height:auto，
+            否则 main 会被内容撑到全文高度、滚动容器失去滚动能力 */}
+        <main
+          className={cn(
+            'relative flex-1 flex flex-col min-w-0 bg-transparent',
+            isSongDetail && !mobile ? 'overflow-visible min-h-0' : 'overflow-hidden',
+          )}
+        >
+          <div className={cn('flex-1 flex min-h-0', isSongDetail && !mobile ? 'overflow-visible' : 'overflow-hidden')}>
             {/* 内容列：页面路由 + 悬浮播放条（播放条相对内容列居中，避免压到右侧歌词瓷砖） */}
-            <div className="relative flex-1 flex flex-col min-w-0">
+            <div className={cn('relative flex-1 flex flex-col min-w-0', isSongDetail && !mobile && 'min-h-0')}>
               {/* 新版本提示横幅：启动检测到新版本时固定在内容区顶部 */}
               {updateInfo && (
                 <div className="pt-3">
@@ -588,8 +632,15 @@ function AppLayout() {
                   <LibraryPage />
                 </div>
                 {/* 其他路由按需渲染，绝对定位铺满容器，与常驻的音乐库层共存互不影响 */}
+                {/* 桌面端详情页：滚动容器上延 44px（标题栏高度）到窗口顶，裁切边移到窗口边界，
+                    内容阴影/光晕滚过标题栏底边时不再形成横向断层线 */}
                 {location.pathname !== '/library' && (
-                  <div className="absolute inset-0 overflow-y-auto scrollbar-thin">
+                  <div
+                    className={cn(
+                      'absolute left-0 right-0 bottom-0 overflow-y-auto scrollbar-thin',
+                      isSongDetail && desktop ? '-top-11' : 'top-0',
+                    )}
+                  >
                     <Routes>
                       <Route path="/" element={<Navigate to="/library" replace />} />
                       <Route path="/liked" element={<LikedPage />} />
@@ -602,75 +653,90 @@ function AppLayout() {
                 )}
               </div>
 
-              {/* Mineradio 悬浮胶囊控制台 — 歌曲详情页已内嵌播放功能框，此处隐藏避免重复 */}
+              {/* Mineradio 悬浮胶囊控制台 — 全局唯一实例，所有页面（含歌曲详情）常驻，
+                  避免详情页内嵌另一份播放条导致切换页面时播放条位置/宽度跳变 */}
               {/* 移动端：贴屏幕底部（safe-area），宽度铺满屏宽 -16 */}
-              {!isSongDetail && (
-                <div
-                  className={cn(
-                    'absolute left-1/2 -translate-x-1/2 z-30',
-                    mobile
-                      ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-16px)]'
-                      : 'bottom-3 w-[clamp(360px,calc(100%-48px),640px)]',
-                  )}
-                >
-                  <PlayerBar
-                    currentTrack={currentTrack}
-                    volume={volume}
-                    muted={muted}
-                    repeatMode={repeatMode}
-                    shuffleMode={shuffleMode}
-                    onTogglePlay={handleTogglePlay}
-                    onNext={handleNext}
-                    onPrevious={handlePrevious}
-                    onSeek={handleSeek}
-                    onVolumeChange={handleVolumeChange}
-                    onToggleMute={handleToggleMute}
-                    onCyclePlayMode={handleCyclePlayMode}
-                    onOpenNowPlaying={() => setNowPlayingOpen(true)}
-                  />
-                </div>
-              )}
+              <div
+                className={cn(
+                  'absolute left-1/2 -translate-x-1/2 z-30',
+                  mobile
+                    ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-16px)]'
+                    : 'bottom-3 w-[clamp(360px,calc(100%-48px),640px)] min-[1500px]:w-[clamp(360px,calc(100%-48px),720px)]',
+                )}
+              >
+                {/* 播放队列浮层：挂在播放条容器内（右缘对齐播放条、悬浮其上），
+                    主页面/详情页/全屏下都跟随居中的播放条，不贴窗口右缘 */}
+                <QueueView />
+                <PlayerBar
+                  currentTrack={currentTrack}
+                  volume={volume}
+                  muted={muted}
+                  repeatMode={repeatMode}
+                  shuffleMode={shuffleMode}
+                  onTogglePlay={handleTogglePlay}
+                  onNext={handleNext}
+                  onPrevious={handlePrevious}
+                  onSeek={handleSeek}
+                  onVolumeChange={handleVolumeChange}
+                  onToggleMute={handleToggleMute}
+                  onCyclePlayMode={handleCyclePlayMode}
+                  onOpenNowPlaying={() => setNowPlayingOpen(true)}
+                />
+              </div>
             </div>
 
-            {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质；歌曲详情页隐藏（详情页已含完整歌词与歌曲信息） */}
-            {currentTrack && !isSongDetail && (
-              <div className="w-72 flex-shrink-0 hidden lg:flex flex-col glass-regular border-l border-white/5">
-                <div className="p-6 flex flex-col gap-4">
-                  {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
-                  <button
-                    onClick={() => navigate(`/song/${currentTrack.id}`)}
-                    title="查看歌曲详情"
-                    className="relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02]"
-                  >
-                    <CoverImage
-                      track={currentTrack}
-                      alt={currentTrack.title}
-                      className="w-full h-full object-cover product-shadow"
-                      fallback={<div className="text-4xl text-white/30">🎵</div>}
-                    />
-                  </button>
+            {/* 右侧 Now Playing 瓷砖 — Liquid Glass 材质 */}
+            {/* 不随 currentTrack / 路由卸载，而是宽度折叠动画：选中歌曲或进入详情页时
+                直接卸载会让内容列宽度突变，居中的悬浮播放条瞬间横移（跳动）；
+                折叠动画让播放条随布局平滑过渡。无歌曲时展示空态占位保持瓷砖常驻 */}
+            {!mobile && (
+              <aside
+                className={cn(
+                  'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
+                  'glass-regular',
+                  currentTrack && !isSongDetail
+                    ? 'w-72 border-l border-white/5'
+                    : 'w-0 border-l-0',
+                  'hidden lg:block',
+                )}
+              >
+                <div className="w-72 h-full flex flex-col">
+                  <div className="p-6 flex flex-col gap-4">
+                    {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
+                    <button
+                      onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
+                      title="查看歌曲详情"
+                      disabled={!currentTrack}
+                      className="relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02] disabled:hover:scale-100"
+                    >
+                      <CoverImage
+                        track={currentTrack}
+                        alt={currentTrack?.title}
+                        className="w-full h-full object-cover product-shadow"
+                        fallback={<div className="text-4xl text-white/30">🎵</div>}
+                      />
+                    </button>
 
-                  <div className="text-center">
-                    <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/96">
-                      {currentTrack.title}
-                    </p>
-                    <p className="font-text text-[14px] text-white/50 truncate mt-1 tracking-[-0.224px]">
-                      {currentTrack.artist}
-                    </p>
+                    <div className="text-center">
+                      <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/96">
+                        {currentTrack?.title || '未在播放'}
+                      </p>
+                      <p className="font-text text-[14px] text-white/50 truncate mt-1 tracking-[-0.224px]">
+                        {currentTrack?.artist || '选择一首歌曲开始'}
+                      </p>
+                    </div>
+
                   </div>
 
-                </div>
-
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-6">
-                  <div className="flex-1 min-h-0">
-                    <LyricsView onLineClick={(time) => usePlayerStore.getState().seekTo(time)} />
+                  <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-6">
+                    <div className="flex-1 min-h-0">
+                      <LyricsView onLineClick={(time) => usePlayerStore.getState().seekTo(time)} />
+                    </div>
                   </div>
                 </div>
-              </div>
+              </aside>
             )}
           </div>
-
-          <QueueView />
         </main>
       </div>
 

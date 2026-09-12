@@ -44,7 +44,8 @@
     "productName": "Aurora-Music",
     "executableName": "Aurora-Music",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "resources"
     },
     "artifactName": "Aurora-Music-${version}.${ext}",
     "electronLanguages": [

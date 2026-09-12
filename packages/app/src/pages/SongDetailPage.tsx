@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, Heart, Plus, ListEnd, ListMusic, Music2, ArrowLeft,
   BarChart3, Clock, Calendar, Tag, HardDrive, Layers, History, MoreHorizontal,
-  Disc3, Radio, Folder, ChevronDown, type LucideIcon,
+  Disc3, Radio, Folder, ChevronDown, Download, Loader2, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { PlayerBar } from '@/components/player/PlayerBar'
 import { LyricsView } from '@/components/lyrics/LyricsView'
 import { cn, formatTime } from '@/lib/utils'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { loadLyricsForTrack } from '@/services/lyrics.service'
+import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -141,19 +141,9 @@ export function SongDetailPage() {
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
-  const volume = usePlayerStore((s) => s.volume)
-  const muted = usePlayerStore((s) => s.muted)
-  const repeatMode = usePlayerStore((s) => s.repeatMode)
-  const shuffleMode = usePlayerStore((s) => s.shuffleMode)
 
-  // 内嵌播放功能框回调（复用 playerStore 动作）
-  const handleTogglePlay = useCallback(() => usePlayerStore.getState().togglePlay(), [])
-  const handleNext = useCallback(() => usePlayerStore.getState().next(), [])
-  const handlePrevious = useCallback(() => usePlayerStore.getState().previous(), [])
-  const handleSeek = useCallback((seconds: number) => usePlayerStore.getState().seekTo(seconds), [])
-  const handleVolumeChange = useCallback((v: number) => usePlayerStore.getState().setVolume(v), [])
-  const handleToggleMute = useCallback(() => usePlayerStore.getState().toggleMute(), [])
-  const handleCyclePlayMode = useCallback(() => usePlayerStore.getState().cyclePlayMode(), [])
+  // 在线歌曲下载（共享 hook）：仅在线曲目在更多菜单中展示下载项
+  const { downloadingIds, download: handleDownloadTrack } = useDownloadOnlineTrack()
 
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
   const [newPlName, setNewPlName] = useState('')
@@ -281,26 +271,31 @@ export function SongDetailPage() {
     <div className="relative flex flex-col min-h-full">
       {/* 沉浸式封面背景已提升到 App 层（覆盖标题栏区域），此处仅渲染前景内容 */}
       {/* 前景内容：收窄居中成列，Hero/歌词/专辑共用同一视觉轴，避免宽屏下内容松散 */}
-      <div className="relative mx-auto w-full max-w-[1080px] px-4 md:px-8 pt-4 md:pt-8 pb-6">
+      {/* 桌面端滚动容器上延到窗口顶（裁切边移出可视区），故 md 以上需补 44px 标题栏高度的顶部留白 */}
+      <div className="relative mx-auto w-full max-w-[1080px] 2xl:max-w-[1280px] px-4 md:px-8 pt-4 md:pt-[76px] pb-32">
         {/* 返回：圆形玻璃按钮，绝对定位悬浮左上角，与 Hero 同行，不独占一行以压缩纵向空间 */}
         <button
           onClick={() => navigate(-1)}
           aria-label="返回"
           title="返回"
-          className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-4 z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
+          className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-[60px] z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
         >
           <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={1.6} />
         </button>
 
-        {/* Hero：黑胶唱片 + 歌曲信息 */}
-        <section className="flex flex-col md:flex-row items-center gap-6 md:gap-12">
-          {/* 唱片：移动端居中缩小，桌面端放大 */}
-          <div className="w-[min(56vw,240px)] md:w-[260px] xl:w-[300px] flex-shrink-0">
+        {/* 宽屏（lg+）双栏：左栏 = 唱片 + 歌曲信息 + 专辑曲目，右栏 = 歌词列，
+            修复此前单列纵向堆叠在全屏/宽屏下两侧留白多、歌词卡拉得过宽显得空旷的问题 */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10 xl:gap-14 lg:items-center">
+          <div className="min-w-0">
+        {/* Hero：黑胶唱片 + 歌曲信息（宽屏左栏内改为纵向堆叠居中） */}
+        <section className="flex flex-col md:flex-row items-center gap-6 md:gap-12 lg:flex-col lg:gap-8">
+          {/* 唱片：移动端居中缩小，桌面端放大；宽屏左栏纵向堆叠时进一步放大 */}
+          <div className="w-[min(56vw,240px)] md:w-[260px] lg:w-[300px] xl:w-[320px] 2xl:w-[360px] flex-shrink-0">
             <VinylCover track={track} spinning={isCurrent && isPlaying} />
           </div>
 
-          {/* 标题 + 操作 + 属性 */}
-          <div className="flex-1 min-w-0 flex flex-col items-center md:items-start text-center md:text-left">
+          {/* 标题 + 操作 + 属性（宽屏左栏内整体居中） */}
+          <div className="flex-1 min-w-0 flex flex-col items-center md:items-start text-center md:text-left lg:items-center lg:text-center">
             <p className="inline-flex items-center gap-1.5 font-text text-[11px] font-semibold uppercase tracking-[0.16em] text-mint/80 mb-3">
               <Radio className="h-3 w-3" strokeWidth={1.8} />
               {sourceLabel(track)} · 歌曲详情
@@ -349,6 +344,20 @@ export function SongDetailPage() {
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
                     添加到队列
                   </DropdownMenuItem>
+                  {/* 下载：仅在线曲目提供（本地曲目已在磁盘上） */}
+                  {track.onlineUrl && (
+                    <DropdownMenuItem
+                      onClick={() => handleDownloadTrack(track)}
+                      disabled={downloadingIds.has(track.id)}
+                    >
+                      {downloadingIds.has(track.id) ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" strokeWidth={1.5} />
+                      ) : (
+                        <Download className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                      )}
+                      下载歌曲
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   {playlists.length > 0 &&
                     playlists.map((pl) => (
@@ -376,7 +385,7 @@ export function SongDetailPage() {
                 {quickFacts.map(({ icon: Icon, label, value }) => (
                   <span
                     key={label}
-                    className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-3 rounded-full bg-white/[0.045] border border-white/[0.07] backdrop-blur-sm"
+                    className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-3 rounded-full bg-white/[0.045] border border-white/[0.07]"
                   >
                     <Icon className="h-3.5 w-3.5 text-mint/60 flex-shrink-0" strokeWidth={1.6} />
                     <span className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</span>
@@ -388,19 +397,23 @@ export function SongDetailPage() {
 
           </div>
         </section>
-
-        {/* 歌词：独占整行，当前行居中滚动 */}
-        <section className="mt-10 md:mt-12">
-          <div className="card-utility px-4 py-5 h-[360px] md:h-[480px]">
-            <TrackLyrics
-              track={track}
-              className="h-full"
-              onLineClick={(t) => usePlayerStore.getState().seekTo(t)}
-            />
           </div>
-        </section>
 
-        {/* 更多信息 — 默认收起保持紧凑，置于歌词下方 */}
+          {/* 歌词：宽屏右栏独占一列，当前行居中滚动；窄屏回退为 Hero 下方整行。
+              无框悬浮设计：歌词直接浮于沉浸背景上（与左栏信息一致，不包卡片），
+              上下渐隐由 LyricsView 自带渐变 mask 负责 */}
+          <section className="mt-10 md:mt-12 lg:mt-0 lg:h-[calc(100vh-240px)] lg:min-h-[440px] lg:max-h-[680px]">
+            <div className="h-[360px] md:h-[480px] lg:h-full">
+              <TrackLyrics
+                track={track}
+                className="h-full"
+                onLineClick={(t) => usePlayerStore.getState().seekTo(t)}
+              />
+            </div>
+          </section>
+        </div>
+
+        {/* 更多信息 — 默认收起保持紧凑，置于双栏下方 */}
         <section className="mt-6 md:mt-8">
           <button
             onClick={() => setShowMoreInfo((v) => !v)}
@@ -443,7 +456,7 @@ export function SongDetailPage() {
             <h2 className="font-text text-[12px] font-semibold text-white/55 uppercase tracking-wider mb-3">
               来自专辑「{track.album}」
             </h2>
-            <div className="card-utility overflow-hidden">
+            <div className="card-solid overflow-hidden">
               <div className="max-h-[340px] md:max-h-[420px] overflow-y-auto scrollbar-thin">
                 {albumTracks.map((t, idx) => (
                   <div
@@ -502,26 +515,8 @@ export function SongDetailPage() {
         )}
       </div>
 
-      {/* 内置播放功能框 — 粘性固定在详情页底部，无需滚动即可操作 */}
-      {/* 与主页面悬浮播放条同宽（640px）居中，避免全屏下播放条被拉成一条长横杆 */}
-      <div className="sticky bottom-0 z-10 px-4 md:px-8 pt-5 pb-[calc(env(safe-area-inset-bottom)+12px)] bg-gradient-to-t from-background/90 via-background/35 to-transparent">
-        <div className="max-w-[640px] mx-auto">
-          <PlayerBar
-            currentTrack={currentTrack}
-            volume={volume}
-            muted={muted}
-            repeatMode={repeatMode}
-            shuffleMode={shuffleMode}
-            onTogglePlay={handleTogglePlay}
-            onNext={handleNext}
-            onPrevious={handlePrevious}
-            onSeek={handleSeek}
-            onVolumeChange={handleVolumeChange}
-            onToggleMute={handleToggleMute}
-            onCyclePlayMode={handleCyclePlayMode}
-          />
-        </div>
-      </div>
+      {/* 播放条由 App 层全局悬浮实例统一提供（跨页面同一实例，位置不跳变），
+          此处不再内嵌；底部留白避免内容被悬浮播放条遮挡 */}
 
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
         <DialogContent className="sm:max-w-sm">
