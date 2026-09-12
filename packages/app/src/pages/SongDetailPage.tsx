@@ -62,7 +62,7 @@ function sourceLabel(track: Track): string {
 }
 
 /** 歌词预览：按所查看曲目加载歌词，自身订阅进度以同步高亮 */
-function TrackLyrics({ track, onLineClick, className }: { track: Track; onLineClick: (time: number) => void; className?: string }) {
+function TrackLyrics({ track, onLineClick, className, large }: { track: Track; onLineClick: (time: number) => void; className?: string; large?: boolean }) {
   // null = 加载中，'' = 无歌词，其他 = 歌词文本
   const [lrc, setLrc] = useState<string | null>(null)
 
@@ -90,6 +90,7 @@ function TrackLyrics({ track, onLineClick, className }: { track: Track; onLineCl
     <LyricsView
       lyricsText={lrc}
       className={className ?? 'h-[300px]'}
+      large={large}
       onLineClick={onLineClick}
     />
   )
@@ -272,7 +273,7 @@ export function SongDetailPage() {
       {/* 沉浸式封面背景已提升到 App 层（覆盖标题栏区域），此处仅渲染前景内容 */}
       {/* 前景内容：收窄居中成列，Hero/歌词/专辑共用同一视觉轴，避免宽屏下内容松散 */}
       {/* 桌面端滚动容器上延到窗口顶（裁切边移出可视区），故 md 以上需补 44px 标题栏高度的顶部留白 */}
-      <div className="relative mx-auto w-full max-w-[1080px] 2xl:max-w-[1280px] px-4 md:px-8 pt-4 md:pt-[76px] pb-32">
+      <div className="relative mx-auto w-full max-w-[1160px] 2xl:max-w-[1400px] px-4 md:px-8 pt-4 md:pt-[76px] pb-32">
         {/* 返回：圆形玻璃按钮，绝对定位悬浮左上角，与 Hero 同行，不独占一行以压缩纵向空间 */}
         <button
           onClick={() => navigate(-1)}
@@ -285,12 +286,12 @@ export function SongDetailPage() {
 
         {/* 宽屏（lg+）双栏：左栏 = 唱片 + 歌曲信息 + 专辑曲目，右栏 = 歌词列，
             修复此前单列纵向堆叠在全屏/宽屏下两侧留白多、歌词卡拉得过宽显得空旷的问题 */}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10 xl:gap-14 lg:items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12 xl:gap-20 lg:items-center">
           <div className="min-w-0">
         {/* Hero：黑胶唱片 + 歌曲信息（宽屏左栏内改为纵向堆叠居中） */}
         <section className="flex flex-col md:flex-row items-center gap-6 md:gap-12 lg:flex-col lg:gap-8">
           {/* 唱片：移动端居中缩小，桌面端放大；宽屏左栏纵向堆叠时进一步放大 */}
-          <div className="w-[min(56vw,240px)] md:w-[260px] lg:w-[300px] xl:w-[320px] 2xl:w-[360px] flex-shrink-0">
+          <div className="w-[min(56vw,240px)] md:w-[260px] lg:w-[320px] xl:w-[360px] 2xl:w-[400px] flex-shrink-0">
             <VinylCover track={track} spinning={isCurrent && isPlaying} />
           </div>
 
@@ -300,7 +301,7 @@ export function SongDetailPage() {
               <Radio className="h-3 w-3" strokeWidth={1.8} />
               {sourceLabel(track)} · 歌曲详情
             </p>
-            <h1 className="font-display text-[26px] md:text-[36px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
+            <h1 className="font-display text-[26px] md:text-[36px] xl:text-[40px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
               {track.title}
             </h1>
             <p className="font-text text-[15px] md:text-[16px] text-white/55 mt-2 tracking-[-0.224px]">
@@ -402,11 +403,12 @@ export function SongDetailPage() {
           {/* 歌词：宽屏右栏独占一列，当前行居中滚动；窄屏回退为 Hero 下方整行。
               无框悬浮设计：歌词直接浮于沉浸背景上（与左栏信息一致，不包卡片），
               上下渐隐由 LyricsView 自带渐变 mask 负责 */}
-          <section className="mt-10 md:mt-12 lg:mt-0 lg:h-[calc(100vh-240px)] lg:min-h-[440px] lg:max-h-[680px]">
+          <section className="mt-10 md:mt-12 lg:mt-0 lg:h-[calc(100vh-220px)] lg:min-h-[480px] lg:max-h-[760px]">
             <div className="h-[360px] md:h-[480px] lg:h-full">
               <TrackLyrics
                 track={track}
                 className="h-full"
+                large
                 onLineClick={(t) => usePlayerStore.getState().seekTo(t)}
               />
             </div>

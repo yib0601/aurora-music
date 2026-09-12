@@ -53,7 +53,8 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 min-w-[8rem] overflow-hidden rounded-md glass-floating p-1.5 text-foreground animate-in fade-in-0 zoom-in-95',
+        // 仅淡入不带缩放：缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧
+        'z-50 min-w-[8rem] overflow-hidden rounded-md glass-floating p-1.5 text-foreground animate-in fade-in-0',
         className
       )}
       {...props}

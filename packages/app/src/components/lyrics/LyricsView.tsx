@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils'
 interface LyricsViewProps {
   lyricsText?: string
   className?: string
+  /** 大字号模式：详情页全屏场景下放大歌词行，避免宽屏显得空旷 */
+  large?: boolean
   onLineClick?: (time: number) => void
 }
 
@@ -19,7 +21,7 @@ const sampleLyrics = `[00:00.00]Aurora Music
 [00:22.00]享受音乐，享受生活
 `
 
-export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewProps) {
+export function LyricsView({ lyricsText, className, large, onLineClick }: LyricsViewProps) {
   const progress = usePlayerStore((s) => s.progress)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -122,14 +124,17 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
       // after 50% 占位：保证末行也能滚动到区域正中央
       // （伪元素不计入 container.children，不影响按索引定位歌词行）
       className={cn(
-        'h-full overflow-y-auto scrollbar-hide px-4 space-y-6 text-center',
+        'h-full overflow-y-auto scrollbar-hide px-4 text-center',
+        large ? 'space-y-8' : 'space-y-6',
         'before:block before:h-16 before:content-[""] after:block after:h-1/2 after:content-[""]',
         className
       )}
       style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}
     >
       {lyrics.length === 0 && (
-        <p className="text-white/20 text-[15px]">{loading ? '搜索歌词中...' : '暂无歌词'}</p>
+        <p className={cn('text-white/20', large ? 'text-[17px]' : 'text-[15px]')}>
+          {loading ? '搜索歌词中...' : '暂无歌词'}
+        </p>
       )}
       {lyrics.map((line, idx) => {
         const distance = Math.abs(idx - activeIdx)
@@ -139,10 +144,10 @@ export function LyricsView({ lyricsText, className, onLineClick }: LyricsViewPro
             className={cn(
               'transition-all duration-500 ease-apple cursor-pointer leading-relaxed',
               idx === activeIdx
-                ? 'lyric-active'
+                ? cn('lyric-active', large && 'lyric-active-lg')
                 : distance <= 2
-                ? 'text-white/50 text-[15px]'
-                : 'text-white/28 text-[13px]'
+                ? cn('text-white/50', large ? 'text-[17px]' : 'text-[15px]')
+                : cn('text-white/28', large ? 'text-[15px]' : 'text-[13px]')
             )}
             onClick={() => onLineClick?.(line.time)}
           >

@@ -874,6 +874,11 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
   -webkit-text-fill-color: transparent;
 }
 
+/* 大字号模式（详情页全屏）：放大当前行字号，填充宽屏空间 */
+.lyric-active-lg {
+  font-size: 21px;
+}
+
 /* ===== 性能降级开关 ===== */
 
 /* .glass-flat 兼容：关闭所有玻璃 */
@@ -893,7 +898,11 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 .glass-flat .ambient-backdrop::before,
 .glass-flat .ambient-backdrop::after { display: none; }
 
-/* .resizing 性能降级 */
+/* .resizing / .glass-perf-lite 性能降级
+   - .resizing：窗口拖拽缩放期间
+   - .glass-perf-lite：进出歌曲详情页的侧栏/瓷砖宽度折叠动画期间（约 350ms），
+     模糊区域尺寸每帧变化，软件渲染下每帧重算模糊会严重掉帧（全屏尤甚），
+     过渡期间临时关闭玻璃模糊，动画结束后恢复 */
 .resizing .glass-regular,
 .resizing .glass-strong,
 .resizing .glass-subtle,
@@ -901,7 +910,15 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 .resizing .glass-saved-panel,
 .resizing .glass-saved-button,
 .resizing .glass-search-box,
-.resizing .glass-popover {
+.resizing .glass-popover,
+.glass-perf-lite .glass-regular,
+.glass-perf-lite .glass-strong,
+.glass-perf-lite .glass-subtle,
+.glass-perf-lite .glass-floating,
+.glass-perf-lite .glass-saved-panel,
+.glass-perf-lite .glass-saved-button,
+.glass-perf-lite .glass-search-box,
+.glass-perf-lite .glass-popover {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }

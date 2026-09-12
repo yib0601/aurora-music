@@ -20,6 +20,17 @@ const navItems = [
 
 export function MobileNav() {
   const [open, setOpen] = useState(false)
+
+  // 抽屉滑动期间玻璃降级：glass-regular 抽屉 300ms 滑动时，
+  // 模糊区域背后的内容每帧变化，软件渲染下每帧重算模糊会掉帧；
+  // 滑动期间临时关闭玻璃模糊（复用 .glass-perf-lite），动画结束后恢复
+  const toggleDrawer = (next: boolean) => {
+    setOpen(next)
+    document.documentElement.classList.add('glass-perf-lite')
+    setTimeout(() => {
+      document.documentElement.classList.remove('glass-perf-lite')
+    }, 350)
+  }
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   return (
@@ -30,7 +41,7 @@ export function MobileNav() {
         aria-label="顶部导航"
       >
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => toggleDrawer(true)}
           aria-label="打开菜单"
           className="w-10 h-10 flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition"
         >
@@ -46,7 +57,7 @@ export function MobileNav() {
       {open && (
         <div
           className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
+          onClick={() => toggleDrawer(false)}
         />
       )}
 
@@ -62,7 +73,7 @@ export function MobileNav() {
             Aurora Music
           </span>
           <button
-            onClick={() => setOpen(false)}
+            onClick={() => toggleDrawer(false)}
             aria-label="关闭菜单"
             className="w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
           >
@@ -75,7 +86,7 @@ export function MobileNav() {
             <NavLink
               key={to}
               to={to}
-              onClick={() => setOpen(false)}
+              onClick={() => toggleDrawer(false)}
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] tracking-[-0.2px] transition-all duration-200',
@@ -92,7 +103,7 @@ export function MobileNav() {
           <button
             type="button"
             onClick={() => {
-              setOpen(false)
+              toggleDrawer(false)
               setShowImportDialog(true)
             }}
             className="flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] tracking-[-0.2px] text-white/70 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"

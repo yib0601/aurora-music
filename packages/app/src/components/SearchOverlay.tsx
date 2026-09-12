@@ -534,14 +534,18 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-start justify-center" role="dialog" aria-modal="true" aria-label="搜索">
-      {/* 遮罩：点击关闭；轻模糊让底层音乐库退后但仍可辨识 */}
+      {/* 遮罩：点击关闭；轻模糊让底层音乐库退后但仍可辨识。
+          不做淡入动画——backdrop-filter 不参与合成，软件渲染下
+          模糊层淡入期间每帧重算全屏模糊会明显掉帧 */}
       <div
-        className="absolute inset-0 bg-black/45 backdrop-blur-[3px] animate-in fade-in-0 duration-200"
+        className="absolute inset-0 bg-black/45 backdrop-blur-[3px]"
         onClick={onClose}
       />
 
-      {/* 浮层面板：顶部对齐的 Spotlight 面板，高度随结果自适应、最高 72vh */}
-      <div className="relative mt-[7vh] w-[calc(100%-2rem)] max-w-2xl max-h-[72vh] flex flex-col glass-floating rounded-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-200">
+      {/* 浮层面板：顶部对齐的 Spotlight 面板，高度随结果自适应、最高 72vh。
+          入场仅保留淡入：缩放/位移动画会让玻璃模糊区域逐帧变化，
+          软件渲染下每帧重算模糊（全屏时尤甚），故去掉 zoom/slide */}
+      <div className="relative mt-[7vh] w-[calc(100%-2rem)] max-w-2xl max-h-[72vh] flex flex-col glass-floating rounded-2xl overflow-hidden animate-in fade-in-0 duration-200">
         {/* 搜索输入行 */}
         <div className="flex items-center gap-3 h-14 px-4 flex-shrink-0 border-b border-white/[0.08]">
           <SearchIcon className="h-[18px] w-[18px] text-mint/70 flex-shrink-0" strokeWidth={1.6} />
