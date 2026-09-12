@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { CoverImage } from '@/components/common/CoverImage'
-import { cn, formatTime } from '@/lib/utils'
+import { cn, formatTime, isDesktop } from '@/lib/utils'
 
 /**
  * Mineradio 深色风格 QueueView 浮层
@@ -63,7 +63,14 @@ export function QueueView() {
                 )}
               >
                 <button
-                  onClick={() => navigate(`/song/${track.id}`)}
+                  onClick={() => {
+                    // 桌面端进详情；移动端与点击播放条一致：播放该曲并打开全屏 Now Playing 浮层（不推进路由）
+                    if (isDesktop()) navigate(`/song/${track.id}`)
+                    else {
+                      handlePlayTrack(idx)
+                      usePlaylistStore.getState().setMobileNowPlaying(true)
+                    }
+                  }}
                   title="查看歌曲详情"
                   className="w-10 h-10 rounded-[8px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                 >

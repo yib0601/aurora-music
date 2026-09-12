@@ -7,6 +7,8 @@ interface PlaylistState {
   playlists: Playlist[]
   currentPlaylistId: string | null
   showQueuePanel: boolean
+  /** 移动端全屏 Now Playing 浮层开关（任何入口点封面/点播放条都可打开，不推进路由历史） */
+  mobileNowPlayingOpen: boolean
   /**
    * 歌单导入的在线曲目：trackId → Track，与歌单同生命周期持久化。
    * 内存中保留播放地址（会话内可直接播）；持久化时剥离会过期的
@@ -25,6 +27,7 @@ interface PlaylistState {
   addImportedTracks: (tracks: Track[]) => void
   toggleQueuePanel: () => void
   setQueuePanel: (show: boolean) => void
+  setMobileNowPlaying: (open: boolean) => void
 }
 
 const defaultPlaylists: Playlist[] = []
@@ -35,6 +38,7 @@ export const usePlaylistStore = create<PlaylistState>()(
       playlists: defaultPlaylists,
       currentPlaylistId: null,
       showQueuePanel: false,
+      mobileNowPlayingOpen: false,
       importedTracks: {},
 
       createPlaylist: (name) => {
@@ -106,6 +110,7 @@ export const usePlaylistStore = create<PlaylistState>()(
       },
       toggleQueuePanel: () => set({ showQueuePanel: !get().showQueuePanel }),
       setQueuePanel: (show) => set({ showQueuePanel: show }),
+      setMobileNowPlaying: (open) => set({ mobileNowPlayingOpen: open }),
     }),
     {
       name: 'aurora-playlists-state',
