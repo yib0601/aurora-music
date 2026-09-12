@@ -1,12 +1,18 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Playlist } from '@/types'
+import type { Playlist, Track } from '@/types'
 import { generateId } from '@/lib/utils'
 
 interface PlaylistState {
   playlists: Playlist[]
   currentPlaylistId: string | null
   showQueuePanel: boolean
+  /**
+   * 歌单导入的在线曲目：trackId → Track，与歌单同生命周期持久化。
+   * 内存中保留播放地址（会话内可直接播）；持久化时剥离会过期的
+   * onlineUrl，播放时按需重新搜索（见 playlistIO.service 的 ensurePlayableTrack）
+   */
+  importedTracks: Record<string, Track>
 
   createPlaylist: (name: string) => Playlist
   renamePlaylist: (id: string, name: string) => void
@@ -15,6 +21,8 @@ interface PlaylistState {
   removeTrackFromPlaylist: (playlistId: string, trackId: string) => void
   reorderTracks: (playlistId: string, fromIndex: number, toIndex: number) => void
   setCurrentPlaylist: (id: string | null) => void
+  /** 登记歌单导入的在线曲目（同 id 覆盖更新） */
+  addImportedTracks: (tracks: Track[]) => void
   toggleQueuePanel: () => void
   setQueuePanel: (show: boolean) => void
 }
@@ -27,6 +35,7 @@ export const usePlaylistStore = create<PlaylistState>()(
       playlists: defaultPlaylists,
       currentPlaylistId: null,
       showQueuePanel: false,
+      importedTracks: {},
 
       createPlaylist: (name) => {
         const now = Date.now()
@@ -89,11 +98,29 @@ export const usePlaylistStore = create<PlaylistState>()(
       },
 
       setCurrentPlaylist: (id) => set({ currentPlaylistId: id }),
+      addImportedTracks: (tracks) => {
+        if (tracks.length === 0) return
+        const next = { ...get().importedTracks }
+        for (const t of tracks) next[t.id] = t
+        set({ importedTracks: next })
+      },
       toggleQueuePanel: () => set({ showQueuePanel: !get().showQueuePanel }),
       setQueuePanel: (show) => set({ showQueuePanel: show }),
     }),
     {
       name: 'aurora-playlists-state',
+      partialize: (state) => ({
+        playlists: state.playlists,
+        currentPlaylistId: state.currentPlaylistId,
+        showQueuePanel: state.showQueuePanel,
+        // 在线播放地址会过期：落盘时剥离，播放时按需重新搜索
+        importedTracks: Object.fromEntries(
+          Object.entries(state.importedTracks).map(([id, t]) => {
+            const { onlineUrl: _omit, ...rest } = t
+            return [id, rest as Track]
+          })
+        ),
+      }),
     }
   )
 )
