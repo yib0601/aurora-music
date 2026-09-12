@@ -166,6 +166,12 @@ export function usePlaylistImport() {
 
       // ── 创建歌单（保持原歌单顺序）并持久化在线曲目 ──
       const imported = resolvedTracks.filter((t): t is Track => t !== null)
+      if (imported.length === 0) {
+        // 一首都没匹配到：不创建空歌单，对话框保持打开供用户调整
+        setPhase('idle')
+        toast('没有可导入的歌曲：本地曲库未匹配，在线匹配也无结果', { type: 'error', duration: 6000 })
+        return null
+      }
       const playlist = usePlaylistStore.getState().createPlaylist(playlistName.trim() || preview.suggestedName)
       usePlaylistStore.getState().addTracksToPlaylist(playlist.id, imported.map((t) => t.id))
       const onlineTracks = imported.filter((t) => !t.path)

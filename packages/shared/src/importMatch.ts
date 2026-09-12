@@ -31,7 +31,8 @@ export function parsePlaylistText(text: string): ParsedSong[] {
     if (songs.length >= MAX_IMPORT_SONGS) break
     let line = rawLine.trim()
     if (!line) continue
-    if (/^https?:\/\//i.test(line)) continue
+    // 跳过含链接的行（分享文案常是「描述文字 + 链接」一整行，无解析源回退时不能当歌名）
+    if (/https?:\/\//i.test(line)) continue
     // 剥离序号前缀：1. / 01、/ 1) / 01：
     line = line.replace(/^\s*\d{1,3}\s*[.、)）:：]\s*/, '').trim()
     if (!line) continue

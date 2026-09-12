@@ -42,6 +42,10 @@ describe('parsePlaylistText', () => {
     const songs = parsePlaylistText('\nhttps://music.163.com/playlist?id=1\n晴天 - 周杰伦\n')
     expect(songs).toEqual([{ title: '晴天', artist: '周杰伦' }])
   })
+  it('跳过含链接的分享文案整行（无解析源回退时不能把链接当歌名）', () => {
+    const songs = parsePlaylistText('分享周杰伦创建的歌单「测试」：https://music.163.com/playlist?id=123 (来自网易云音乐)')
+    expect(songs).toEqual([])
+  })
   it('限制最多 1000 首，防止误粘超大文本', () => {
     const text = Array.from({ length: 1200 }, (_, i) => `歌${i} - 某人`).join('\n')
     expect(parsePlaylistText(text).length).toBe(1000)
