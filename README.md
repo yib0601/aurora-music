@@ -6,8 +6,17 @@
 
 ## 截图
 
-<!-- TODO: 添加截图 -->
-<!-- ![Screenshot](./screenshots/player.png) -->
+**音乐库** — 本地歌曲列表、专辑封面与右侧 Now Playing 面板
+
+![音乐库](./screenshots/library.png)
+
+**播放详情** — 黑胶唱片视觉、动态歌词与沉浸背景
+
+![播放详情](./screenshots/detail.png)
+
+**设置 · 在线搜索** — 自定义音乐源 / 歌词源 / 歌单解析源（协议见[歌源协议规范](#歌源协议规范)）
+
+![设置](./screenshots/settings.png)
 
 ---
 
@@ -44,6 +53,34 @@
 ### 其他
 
 - ⬆️ **应用内更新提示** — 启动时检查新版本并展示更新横幅，按发行版推荐匹配的安装包（Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage）
+
+---
+
+## 歌源协议规范
+
+应用不内置任何音乐源 / 歌词源 / 歌单抓取器，在线搜索、歌词匹配与歌单分享链接解析均依赖用户自行配置的 HTTP 接口（设置 → 在线搜索）。每类源的配置项为「接口地址 + 可选请求头」，协议如下：
+
+### 音乐源
+
+- 接口地址需包含 `{query}` 占位符（搜索时替换为 URL 编码后的关键词）；可选 `{quality}` 占位符（替换为下载音质设置：128 / 320 / flac）。
+- 响应为 JSON，支持数组或 `{results:[]}` / `{data:[]}` / `{songs:[]}` / `{list:[]}` 包裹。
+- 每项字段：`audioUrl`（必填）、`title` / `artist` / `album` / `duration`（秒）/ `coverUrl`。
+- 可选多音质地址 `qualityUrls: { "128": url, "320": url, "flac": url }` 或扁平字段 `url_128` / `url_320` / `url_flac`，下载时按音质设置挑选。
+
+### 歌词源
+
+- 接口地址占位符 `{track}`（歌曲名）/ `{artist}` / `{album}` / `{duration}`（秒）。
+- 响应支持单对象或数组，歌词字段兼容 `syncedLyrics` / `lrc` / `plainLyrics`。
+
+### 歌单解析源
+
+- 接口地址需包含 `{url}` 占位符（替换为歌单分享链接）。
+- 响应为 JSON，支持数组或 `{results:[]}` / `{data:[]}` / `{songs:[]}` / `{list:[]}` 包裹；可选 `name` 字段提供歌单标题。
+- 每项字段：`title` / `artist`（兼容 `name` / `songName` / `singer`）。
+
+### 请求头
+
+请求头为可选 JSON 对象，用于需要鉴权或特定 Referer / User-Agent 的接口。
 
 ---
 
