@@ -23,13 +23,14 @@ const downloadQualityOptions = [
   { value: 'flac' as const, label: '无损 FLAC' },
 ]
 
-/** 单个歌源卡片：默认仅展示名称 + 启用开关，点击编辑展开修改名称 / 地址 / 请求头 */
+/** 单个歌源卡片：默认仅展示名称 + 启用开关；点击编辑展开草稿表单，校验通过后点保存才写入 */
 function SourceEditorCard({
   name,
   apiUrl,
   headers,
   enabled,
   placeholderUrl,
+  kind,
   onUpdate,
   onRemove,
 }: {
@@ -38,35 +39,61 @@ function SourceEditorCard({
   headers?: Record<string, string>
   enabled: boolean
   placeholderUrl: string
+  kind: 'music' | 'lyrics' | 'playlist'
   onUpdate: (updates: { name?: string; apiUrl?: string; headers?: Record<string, string>; enabled?: boolean }) => void
   onRemove: () => void
 }) {
   const hasHeaders = headers != null && Object.keys(headers).length > 0
   const [editing, setEditing] = useState(false)
   const [showHeaders, setShowHeaders] = useState(hasHeaders)
+  const [nameDraft, setNameDraft] = useState(name)
+  const [apiUrlDraft, setApiUrlDraft] = useState(apiUrl)
   const [headersDraft, setHeadersDraft] = useState(() => (hasHeaders ? JSON.stringify(headers, null, 2) : ''))
   const [headersInvalid, setHeadersInvalid] = useState(false)
+  const [parsedHeaders, setParsedHeaders] = useState<Record<string, string> | undefined>(headers)
 
-  // 请求头草稿实时解析：合法 JSON 对象才写入 store，否则标记错误（不写入）
+  // 与添加弹窗一致的占位符校验
+  const requiredPlaceholders = kind === 'playlist' ? ['{url}'] : kind === 'lyrics' ? ['{track}', '{artist}'] : ['{query}']
+  const missingPlaceholders = apiUrlDraft.trim() ? requiredPlaceholders.filter((p) => !apiUrlDraft.includes(p)) : []
+  const canSave = apiUrlDraft.trim().length > 0 && missingPlaceholders.length === 0 && !headersInvalid
+
+  // 进入编辑：从已保存值初始化草稿
+  const startEditing = () => {
+    setNameDraft(name)
+    setApiUrlDraft(apiUrl)
+    setHeadersDraft(hasHeaders ? JSON.stringify(headers, null, 2) : '')
+    setHeadersInvalid(false)
+    setParsedHeaders(headers)
+    setShowHeaders(hasHeaders)
+    setEditing(true)
+  }
+
+  // 请求头草稿实时解析：合法 JSON 对象才允许保存，否则标记错误
   const handleHeadersChange = (text: string) => {
     setHeadersDraft(text)
     const trimmed = text.trim()
     if (!trimmed) {
       setHeadersInvalid(false)
-      onUpdate({ headers: undefined })
+      setParsedHeaders(undefined)
       return
     }
     try {
       const parsed = JSON.parse(trimmed)
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         setHeadersInvalid(false)
-        onUpdate({ headers: parsed })
+        setParsedHeaders(parsed)
       } else {
         setHeadersInvalid(true)
       }
     } catch {
       setHeadersInvalid(true)
     }
+  }
+
+  const handleSave = () => {
+    if (!canSave) return
+    onUpdate({ name: nameDraft.trim() || name, apiUrl: apiUrlDraft.trim(), headers: parsedHeaders })
+    setEditing(false)
   }
 
   return (
@@ -79,9 +106,9 @@ function SourceEditorCard({
         {editing ? (
           <input
             type="text"
-            value={name}
+            value={nameDraft}
             placeholder="源名称"
-            onChange={(e) => onUpdate({ name: e.target.value })}
+            onChange={(e) => setNameDraft(e.target.value)}
             className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-mint/50 transition-colors duration-200 py-1"
           />
         ) : (
@@ -102,17 +129,17 @@ function SourceEditorCard({
             }`}
           />
         </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          title={editing ? '收起' : '编辑'}
-          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
-          onClick={() => setEditing(!editing)}
-        >
-          {editing
-            ? <ChevronDown className="h-4 w-4 rotate-180" strokeWidth={1.6} />
-            : <Pencil className="h-4 w-4" strokeWidth={1.6} />}
-        </Button>
+        {!editing && (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="编辑"
+            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
+            onClick={startEditing}
+          >
+            <Pencil className="h-4 w-4" strokeWidth={1.6} />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -126,11 +153,18 @@ function SourceEditorCard({
         <>
           <input
             type="text"
-            value={apiUrl}
+            value={apiUrlDraft}
             placeholder={placeholderUrl}
-            onChange={(e) => onUpdate({ apiUrl: e.target.value })}
-            className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200"
+            onChange={(e) => setApiUrlDraft(e.target.value)}
+            className={`w-full bg-white/[0.03] border rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 ${
+              missingPlaceholders.length > 0 ? 'border-coral/60' : 'border-white/10'
+            }`}
           />
+          {missingPlaceholders.length > 0 && (
+            <p className="font-text text-caption text-coral/70 mt-1">
+              地址需包含占位符：{missingPlaceholders.join('、')}
+            </p>
+          )}
           {/* 请求头：可选，折叠编辑 */}
           <div className="mt-2">
             <button
@@ -160,6 +194,24 @@ function SourceEditorCard({
                 )}
               </>
             )}
+          </div>
+          <div className="mt-2.5 flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-white/60 hover:text-white/90"
+              onClick={() => setEditing(false)}
+            >
+              取消
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 px-4 bg-mint text-mint-fg font-semibold hover:bg-mint/90 disabled:opacity-40 disabled:hover:bg-mint"
+              disabled={!canSave}
+              onClick={handleSave}
+            >
+              保存
+            </Button>
           </div>
         </>
       )}
@@ -584,6 +636,7 @@ export function SettingsPage() {
                         headers={src.headers}
                         enabled={src.enabled}
                         placeholderUrl="https://your-api.com/search?q={query}"
+                        kind="music"
                         onUpdate={(updates) => updateOnlineSource(src.id, updates)}
                         onRemove={() => removeOnlineSource(src.id)}
                       />
@@ -620,6 +673,7 @@ export function SettingsPage() {
                         headers={src.headers}
                         enabled={src.enabled}
                         placeholderUrl="https://lrclib.net/api/search?track_name={track}&artist_name={artist}"
+                        kind="lyrics"
                         onUpdate={(updates) => updateLyricsSource(src.id, updates)}
                         onRemove={() => removeLyricsSource(src.id)}
                       />
@@ -658,6 +712,7 @@ export function SettingsPage() {
                         headers={src.headers}
                         enabled={src.enabled}
                         placeholderUrl="https://your-api.com/resolve?url={url}"
+                        kind="playlist"
                         onUpdate={(updates) => updatePlaylistResolverSource(src.id, updates)}
                         onRemove={() => removePlaylistResolverSource(src.id)}
                       />
@@ -666,32 +721,6 @@ export function SettingsPage() {
                 )}
               </div>
 
-              {/* 协议规范说明 */}
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-md px-3.5 py-3 space-y-2">
-                <p className="font-text text-caption-strong text-white/70">歌源协议规范</p>
-                <p className="font-text text-caption text-white/50 leading-relaxed">
-                  <span className="text-white/70">音乐源：</span>
-                  接口地址需包含 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{query}`}</code> 占位符（搜索时替换为 URL 编码后的关键词）；
-                  可选 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{quality}`}</code> 占位符（替换为下载音质设置：128 / 320 / flac）。
-                  响应为 JSON，支持数组或 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{results:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{data:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{songs:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{list:[]}`}</code> 包裹。
-                  每项字段：<span className="text-white/70">audioUrl（必填）、title / artist / album / duration（秒）/ coverUrl</span>；
-                  可选多音质地址 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`qualityUrls: { "128": url, "320": url, "flac": url }`}</code> 或扁平字段 url_128 / url_320 / url_flac，下载时按音质设置挑选。
-                </p>
-                <p className="font-text text-caption text-white/50 leading-relaxed">
-                  <span className="text-white/70">歌词源：</span>
-                  占位符 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{track}`}</code>（歌曲名）/ <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{artist}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{album}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{duration}`}</code>（秒）。
-                  响应支持单对象或数组，歌词字段兼容 syncedLyrics / lrc / plainLyrics。
-                </p>
-                <p className="font-text text-caption text-white/50 leading-relaxed">
-                  <span className="text-white/70">歌单解析源：</span>
-                  占位符 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{url}`}</code>（替换为歌单分享链接）。
-                  响应为 JSON，支持数组或 <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{results:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{data:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{songs:[]}`}</code> / <code className="text-mint/80 bg-mint/[0.08] px-1 rounded-sm">{`{list:[]}`}</code> 包裹；
-                  可选 name 字段提供歌单标题。每项字段：<span className="text-white/70">title / artist</span>（兼容 name / songName / singer）。
-                </p>
-                <p className="font-text text-caption text-white/50 leading-relaxed">
-                  请求头为可选 JSON 对象，用于需要鉴权或特定 Referer / User-Agent 的接口。
-                </p>
-              </div>
             </div>
           </section>
 
