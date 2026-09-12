@@ -18,7 +18,7 @@ import {
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { cn, formatTime } from '@/lib/utils'
+import { cn, formatTime, isDesktop } from '@/lib/utils'
 import {
   downloadPlaylistAsM3U,
   parseM3U,
@@ -82,8 +82,15 @@ export function PlaylistPage() {
   }
 
   const handlePlayTrack = (track: typeof tracks[0], index: number) => {
-    if (currentTrack?.id === track.id) {
-      usePlayerStore.getState().togglePlay()
+    const player = usePlayerStore.getState()
+    // 点击的歌曲是当前歌曲且当前队列就是本歌单时才切换播放/暂停；
+    // 否则以整个歌单为队列播放（替换旧队列），保证播放上下文来自歌单
+    if (
+      player.currentTrack?.id === track.id &&
+      player.queue.length === playlistTracks.length &&
+      player.queue.every((t, i) => t.id === playlistTracks[i].id)
+    ) {
+      player.togglePlay()
       return
     }
     playQueue(playlistTracks, index)
@@ -217,7 +224,9 @@ export function PlaylistPage() {
             {playlistTracks.map((track, idx) => (
               <div
                 key={track.id}
-                onClick={() => handlePlayTrack(track, idx)}
+                // 与音乐库一致：桌面端双击播放（单击仅 hover），移动端单击播放
+                onClick={isDesktop() ? undefined : () => handlePlayTrack(track, idx)}
+                onDoubleClick={isDesktop() ? () => handlePlayTrack(track, idx) : undefined}
                 className={cn(
                   'grid grid-cols-[40px_1fr_3rem_4rem] gap-3 items-center px-4 py-2.5 cursor-pointer group row-hover border-b border-white/5 last:border-0',
                   isCurrentTrack(track.id) && 'bg-mint/[0.06]'

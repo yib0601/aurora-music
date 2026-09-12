@@ -363,18 +363,20 @@ export function LibraryPage() {
                       ) : (
                         <ArrowDown className="h-3.5 w-3.5" strokeWidth={1.5} />
                       )}
-                      <span className="font-text text-[12px] hidden sm:inline">{SORT_LABELS[sortBy]}</span>
+                      {/* 固定 4 个字宽（最长「默认排序/添加时间」），避免切换排序时按钮宽度变化导致工具栏抖动 */}
+                      <span className="font-text text-[12px] hidden sm:inline-block w-[4em] text-left">{SORT_LABELS[sortBy]}</span>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-36">
+                    {/* preventDefault 阻止 Radix 选中后自动关闭，点击菜单外/再次点击按钮才关闭 */}
                     {(Object.keys(SORT_LABELS) as SortField[]).map((field) => (
-                      <DropdownMenuItem key={field} onClick={() => setSortBy(field)}>
+                      <DropdownMenuItem key={field} onSelect={(e) => e.preventDefault()} onClick={() => setSortBy(field)}>
                         <span className="flex-1">{SORT_LABELS[field]}</span>
                         {sortBy === field && <Check className="h-3.5 w-3.5 text-mint" strokeWidth={2} />}
                       </DropdownMenuItem>
                     ))}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
                       <span className="flex-1">{sortOrder === 'asc' ? '升序' : '降序'}</span>
                       {sortOrder === 'asc' ? (
                         <ArrowUp className="h-3.5 w-3.5 text-mint" strokeWidth={2} />
