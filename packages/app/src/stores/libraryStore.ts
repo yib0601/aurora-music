@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, GlassMode, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality } from '@/types'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, GlassMode, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, PlaylistResolverConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 
 /** 历史搜索记录最大保留条数 */
@@ -27,6 +27,8 @@ interface LibraryState {
   // 歌源配置（应用不内置任何源，全部由用户按协议配置）
   onlineSources: OnlineSourceConfig[]
   lyricsSources: LyricsSourceConfig[]
+  /** 歌单解析源配置（应用不内置任何平台抓取器，全部由用户按协议配置） */
+  playlistResolverSources: PlaylistResolverConfig[]
   /** 默认下载目录：null 表示每次下载都弹保存对话框询问 */
   downloadDir: string | null
   /** 默认下载音质：128 标准 / 320 高品质 / flac 无损（源不支持时按其默认地址下载） */
@@ -64,6 +66,10 @@ interface LibraryState {
   addLyricsSource: (source: Omit<LyricsSourceConfig, 'id'>) => void
   updateLyricsSource: (id: string, updates: Partial<LyricsSourceConfig>) => void
   removeLyricsSource: (id: string) => void
+  // 歌单解析源配置操作
+  addPlaylistResolverSource: (source: Omit<PlaylistResolverConfig, 'id'>) => void
+  updatePlaylistResolverSource: (id: string, updates: Partial<PlaylistResolverConfig>) => void
+  removePlaylistResolverSource: (id: string) => void
   setDownloadDir: (dir: string | null) => void
   setDownloadQuality: (quality: DownloadQuality) => void
 }
@@ -88,6 +94,7 @@ export const useLibraryStore = create<LibraryState>()(
       likedTracks: new Set<string>(),
       onlineSources: [],
       lyricsSources: [],
+      playlistResolverSources: [],
       downloadDir: null,
       downloadQuality: 'flac',
 
@@ -189,6 +196,20 @@ export const useLibraryStore = create<LibraryState>()(
       removeLyricsSource: (id) => {
         set({ lyricsSources: get().lyricsSources.filter((s) => s.id !== id) })
       },
+      addPlaylistResolverSource: (source) => {
+        const id = `plr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        set({ playlistResolverSources: [...get().playlistResolverSources, { ...source, id }] })
+      },
+      updatePlaylistResolverSource: (id, updates) => {
+        set({
+          playlistResolverSources: get().playlistResolverSources.map((s) =>
+            s.id === id ? { ...s, ...updates } : s
+          ),
+        })
+      },
+      removePlaylistResolverSource: (id) => {
+        set({ playlistResolverSources: get().playlistResolverSources.filter((s) => s.id !== id) })
+      },
       setDownloadDir: (dir) => set({ downloadDir: dir || null }),
       setDownloadQuality: (quality) => set({ downloadQuality: quality }),
     }),
@@ -206,14 +227,19 @@ export const useLibraryStore = create<LibraryState>()(
         searchHistory: state.searchHistory,
         onlineSources: state.onlineSources,
         lyricsSources: state.lyricsSources,
+        playlistResolverSources: state.playlistResolverSources,
         downloadDir: state.downloadDir,
         downloadQuality: state.downloadQuality,
       }),
       // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
       // v4 默认下载音质改为无损 FLAC：清除旧持久值，让新默认值生效
+      // v5 新增歌单解析源配置（歌单导入功能）
       migrate: (persisted: any, version: number) => {
         if (persisted) {
+          if (version < 5) {
+            if (!Array.isArray(persisted.playlistResolverSources)) persisted.playlistResolverSources = []
+          }
           if (version < 4) {
             delete persisted.downloadQuality
           }
@@ -228,7 +254,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 4,
+      version: 5,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

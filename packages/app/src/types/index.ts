@@ -7,6 +7,9 @@ import type {
   LyricsSourceConfig,
   LyricsSearchOptions,
   LyricsSearchResult,
+  PlaylistResolverConfig,
+  ParsedSong,
+  PlaylistParseResult,
 } from '@aurora/shared'
 
 export type {
@@ -17,6 +20,9 @@ export type {
   LyricsSourceConfig,
   LyricsSearchOptions,
   LyricsSearchResult,
+  PlaylistResolverConfig,
+  ParsedSong,
+  PlaylistParseResult,
 }
 
 export interface Track {
