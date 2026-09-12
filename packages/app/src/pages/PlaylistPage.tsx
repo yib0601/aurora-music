@@ -14,6 +14,7 @@ import {
   Music2,
   Download,
   Upload,
+  Link2,
 } from 'lucide-react'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -26,6 +27,8 @@ import {
   pickM3UFile,
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
+import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
+import { toast } from '@/components/common/Toast'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +53,8 @@ export function PlaylistPage() {
   const playTrack = usePlayerStore((s) => s.playTrack)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
   const playQueue = usePlayerStore((s) => s.playQueue)
+
+  const [showImportDialog, setShowImportDialog] = useState(false)
 
   const playlist = playlists.find((p) => p.id === id)
 
@@ -107,12 +112,12 @@ export function PlaylistPage() {
     if (!content) return
     const paths = parseM3U(content)
     if (paths.length === 0) {
-      alert('文件中没有找到有效的音乐路径')
+      toast('文件中没有找到有效的音乐路径', { type: 'error' })
       return
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      alert('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录')
+      toast('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
       return
     }
     // 从文件名推断播放列表名称
@@ -180,6 +185,10 @@ export function PlaylistPage() {
               <DropdownMenuItem onClick={handleImport}>
                 <Upload className="h-4 w-4 mr-2" strokeWidth={1.6} />
                 导入 M3U 文件
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
+                <Link2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                导入歌单（链接/文本）
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -324,6 +333,8 @@ export function PlaylistPage() {
           </div>
         )}
       </div>
+
+      <PlaylistImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
     </div>
   )
 }

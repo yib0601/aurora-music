@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Menu, X, Music, Heart, Clock, Settings } from 'lucide-react'
+import { Menu, X, Music, Heart, Clock, Settings, Link2 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 
 /**
  * 移动端导航：顶部汉堡菜单 + 左侧抽屉
@@ -19,6 +20,7 @@ const navItems = [
 
 export function MobileNav() {
   const [open, setOpen] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
 
   return (
     <>
@@ -87,8 +89,21 @@ export function MobileNav() {
               {label}
             </NavLink>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              setShowImportDialog(true)
+            }}
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] tracking-[-0.2px] text-white/70 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"
+          >
+            <Link2 className="h-5 w-5" strokeWidth={1.6} />
+            导入歌单
+          </button>
         </nav>
       </aside>
+
+      <PlaylistImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
     </>
   )
 }

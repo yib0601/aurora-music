@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload } from 'lucide-react'
+import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2 } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,8 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { pickM3UFile, parseM3U, matchTracksByPaths } from '@/services/playlistIO.service'
 import { APP_VERSION } from '@/services/update.service'
+import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
+import { toast } from '@/components/common/Toast'
 import {
   Dialog,
   DialogContent,
@@ -48,6 +50,7 @@ export function Sidebar() {
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [showImportDialog, setShowImportDialog] = useState(false)
 
   const handleCreatePlaylist = () => {
     if (newPlaylistName.trim()) {
@@ -70,16 +73,17 @@ export function Sidebar() {
     if (!content) return
     const paths = parseM3U(content)
     if (paths.length === 0) {
-      alert('文件中没有找到有效的音乐路径')
+      toast('文件中没有找到有效的音乐路径', { type: 'error' })
       return
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      alert('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录')
+      toast('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
       return
     }
     const newPlaylist = createPlaylist('导入的播放列表')
     addTracksToPlaylist(newPlaylist.id, matchedTracks.map((t) => t.id))
+    toast(`已导入 ${matchedTracks.length} 首歌曲`)
   }
 
   return (
@@ -127,14 +131,23 @@ export function Sidebar() {
             播放列表
           </span>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="btn-icon"
-              onClick={handleImportPlaylist}
-              title="导入播放列表"
-            >
-              <Upload className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="btn-icon" title="导入播放列表">
+                  <Upload className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
+                  <Link2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                  导入歌单（链接/文本）
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleImportPlaylist}>
+                  <FileText className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                  导入 M3U 文件
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <button
               type="button"
               className="btn-icon"
@@ -245,6 +258,8 @@ export function Sidebar() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PlaylistImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
     </div>
   )
 }
