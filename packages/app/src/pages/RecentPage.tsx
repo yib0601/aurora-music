@@ -4,7 +4,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
-import { formatTime, cn } from '@/lib/utils'
+import { formatTime, cn, isDesktop } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
 import { CoverImage } from '@/components/common/CoverImage'
 import {
@@ -98,7 +98,12 @@ export function RecentPage() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
-                                navigate(`/song/${track.id}`)
+                                // 桌面端保留单击进详情；移动端与点击播放条一致：播放并打开全屏 Now Playing 浮层（不推进路由）
+                                if (isDesktop()) navigate(`/song/${track.id}`)
+                                else {
+                                  handlePlay(track, idx)
+                                  usePlaylistStore.getState().setMobileNowPlaying(true)
+                                }
                               }}
                               title="查看歌曲详情"
                               className="w-11 h-11 md:w-9 md:h-9 rounded-[8px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"

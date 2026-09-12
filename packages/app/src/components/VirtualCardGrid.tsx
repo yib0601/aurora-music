@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/context-menu'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
+import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, cn } from '@/lib/utils'
 import { CoverImage } from '@/components/common/CoverImage'
 import { PlaylistSubmenuItems } from '@/components/VirtualTrackTable'
@@ -65,7 +66,12 @@ export const TrackCard = memo(function TrackCard({
           <div
             onClick={(e) => {
               e.stopPropagation()
-              navigate(`/song/${track.id}`)
+              // 桌面端保留单击进详情；移动端与点击播放条一致：播放并打开全屏 Now Playing 浮层（不推进路由）
+              if (isDesktop()) navigate(`/song/${track.id}`)
+              else {
+                onPlay(idx)
+                usePlaylistStore.getState().setMobileNowPlaying(true)
+              }
             }}
             title="查看歌曲详情"
             className="aspect-square rounded-[8px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer transition-transform duration-200 ease-apple group-hover:scale-[1.02]"

@@ -20,6 +20,7 @@ import { SongDetailPage } from '@/pages/SongDetailPage'
 import { LyricsView } from '@/components/lyrics/LyricsView'
 import { usePlayerStore, reconcileNativePlayback } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { usePlaylistStore } from '@/stores/playlistStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
 import { isNativePlayerAvailable } from '@/services/mediaSession'
 import {
@@ -73,8 +74,9 @@ function flushScannedTracks() {
 function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  // 移动端全屏 Now Playing 视图：由 PlayerBar 封面/标题点击触发
-  const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
+  // 移动端全屏 Now Playing 视图：开关放全局 store，播放条与歌曲封面点击共用同一入口
+  const nowPlayingOpen = usePlaylistStore((s) => s.mobileNowPlayingOpen)
+  const setMobileNowPlaying = usePlaylistStore((s) => s.setMobileNowPlaying)
   const mobile = isMobile()
   const desktop = isDesktop()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
@@ -166,6 +168,24 @@ function AppLayout() {
     }
   }, [mobile, triggerScanForConfiguredFolders])
 
+  // 系统返回键：不做应用内返回导航，直接退回系统。
+  // 注册监听后接管默认行为（Capacitor 默认会弹 WebView 历史，体验成"应用内返回上一屏"）
+  useEffect(() => {
+    if (!mobile) return
+    let listener: { remove: () => void } | undefined
+    let cancelled = false
+    CapApp.addListener('backButton', () => {
+      CapApp.exitApp()
+    }).then((l) => {
+      if (cancelled) l.remove()
+      else listener = l
+    })
+    return () => {
+      cancelled = true
+      listener?.remove()
+    }
+  }, [mobile])
+
   // 授予权限：先尝试系统弹窗申请「音乐和音频」权限（一键）；
   // 若系统不再弹窗（永久拒绝）则跳转应用设置页，由用户手动开启
   const handleGrantStoragePermission = useCallback(() => {
@@ -199,7 +219,7 @@ function AppLayout() {
 
   // 路由切换时关闭移动端全屏 Now Playing（避免切到其他页时残留遮罩）
   useEffect(() => {
-    setNowPlayingOpen(false)
+    usePlaylistStore.getState().setMobileNowPlaying(false)
   }, [location.pathname])
   // ⚠️ 性能关键：只订阅低频变化字段，避免 progress 每 250ms 触发整树重渲染
   // progress / duration / isPlaying 等高频字段由 PlayerBar / LyricsView 自行订阅
@@ -559,15 +579,11 @@ function AppLayout() {
           aria-hidden
           className="absolute inset-0 overflow-hidden pointer-events-none animate-[backdrop-fade-in_.45s_ease]"
         >
-          {/* 预糊化：封面先渲染进 64px 小层（光栅化成本极低），再由合成层 transform
-              放大铺满全屏，双线性采样天然平滑≈强模糊。注意不能加 CSS blur——
-              滤镜会按变换后尺寸光栅化（全屏级），等于把模糊成本加回来。
-              替代旧的全屏 blur-[64px]——后者每帧全屏光栅化模糊，
-              是详情页滚动卡顿主因（实测同环境 15fps→56fps） */}
-          <div
-            className="absolute left-1/2 top-1/2 w-16 h-16 opacity-55"
-            style={{ transform: 'translate(-50%, -50%) scale(60)' }}
-          >
+          {/* 沉浸背景：封面全尺寸铺满（object-cover），不加 CSS blur、不做 scale 放大——
+              旧方案的全屏 blur-[64px] 卡顿源于滤镜每帧全屏重算；无滤镜的静态图层
+              只一次性光栅化缓存，逐帧仅合成，成本低于玻璃 backdrop-filter（实测不影响滚动）。
+              封面原图约 600px，放大到窗口尺寸仅有轻微双线性柔化，轮廓清晰 */}
+          <div className="absolute inset-0 opacity-55">
             <CoverImage track={currentTrack} alt="" className="w-full h-full object-cover" />
           </div>
           <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/50 to-background/95" />
@@ -695,7 +711,7 @@ function AppLayout() {
                   onVolumeChange={handleVolumeChange}
                   onToggleMute={handleToggleMute}
                   onCyclePlayMode={handleCyclePlayMode}
-                  onOpenNowPlaying={() => setNowPlayingOpen(true)}
+                  onOpenNowPlaying={() => setMobileNowPlaying(true)}
                 />
               </div>
             </div>
@@ -757,7 +773,7 @@ function AppLayout() {
 
       {/* 移动端全屏 Now Playing 视图 */}
       {mobile && (
-        <MobileNowPlaying open={nowPlayingOpen} onClose={() => setNowPlayingOpen(false)} />
+        <MobileNowPlaying open={nowPlayingOpen} onClose={() => setMobileNowPlaying(false)} />
       )}
 
       {/* 移动端文件夹选择器：在 App 层全局渲染，LibraryPage 与 SettingsPage 共用 */}

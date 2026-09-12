@@ -7,7 +7,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
-import { cn, formatTime } from '@/lib/utils'
+import { cn, formatTime, isDesktop } from '@/lib/utils'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -491,6 +491,16 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
   const handleOpenDetail = useCallback(
     (trackId: string) => {
+      if (!isDesktop()) {
+        // 移动端与点击播放条一致：播放该曲并打开全屏 Now Playing 浮层（不推进路由）
+        const idx = localResultsRef.current.findIndex((t) => t.id === trackId)
+        if (idx >= 0) {
+          usePlayerStore.getState().playQueue(localResultsRef.current, idx)
+          usePlaylistStore.getState().setMobileNowPlaying(true)
+        }
+        onClose()
+        return
+      }
       navigate(`/song/${trackId}`)
       onClose()
     },
