@@ -25,6 +25,8 @@ import {
   parseM3U,
   matchTracksByPaths,
   pickM3UFile,
+  ensurePlayableTrack,
+  resolvePlayableTracks,
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
@@ -46,6 +48,8 @@ export function PlaylistPage() {
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   const tracks = useLibraryStore((s) => s.tracks)
+  // 歌单导入的在线曲目（不在曲库里，反查兜底用）
+  const importedTracks = usePlaylistStore((s) => s.importedTracks)
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -61,9 +65,9 @@ export function PlaylistPage() {
   const playlistTracks = useMemo(() => {
     if (!playlist) return []
     return playlist.trackIds
-      .map((tid) => tracks.find((t) => t.id === tid))
+      .map((tid) => tracks.find((t) => t.id === tid) || importedTracks[tid])
       .filter(Boolean) as typeof tracks
-  }, [playlist, tracks])
+  }, [playlist, tracks, importedTracks])
 
   if (!playlist) {
     return (
@@ -81,24 +85,25 @@ export function PlaylistPage() {
 
   const totalDuration = playlistTracks.reduce((sum, t) => sum + t.duration, 0)
 
-  const handlePlayAll = () => {
+  const handlePlayAll = async () => {
     if (playlistTracks.length === 0) return
-    playQueue(playlistTracks, 0)
+    // 在线曲目可能没有可用地址（重启后过期被剥离），播放前按需取址
+    const queue = await resolvePlayableTracks(playlistTracks)
+    playQueue(queue, 0)
   }
 
-  const handlePlayTrack = (track: typeof tracks[0], index: number) => {
-    const player = usePlayerStore.getState()
-    // 点击的歌曲是当前歌曲且当前队列就是本歌单时才切换播放/暂停；
-    // 否则以整个歌单为队列播放（替换旧队列），保证播放上下文来自歌单
-    if (
-      player.currentTrack?.id === track.id &&
-      player.queue.length === playlistTracks.length &&
-      player.queue.every((t, i) => t.id === playlistTracks[i].id)
-    ) {
-      player.togglePlay()
+  const handlePlayTrack = async (track: typeof tracks[0], index: number) => {
+    if (currentTrack?.id === track.id) {
+      usePlayerStore.getState().togglePlay()
       return
     }
-    playQueue(playlistTracks, index)
+    const playable = await ensurePlayableTrack(track)
+    if (!playable) {
+      toast('无法播放该在线歌曲：未配置音乐源或搜索无结果', { type: 'error' })
+      return
+    }
+    const queue = playlistTracks.map((t) => (t.id === playable.id ? playable : t))
+    playQueue(queue, index)
   }
 
   const isCurrentTrack = (trackId: string) => currentTrack?.id === trackId

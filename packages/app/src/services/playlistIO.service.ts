@@ -1,4 +1,9 @@
 import type { Track, Playlist } from '@/types'
+import { platform } from '@/services/platform'
+import { useLibraryStore } from '@/stores/libraryStore'
+import { usePlaylistStore } from '@/stores/playlistStore'
+import { scoreOnlineResult } from '@aurora/shared'
+import type { OnlineTrackSearchResult } from '@/types'
 
 /**
  * 生成 M3U 播放列表内容
@@ -110,4 +115,71 @@ export async function pickM3UFile(): Promise<string | null> {
     }
     input.click()
   })
+}
+
+/** 播放前按需取址并发上限 */
+const PLAY_RESOLVE_CONCURRENCY = 4
+
+/**
+ * 让在线曲目可播放：本地曲目/已有地址的原样返回；
+ * 导入歌单的在线曲目不持久化播放地址（会过期），用用户配置的
+ * 音乐源重新搜索取最佳结果，并回填 importedTracks 供后续播放直接使用。
+ * 未配置音乐源或无结果返回 null
+ */
+export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
+  if (track.path || track.onlineUrl) return track
+  const { onlineSources, downloadQuality } = useLibraryStore.getState()
+  if (!onlineSources.some((s) => s.enabled && s.apiUrl)) return null
+  try {
+    const results = await platform.searchOnlineTracks(
+      `${track.title} ${track.artist}`.trim(),
+      { sources: onlineSources, quality: downloadQuality }
+    )
+    let best: OnlineTrackSearchResult | null = null
+    let bestScore = 0
+    for (const r of results) {
+      const score = scoreOnlineResult(r, { title: track.title, artist: track.artist })
+      if (score > bestScore) {
+        bestScore = score
+        best = r
+      }
+    }
+    const r = best || results[0]
+    if (!r) return null
+    const resolved: Track = {
+      ...track,
+      onlineUrl: r.audioUrl,
+      onlineQualityUrls: r.qualityUrls,
+      coverUrl: r.coverUrl || track.coverUrl,
+      onlineSource: r.source,
+      onlineSourceName: r.sourceName,
+      onlineId: r.id,
+      duration: track.duration || r.duration,
+    }
+    usePlaylistStore.getState().addImportedTracks([resolved])
+    return resolved
+  } catch {
+    return null
+  }
+}
+
+/** 批量让歌单可播放（播放全部场景）：只处理缺地址的曲目，并发 4 */
+export async function resolvePlayableTracks(tracks: Track[]): Promise<Track[]> {
+  const result = [...tracks]
+  const jobs = tracks
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) => !t.path && !t.onlineUrl)
+  if (jobs.length === 0) return result
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < jobs.length) {
+      const job = jobs[cursor++]
+      const resolved = await ensurePlayableTrack(job.t).catch(() => null)
+      if (resolved) result[job.i] = resolved
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(PLAY_RESOLVE_CONCURRENCY, jobs.length) }, () => worker())
+  )
+  return result
 }
