@@ -26,3 +26,4 @@ export {
   MAX_IMPORT_SONGS,
   TITLE_THRESHOLD,
 } from './importMatch'
+export { extractShareUrl, resolvePlaylistUrl, parsePlaylistLink } from './playlistResolver'
