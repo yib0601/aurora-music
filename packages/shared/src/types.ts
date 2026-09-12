@@ -86,3 +86,37 @@ export interface LyricsSearchResult {
   name: string
   artist: string
 }
+
+// ─── 歌单导入协议 ─────────────────────────────────────────────
+// 应用不内置任何平台的歌单抓取器：分享链接解析由用户按协议配置的
+// 「歌单解析源」完成（与音乐源/歌词源同一免责架构）；纯文本导入则
+// 完全在本地解析、零网络请求。
+
+/** 歌单解析源配置：把歌单分享链接解析为歌曲元数据列表 */
+export interface PlaylistResolverConfig {
+  id: string
+  name: string
+  /**
+   * 解析接口地址，需包含 {url} 占位符（调用时替换为 URL 编码后的歌单链接）。
+   * 响应需为 JSON，支持数组或 { results:[] } / { data:[] } / { songs:[] } / { list:[] } 包裹；
+   * 可选 name 字段提供歌单标题。
+   * 每项字段（宽松兼容）：title / name / songName；artist / singer / artists
+   */
+  apiUrl: string
+  /** 附加请求头（如鉴权 Token），同名头覆盖默认值 */
+  headers?: Record<string, string>
+  enabled: boolean
+}
+
+/** 导入流程中解析出的单首歌曲（仅元数据，不含任何音频地址） */
+export interface ParsedSong {
+  title: string
+  artist: string
+}
+
+/** 歌单解析源的解析结果 */
+export interface PlaylistParseResult {
+  /** 歌单标题（源未提供时为空字符串） */
+  name: string
+  songs: ParsedSong[]
+}
