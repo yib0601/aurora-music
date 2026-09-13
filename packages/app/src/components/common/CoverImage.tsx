@@ -120,9 +120,13 @@ export interface CoverImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement
   fallback?: ReactNode
 }
 
+/** 内嵌封面短边低于该值视为低清：铺满沉浸背景会明显糊，触发在线高清补齐 */
+const LOWRES_COVER_THRESHOLD = 512
+
 export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: CoverImageProps) {
   const updateTrack = useLibraryStore((s) => s.updateTrack)
   const [resolved, setResolved] = useState<string | null>(null)
+  const [upgraded, setUpgraded] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
   const trackId = track?.id
@@ -134,6 +138,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
   useEffect(() => {
     setResolved(null)
     setFailed(false)
+    setUpgraded(null)
   }, [trackId, coverPath, track?.coverUrl])
 
   useEffect(() => {
@@ -172,7 +177,29 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
     }
   }, [trackId, needsExtraction, updateTrack])
 
-  const src = coverPath || resolved
+  // 低清内嵌封面升级：内嵌封面短边过小时（铺满沉浸背景会明显糊），
+  // 复用在线兜底搜索一张高清封面覆盖。已升级过的（coverPath 指向在线缓存）不再重复触发。
+  useEffect(() => {
+    if (!trackId || !coverPath || track?.onlineUrl) return
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      if (Math.min(img.naturalWidth, img.naturalHeight) >= LOWRES_COVER_THRESHOLD) return
+      requestOnlineCover(trackId).then((onlinePath) => {
+        if (!cancelled && onlinePath) {
+          setUpgraded(onlinePath)
+          updateTrack(trackId, { coverPath: onlinePath })
+        }
+      })
+    }
+    img.src = platform.getCoverSrc(coverPath)
+    return () => {
+      cancelled = true
+    }
+  }, [trackId, coverPath, track?.onlineUrl, updateTrack])
+
+  const src = upgraded || coverPath || resolved
   // 在线曲目无本地封面时直接用源提供的远端 coverUrl（本地路径才走 cover-local 协议）
   const remoteSrc = !src && track?.coverUrl && /^https?:\/\//i.test(track.coverUrl) ? track.coverUrl : null
   // 封面文件缺失/损坏时回退到占位图，而不是留一个碎图或空框
