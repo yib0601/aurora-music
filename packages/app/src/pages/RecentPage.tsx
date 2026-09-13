@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music, Search } from 'lucide-react'
+import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
-import { useUIStore } from '@/stores/uiStore'
+import { SearchEntry } from '@/components/common/SearchEntry'
 import { CoverImage } from '@/components/common/CoverImage'
 import { toast } from '@/components/common/Toast'
 import { ensurePlayableTrack } from '@/services/playlistIO.service'
@@ -45,7 +45,6 @@ export function RecentPage() {
   }, [allTracks, recentPlayedTracks])
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
-  const setSearchOpen = useUIStore((s) => s.setSearchOpen)
 
   const handlePlay = async (track: Track, idx: number) => {
     // 在线曲目播放地址会过期（落盘时已剥离），播放前按需重新取址
@@ -73,7 +72,7 @@ export function RecentPage() {
   return (
     <PageLayout
       header={
-        // 与音乐库页同款头部：标题左、工具栏右；搜索按钮固定在标题右侧原位置
+        // 与音乐库页同款头部：标题左、工具栏右；搜索入口固定在标题右侧原位置
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
             <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
@@ -84,13 +83,7 @@ export function RecentPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 pb-1">
-            <button
-              onClick={() => setSearchOpen(true)}
-              title="搜索 (⌘K)"
-              className="btn-icon"
-            >
-              <Search className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
+            <SearchEntry />
           </div>
         </div>
       }

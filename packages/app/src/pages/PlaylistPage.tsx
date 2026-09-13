@@ -15,7 +15,6 @@ import {
   Download,
   Upload,
   Link2,
-  Search,
 } from 'lucide-react'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -30,7 +29,7 @@ import {
   resolvePlayableTracks,
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
-import { useUIStore } from '@/stores/uiStore'
+import { SearchEntry } from '@/components/common/SearchEntry'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
 import {
@@ -61,7 +60,6 @@ export function PlaylistPage() {
   const playQueue = usePlayerStore((s) => s.playQueue)
 
   const [showImportDialog, setShowImportDialog] = useState(false)
-  const setSearchOpen = useUIStore((s) => s.setSearchOpen)
 
   const playlist = playlists.find((p) => p.id === id)
 
@@ -139,7 +137,7 @@ export function PlaylistPage() {
     // 与其他页面共享 1200px 居中内容轴（PageLayout 同款），避免全屏拉伸
     <div className="flex flex-col h-full overflow-hidden mx-auto w-full max-w-[1200px]">
       <div className="px-4 pt-4 md:px-8 md:pt-8 pb-6">
-        {/* 返回在左、搜索在右：搜索按钮与其他页面一样固定在头部右上角原位置 */}
+        {/* 返回在左、搜索在右：搜索入口与其他页面一样固定在头部右上角原位置 */}
         <div className="flex items-center justify-between mb-4">
           <button
             className="btn-icon"
@@ -147,13 +145,7 @@ export function PlaylistPage() {
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.7} />
           </button>
-          <button
-            onClick={() => setSearchOpen(true)}
-            title="搜索 (⌘K)"
-            className="btn-icon"
-          >
-            <Search className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </button>
+          <SearchEntry />
         </div>
         <div className="flex items-center gap-6 max-w-4xl">
           <div className="w-44 h-44 rounded-lg glass-regular border border-white/10 flex items-center justify-center flex-shrink-0 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
