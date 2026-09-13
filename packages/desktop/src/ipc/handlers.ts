@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises'
 import { app } from 'electron'
 import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder } from './database'
 import { scanFolder, ensureCover, fetchOnlineCover } from './scanner'
+import { watchFolder, unwatchFolder } from './watcher'
 import { registerSystemIpc } from './system'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
@@ -89,6 +90,7 @@ async function runScan(folderPath: string): Promise<Track[]> {
       //   否则音乐库里会残留已删目录的歌曲（数量对不上）
       // - 父目录也不在 → 更可能是外置盘未挂载，保留曲目记录，仅报错跳过，避免误删音乐库
       if (fs.existsSync(path.dirname(folderPath))) {
+        unwatchFolder(folderPath)
         const removed = deleteTracksByFolder(folderPath)
         console.log('扫描目录已不存在，清理其曲目:', folderPath, removed)
         const remaining = getAllTracks()
@@ -105,6 +107,10 @@ async function runScan(folderPath: string): Promise<Track[]> {
     })
     const allTracks = getAllTracks()
     sendToRenderer('scan:complete', allTracks)
+    // 自动更新：监听扫描目录，文件增删后防抖触发增量重扫（经串行队列，
+    // UI 走既有 track:scanned / scan:complete 事件无感刷新）。
+    // 每次扫描完成重建监听树，覆盖新增子目录
+    watchFolder(folderPath, (f) => enqueueScan(f))
     return allTracks
   } catch (err) {
     console.error('扫描失败:', folderPath, err)
@@ -217,6 +223,7 @@ export function registerIpcHandlers() {
   // 返回移除后的全库列表，渲染进程直接用它刷新音乐库
   ipcMain.handle('library:removeFolder', (_event, folderPath: string): Track[] => {
     if (typeof folderPath !== 'string' || !folderPath.trim()) return getAllTracks()
+    unwatchFolder(folderPath)
     allowedRoots.delete(path.resolve(folderPath))
     const removed = deleteTracksByFolder(folderPath)
     if (removed > 0) console.log('已移除扫描目录并清理曲目:', folderPath, removed)
