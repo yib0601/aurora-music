@@ -17,6 +17,33 @@ const electronAPI = {
     pkgFamily: 'rpm' | 'deb' | 'unknown'
     installKind: 'appimage' | 'system-package' | 'portable' | 'unknown'
   }> => ipcRenderer.invoke('system:getInfo'),
+  // 内置软件更新：主进程流式下载安装包到「下载」目录（进度经事件推送），
+  // 下载完成后可直接启动安装器（exe）/ 新版本（AppImage），或打开终端执行
+  // sudo 覆盖安装命令（deb/rpm）。url 只接受 GitHub release 资源直链。
+  updater: {
+    download: (url: string, kind: string): Promise<{ filePath: string }> =>
+      ipcRenderer.invoke('updater:download', url, kind),
+    cancel: (): Promise<void> => ipcRenderer.invoke('updater:cancel'),
+    // 在文件管理器中定位安装包
+    reveal: (filePath: string): Promise<void> => ipcRenderer.invoke('updater:reveal', filePath),
+    install: (filePath: string, kind: string): Promise<{ action: 'launched' | 'terminal' | 'none'; command?: string }> =>
+      ipcRenderer.invoke('updater:install', filePath, kind),
+    onProgress: (callback: (payload: { received: number; total: number | null }) => void) => {
+      const handler = (_event: unknown, payload: { received: number; total: number | null }) => callback(payload)
+      ipcRenderer.on('updater:progress', handler)
+      return () => ipcRenderer.removeListener('updater:progress', handler)
+    },
+    onDone: (callback: (payload: { filePath: string; kind: string }) => void) => {
+      const handler = (_event: unknown, payload: { filePath: string; kind: string }) => callback(payload)
+      ipcRenderer.on('updater:done', handler)
+      return () => ipcRenderer.removeListener('updater:done', handler)
+    },
+    onError: (callback: (message: string) => void) => {
+      const handler = (_event: unknown, message: string) => callback(message)
+      ipcRenderer.on('updater:error', handler)
+      return () => ipcRenderer.removeListener('updater:error', handler)
+    },
+  },
   getAllTracks: (): Promise<any[]> => ipcRenderer.invoke('db:getAllTracks'),
   // 从音乐库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
   removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),

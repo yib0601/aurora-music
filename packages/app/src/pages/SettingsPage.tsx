@@ -10,6 +10,7 @@ import { setOutputDevice } from '@/services/audio.service'
 import { platform } from '@/services/platform'
 import { isDesktop } from '@/lib/utils'
 import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
+import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
@@ -406,6 +407,10 @@ export function SettingsPage() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [updateState, setUpdateState] = useState<'idle' | 'latest' | 'error'>('idle')
 
+  // 内置下载任务状态：横幅与此处共用同一任务，下载中/完成时展示对应入口
+  const downloadPhase = useUpdateDownloadStore((s) => s.phase)
+  const downloadShow = useUpdateDownloadStore((s) => s.show)
+
   // 添加源弹窗开关：弹窗内校验通过后才写入 store，避免假地址被持久化
   const [addMusicOpen, setAddMusicOpen] = useState(false)
   const [addLyricsOpen, setAddLyricsOpen] = useState(false)
@@ -428,6 +433,22 @@ export function SettingsPage() {
     } finally {
       setChecking(false)
     }
+  }
+
+  // 下载更新：桌面端优先应用内下载（主进程拉包 + 进度对话框 + 下载完直接安装），
+  // 其余场景（Web / 移动端 / 无匹配安装包）回退到系统浏览器打开下载页
+  const handleDownloadUpdate = () => {
+    if (!updateInfo) return
+    if (isInAppUpdateAvailable() && updateInfo.assetUrl && updateInfo.assetKind) {
+      const started = startInAppDownload({
+        url: updateInfo.assetUrl,
+        kind: updateInfo.assetKind,
+        version: updateInfo.version,
+        label: updateInfo.assetLabel,
+      })
+      if (started) return
+    }
+    openDownloadPage(updateInfo)
   }
 
   // 移动端文件夹选择器（MobileFolderPicker）由 App 层全局注册与渲染，
@@ -787,22 +808,38 @@ export function SettingsPage() {
                       发现新版本 <span className="text-mint font-semibold">v{updateInfo.version}</span>
                     </p>
                     <p className="font-text text-caption text-white/60 mt-0.5 truncate">
-                      {updateInfo.assetLabel
-                        ? `点击下载对应系统的安装包（${updateInfo.assetLabel}）`
-                        : '点击下载对应平台的安装包'}
+                      {downloadPhase === 'downloading'
+                        ? '正在下载安装包，可关闭此窗口继续后台下载'
+                        : downloadPhase === 'done'
+                          ? '安装包已就绪，点击右侧继续安装'
+                          : updateInfo.assetLabel
+                            ? `将下载对应系统的安装包（${updateInfo.assetLabel}）`
+                            : '点击下载对应平台的安装包'}
                     </p>
-                    {updateInfo.installHint && (
+                    {updateInfo.installHint && downloadPhase !== 'downloading' && downloadPhase !== 'done' && (
                       <p className="font-text text-caption text-white/45 mt-1 truncate">{updateInfo.installHint}</p>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    className="h-9 px-3.5 bg-mint text-mint-fg font-semibold hover:bg-mint/90"
-                    onClick={() => openDownloadPage(updateInfo)}
-                  >
-                    <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    下载更新
-                  </Button>
+                  {downloadPhase === 'downloading' || downloadPhase === 'done' ? (
+                    <Button
+                      size="sm"
+                      variant={downloadPhase === 'done' ? 'primary' : 'secondary'}
+                      className="h-9 px-3.5"
+                      onClick={downloadShow}
+                    >
+                      <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                      {downloadPhase === 'done' ? '继续安装' : '下载中…'}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="h-9 px-3.5 bg-mint text-mint-fg font-semibold hover:bg-mint/90"
+                      onClick={handleDownloadUpdate}
+                    >
+                      <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                      下载更新
+                    </Button>
+                  )}
                 </div>
               )}
 
