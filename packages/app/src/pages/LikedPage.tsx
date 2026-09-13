@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
-import { Heart, Play, Plus, ListEnd, ListPlus, Music } from 'lucide-react'
+import { Heart, Play, Plus, ListEnd, ListPlus, Music, Search } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
+import { useUIStore } from '@/stores/uiStore'
 import { CoverImage } from '@/components/common/CoverImage'
 import {
   ContextMenu,
@@ -25,6 +26,7 @@ export function LikedPage() {
   const tracks = useMemo(() => allTracks.filter((t) => t.liked), [allTracks])
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
+  const setSearchOpen = useUIStore((s) => s.setSearchOpen)
 
   const handlePlay = (track: typeof tracks[0], idx: number) => {
     usePlayerStore.getState().playQueue(tracks, idx)
@@ -43,7 +45,30 @@ export function LikedPage() {
   }
 
   return (
-    <PageLayout title="我喜欢的音乐" subtitle={tracks.length === 0 ? '收藏你喜欢的歌曲' : `${tracks.length} 首歌曲`}>
+    <PageLayout
+      header={
+        // 与音乐库页同款头部：标题左、工具栏右；搜索按钮固定在标题右侧原位置
+        <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
+          <div className="min-w-0">
+            <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+              我喜欢的音乐
+            </h1>
+            <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
+              {tracks.length === 0 ? '收藏你喜欢的歌曲' : `${tracks.length} 首歌曲`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0 pb-1">
+            <button
+              onClick={() => setSearchOpen(true)}
+              title="搜索 (⌘K)"
+              className="btn-icon"
+            >
+              <Search className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </div>
+        </div>
+      }
+    >
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative mb-6">

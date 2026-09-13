@@ -218,6 +218,12 @@ const OnlineResultRow = memo(function OnlineResultRow({
           <span className="font-text text-[12px] text-white/35 truncate max-w-32 hidden md:block tracking-[-0.12px]">
             {track.album}
           </span>
+          {/* 音频实际来源后端标识（源提供 qualitySource 时展示，便于识别跨平台拼贴数据） */}
+          {track.onlineAudioSource && (
+            <span className="font-text text-[10px] text-white/30 border border-white/10 rounded px-1 py-px hidden lg:block flex-shrink-0">
+              {track.onlineAudioSource}
+            </span>
+          )}
           <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
             {formatTime(track.duration)}
           </span>
@@ -325,6 +331,17 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   // 行 DOM 引用：键盘高亮移动时把目标行滚动到可视区
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
 
+  // 关闭浮层（卸载）时把非空搜索词写入历史：
+  // 覆盖「点结果播放后关闭 / 搜完 Esc 关闭」等此前不记录的场景，
+  // addSearchHistory 内部去重置顶，重复记录无副作用
+  const latestQueryRef = useRef('')
+  latestQueryRef.current = query
+  useEffect(() => {
+    return () => {
+      addSearchHistory(latestQueryRef.current)
+    }
+  }, [addSearchHistory])
+
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(() => setDebouncedQuery(query), 200)
@@ -406,6 +423,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       coverUrl: r.coverUrl,
       onlineSource: r.source,
       onlineSourceName: r.sourceName,
+      onlineAudioSource: r.audioSource,
       onlineId: r.id,
     }))
   }, [onlineResults])
