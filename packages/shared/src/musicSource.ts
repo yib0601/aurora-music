@@ -102,6 +102,8 @@ export async function searchMusicSource(
         item.coverUrl || item.cover || item.picUrl || item.pic || item.albumPic || undefined,
       audioUrl,
       qualityUrls: extractQualityUrls(item),
+      audioSource: typeof item.qualitySource === 'string' && item.qualitySource ? item.qualitySource : undefined,
+      audioQuality: typeof item.quality === 'string' && item.quality ? item.quality : undefined,
       source: source.id,
       sourceName: source.name,
     })
@@ -109,9 +111,45 @@ export async function searchMusicSource(
   return results
 }
 
+/** 有损音频地址特征：.mp3/.ogg/.m4a/.aac 等（含查询串），无损为 .flac/.wav */
+const LOSSY_AUDIO_EXT_RE = /\.(mp3|ogg|m4a|aac)([?#]|$)/i
+
+/** 源声称无损但地址实为有损格式（跨平台取址回落的典型特征，曲目匹配常不可靠） */
+export function isSuspiciousAudio(result: OnlineTrackSearchResult): boolean {
+  return result.audioQuality === 'flac' && LOSSY_AUDIO_EXT_RE.test(result.audioUrl)
+}
+
+/**
+ * 可疑音源校正（纯函数，便于单测）：
+ * 部分第三方源在请求无损时，元数据取自 A 平台、音频却跨平台回落到 B 后端凑数，
+ * 曲目匹配不可靠（歌手对、录音是别人的）。检测到「声称 flac 但地址为有损格式」的
+ * 条目时，用同一次搜索中 128 档（源的基础档，通常元数据与音频同源、匹配正确）里
+ * 同 id 的结果替换音频地址；找不到同 id 时保持原样。
+ */
+export function correctSuspiciousAudioSources(
+  results: OnlineTrackSearchResult[],
+  baseline: OnlineTrackSearchResult[]
+): OnlineTrackSearchResult[] {
+  const byId = new Map<string, OnlineTrackSearchResult>()
+  for (const b of baseline) if (b.id && !byId.has(b.id)) byId.set(b.id, b)
+  return results.map((r) => {
+    if (!isSuspiciousAudio(r)) return r
+    const alt = byId.get(r.id)
+    if (!alt || isSuspiciousAudio(alt)) return r
+    return {
+      ...r,
+      audioUrl: alt.audioUrl,
+      qualityUrls: alt.qualityUrls ?? r.qualityUrls,
+      audioSource: alt.audioSource ?? r.audioSource,
+      audioQuality: alt.audioQuality ?? r.audioQuality,
+    }
+  })
+}
+
 /**
  * 聚合在线搜索：并发调用所有启用的源
  * - 单源失败不影响其他源；全部失败时抛错，前端展示直白的中文网络错误提示
+ * - 请求音质非 128 时额外拉一次 128 基线档，用于可疑音源校正（见 correctSuspiciousAudioSources）
  */
 export async function searchOnlineTracks(
   query: string,
@@ -121,8 +159,10 @@ export async function searchOnlineTracks(
   const sources = (options?.sources || []).filter((s) => s && s.enabled && s.apiUrl)
   if (!trimmed || sources.length === 0) return []
 
+  const quality = options?.quality
+  const needBaseline = !!quality && quality !== '128'
   const settled = await Promise.allSettled(
-    sources.map((s) => searchMusicSource(s, trimmed, options?.quality))
+    sources.map((s) => searchMusicSource(s, trimmed, quality))
   )
   const results: OnlineTrackSearchResult[] = []
   let allFailed = true
@@ -138,5 +178,14 @@ export async function searchOnlineTracks(
   if (allFailed) {
     throw new Error('所有音乐源请求失败，请检查网络连接或源配置')
   }
-  return results
+
+  if (!needBaseline) return results
+
+  // 基线档仅用于校正，失败静默忽略
+  const baselineSettled = await Promise.allSettled(
+    sources.map((s) => searchMusicSource(s, trimmed, '128'))
+  )
+  const baseline: OnlineTrackSearchResult[] = []
+  for (const r of baselineSettled) if (r.status === 'fulfilled') baseline.push(...r.value)
+  return correctSuspiciousAudioSources(results, baseline)
 }

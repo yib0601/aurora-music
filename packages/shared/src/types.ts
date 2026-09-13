@@ -26,7 +26,9 @@ export interface OnlineSourceConfig {
    * 每项字段（字段名宽松兼容）：audioUrl（必填）、id、title、artist、album、
    * duration（秒）、coverUrl；
    * 可选多音质地址：qualityUrls 对象（{ "128": url, "320": url, "flac": url }）
-   * 或扁平字段 url_128 / url_320 / url_flac 等，下载时按音质设置挑选
+   * 或扁平字段 url_128 / url_320 / url_flac 等，下载时按音质设置挑选；
+   * 可选 quality（该条音频实际音质声明）/ qualitySource（音频实际来源后端标识），
+   * 用于可疑音源校正与行内展示
    */
   apiUrl: string
   /** 附加请求头（如鉴权 Token、Referer、User-Agent），同名头覆盖默认值 */
@@ -51,6 +53,10 @@ export interface OnlineTrackSearchResult {
   audioUrl: string
   /** 多音质地址（源提供时才有；键为音质档位 128 / 320 / flac） */
   qualityUrls?: Partial<Record<DownloadQuality, string>>
+  /** 音频实际来源后端标识（源提供 qualitySource 字段时才有） */
+  audioSource?: string
+  /** 源对该条音频的音质声明（源提供 quality 字段时才有） */
+  audioQuality?: string
   /** 来源标识（源配置的 id） */
   source: string
   /** 来源展示名（源配置的 name） */
