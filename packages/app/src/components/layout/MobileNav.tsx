@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Menu, X, Music, Heart, Clock, Settings, Link2 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
+import { useUIStore } from '@/stores/uiStore'
 
 /**
  * 移动端导航：顶部汉堡菜单 + 左侧抽屉
@@ -10,6 +11,7 @@ import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
  * - 顶栏展示品牌名（页面内容区已有大标题，不重复展示页面标题）
  * - 抽屉含 5 个主导航入口，点击切换路由并关闭抽屉
  * - 遮罩点击关闭；抽屉 glass 材质 + safe-area 适配
+ * - 抽屉开关全局化到 uiStore：App 层的系统返回键处理需要能收起它
  */
 const navItems = [
   { to: '/library', icon: Music, label: '音乐库' },
@@ -19,18 +21,23 @@ const navItems = [
 ]
 
 export function MobileNav() {
-  const [open, setOpen] = useState(false)
+  const open = useUIStore((s) => s.mobileDrawerOpen)
+  const setOpen = useUIStore((s) => s.setMobileDrawerOpen)
 
-  // 抽屉滑动期间玻璃降级：glass-regular 抽屉 300ms 滑动时，
-  // 模糊区域背后的内容每帧变化，软件渲染下每帧重算模糊会掉帧；
-  // 滑动期间临时关闭玻璃模糊（复用 .glass-perf-lite），动画结束后恢复
-  const toggleDrawer = (next: boolean) => {
-    setOpen(next)
+  // 抽屉开关切换时玻璃降级：glass-regular 抽屉 300ms 滑动时，模糊区域背后的
+  // 内容每帧变化，软件渲染下每帧重算模糊会掉帧；滑动期间临时关闭玻璃模糊
+  //（复用 .glass-perf-lite），动画结束后恢复。挂在 open 变化上，汉堡按钮、
+  // 遮罩点击与系统返回键三种触发源统一覆盖
+  const prevOpen = useRef(open)
+  useEffect(() => {
+    if (prevOpen.current === open) return
+    prevOpen.current = open
     document.documentElement.classList.add('glass-perf-lite')
-    setTimeout(() => {
+    const t = setTimeout(() => {
       document.documentElement.classList.remove('glass-perf-lite')
     }, 350)
-  }
+    return () => clearTimeout(t)
+  }, [open])
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   return (
@@ -41,7 +48,7 @@ export function MobileNav() {
         aria-label="顶部导航"
       >
         <button
-          onClick={() => toggleDrawer(true)}
+          onClick={() => setOpen(true)}
           aria-label="打开菜单"
           className="w-10 h-10 flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition"
         >
@@ -57,7 +64,7 @@ export function MobileNav() {
       {open && (
         <div
           className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-          onClick={() => toggleDrawer(false)}
+          onClick={() => setOpen(false)}
         />
       )}
 
@@ -73,7 +80,7 @@ export function MobileNav() {
             Aurora Music
           </span>
           <button
-            onClick={() => toggleDrawer(false)}
+            onClick={() => setOpen(false)}
             aria-label="关闭菜单"
             className="w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
           >
@@ -86,7 +93,7 @@ export function MobileNav() {
             <NavLink
               key={to}
               to={to}
-              onClick={() => toggleDrawer(false)}
+              onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] tracking-[-0.2px] transition-all duration-200',
@@ -103,7 +110,7 @@ export function MobileNav() {
           <button
             type="button"
             onClick={() => {
-              toggleDrawer(false)
+              setOpen(false)
               setShowImportDialog(true)
             }}
             className="flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] tracking-[-0.2px] text-white/70 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"
