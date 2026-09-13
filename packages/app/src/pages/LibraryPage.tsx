@@ -3,7 +3,6 @@ import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Play,
   RefreshCw, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search, Disc3,
 } from 'lucide-react'
-import { useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,7 +24,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
-import { SearchOverlay } from '@/components/SearchOverlay'
+import { useUIStore } from '@/stores/uiStore'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { toast } from '@/components/common/Toast'
@@ -98,8 +97,8 @@ export function LibraryPage() {
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
   const [newPlName, setNewPlName] = useState('')
   const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
-  // 搜索浮层：由头部搜索图标或 ⌘/Ctrl+K 唤起，覆盖在音乐库之上，底层列表/标签栏保持不变
-  const [searchOpen, setSearchOpen] = useState(false)
+  // 搜索浮层开关在全局 uiStore：按钮在本页头部工具栏原位置，浮层由 App 层统一渲染
+  const setSearchOpen = useUIStore((s) => s.setSearchOpen)
   // 专辑/艺术家分组详情：非 null 时内容区替换为该组的歌曲列表
   const [selectedGroup, setSelectedGroup] = useState<{ type: 'album' | 'artist'; key: string } | null>(null)
 
@@ -117,23 +116,6 @@ export function LibraryPage() {
     const el = songsScrollRef.current
     if (el) el.scrollTop = savedScrollPositions[viewMode] ?? 0
   }, [viewMode, libraryTab, selectedGroup])
-
-  // 全局快捷键 ⌘K / Ctrl+K 唤起搜索浮层。
-  // 注意：音乐库页为常驻挂载（进入其他页面仅隐藏不卸载），
-  // 页面不可见时不能响应快捷键，否则搜索浮层会悄悄打开在不可见层里
-  const pathname = useLocation().pathname
-  const pathnameRef = useRef(pathname)
-  useEffect(() => { pathnameRef.current = pathname }, [pathname])
-  useEffect(() => {
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return
-      if (pathnameRef.current !== '/library') return
-      e.preventDefault()
-      setSearchOpen(true)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
 
   const handlePickFolder = async () => {
     // 不支持 File System Access API 的浏览器（Firefox/Safari）无法访问本地文件系统，
@@ -530,9 +512,6 @@ export function LibraryPage() {
       )}
       </>
     )}
-
-      {/* 搜索浮层：覆盖在音乐库之上，不替换底层内容 */}
-      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
 
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
         <DialogContent className="sm:max-w-sm">

@@ -33,6 +33,8 @@ import { platform, setFolderPickerHandler } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { MobileFolderPicker } from '@/components/MobileFolderPicker'
 import { UpdateBanner } from '@/components/UpdateBanner'
+import { SearchOverlay } from '@/components/SearchOverlay'
+import { useUIStore } from '@/stores/uiStore'
 import {
   checkForUpdate,
   shouldShowStartupBanner,
@@ -81,6 +83,24 @@ function AppLayout() {
   const desktop = isDesktop()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
   const isSongDetail = location.pathname.startsWith('/song/')
+
+  // 全局搜索浮层：入口按钮在各页头部工具栏原位置（标题右侧），App 层只负责
+  // 统一渲染浮层与 ⌘/Ctrl+K 快捷键（设置页除外），保证任意页面唤起都可见
+  const searchOpen = useUIStore((s) => s.searchOpen)
+  const setSearchOpen = useUIStore((s) => s.setSearchOpen)
+  const isSettings = location.pathname.startsWith('/settings')
+  const isSettingsRef = useRef(isSettings)
+  useEffect(() => { isSettingsRef.current = isSettings }, [isSettings])
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return
+      if (isSettingsRef.current) return
+      e.preventDefault()
+      setSearchOpen(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setSearchOpen])
 
   // 沉浸背景延迟挂载开关：进入详情页时先让侧栏/瓷砖折叠动画跑完（300ms）再渲染
   // 全屏模糊背景，避免软件渲染下动画期间每帧重算全屏模糊导致掉帧
@@ -599,6 +619,9 @@ function AppLayout() {
 
       {/* 软件内轻量提示挂载点：替代系统 alert/confirm 弹窗 */}
       <ToastHost />
+
+      {/* 搜索浮层：portal 到 body 全屏覆盖，任意页面唤起均可见 */}
+      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
 
       <TitleBar />
 
