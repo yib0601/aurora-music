@@ -88,7 +88,12 @@ export function MobileNowPlaying({ open, onClose }: Props) {
             : '正在播放'}
         </span>
         <button
-          onClick={() => { toggleQueuePanel(); onClose() }}
+          onClick={(e) => {
+            // 阻止冒泡，避免刚打开的队列浮层被 document 外部点击监听立刻关掉
+            e.stopPropagation()
+            toggleQueuePanel()
+            onClose()
+          }}
           aria-label="队列"
           className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
         >

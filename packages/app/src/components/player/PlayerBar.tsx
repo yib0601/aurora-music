@@ -173,7 +173,11 @@ export function PlayerBar({
             'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
             showQueuePanel ? 'text-mint bg-mint/[0.10]' : 'text-white/60',
           )}
-          onClick={toggleQueuePanel}
+          onClick={(e) => {
+            // 同桌面端：阻止冒泡，避免刚打开的浮层被 document 外部点击监听立刻关掉
+            e.stopPropagation()
+            toggleQueuePanel()
+          }}
           aria-label="队列"
         >
           <ListMusic className="h-5 w-5" strokeWidth={1.5} />
@@ -305,7 +309,13 @@ export function PlayerBar({
               'btn-icon btn-xl',
               showQueuePanel && 'is-on',
             )}
-            onClick={toggleQueuePanel}
+            onClick={(e) => {
+              // 阻止冒泡到 document：React 对 click 同步渲染，浮层会在事件冒泡到
+              // document 前挂载并注册“外部点击关闭”监听，若冒泡上去会把刚打开的
+              // 浮层立刻关掉；因此开关按钮自行处理 toggle，外部关闭只走 document 监听
+              e.stopPropagation()
+              toggleQueuePanel()
+            }}
             title="队列"
           >
             <ListMusic className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
