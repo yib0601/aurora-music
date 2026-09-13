@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react'
-import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music } from 'lucide-react'
+import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music, Search } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
+import { useUIStore } from '@/stores/uiStore'
 import { CoverImage } from '@/components/common/CoverImage'
+import { toast } from '@/components/common/Toast'
+import { ensurePlayableTrack } from '@/services/playlistIO.service'
+import type { Track } from '@/types'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,27 +25,44 @@ import {
 export function RecentPage() {
   const navigate = useNavigate()
   const allTracks = useLibraryStore((s) => s.tracks)
+  const recentPlayedTracks = useLibraryStore((s) => s.recentPlayedTracks)
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
-  const tracks = useMemo(
-    () =>
-      [...allTracks]
-        .filter((t) => t.lastPlayedAt)
-        .sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0)),
-    [allTracks]
-  )
+  // 数据源 = 最近播放记录（本地 + 在线统一登记）；本地曲目优先取曲库最新对象
+  // （封面/元数据可能已被扫描更新），在线曲目不进曲库，直接用记录快照。
+  // 旧版本升级兼容：曲库里带 lastPlayedAt 但没有记录条目的本地曲目也一并展示
+  const tracks = useMemo(() => {
+    const libraryById = new Map(allTracks.map((t) => [t.id, t]))
+    const recIds = new Set(recentPlayedTracks.map((t) => t.id))
+    const merged: Track[] = recentPlayedTracks
+      .map((rec) => (rec.path && libraryById.has(rec.id) ? libraryById.get(rec.id)! : rec))
+      .filter((t) => t.lastPlayedAt)
+    for (const t of allTracks) {
+      if (t.lastPlayedAt && !recIds.has(t.id)) merged.push(t)
+    }
+    merged.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0))
+    return merged
+  }, [allTracks, recentPlayedTracks])
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
+  const setSearchOpen = useUIStore((s) => s.setSearchOpen)
 
-  const handlePlay = (track: typeof tracks[0], idx: number) => {
-    usePlayerStore.getState().playQueue(tracks, idx)
+  const handlePlay = async (track: Track, idx: number) => {
+    // 在线曲目播放地址会过期（落盘时已剥离），播放前按需重新取址
+    const playable = await ensurePlayableTrack(track)
+    if (!playable) {
+      toast('无法播放该在线歌曲：未配置音乐源或搜索无结果', { type: 'error' })
+      return
+    }
+    const queue = tracks.map((t) => (t.id === playable.id ? playable : t))
+    usePlayerStore.getState().playQueue(queue, idx)
   }
 
-  const handlePlayNext = (track: typeof tracks[0]) => {
+  const handlePlayNext = (track: Track) => {
     usePlayerStore.getState().addToPlayNext(track)
   }
 
-  const handleAddToQueue = (track: typeof tracks[0]) => {
+  const handleAddToQueue = (track: Track) => {
     usePlayerStore.getState().addToQueue(track)
   }
 
@@ -50,7 +71,30 @@ export function RecentPage() {
   }
 
   return (
-    <PageLayout title="最近播放" subtitle={tracks.length === 0 ? '你的播放历史' : `${tracks.length} 首歌曲`}>
+    <PageLayout
+      header={
+        // 与音乐库页同款头部：标题左、工具栏右；搜索按钮固定在标题右侧原位置
+        <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
+          <div className="min-w-0">
+            <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+              最近播放
+            </h1>
+            <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
+              {tracks.length === 0 ? '你的播放历史' : `${tracks.length} 首歌曲`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0 pb-1">
+            <button
+              onClick={() => setSearchOpen(true)}
+              title="搜索 (⌘K)"
+              className="btn-icon"
+            >
+              <Search className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </div>
+        </div>
+      }
+    >
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative mb-6">

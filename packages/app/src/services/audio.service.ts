@@ -107,6 +107,7 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
         trackId: track.id,
         lastPlayedAt: Date.now(),
         playCount: (track.playCount || 0) + 1,
+        track,
       })
       if (audioContext && audioContext.state === 'suspended') {
         audioContext.resume()

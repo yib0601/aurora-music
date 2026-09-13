@@ -13,8 +13,10 @@ export interface AudioEventMap {
   duration: { duration: number }
   error: { error: unknown }
   trackChange: { track: Track }
-  // 播放统计事件：服务层触发，libraryStore 独立订阅更新音乐库数据
-  playStatsUpdate: { trackId: string; lastPlayedAt: number; playCount: number }
+  // 播放统计事件：服务层触发，libraryStore 独立订阅更新音乐库数据。
+  // 携带完整曲目快照：在线曲目不在本地曲库（updateTrack 对其无效），
+  // 订阅方需据此把播放记录登记到 recentPlayedTracks 持久化
+  playStatsUpdate: { trackId: string; lastPlayedAt: number; playCount: number; track: Track }
 }
 
 type EventHandler<T> = (data: T) => void

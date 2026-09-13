@@ -6,8 +6,17 @@ import { audioEvents } from '@/services/audioEvents'
 /** 历史搜索记录最大保留条数 */
 const MAX_SEARCH_HISTORY = 20
 
+/** 最近播放记录最大保留条数（本地 + 在线统一记录在此，重启不丢） */
+const MAX_RECENT_PLAYED = 100
+
 interface LibraryState {
   tracks: Track[]
+  /**
+   * 最近播放记录（本地 + 在线统一记录，最新在前）：
+   * 只存歌曲元数据快照（标题/艺术家/专辑/封面等），在线曲目不在本地曲库，
+   * 也记录在此，重启后不丢。落盘时剥离会过期的播放地址（同 importedTracks 约定）
+   */
+  recentPlayedTracks: Track[]
   albums: Album[]
   playlists: Playlist[]
   scanFolders: string[]
@@ -38,6 +47,8 @@ interface LibraryState {
   setAlbums: (albums: Album[]) => void
   addTracks: (tracks: Track[]) => void
   updateTrack: (id: string, updates: Partial<Track>) => void
+  /** 登记一条最近播放记录（本地 + 在线统一入口，最新在前，最多保留 MAX_RECENT_PLAYED 条） */
+  addRecentPlayed: (track: Track, lastPlayedAt: number, playCount: number) => void
   setPlaylists: (playlists: Playlist[]) => void
   addScanFolder: (path: string) => void
   removeScanFolder: (path: string) => void
@@ -78,6 +89,7 @@ export const useLibraryStore = create<LibraryState>()(
   persist(
     (set, get) => ({
       tracks: [],
+      recentPlayedTracks: [],
       albums: [],
       playlists: [],
       scanFolders: [],
@@ -120,6 +132,13 @@ export const useLibraryStore = create<LibraryState>()(
         set({
           tracks: get().tracks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
         })
+      },
+      addRecentPlayed: (track, lastPlayedAt, playCount) => {
+        // 记录只留元数据快照：剥离会过期的在线播放地址，播放时按需重新取址
+        const { onlineUrl: _omitUrl, onlineQualityUrls: _omitQuality, ...meta } = track
+        const record: Track = { ...meta, lastPlayedAt, playCount } as Track
+        const rest = get().recentPlayedTracks.filter((t) => t.id !== record.id)
+        set({ recentPlayedTracks: [record, ...rest].slice(0, MAX_RECENT_PLAYED) })
       },
       setPlaylists: (playlists) => set({ playlists }),
       addScanFolder: (path) => {
@@ -216,6 +235,7 @@ export const useLibraryStore = create<LibraryState>()(
     {
       name: 'aurora-library-state',
       partialize: (state) => ({
+        recentPlayedTracks: state.recentPlayedTracks,
         scanFolders: state.scanFolders,
         viewMode: state.viewMode,
         libraryTab: state.libraryTab,
@@ -265,9 +285,13 @@ export const useLibraryStore = create<LibraryState>()(
 )
 
 // 订阅播放统计事件，独立更新音乐库数据（解耦 playerStore 的跨Store副作用）
-audioEvents.on('playStatsUpdate', ({ trackId, lastPlayedAt, playCount }) => {
-  useLibraryStore.getState().updateTrack(trackId, {
+audioEvents.on('playStatsUpdate', ({ trackId, lastPlayedAt, playCount, track }) => {
+  const library = useLibraryStore.getState()
+  // 本地曲目同步曲库字段；在线曲目不在曲库，此调用空转
+  library.updateTrack(trackId, {
     lastPlayedAt,
     playCount,
   })
+  // 统一登记最近播放记录（本地 + 在线），最近播放页从这里取数
+  library.addRecentPlayed(track, lastPlayedAt, playCount)
 })
