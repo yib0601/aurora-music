@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Play,
-  RefreshCw, ArrowUp, ArrowDown, ChevronLeft, Check, User, Search, Disc3,
+  RefreshCw, ArrowUp, ArrowDown, ChevronLeft, Check, User, Disc3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,7 +24,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn } from '@/lib/utils'
 import { PageLayout } from '@/components/PageLayout'
-import { useUIStore } from '@/stores/uiStore'
+import { SearchEntry } from '@/components/common/SearchEntry'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { toast } from '@/components/common/Toast'
@@ -97,8 +97,6 @@ export function LibraryPage() {
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
   const [newPlName, setNewPlName] = useState('')
   const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
-  // 搜索浮层开关在全局 uiStore：按钮在本页头部工具栏原位置，浮层由 App 层统一渲染
-  const setSearchOpen = useUIStore((s) => s.setSearchOpen)
   // 专辑/艺术家分组详情：非 null 时内容区替换为该组的歌曲列表
   const [selectedGroup, setSelectedGroup] = useState<{ type: 'album' | 'artist'; key: string } | null>(null)
 
@@ -323,15 +321,9 @@ export function LibraryPage() {
               {tracks.length === 0 ? '导入音乐，开始构建你的专属音乐库' : `${tracks.length} 首歌曲`}
             </p>
           </div>
-          {/* 工具栏：搜索图标常驻（本地无歌时也可用在线搜索）；重扫/视图切换仅列表态显示 */}
+          {/* 工具栏：搜索入口常驻（本地无歌时也可用在线搜索）；重扫/视图切换仅列表态显示 */}
           <div className="flex items-center gap-2 flex-shrink-0 pb-1">
-            <button
-              onClick={() => setSearchOpen(true)}
-              title="搜索 (⌘K)"
-              className="btn-icon"
-            >
-              <Search className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
+            <SearchEntry />
             {tracks.length > 0 && libraryTab === 'songs' && (
               <>
                 <DropdownMenu>

@@ -584,6 +584,27 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   /* 选中/激活态（视图切换、队列开关等） */
   .btn-icon.is-on { color: rgb(var(--tw-mint)); background: rgb(var(--tw-mint) / .10); }
 
+  /* 搜索入口框：带固定长度的伪输入框（点击唤起全局搜索浮层），
+   * 高度对齐 xs 档 28px、圆角对齐 btn-icon 8px；hover 反馈与 btn-icon 一致。
+   * 宽度收窄（小屏隐藏）→ 展开两档，避免小窗口工具栏拥挤。 */
+  .search-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    flex-shrink: 0;
+    background: rgb(var(--tw-white) / .045);
+    border: 1px solid rgb(var(--tw-white) / .08);
+    border-radius: 8px;
+    color: var(--btn-icon-color);
+    cursor: pointer;
+    transition: color .18s, background .18s, border-color .18s, transform .18s;
+  }
+  .search-entry:hover { color: var(--btn-icon-hover-color); background: var(--btn-icon-hover-bg); border-color: rgb(var(--tw-white) / .16); transform: translateY(-1px); }
+  .search-entry:active { transform: translateY(0) scale(.97); }
+  .search-entry .search-entry-hint { color: rgb(var(--tw-white) / .30); }
+
   /* 分段控件容器：标签栏 / 视图切换 */
   .segmented {
     display: inline-flex;
