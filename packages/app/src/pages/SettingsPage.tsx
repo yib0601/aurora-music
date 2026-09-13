@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, FileText, ChevronDown, Pencil } from 'lucide-react'
+import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, FileText, ChevronDown, Pencil, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PageLayout } from '@/components/PageLayout'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
@@ -732,17 +733,33 @@ export function SettingsPage() {
                 {devices.length === 0 ? (
                   <p className="font-text text-caption text-white/60 py-2">未检测到可用的输出设备</p>
                 ) : (
-                  <select
-                    value={selectedDeviceId}
-                    onChange={(e) => handleDeviceChange(e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-2.5 text-caption text-white/80 focus:outline-none focus:border-mint/50 transition-colors duration-200"
-                  >
-                    {devices.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId} className="bg-canvas-paper text-ink">
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="group w-full flex items-center justify-between gap-2 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-2.5 font-text text-caption text-white/80 outline-none hover:bg-white/[0.06] hover:border-white/14 focus:border-mint/50 transition-colors duration-200 ease-mineradio"
+                      >
+                        <span className="truncate text-left">
+                          {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '选择输出设备'}
+                        </span>
+                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-white/40 transition-transform duration-200 ease-mineradio group-data-[state=open]:rotate-180" strokeWidth={1.6} />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-72 overflow-y-auto scrollbar-thin p-1">
+                      {devices.map((d) => (
+                        <DropdownMenuItem
+                          key={d.deviceId}
+                          onClick={() => handleDeviceChange(d.deviceId)}
+                          className="gap-2 rounded-xs px-2.5 py-2 text-[13px]"
+                        >
+                          <span className="truncate">{d.label}</span>
+                          {d.deviceId === selectedDeviceId && (
+                            <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-mint" strokeWidth={2} />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
                 <p className="font-text text-caption text-white/40 mt-2">切换输出设备会影响当前播放</p>
               </div>
