@@ -10,7 +10,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { QueueView } from '@/components/player/QueueView'
 import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
-import { ToastHost } from '@/components/common/Toast'
+import { ToastHost, toast, dismissToast } from '@/components/common/Toast'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { LikedPage } from '@/pages/LikedPage'
 import { RecentPage } from '@/pages/RecentPage'
@@ -189,14 +189,99 @@ function AppLayout() {
     }
   }, [mobile, triggerScanForConfiguredFolders])
 
-  // 系统返回键：不做应用内返回导航，直接退回系统。
-  // 注册监听后接管默认行为（Capacitor 默认会弹 WebView 历史，体验成"应用内返回上一屏"）
+  // 系统返回键：分层消费——先关已打开的浮层（Now Playing / 文件夹选择器 /
+  // 权限弹窗 / 导航抽屉 / 搜索浮层），再退回上一屏路由；已在主屏（音乐库）时
+  // 提示再按一次退出，不直接杀进程。各浮层/抽屉开关经 ref 读取，保证监听只
+  // 注册一次、回调内永远拿到最新状态。
+  const searchOpenRef = useRef(searchOpen)
+  useEffect(() => { searchOpenRef.current = searchOpen }, [searchOpen])
+  const nowPlayingOpenRef = useRef(nowPlayingOpen)
+  useEffect(() => { nowPlayingOpenRef.current = nowPlayingOpen }, [nowPlayingOpen])
+  const folderPickerOpenRef = useRef(folderPickerOpen)
+  useEffect(() => { folderPickerOpenRef.current = folderPickerOpen }, [folderPickerOpen])
+  const locationRef = useRef(location)
+  useEffect(() => { locationRef.current = location }, [location])
+  const exitConfirmToastRef = useRef<number | null>(null)
+  // 「再按一次退出」确认窗口计时器；提为 ref 以便路由切换时从外部撤销待确认状态
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     if (!mobile) return
     let listener: { remove: () => void } | undefined
     let cancelled = false
     CapApp.addListener('backButton', () => {
-      CapApp.exitApp()
+      const setSearchOpen = useUIStore.getState().setSearchOpen
+      const { mobileDrawerOpen, setMobileDrawerOpen } = useUIStore.getState()
+      const playlistState = usePlaylistStore.getState()
+
+      // ① 全屏 Now Playing 浮层：关闭即返回
+      if (nowPlayingOpenRef.current) {
+        playlistState.setMobileNowPlaying(false)
+        return
+      }
+      // ①.5 播放队列浮层：收起浮层
+      if (playlistState.showQueuePanel) {
+        playlistState.setQueuePanel(false)
+        return
+      }
+      // ② 文件夹选择器：视为取消选择（resolve(null)），调用方按取消处理
+      if (folderPickerOpenRef.current) {
+        setFolderPickerOpen(false)
+        if (folderPickerResolve.current) {
+          folderPickerResolve.current(null)
+          folderPickerResolve.current = null
+        }
+        return
+      }
+      // ③ 存储权限引导弹窗：点返回等同「稍后再说」，不退出
+      if (needsPermissionRef.current) {
+        setNeedsStoragePermission(false)
+        return
+      }
+      // ④ 导航抽屉：收起抽屉
+      if (mobileDrawerOpen) {
+        setMobileDrawerOpen(false)
+        return
+      }
+      // ⑤ 全局搜索浮层
+      if (searchOpenRef.current) {
+        setSearchOpen(false)
+        return
+      }
+
+      // ⑥ 路由返回：详情页/歌单页与屏内返回按钮行为一致（回上一页）；
+      //    其他非主屏页回主屏；已在主屏（音乐库）则进入「再按一次退出」确认流程
+      const path = locationRef.current.pathname
+      if (path.startsWith('/song/') || path.startsWith('/playlist/')) {
+        // 应用内无历史可退（如冷启动直达详情页）时兜底回主屏
+        if (window.history.length > 1) navigate(-1)
+        else navigate('/library')
+        return
+      }
+      if (path !== '/library') {
+        navigate('/library')
+        return
+      }
+      // 主屏：二次确认退出，避免误触直接杀进程
+      if (exitTimerRef.current) {
+        // 待确认窗口内第二次按下：真正退出
+        clearTimeout(exitTimerRef.current)
+        exitTimerRef.current = null
+        if (exitConfirmToastRef.current !== null) {
+          dismissToast(exitConfirmToastRef.current)
+          exitConfirmToastRef.current = null
+        }
+        CapApp.exitApp()
+        return
+      }
+      exitConfirmToastRef.current = toast('再按一次返回键退出', { duration: 2000 })
+      exitTimerRef.current = setTimeout(() => {
+        exitTimerRef.current = null
+        if (exitConfirmToastRef.current !== null) {
+          dismissToast(exitConfirmToastRef.current)
+          exitConfirmToastRef.current = null
+        }
+      }, 2000)
     }).then((l) => {
       if (cancelled) l.remove()
       else listener = l
@@ -204,8 +289,16 @@ function AppLayout() {
     return () => {
       cancelled = true
       listener?.remove()
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current)
+        exitTimerRef.current = null
+      }
+      if (exitConfirmToastRef.current !== null) {
+        dismissToast(exitConfirmToastRef.current)
+        exitConfirmToastRef.current = null
+      }
     }
-  }, [mobile])
+  }, [mobile, navigate, setSearchOpen])
 
   // 授予权限：先尝试系统弹窗申请「音乐和音频」权限（一键）；
   // 若系统不再弹窗（永久拒绝）则跳转应用设置页，由用户手动开启
@@ -238,9 +331,18 @@ function AppLayout() {
     }
   }, [])
 
-  // 路由切换时关闭移动端全屏 Now Playing（避免切到其他页时残留遮罩）
+  // 路由切换时关闭移动端全屏 Now Playing（避免切到其他页时残留遮罩）；
+  // 同时撤销「再按一次返回退出」的待确认状态，避免提示残留期间再次按返回时误退出
   useEffect(() => {
     usePlaylistStore.getState().setMobileNowPlaying(false)
+    if (exitConfirmToastRef.current !== null) {
+      dismissToast(exitConfirmToastRef.current)
+      exitConfirmToastRef.current = null
+    }
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current)
+      exitTimerRef.current = null
+    }
   }, [location.pathname])
   // ⚠️ 性能关键：只订阅低频变化字段，避免 progress 每 250ms 触发整树重渲染
   // progress / duration / isPlaying 等高频字段由 PlayerBar / LyricsView 自行订阅

@@ -125,8 +125,13 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
       // （伪元素不计入 container.children，不影响按索引定位歌词行）
       className={cn(
         'h-full overflow-y-auto scrollbar-hide px-4 text-center',
-        large ? 'space-y-8' : 'space-y-6',
-        'before:block before:h-16 before:content-[""] after:block after:h-1/2 after:content-[""]',
+        lyrics.length === 0
+          // 空态（暂无歌词/搜索中）：去掉上下占位伪元素，提示垂直居中
+          ? 'flex items-center justify-center'
+          : cn(
+              large ? 'space-y-8' : 'space-y-6',
+              'before:block before:h-16 before:content-[""] after:block after:h-1/2 after:content-[""]'
+            ),
         className
       )}
       style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}

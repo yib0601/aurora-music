@@ -120,8 +120,6 @@ function VinylCover({ track, spinning }: { track: Track; spinning: boolean }) {
             />
           </div>
         </div>
-        {/* 唱片中心轴孔 */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[6%] aspect-square rounded-full bg-[#08090b] ring-1 ring-white/15" />
       </div>
       {/* 静态高光：不随唱片旋转，模拟顶部打光 */}
       <div
