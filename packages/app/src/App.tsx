@@ -506,6 +506,17 @@ function AppLayout() {
       }
     }
 
+    // 网络存储（WebDAV）来源同样在启动时后台静默重扫：远端可能新增/删除文件，
+    // 用户改过来源配置（地址、根目录）后也需要重新对齐。仅扫描 enabled 的来源
+    // （设置页的启用开关就是控制它）；主进程侧同样串行化，失败只记日志。
+    // WebDAV 无法像本地目录那样挂 fs.watch，所以启动重扫是远端变更的主要同步入口。
+    if (platform.scanLibrarySource) {
+      const sources = useLibraryStore.getState().librarySources.filter((s) => s.enabled)
+      for (const source of sources) {
+        platform.scanLibrarySource(source.id).catch(() => {})
+      }
+    }
+
     return () => {
       if (restoreTimer) {
         clearTimeout(restoreTimer)
@@ -747,8 +758,10 @@ function AppLayout() {
           <aside
             className={cn(
               'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
-              'glass-regular',
-              isSongDetail ? 'w-0 border-r-0' : 'w-56 border-r border-white/5',
+              // 弱化分割线：去掉右侧 hairline 与玻璃顶边高亮，
+              // 侧栏靠玻璃底色与内容区自然区分，不再用线条切割
+              'glass-regular shadow-none',
+              isSongDetail ? 'w-0' : 'w-56',
             )}
           >
             <div className="w-56 h-full flex flex-col">
@@ -853,10 +866,9 @@ function AppLayout() {
               <aside
                 className={cn(
                   'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
-                  'glass-regular',
-                  currentTrack && !isSongDetail
-                    ? 'w-72 border-l border-white/5'
-                    : 'w-0 border-l-0',
+                  // 与左侧栏一致：弱化分割线，靠玻璃底色区分区域
+                  'glass-regular shadow-none',
+                  currentTrack && !isSongDetail ? 'w-72' : 'w-0',
                   'hidden lg:block',
                 )}
               >

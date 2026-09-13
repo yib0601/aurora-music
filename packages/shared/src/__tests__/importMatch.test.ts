@@ -4,6 +4,7 @@ import {
   artistScore,
   scoreOnlineResult,
   matchTracksByNames,
+  matchTracksByPaths,
 } from '../importMatch'
 import type { OnlineTrackSearchResult } from '../types'
 
@@ -101,5 +102,76 @@ describe('matchTracksByNames', () => {
     )
     expect(res[0]?.id).toBe('t3')
     expect(res[1]).toBeNull()
+  })
+})
+
+/** 存储坐标匹配：重点是「不得跨来源串味」与精确匹配的优先级 */
+describe('matchTracksByPaths', () => {
+  const track = (id: string, path: string) => ({ id, path })
+
+  it('整条路径相同优先于文件名相同', () => {
+    const tracks = [
+      track('nas-b', 'webdav:lib-b/Music/01 序曲.mp3'),
+      track('nas-a', 'webdav:lib-a/Music/01 序曲.mp3'),
+    ]
+    // 同名文件在更靠前的来源里先出现，但精确路径必须赢
+    const res = matchTracksByPaths(['webdav:lib-a/Music/01 序曲.mp3'], tracks)
+    expect(res.map((t) => t.id)).toEqual(['nas-a'])
+  })
+
+  it('不同网络存储上的同名文件不会互相串味', () => {
+    const tracks = [
+      track('nas-b', 'webdav:lib-b/Music/01 序曲.mp3'),
+      track('nas-a', 'webdav:lib-a/别的目录/01 序曲.mp3'),
+    ]
+    // 歌单来自 lib-a，但库里的 lib-a 曲目目录不同：只能按同来源内的文件名匹配到 nas-a
+    const res = matchTracksByPaths(['webdav:lib-a/Music/01 序曲.mp3'], tracks)
+    expect(res.map((t) => t.id)).toEqual(['nas-a'])
+  })
+
+  it('来源不同时连文件名都不匹配（宁可漏配也不绑错）', () => {
+    const tracks = [track('nas-b', 'webdav:lib-b/Music/01 序曲.mp3')]
+    expect(matchTracksByPaths(['webdav:lib-a/Music/01 序曲.mp3'], tracks)).toEqual([])
+  })
+
+  it('远端曲目不会被本机同名文件匹配，反之亦然', () => {
+    const tracks = [
+      track('local', '/home/me/Music/01 序曲.mp3'),
+      track('remote', 'webdav:lib-a/Music/01 序曲.mp3'),
+    ]
+    expect(matchTracksByPaths(['/home/me/Music/01 序曲.mp3'], tracks).map((t) => t.id)).toEqual(['local'])
+    expect(matchTracksByPaths(['webdav:lib-a/Music/01 序曲.mp3'], tracks).map((t) => t.id)).toEqual(['remote'])
+  })
+
+  it('本机路径仍支持换挂载点的宽松匹配（回归保护）', () => {
+    const tracks = [track('local', '/mnt/new/Music/Album/a.mp3')]
+    expect(matchTracksByPaths(['/home/old/Music/Album/a.mp3'], tracks).map((t) => t.id)).toEqual(['local'])
+  })
+
+  it('Windows 盘符路径不被误判为来源', () => {
+    const tracks = [
+      track('c1', 'C:\\Music\\a.mp3'),
+      track('d1', 'D:\\Music\\a.mp3'),
+    ]
+    // 两者都视为「本机无来源」，宽松匹配按曲库顺序取第一个未占用的
+    const res = matchTracksByPaths(['C:\\Music\\a.mp3'], tracks)
+    expect(res.map((t) => t.id)).toEqual(['c1'])
+  })
+
+  it('反斜杠与大小写差异不影响匹配', () => {
+    const tracks = [track('t1', 'C:\\Music\\A.MP3')]
+    expect(matchTracksByPaths(['c:/music/a.mp3'], tracks).map((t) => t.id)).toEqual(['t1'])
+  })
+
+  it('同一首歌只被占用一次', () => {
+    const tracks = [track('t1', '/m/a.mp3')]
+    const res = matchTracksByPaths(['/m/a.mp3', '/m/a.mp3'], tracks)
+    expect(res.map((t) => t.id)).toEqual(['t1'])
+  })
+
+  it('无法匹配的路径被跳过而不报错', () => {
+    const tracks = [track('t1', '/m/a.mp3')]
+    expect(matchTracksByPaths(['/other/zzz.mp3'], tracks)).toEqual([])
+    expect(matchTracksByPaths([], tracks)).toEqual([])
   })
 })

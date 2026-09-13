@@ -3,14 +3,16 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, Heart, Plus, ListEnd, ListMusic, Music2, ArrowLeft,
   BarChart3, Clock, Calendar, Tag, HardDrive, Layers, History, MoreHorizontal,
-  Disc3, Radio, Folder, ChevronDown, Download, Loader2, type LucideIcon,
+  Disc3, Radio, Folder, Cloud, ChevronDown, Download, Loader2, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LyricsView } from '@/components/lyrics/LyricsView'
 import { cn, formatTime } from '@/lib/utils'
 import { useLibraryStore } from '@/stores/libraryStore'
+import type { LibrarySourceConfig } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { useDisplayTracks } from '@/hooks/useDisplayTracks'
 import { loadLyricsForTrack } from '@/services/lyrics.service'
 import { ensurePlayableTrack } from '@/services/playlistIO.service'
 import { toast } from '@/components/common/Toast'
@@ -54,13 +56,31 @@ function formatDate(ts?: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function sourceLabel(track: Track): string {
+function sourceLabel(track: Track, librarySources: LibrarySourceConfig[]): string {
+  // 网络存储曲目：显示用户给该来源起的名字（如「家里的群晖」）。
+  // 必须放在 onlineSource 判断之前——远端曲目没有 onlineSource，
+  // 落到最后的兜底分支会被显示成「本地」，与事实完全相反
+  if (track.sourceId) {
+    return librarySources.find((s) => s.id === track.sourceId)?.name || '网络存储'
+  }
   // 存量数据兼容：旧版本内置源的 onlineSource 值仍可识别展示
   if (track.onlineSourceName) return track.onlineSourceName
   if (track.onlineSource === 'netease') return '网易云'
   if (track.onlineSource === 'qq') return 'QQ 音乐'
   if (track.onlineSource === 'kugou') return '酷狗'
   return track.onlineSource ? '在线音乐' : '本地'
+}
+
+/**
+ * 曲目位置的可读展示。
+ * 网络存储曲目的 track.path 是内部存储坐标（webdav:<sourceId>/<相对路径>），
+ * 直接显示会让用户看到一个毫无意义的内部串；这里剥掉来源前缀只留相对路径，
+ * 来源名已经在标题上方展示过。本机曲目照旧显示完整路径。
+ */
+function displayLocation(track: Track): string {
+  if (!track.sourceId) return track.path
+  const prefix = `webdav:${track.sourceId}/`
+  return track.path.startsWith(prefix) ? track.path.slice(prefix.length) : track.path
 }
 
 /** 歌词预览：按所查看曲目加载歌词，自身订阅进度以同步高亮 */
@@ -134,9 +154,13 @@ function VinylCover({ track, spinning }: { track: Track; spinning: boolean }) {
 export function SongDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const tracks = useLibraryStore((s) => s.tracks)
+  // 同专辑曲目列表用去重后的曲库：同一首歌在多来源都有时只列一份，
+  // 否则详情页的「来自专辑」会重复出现同一首
+  const { tracks } = useDisplayTracks()
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
+  // 网络存储来源：用于把曲目的 sourceId 显示成用户起的来源名（而不是笼统的「本地」）
+  const librarySources = useLibraryStore((s) => s.librarySources)
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
@@ -308,7 +332,7 @@ export function SongDetailPage() {
           <div className="flex-1 min-w-0 flex flex-col items-center md:items-start text-center md:text-left lg:items-center lg:text-center">
             <p className="inline-flex items-center gap-1.5 font-text text-[11px] font-semibold uppercase tracking-[0.16em] text-mint/80 mb-3">
               <Radio className="h-3 w-3" strokeWidth={1.8} />
-              {sourceLabel(track)} · 歌曲详情
+              {sourceLabel(track, librarySources)} · 歌曲详情
             </p>
             <h1 className="font-display text-[26px] md:text-[36px] xl:text-[40px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
               {track.title}
@@ -453,8 +477,12 @@ export function SongDetailPage() {
               </div>
               {track.path && (
                 <p className="flex items-center gap-1.5 mt-4 font-text text-[12px] text-white/40 tracking-[-0.12px]">
-                  <Folder className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
-                  <span className="truncate">{track.path}</span>
+                  {track.sourceId ? (
+                    <Cloud className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
+                  ) : (
+                    <Folder className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
+                  )}
+                  <span className="truncate">{displayLocation(track)}</span>
                 </p>
               )}
             </div>

@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, GlassMode, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, PlaylistResolverConfig } from '@/types'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, GlassMode, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, PlaylistResolverConfig, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
+import { platform } from '@/services/platform'
 
 /** 历史搜索记录最大保留条数 */
 const MAX_SEARCH_HISTORY = 20
@@ -38,6 +39,12 @@ interface LibraryState {
   lyricsSources: LyricsSourceConfig[]
   /** 歌单解析源配置（应用不内置任何平台抓取器，全部由用户按协议配置） */
   playlistResolverSources: PlaylistResolverConfig[]
+  /**
+   * 媒体库来源（本机目录之外的持久曲库，目前支持 WebDAV 网络存储）。
+   * 与 onlineSources（在线搜索歌源，地址易失、不入库）是两类东西：
+   * 这里的来源会被扫描入库，曲目长期有效，播放走 aurora-remote:// 协议代理。
+   */
+  librarySources: LibrarySourceConfig[]
   /** 默认下载目录：null 表示每次下载都弹保存对话框询问 */
   downloadDir: string | null
   /** 默认下载音质：128 标准 / 320 高品质 / flac 无损（源不支持时按其默认地址下载） */
@@ -81,6 +88,10 @@ interface LibraryState {
   addPlaylistResolverSource: (source: Omit<PlaylistResolverConfig, 'id'>) => void
   updatePlaylistResolverSource: (id: string, updates: Partial<PlaylistResolverConfig>) => void
   removePlaylistResolverSource: (id: string) => void
+  // 媒体库来源操作（WebDAV 网络存储等持久曲库来源）
+  addLibrarySource: (source: Omit<LibrarySourceConfig, 'id'>) => string
+  updateLibrarySource: (id: string, updates: Partial<LibrarySourceConfig>) => void
+  removeLibrarySource: (id: string) => void
   setDownloadDir: (dir: string | null) => void
   setDownloadQuality: (quality: DownloadQuality) => void
 }
@@ -107,6 +118,7 @@ export const useLibraryStore = create<LibraryState>()(
       onlineSources: [],
       lyricsSources: [],
       playlistResolverSources: [],
+      librarySources: [],
       downloadDir: null,
       downloadQuality: 'flac',
 
@@ -229,6 +241,21 @@ export const useLibraryStore = create<LibraryState>()(
       removePlaylistResolverSource: (id) => {
         set({ playlistResolverSources: get().playlistResolverSources.filter((s) => s.id !== id) })
       },
+
+      addLibrarySource: (source) => {
+        // id 用作 aurora-remote:// 的 host，必须是小写字母/数字/连字符
+        const id = `lib-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        set({ librarySources: [...get().librarySources, { ...source, id }] })
+        return id
+      },
+      updateLibrarySource: (id, updates) => {
+        set({
+          librarySources: get().librarySources.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+        })
+      },
+      removeLibrarySource: (id) => {
+        set({ librarySources: get().librarySources.filter((s) => s.id !== id) })
+      },
       setDownloadDir: (dir) => set({ downloadDir: dir || null }),
       setDownloadQuality: (quality) => set({ downloadQuality: quality }),
     }),
@@ -248,6 +275,7 @@ export const useLibraryStore = create<LibraryState>()(
         onlineSources: state.onlineSources,
         lyricsSources: state.lyricsSources,
         playlistResolverSources: state.playlistResolverSources,
+        librarySources: state.librarySources,
         downloadDir: state.downloadDir,
         downloadQuality: state.downloadQuality,
       }),
@@ -255,8 +283,12 @@ export const useLibraryStore = create<LibraryState>()(
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
       // v4 默认下载音质改为无损 FLAC：清除旧持久值，让新默认值生效
       // v5 新增歌单解析源配置（歌单导入功能）
+      // v6 新增媒体库来源配置（WebDAV 网络存储）
       migrate: (persisted: any, version: number) => {
         if (persisted) {
+          if (version < 6) {
+            if (!Array.isArray(persisted.librarySources)) persisted.librarySources = []
+          }
           if (version < 5) {
             if (!Array.isArray(persisted.playlistResolverSources)) persisted.playlistResolverSources = []
           }
@@ -274,7 +306,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 5,
+      version: 6,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)
@@ -294,4 +326,19 @@ audioEvents.on('playStatsUpdate', ({ trackId, lastPlayedAt, playCount, track }) 
   })
   // 统一登记最近播放记录（本地 + 在线），最近播放页从这里取数
   library.addRecentPlayed(track, lastPlayedAt, playCount)
+})
+
+// ─── 媒体库来源配置 → 主进程 ──────────────────────────────────
+// 远端的扫描与播放都在主进程执行（鉴权口令不出主进程），因此配置变更后必须
+// 同步过去，否则 aurora-remote:// 找不到 sourceId 会直接 404。
+// 注意 persist 是异步 hydrate 的：这里先推一次当前快照，再靠订阅捕获
+// hydrate 完成后的那次 set，两种情况都能覆盖。
+function pushLibrarySources(sources: LibrarySourceConfig[]): void {
+  // Web / 移动端未实现该能力，静默跳过（可选方法直接短路）
+  void platform.syncLibrarySources?.(sources)
+}
+
+pushLibrarySources(useLibraryStore.getState().librarySources)
+useLibraryStore.subscribe((state, prev) => {
+  if (state.librarySources !== prev.librarySources) pushLibrarySources(state.librarySources)
 })

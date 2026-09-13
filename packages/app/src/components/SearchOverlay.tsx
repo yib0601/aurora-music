@@ -19,6 +19,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
+import { useDisplayTracks } from '@/hooks/useDisplayTracks'
 import type { Track, OnlineTrackSearchResult, Playlist } from '@/types'
 
 /** 行 DOM 注册：键盘高亮移动时把目标行滚动到可视区 */
@@ -305,7 +306,8 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const { downloadingIds, download: handleDownload } = useDownloadOnlineTrack()
   // 键盘高亮项下标（-1 = 无高亮）；随查询/标签切换重置
   const [activeIdx, setActiveIdx] = useState(-1)
-  const tracks = useLibraryStore((s) => s.tracks)
+  // 本地结果同样去重：命中重复副本时搜出两条一模一样的歌没有意义
+  const { tracks } = useDisplayTracks()
   const toggleLike = useLibraryStore((s) => s.toggleLike)
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   // 历史搜索记录（持久化在 libraryStore）

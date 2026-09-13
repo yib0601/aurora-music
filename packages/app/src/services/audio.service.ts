@@ -2,6 +2,7 @@ import { Howl, Howler } from 'howler'
 import type { Track } from '@/types'
 import { audioEvents } from './audioEvents'
 import { platform } from '@/services/platform'
+import { isRemoteAudioUrl } from '@aurora/shared'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
@@ -13,12 +14,24 @@ let currentMediaSource: MediaElementAudioSourceNode | null = null
 const FADE_DURATION = 800 // ms
 
 function getPlatformSrc(path: string): string {
-  // 在线流地址直接返回（http/https）
-  if (/^https?:\/\//i.test(path)) {
+  // 已带协议的地址（在线歌源直链 https://、远端媒体库代理 aurora-remote://）直接返回；
+  // 其余（本机绝对路径、web 平台的 web:<key>/<rel> 前缀）委托 platform 层转换协议
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     return path
   }
   // 委托 platform 层处理协议转换（桌面端 cover-local://，移动端 Capacitor.convertFileSrc）
   return platform.getAudioSrc(path)
+}
+
+/**
+ * 是否是需要走"流式"路径的地址（在线歌源直链 / 远端媒体库代理）。
+ *
+ * 判据不只看 http(s)：aurora-remote:// 是指向 WebDAV 的自定义协议，播放器拿到
+ * 的是跨源资源，Web Audio 的 MediaElementSource 在没有可靠 CORS 保证时会让
+ * 元素输出被浏览器静音（与在线流同一个坑），因此可视化必须一并降级跳过。
+ */
+function isStreamingSrc(src: string): boolean {
+  return /^https?:\/\//i.test(src) || isRemoteAudioUrl(src)
 }
 
 function startTick(howl: Howl) {
@@ -80,10 +93,11 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
   }
   stopTick()
 
-  // 在线流优先使用 onlineUrl，本地用 path
-  const rawPath = track.onlineUrl || track.path
+  // 在线歌源直链优先（易失，取到就用）；其次是远端媒体库代理地址（长期有效）；
+  // 最后才是本机路径
+  const rawPath = track.onlineUrl || track.remoteUrl || track.path
   const src = getPlatformSrc(rawPath)
-  const isOnline = /^https?:\/\//i.test(rawPath)
+  const isOnline = isStreamingSrc(rawPath)
 
   if (isOnline) {
     // howler 会复用 html5 Audio 元素池：曾被 createMediaElementSource 绑定的元素

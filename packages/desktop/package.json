@@ -1,6 +1,6 @@
 {
   "name": "@aurora/desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Aurora Music - 跨平台优雅音乐播放器",
   "author": "Aurora Music <aurora-music@example.com>",
@@ -18,7 +18,8 @@
     "dev:electron": "wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .",
     "build": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --publish never",
     "build:dir": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
-    "typecheck": "tsc --noEmit -p tsconfig.electron.json"
+    "typecheck": "tsc --noEmit -p tsconfig.electron.json",
+    "smoke:webdav": "electron scripts/smoke-webdav.js"
   },
   "dependencies": {
     "@aurora/shared": "workspace:*",

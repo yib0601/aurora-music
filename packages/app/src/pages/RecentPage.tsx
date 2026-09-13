@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
+import { dedupeTracksForDisplay } from '@aurora/shared'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
@@ -41,7 +42,8 @@ export function RecentPage() {
       if (t.lastPlayedAt && !recIds.has(t.id)) merged.push(t)
     }
     merged.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0))
-    return merged
+    // 同一首歌在多来源都有且都被播过时只留一份（本机优先），避免最近播放里重复
+    return dedupeTracksForDisplay(merged).tracks
   }, [allTracks, recentPlayedTracks])
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)

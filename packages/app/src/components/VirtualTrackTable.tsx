@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useState, type CSSProperties, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Heart, Play, Plus, ListPlus, ListEnd, Disc3 } from 'lucide-react'
+import { Heart, Play, Plus, ListPlus, ListEnd, Disc3, Cloud } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -114,6 +114,13 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
   style?: CSSProperties
 }) {
   const navigate = useNavigate()
+  // 网络存储曲目的来源名：用来在列表里区分「本机」与 NAS 曲目。
+  // 注：虚拟化下同时挂载的行只有二三十行，且该 selector 返回稳定引用
+  // （库内数组不重建就不触发重渲染），逐行订阅的代价可以忽略
+  const librarySources = useLibraryStore((s) => s.librarySources)
+  const sourceName = track.sourceId
+    ? librarySources.find((s) => s.id === track.sourceId)?.name || '网络存储'
+    : undefined
 
   return (
     <ContextMenu>
@@ -150,8 +157,20 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
               />
             </button>
             <div className="min-w-0">
-              <span className="block font-text font-semibold text-[14px] truncate text-white tracking-[-0.224px]">
-                {track.title}
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="font-text font-semibold text-[14px] truncate text-white tracking-[-0.224px]">
+                  {track.title}
+                </span>
+                {sourceName && (
+                  <span
+                    title={`来自网络存储「${sourceName}」`}
+                    className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-mint/[0.12] border border-mint/25 px-1.5 py-[1px] font-text text-[10px] text-mint/85 tracking-[-0.1px]"
+                  >
+                    <Cloud className="h-2.5 w-2.5" strokeWidth={1.8} />
+                    {/* 窄列放不下来源名，只留图标；宽屏才展开文字 */}
+                    <span className="hidden lg:inline max-w-[88px] truncate">{sourceName}</span>
+                  </span>
+                )}
               </span>
               {/* 移动端隐藏艺术家列，改为标题下方第二行展示 */}
               <span className="block md:hidden font-text text-[12px] text-white/40 truncate mt-0.5 tracking-[-0.12px]">
