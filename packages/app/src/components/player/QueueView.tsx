@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { X, Music2, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -18,6 +18,21 @@ export function QueueView() {
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const showQueuePanel = usePlaylistStore((s) => s.showQueuePanel)
   const setQueuePanel = usePlaylistStore((s) => s.setQueuePanel)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // 点击浮层外部自动关闭；播放条上的队列开关按钮已 stopPropagation 自行 toggle，
+  // 不会冒泡到 document 触发这里的关闭（否则 React 同步渲染会让浮层刚打开就被关掉）
+  useEffect(() => {
+    if (!showQueuePanel) return
+    const onClickOutside = (e: MouseEvent) => {
+      const el = panelRef.current
+      if (el && e.target instanceof Node && !el.contains(e.target)) {
+        setQueuePanel(false)
+      }
+    }
+    document.addEventListener('click', onClickOutside)
+    return () => document.removeEventListener('click', onClickOutside)
+  }, [showQueuePanel, setQueuePanel])
 
   if (!showQueuePanel) return null
 
@@ -32,7 +47,7 @@ export function QueueView() {
   }
 
   return (
-    <div className="absolute right-0 bottom-full mb-3 w-80 max-h-[55vh] glass-floating rounded-[16px] overflow-hidden z-50 flex flex-col">
+    <div ref={panelRef} className="absolute right-0 bottom-full mb-3 w-80 max-h-[55vh] glass-floating rounded-[16px] overflow-hidden z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 h-12 border-b border-white/10 dark:border-white/5">
         <span className="font-display text-[15px] font-semibold tracking-[-0.224px] text-foreground">
           播放队列
