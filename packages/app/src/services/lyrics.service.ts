@@ -6,30 +6,47 @@ export function parseLRC(content: string): LyricLine[] {
   const lines = content.split(/\r?\n/)
   const result: LyricLine[] = []
 
-  const timeTagRegex = /\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]/g
+  // 标准 LRC 方括号时间戳 [00:41.20]
+  const squareTagRegex = /\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]/g
+  // 逐字（卡拉OK）LRC 尖括号时间戳 <00:41.207>
+  const angleTagRegex = /<(\d{2}):(\d{2})(?:\.(\d{1,3}))?>/g
+
+  const toTime = (match: RegExpMatchArray) => {
+    const minutes = parseInt(match[1], 10)
+    const seconds = parseInt(match[2], 10)
+    const millisStr = match[3] || '0'
+    const millis = parseInt(millisStr.padEnd(3, '0').slice(0, 3), 10)
+    return minutes * 60 + seconds + millis / 1000
+  }
 
   let hasAnyTimeTag = false
   const pendingNoTag: string[] = []
 
   for (const line of lines) {
-    const matches = [...line.matchAll(timeTagRegex)]
-    const text = line.replace(timeTagRegex, '').trim()
+    const text = line
+      .replace(squareTagRegex, '')
+      .replace(angleTagRegex, '')
+      .trim()
     if (!text) continue
 
-    if (matches.length === 0) {
+    const squareMatches = [...line.matchAll(squareTagRegex)]
+    const angleMatches = [...line.matchAll(angleTagRegex)]
+
+    if (squareMatches.length === 0 && angleMatches.length === 0) {
       // 无时间标签的行先暂存，待后续判断
       pendingNoTag.push(text)
       continue
     }
 
     hasAnyTimeTag = true
-    for (const match of matches) {
-      const minutes = parseInt(match[1], 10)
-      const seconds = parseInt(match[2], 10)
-      const millisStr = match[3] || '0'
-      const millis = parseInt(millisStr.padEnd(3, '0').slice(0, 3), 10)
-      const time = minutes * 60 + seconds + millis / 1000
-      result.push({ time, text })
+    if (squareMatches.length > 0) {
+      // 行级时间戳：每个方括号标签生成一条（支持一行多时间戳）
+      for (const match of squareMatches) {
+        result.push({ time: toTime(match), text })
+      }
+    } else {
+      // 逐字歌词行：整行文字合并为一条完整歌词，取首个尖括号时间为行时间
+      result.push({ time: toTime(angleMatches[0]), text })
     }
   }
 
