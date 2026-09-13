@@ -344,7 +344,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => setDebouncedQuery(query), 200)
+    debounceTimer.current = setTimeout(() => setDebouncedQuery(query), 1000)
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current) }
   }, [query])
 
