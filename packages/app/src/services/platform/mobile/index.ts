@@ -1,5 +1,7 @@
 import { Filesystem, Directory, FileInfo as CapFileInfo } from '@capacitor/filesystem'
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
+import { setCustomFetch } from '@aurora/shared'
+import { createNativeFetch } from './nativeFetch'
 import type {
   PlatformInterface,
   FileInfo,
@@ -24,6 +26,13 @@ import {
   checkAllFilesAccess,
   openAllFilesAccessSettings,
 } from '@/services/permission'
+
+// WebView 的原生 fetch 受 CORS 约束，而用户配置的歌源/歌词源普遍不带
+// Access-Control-Allow-Origin，在线搜索会全部失败。注入基于原生 HTTP 的
+// fetch 实现（仅原生容器生效），让 @aurora/shared 的请求绕开 WebView 限制
+if (Capacitor.isNativePlatform()) {
+  setCustomFetch(createNativeFetch())
+}
 
 // 单例数据库实例
 const db = new MobileDatabase()
