@@ -28,6 +28,7 @@ import { SearchEntry } from '@/components/common/SearchEntry'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { toast } from '@/components/common/Toast'
+import { useDisplayTracks } from '@/hooks/useDisplayTracks'
 import { VirtualTrackTable, VirtualTrackRow } from '@/components/VirtualTrackTable'
 import { VirtualCardGrid } from '@/components/VirtualCardGrid'
 import type { Track, SortField, LibraryTab } from '@/types'
@@ -81,7 +82,9 @@ const savedScrollPositions: Record<string, number> = {}
  * 只渲染可视区域内的行，数千首歌曲不再一次性创建全部节点。
  */
 export function LibraryPage() {
-  const tracks = useLibraryStore((s) => s.tracks)
+  // 展示用曲库：同一首歌在多来源都有时只留优先副本（本机优先，否则第一次扫到的）。
+  // hidden 用于在页面上明示隐藏了多少条，避免「歌莫名变少了」而用户无从察觉
+  const { tracks, hidden: hiddenDuplicates } = useDisplayTracks()
   const viewMode = useLibraryStore((s) => s.viewMode)
   const setViewMode = useLibraryStore((s) => s.setViewMode)
   const scanFolders = useLibraryStore((s) => s.scanFolders)
@@ -319,6 +322,16 @@ export function LibraryPage() {
             </h1>
             <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
               {tracks.length === 0 ? '导入音乐，开始构建你的专属音乐库' : `${tracks.length} 首歌曲`}
+              {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
+                  被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效 */}
+              {hiddenDuplicates > 0 && (
+                <span
+                  className="ml-2 text-white/35"
+                  title="同一首歌（歌名 + 歌手 + 时长均相同）在多个来源都存在时只显示一份：本机文件优先，其次是第一次扫描到的。记录本身没有删除。"
+                >
+                  · 已隐藏 {hiddenDuplicates} 首重复曲目
+                </span>
+              )}
             </p>
           </div>
           {/* 工具栏：搜索入口常驻（本地无歌时也可用在线搜索）；重扫/视图切换仅列表态显示 */}

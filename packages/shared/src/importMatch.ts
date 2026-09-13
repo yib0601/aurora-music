@@ -9,6 +9,79 @@ import type { OnlineTrackSearchResult, ParsedSong } from './types'
 export const MAX_IMPORT_SONGS = 1000
 
 /**
+ * 取出存储坐标的「来源键」：
+ *   webdav:<sourceId>/相对路径 → webdav:<sourceId>
+ *   web:<folderKey>/相对路径   → web:<folderKey>
+ *   本机绝对路径               → ''（无来源，全部本机路径归为同一类）
+ *
+ * 只识别这两个已知前缀，不用「任意 scheme://」这种泛化匹配：Windows 的
+ * C:/Music/a.mp3 会被泛化规则误判成来源 `c::music`，同一块盘上不同目录反而
+ * 被当成不同来源，匹配就此失效。
+ */
+export function storageSourceKey(storagePath: string): string {
+  const m = /^(webdav|web):([^/]+)\//i.exec(storagePath)
+  return m ? `${m[1].toLowerCase()}:${m[2]}` : ''
+}
+
+const normalizeStoragePath = (p: string): string => (p || '').replace(/\\/g, '/').toLowerCase()
+const baseNameOfPath = (p: string): string => normalizeStoragePath(p).split('/').pop() || ''
+
+/**
+ * 把 M3U 里的路径列表与曲库匹配（纯函数，双端共用，可单测）。
+ *
+ * 匹配按优先级分两轮，先精确后宽松：
+ *   1. 整条路径完全相同（最可信）
+ *   2. 同一来源内：路径后缀互含，或文件名相同（兼容换机 / 换挂载点后导出的歌单）
+ *
+ * 第 2 轮必须限定「同一来源」：网络存储上不同 NAS 出现完全同名的
+ * `Music/01 序曲.mp3` 是常态，只按文件名匹配会把 A 盘歌单里的歌绑到 B 盘的
+ * 同名曲目上——播放地址、封面、播放统计全部错位，且用户几乎不可能察觉。
+ *
+ * 同时不能把这几条规则 OR 进同一个 find：那样宽泛规则可能先命中，精确匹配
+ * 反而被吃掉；分轮执行才有真正的优先级。
+ */
+export function matchTracksByPaths<T extends { id: string; path: string }>(
+  paths: string[],
+  tracks: T[]
+): T[] {
+  const matched: T[] = []
+  const usedIds = new Set<string>()
+
+  // 精确路径索引：同一存储坐标在库内唯一，无需逐个比较
+  const exactIndex = new Map<string, T>()
+  for (const t of tracks) exactIndex.set(normalizeStoragePath(t.path), t)
+
+  for (const filePath of paths) {
+    const normalized = normalizeStoragePath(filePath)
+    const wantKey = storageSourceKey(normalized)
+
+    // 第 1 轮：整条路径相同
+    let hit = exactIndex.get(normalized)
+
+    // 第 2 轮：同来源内的宽松匹配（精确命中已被占用时不做退化，避免重复绑定）
+    if (!hit) {
+      hit = tracks.find((t) => {
+        if (usedIds.has(t.id)) return false
+        const tp = normalizeStoragePath(t.path)
+        if (storageSourceKey(tp) !== wantKey) return false
+        return (
+          tp.endsWith('/' + normalized) ||
+          normalized.endsWith('/' + tp) ||
+          baseNameOfPath(tp) === baseNameOfPath(normalized)
+        )
+      })
+    }
+
+    if (hit && !usedIds.has(hit.id)) {
+      matched.push(hit)
+      usedIds.add(hit.id)
+    }
+  }
+
+  return matched
+}
+
+/**
  * 名称归一化：小写、全角转半角、去括号内备注（(Live)/(伴奏) 等）、
  * 只保留字母/数字/中日韩文字，用于跨平台的宽松比较
  */

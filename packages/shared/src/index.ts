@@ -28,7 +28,49 @@ export {
   artistScore,
   scoreOnlineResult,
   matchTracksByNames,
+  matchTracksByPaths,
+  storageSourceKey,
   MAX_IMPORT_SONGS,
   TITLE_THRESHOLD,
 } from './importMatch'
 export { extractShareUrl, resolvePlaylistUrl, parsePlaylistLink } from './playlistResolver'
+export type { TrackIdentityFields } from './trackIdentity'
+export {
+  DURATION_MATCH_TOLERANCE,
+  isLocalCopy,
+  preferTrackCopy,
+  dedupeTracksForDisplay,
+} from './trackIdentity'
+export type { MediaProvider } from './mediaProvider'
+export {
+  webdavMediaProvider,
+  getMediaProvider,
+  registerMediaProvider,
+  registeredMediaProviderKinds,
+} from './mediaProvider'
+export type { LibrarySourceConfig, RemoteEntry, WalkOptions, ParsedAudioFormat } from './webdav'
+export {
+  REMOTE_SCHEME,
+  WebdavError,
+  METADATA_HEAD_BYTES,
+  normalizeHeadParsedDuration,
+  AUDIO_EXTENSIONS,
+  isAudioFileName,
+  shouldSkipDir,
+  guessAudioMime,
+  normalizeBaseUrl,
+  joinUrl,
+  buildAuthHeader,
+  webdavHeaders,
+  resolveRemoteUrl,
+  buildRemoteAudioUrl,
+  isRemoteAudioUrl,
+  parseRemoteAudioUrl,
+  storagePathFor,
+  storagePathPrefix,
+  parseMultiStatus,
+  listWebdavDir,
+  walkWebdavAudio,
+  testWebdavConnection,
+  openWebdavRange,
+} from './webdav'

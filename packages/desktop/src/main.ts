@@ -3,6 +3,15 @@ import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
 import { closeDatabase } from './ipc/database'
+import { getLibrarySource } from './ipc/librarySource'
+import {
+  REMOTE_SCHEME,
+  parseRemoteAudioUrl,
+  resolveRemoteUrl,
+  webdavHeaders,
+  guessAudioMime,
+  WebdavError,
+} from '@aurora/shared'
 
 const isDev = !app.isPackaged
 
@@ -71,17 +80,35 @@ process.on('unhandledRejection', (reason) => {
 
 // 注册安全的本地文件协议：替代 file://，避免 webSecurity 阻止渲染进程加载本地封面图
 // 用法：cover-local://localhost/absolute/path/to/file.jpg
-protocol.registerSchemesAsPrivileged([{
-  scheme: 'cover-local',
-  privileges: {
-    standard: true,
-    secure: true,
-    supportFetchAPI: true,
-    stream: true,
-    bypassCSP: true,
-    corsEnabled: true,
+//
+// aurora-remote 是 WebDAV 媒体库的音频代理协议：
+// 用法 aurora-remote://<sourceId>/<URL 编码的相对路径>
+// 远端地址需要 Basic 鉴权，而 <audio src> 无法携带自定义请求头，且把口令拼进
+// URL 会随 Track 落库；因此由主进程持有来源配置并代为请求，顺带支持 Range。
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'cover-local',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: true,
+      corsEnabled: true,
+    },
   },
-}])
+  {
+    scheme: REMOTE_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: true,
+      corsEnabled: true,
+    },
+  },
+])
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -239,6 +266,50 @@ if (!gotTheLock) {
       } catch (err) {
         console.error('[cover-local] 读取失败:', err)
         return new Response('', { status: 404 })
+      }
+    })
+
+    // WebDAV 音频代理：按 sourceId 找到来源配置，带鉴权转发到远端，
+    // 并把 Range 请求与 206 响应原样透传（html5 <audio> 的 seek 依赖它）。
+    // 口令只在这里使用，渲染层拿到的永远是 aurora-remote://<sourceId>/...
+    protocol.handle(REMOTE_SCHEME, async (request) => {
+      const parsed = parseRemoteAudioUrl(request.url)
+      if (!parsed) return new Response('', { status: 400 })
+
+      const cfg = getLibrarySource(parsed.sourceId)
+      if (!cfg || cfg.kind !== 'webdav' || !cfg.baseUrl) {
+        // 来源配置尚未同步（例如刚启动、渲染层还在 rehydrate）或已被删除
+        return new Response('', { status: 404 })
+      }
+
+      const headers = webdavHeaders(cfg)
+      const range = request.headers.get('range')
+      if (range) headers.Range = range
+
+      try {
+        const upstream = await fetch(resolveRemoteUrl(cfg, parsed.path), { headers })
+        const out = new Headers()
+        const passthrough: Array<[string, string | null]> = [
+          ['Content-Type', upstream.headers.get('content-type')],
+          ['Content-Length', upstream.headers.get('content-length')],
+          ['Content-Range', upstream.headers.get('content-range')],
+          ['Accept-Ranges', upstream.headers.get('accept-ranges')],
+          ['Last-Modified', upstream.headers.get('last-modified')],
+        ]
+        for (const [k, v] of passthrough) if (v) out.set(k, v)
+        if (!out.has('Content-Type')) {
+          out.set('Content-Type', guessAudioMime(parsed.path) || 'application/octet-stream')
+        }
+        // 服务器不支持 Range 时补齐 Accept-Ranges，避免播放器误判可 seek
+        if (!out.has('Accept-Ranges')) out.set('Accept-Ranges', 'bytes')
+        // 与 cover-local 一致：允许渲染层在需要时以 fetch/XHR 方式读取
+        out.set('Access-Control-Allow-Origin', '*')
+
+        return new Response(upstream.body, { status: upstream.status, headers: out })
+      } catch (err) {
+        const status = err instanceof WebdavError && err.status ? err.status : 502
+        console.error('[aurora-remote] 代理请求失败:', parsed.path, (err as Error).message)
+        return new Response('', { status })
       }
     })
 

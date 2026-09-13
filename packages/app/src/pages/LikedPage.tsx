@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Heart, Play, Plus, ListEnd, ListPlus, Music } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
+import { dedupeTracksForDisplay } from '@aurora/shared'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
@@ -23,7 +24,13 @@ export function LikedPage() {
   const navigate = useNavigate()
   const allTracks = useLibraryStore((s) => s.tracks)
   const toggleLiked = useLibraryStore((s) => s.toggleLiked)
-  const tracks = useMemo(() => allTracks.filter((t) => t.liked), [allTracks])
+  // 顺序很重要：先筛出「已收藏」，再在收藏集合内去重。
+  // 若反过来先对全库去重，只会收藏了 NAS 副本、本机副本未收藏时，
+  // 择优会选中本机副本并把唯一被收藏的那份隐藏掉，这首歌会从收藏页凭空消失
+  const tracks = useMemo(
+    () => dedupeTracksForDisplay(allTracks.filter((t) => t.liked)).tracks,
+    [allTracks]
+  )
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
 

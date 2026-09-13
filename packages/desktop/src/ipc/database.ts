@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
 import { app } from 'electron'
+import { buildRemoteAudioUrl } from '@aurora/shared'
 import type { Track, Album } from '../types'
 
 let db: Database.Database | null = null
@@ -91,7 +92,29 @@ export function initDatabase(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_tracks_last_played ON tracks(last_played_at);
   `)
 
+  migrateSchema(db)
+
   return db
+}
+
+/**
+ * 增量表结构迁移（幂等，每次启动执行）。
+ *
+ * source_id：曲目所属媒体库来源（NULL = 本机目录）。
+ *
+ * 刻意不给 path 换成 UNIQUE(source_id, path)：tracks.path 上的 UNIQUE 是列约束，
+ * SQLite 无法直接 DROP，改约束必须重建整表；而 playlist_tracks 对 tracks 有
+ * 外键级联，重建过程中 DROP TABLE 会把用户的歌单条目一起清空。远端曲目改为把
+ * 来源编进 path（webdav:<sourceId>/...，与 web 平台既有的 web:<key>/... 同构），
+ * 既天然按来源隔离，也完全不动表结构。
+ */
+function migrateSchema(db: Database.Database): void {
+  const columns = db.prepare('PRAGMA table_info(tracks)').all() as Array<{ name: string }>
+  if (!columns.some((c) => c.name === 'source_id')) {
+    db.exec('ALTER TABLE tracks ADD COLUMN source_id TEXT')
+    console.log('[DB] 迁移：tracks 表新增 source_id 列')
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_source ON tracks(source_id)')
 }
 
 export function getDb(): Database.Database {
@@ -104,9 +127,10 @@ export function insertTracks(tracks: Track[]): void {
   if (tracks.length === 0) return
   const d = getDb()
   const stmt = d.prepare(`
-    INSERT INTO tracks (id, path, title, artist, album, year, genre, duration, track_number, cover_path, file_size, added_at, last_played_at, play_count, liked)
-    VALUES (@id, @path, @title, @artist, @album, @year, @genre, @duration, @trackNumber, @coverPath, @fileSize, @addedAt, @lastPlayedAt, @playCount, @liked)
+    INSERT INTO tracks (id, path, source_id, title, artist, album, year, genre, duration, track_number, cover_path, file_size, added_at, last_played_at, play_count, liked)
+    VALUES (@id, @path, @sourceId, @title, @artist, @album, @year, @genre, @duration, @trackNumber, @coverPath, @fileSize, @addedAt, @lastPlayedAt, @playCount, @liked)
     ON CONFLICT(path) DO UPDATE SET
+      source_id = excluded.source_id,
       title = excluded.title,
       artist = excluded.artist,
       album = excluded.album,
@@ -122,6 +146,7 @@ export function insertTracks(tracks: Track[]): void {
       stmt.run({
         id: track.id,
         path: track.path,
+        sourceId: track.sourceId || null,
         title: track.title,
         artist: track.artist || null,
         album: track.album || null,
@@ -229,6 +254,18 @@ function removeCoverFile(coverPath?: string | null): void {
 }
 
 /**
+ * 统计某个扫描目录下已入库的曲目数。
+ * 供扫描器判断「一个文件都没扫到」是「用户真的清空了目录」还是
+ * 「网络共享未挂载 / 外置盘掉线 / 权限临时异常」——后者绝不能触发缺失清理。
+ */
+export function countTracksByFolder(rootPath: string): number {
+  const d = getDb()
+  const prefix = pathPrefix(rootPath)
+  const rows = d.prepare('SELECT path FROM tracks WHERE path LIKE ?').all(prefix + '%') as Array<{ path: string }>
+  return rows.filter((r) => r.path.startsWith(prefix)).length
+}
+
+/**
  * 清理扫描目录下已不存在的文件的曲目记录（歌曲被删除/移动后同步移除）。
  * 仅处理 rootPath 前缀范围内的记录，避免误删其他扫描目录的曲目。
  * 返回删除的曲目数量。
@@ -257,6 +294,37 @@ export function deleteTracksByFolder(rootPath: string): number {
 /** 目录前缀统一补分隔符，避免 /Music 误匹配 /Music2 下的曲目 */
 function pathPrefix(rootPath: string): string {
   return rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep
+}
+
+/**
+ * 按来源前缀取记录（远端曲目的 path 是 `webdav:<sourceId>/<相对路径>`，
+ * 恒用 / 分隔，不能复用依赖 path.sep 的 pathPrefix——Windows 上会拼成反斜杠）。
+ */
+function selectRowsBySourcePrefix(prefix: string): Array<{ id: string; path: string; cover_path?: string }> {
+  const d = getDb()
+  const rows = d.prepare('SELECT id, path, cover_path FROM tracks WHERE path LIKE ?').all(prefix + '%') as Array<{
+    id: string
+    path: string
+    cover_path?: string
+  }>
+  return rows.filter((r) => r.path.startsWith(prefix))
+}
+
+/**
+ * 清理某个媒体库来源下已不存在的远端曲目。
+ *
+ * 调用方必须先确认本次列举是「完整成功」的：远端来源与本地磁盘不同，
+ * 一次网络抖动或单目录权限异常都会让文件"看起来消失了"，此处若照本地
+ * 逻辑无脑删除，用户的曲库会被网络问题清空。
+ */
+export function deleteMissingRemoteTracks(sourcePrefix: string, existingPaths: ReadonlySet<string>): number {
+  const stale = selectRowsBySourcePrefix(sourcePrefix).filter((r) => !existingPaths.has(r.path))
+  return deleteTrackRows(stale)
+}
+
+/** 删除某个媒体库来源下的全部曲目（用户移除该来源时调用） */
+export function deleteTracksBySourcePrefix(sourcePrefix: string): number {
+  return deleteTrackRows(selectRowsBySourcePrefix(sourcePrefix))
 }
 
 /** 事务批量删除曲目记录，并同步清理封面缓存文件 */
@@ -308,9 +376,18 @@ export function getMostPlayed(limit = 50): Track[] {
 }
 
 function rowToTrack(row: any): Track {
+  const sourceId: string | undefined = row.source_id || undefined
+  // 远端曲目的播放地址不落库：它由 (sourceId, 相对路径) 推导，口令与主机变更后
+  // 依然有效；若存下来，用户改配置后库里就全是失效地址
+  const remoteUrl =
+    sourceId && row.path.startsWith(`webdav:${sourceId}/`)
+      ? buildRemoteAudioUrl(sourceId, row.path.slice(`webdav:${sourceId}/`.length))
+      : undefined
   return {
     id: row.id,
     path: row.path,
+    sourceId,
+    remoteUrl,
     title: row.title,
     artist: row.artist || '未知艺术家',
     album: row.album || '未知专辑',

@@ -10,6 +10,8 @@ import type {
   PlaylistResolverConfig,
   ParsedSong,
   PlaylistParseResult,
+  LibrarySourceConfig,
+  RemoteEntry,
 } from '@aurora/shared'
 
 export type {
@@ -23,11 +25,26 @@ export type {
   PlaylistResolverConfig,
   ParsedSong,
   PlaylistParseResult,
+  LibrarySourceConfig,
+  RemoteEntry,
 }
 
 export interface Track {
   id: string
+  /**
+   * 存储坐标：
+   * - 本机来源：绝对文件路径
+   * - WebDAV 来源：`webdav:<sourceId>/<相对路径>`（来源编进 path，天然按来源隔离）
+   */
   path: string
+  /** 所属媒体库来源 id（undefined = 本机目录） */
+  sourceId?: string
+  /**
+   * 远端曲目播放地址（aurora-remote://<sourceId>/<相对路径>）。
+   * 由主进程注册的自定义协议代理到 WebDAV 并附带鉴权，因此地址里不含口令，
+   * 也不会过期——这一点与在线歌源的 onlineUrl 有本质区别，持久化时不可剥离。
+   */
+  remoteUrl?: string
   title: string
   artist: string
   album: string

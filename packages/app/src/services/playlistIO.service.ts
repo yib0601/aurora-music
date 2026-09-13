@@ -2,8 +2,12 @@ import type { Track, Playlist } from '@/types'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { scoreOnlineResult } from '@aurora/shared'
+import { scoreOnlineResult, matchTracksByPaths } from '@aurora/shared'
 import type { OnlineTrackSearchResult } from '@/types'
+
+// 路径匹配（含「不得跨来源串味」的规则）实现在 @aurora/shared/src/importMatch.ts，
+// 与歌单导入的按名匹配放在一起并带单测；这里原样再导出，保持既有调用方不变
+export { matchTracksByPaths }
 
 /**
  * 生成 M3U 播放列表内容
@@ -42,37 +46,6 @@ export function parseM3U(content: string): string[] {
   }
 
   return paths
-}
-
-/**
- * 根据文件路径数组，从音乐库中匹配对应的 Track
- * 匹配规则：track.path 完全匹配，或 track.path 以 path 结尾，或 path 以 track.path 结尾
- */
-export function matchTracksByPaths(paths: string[], tracks: Track[]): Track[] {
-  const matched: Track[] = []
-  const usedIds = new Set<string>()
-
-  for (const filePath of paths) {
-    // 标准化路径比较
-    const normalized = filePath.replace(/\\/g, '/').toLowerCase()
-
-    const track = tracks.find((t) => {
-      if (usedIds.has(t.id)) return false
-      const trackPath = t.path.replace(/\\/g, '/').toLowerCase()
-      return (
-        trackPath === normalized ||
-        trackPath.endsWith('/' + normalized.split('/').pop()!) ||
-        normalized.endsWith('/' + trackPath.split('/').pop()!)
-      )
-    })
-
-    if (track) {
-      matched.push(track)
-      usedIds.add(track.id)
-    }
-  }
-
-  return matched
 }
 
 /**

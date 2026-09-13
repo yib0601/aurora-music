@@ -85,11 +85,27 @@ const initialState = {
   shuffleHistory: [] as number[],
 }
 
-/** 持久化前剥离已过期的在线播放地址，保留曲目元信息 */
+/**
+ * 持久化前剥离已过期的在线播放地址，保留曲目元信息。
+ *
+ * 只剥 onlineUrl：那是歌源返回的临时直链（有效期常只有几十分钟）。
+ * remoteUrl（aurora-remote://<sourceId>/...）绝不能剥——它由来源配置推导，
+ * 只要来源还在就一直有效，剥掉会让远端曲目重启后变成不可播放。
+ */
 function stripOnlineUrl(track: Track | null): Track | null {
   if (!track || !track.onlineUrl) return track
   const { onlineUrl: _url, ...rest } = track
   return rest as Track
+}
+
+/**
+ * 是否为「网络来源」曲目：地址易失或依赖网络，加载失败不应把曲目踢出队列。
+ * 本地文件出错意味着文件被删/损坏，跳过是对的；网络抖动只是暂时的，
+ * 自动跳曲会让用户在 NAS 短暂不可达时整张歌单被逐首吃掉。
+ */
+function isNetworkBackedTrack(track: Track | null | undefined): boolean {
+  if (!track) return false
+  return !!track.onlineUrl || !!track.remoteUrl || /^https?:\/\//i.test(track.path)
 }
 
 // ─── 移动端原生播放引擎桥接 ──────────────────────────────────────
@@ -190,13 +206,15 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       addToQueue: (track) => {
-        const newQueue = [...get().queue, track]
-        set({ queue: newQueue })
+        const { queue } = get()
+        if (queue.some((t) => t.id === track.id)) return
+        set({ queue: [...queue, track] })
         syncNativeMirror()
       },
 
       addToPlayNext: (track) => {
         const { queue, currentIndex } = get()
+        if (queue.some((t) => t.id === track.id)) return
         const insertAt = currentIndex < 0 ? 0 : currentIndex + 1
         set({ queue: [...queue.slice(0, insertAt), track, ...queue.slice(insertAt)] })
         syncNativeMirror()
@@ -463,8 +481,8 @@ export const usePlayerStore = create<PlayerState>()(
         const state = get()
         if (!state.currentTrack || state.currentIndex < 0) return
         // 在线曲目的播放地址已在持久化时剥离（地址会过期），无有效来源则跳过恢复，
-        // 避免用空地址创建 Howl 导致加载报错
-        const src = state.currentTrack.onlineUrl || state.currentTrack.path
+        // 避免用空地址创建 Howl 导致加载报错；远端媒体库曲目的 remoteUrl 会被保留
+        const src = state.currentTrack.onlineUrl || state.currentTrack.remoteUrl || state.currentTrack.path
         if (!src) return
         if (useNative()) {
           // 移动端原生引擎：进程被杀后服务可能已由 START_STICKY 自动续播，
@@ -531,12 +549,12 @@ audioEvents.on('trackChange', ({ track }) => {
   usePlayerStore.setState({ currentTrack: track, duration: 0, progress: 0 })
 })
 
-// 本地文件加载失败（文件被删除/移动/损坏）时自动跳过，避免播放卡住；在线流网络错误不自动跳
+// 本地文件加载失败（文件被删除/移动/损坏）时自动跳过，避免播放卡住；网络来源（在线流 / 远端媒体库）出错不自动跳
 audioEvents.on('error', () => {
   const state = usePlayerStore.getState()
   const { currentTrack, queue, currentIndex } = state
   if (!currentTrack) return
-  if (currentTrack.onlineUrl || /^https?:\/\//i.test(currentTrack.path)) return
+  if (isNetworkBackedTrack(currentTrack)) return
   if (queue.length <= 1) {
     state.clearQueue()
     return
@@ -654,10 +672,10 @@ if (isNativePlayerAvailable()) {
         usePlayerStore.setState({ isPlaying: false, progress: 0 })
         break
       case 'error': {
-        // 与 Howler 错误路径一致：本地文件出错自动跳过；在线流不自动跳
+        // 与 Howler 错误路径一致：本地文件出错自动跳过；网络来源不自动跳
         const track = state.queue[state.currentIndex]
         if (!track) break
-        if (track.onlineUrl || /^https?:\/\//i.test(track.path)) break
+        if (isNetworkBackedTrack(track)) break
         if (state.queue.length <= 1) {
           state.clearQueue()
         } else {

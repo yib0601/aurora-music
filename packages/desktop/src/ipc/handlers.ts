@@ -6,10 +6,17 @@ import { pipeline } from 'stream/promises'
 import { app } from 'electron'
 import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder } from './database'
 import { scanFolder, ensureCover, fetchOnlineCover } from './scanner'
+import {
+  syncLibrarySources,
+  scanLibrarySource,
+  probeLibrarySource,
+  removeLibrarySourceTracks,
+  ensureRemoteCover,
+} from './librarySource'
 import { watchFolder, unwatchFolder } from './watcher'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
-import type { OnlineTrackSearchResult, OnlineSearchOptions, Track } from '../types'
+import type { OnlineTrackSearchResult, OnlineSearchOptions, Track, LibrarySourceConfig } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
 import { searchOnlineTracks, searchLyrics, sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, fetchWithTimeout } from '@aurora/shared'
 
@@ -132,6 +139,20 @@ function isReadableDir(dirPath: string): boolean {
   }
 }
 
+/** 媒体库来源扫描同样串行，避免与本地扫描并发写库 */
+function enqueueLibraryScan(sourceId: string): Promise<{ tracks: Track[]; complete: boolean; failedDirs: number }> {
+  const task = scanChain.then(async () => {
+    const result = await scanLibrarySource(sourceId, (track) => {
+      sendToRenderer('track:scanned', track)
+    })
+    // 复用本地扫描的完成事件，渲染层的刷新逻辑无需区分来源
+    sendToRenderer('scan:complete', getAllTracks())
+    return { tracks: getAllTracks(), complete: result.complete, failedDirs: result.failedDirs }
+  })
+  scanChain = task.catch(() => {})
+  return task
+}
+
 export function registerIpcHandlers() {
   initDatabase()
   // 系统环境探测（发行版包格式 / 安装形态）：渲染层据此挑选匹配的安装包
@@ -222,6 +243,41 @@ export function registerIpcHandlers() {
     return getAllTracks()
   })
 
+  // ─── 媒体库来源（WebDAV 网络存储） ─────────────────────────────
+  // 来源配置（含口令）由渲染层在启动与变更时同步到主进程；主进程据此
+  // 发起带鉴权的 PROPFIND / Range 请求，渲染层永远不接触远端口令。
+
+  ipcMain.handle('library-source:sync', (_event, sources: LibrarySourceConfig[]) => {
+    syncLibrarySources(Array.isArray(sources) ? sources : [])
+  })
+
+  ipcMain.handle('library-source:probe', async (_event, sourceId: string) => {
+    if (typeof sourceId !== 'string' || !sourceId) return { ok: false, message: '来源无效' }
+    return probeLibrarySource(sourceId)
+  })
+
+  ipcMain.handle('library-source:scan', async (_event, sourceId: string) => {
+    if (typeof sourceId !== 'string' || !sourceId) {
+      sendToRenderer('scan:error', { folder: '', message: '扫描失败：未指定媒体库来源' })
+      throw new Error('empty source id')
+    }
+    try {
+      return await enqueueLibraryScan(sourceId)
+    } catch (err) {
+      const message = (err as Error).message || '扫描失败'
+      console.error('[LibrarySource] 扫描失败:', sourceId, message)
+      sendToRenderer('scan:error', { folder: sourceId, message })
+      throw err
+    }
+  })
+
+  // 移除来源：连该来源下的全部曲目记录一起删除，返回移除后的全库
+  ipcMain.handle('library-source:remove', (_event, sourceId: string): Track[] => {
+    if (typeof sourceId !== 'string' || !sourceId) return getAllTracks()
+    removeLibrarySourceTracks(sourceId)
+    return getAllTracks()
+  })
+
   // 从音乐库移除某个扫描目录：删除该目录下的全部曲目记录（含封面缓存），
   // 返回移除后的全库列表，渲染进程直接用它刷新音乐库
   ipcMain.handle('library:removeFolder', (_event, folderPath: string): Track[] => {
@@ -247,6 +303,8 @@ export function registerIpcHandlers() {
       track = getTrackById(id)
       if (!track) return null
     }
+    // 远端曲目走 Range 读文件头（不下载整曲），本地仍读磁盘文件
+    if (track.sourceId) return ensureRemoteCover(track, app.getPath('userData'))
     return ensureCover(track, app.getPath('userData'))
   })
 

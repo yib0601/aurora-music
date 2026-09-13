@@ -6,11 +6,26 @@ export type {
   LyricsSourceConfig,
   LyricsSearchOptions,
   LyricsSearchResult,
+  LibrarySourceConfig,
+  RemoteEntry,
 } from '@aurora/shared'
 
 export interface Track {
   id: string
+  /**
+   * 存储坐标：
+   * - 本机来源：绝对文件路径
+   * - WebDAV 来源：`webdav:<sourceId>/<相对路径>`（来源编进 path，见数据库迁移说明）
+   */
   path: string
+  /** 所属媒体库来源 id（undefined = 本机目录） */
+  sourceId?: string
+  /**
+   * 远端曲目的播放地址（aurora-remote://<sourceId>/<相对路径>），由 (sourceId, path)
+   * 推导而来、不落库。主进程按 sourceId 找到来源配置后带鉴权转发 Range 请求，
+   * 因此口令不会出现在渲染层或数据库里。
+   */
+  remoteUrl?: string
   title: string
   artist: string
   album: string

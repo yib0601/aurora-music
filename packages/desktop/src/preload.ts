@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { OnlineSearchOptions, OnlineTrackSearchResult, LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
+import type { OnlineSearchOptions, OnlineTrackSearchResult, LyricsSearchOptions, LyricsSearchResult, LibrarySourceConfig } from '@aurora/shared'
 
 const electronAPI = {
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -45,6 +45,19 @@ const electronAPI = {
     },
   },
   getAllTracks: (): Promise<any[]> => ipcRenderer.invoke('db:getAllTracks'),
+  // ─── 媒体库来源（WebDAV 网络存储）───
+  // syncLibrarySources 把来源配置（含口令）交给主进程保管：播放时主进程按
+  // sourceId 带鉴权代理远端请求，渲染层与数据库都不会出现远端口令
+  syncLibrarySources: (sources: LibrarySourceConfig[]): Promise<void> =>
+    ipcRenderer.invoke('library-source:sync', sources),
+  probeLibrarySource: (sourceId: string): Promise<{ ok: boolean; message: string; sample?: string[] }> =>
+    ipcRenderer.invoke('library-source:probe', sourceId),
+  scanLibrarySource: (
+    sourceId: string
+  ): Promise<{ tracks: any[]; complete: boolean; failedDirs: number }> =>
+    ipcRenderer.invoke('library-source:scan', sourceId),
+  removeLibrarySource: (sourceId: string): Promise<any[]> =>
+    ipcRenderer.invoke('library-source:remove', sourceId),
   // 从音乐库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
   removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),

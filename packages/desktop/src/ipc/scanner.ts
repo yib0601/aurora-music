@@ -4,7 +4,7 @@ import { parseFile } from 'music-metadata'
 import iconv from 'iconv-lite'
 import { v4 as uuidv4 } from 'uuid'
 import type { Track } from '../types'
-import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, updateTrack } from './database'
+import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
 import { searchOnlineTracks, fetchWithTimeout } from '@aurora/shared'
 import type { OnlineSearchOptions, OnlineTrackSearchResult } from '@aurora/shared'
 
@@ -185,6 +185,22 @@ export async function scanFolder(
   console.log('scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
   console.log('scanFolder found files:', files.length)
+
+  // 一个文件都没扫到，但库里本来有该目录的记录 → 几乎不可能是「用户清空了音乐」，
+  // 更常见的是网络共享（SMB/NFS）未挂载、外置盘掉线或根目录权限临时异常：
+  // 挂载点丢失后目录往往仍然存在（只是空），isReadableDir 判不出来，walkDir 会
+  // 返回空列表。若照常执行缺失清理，一次挂载故障就会把整个曲库清空。
+  // 因此这里保守跳过清理并告警，用户仍可通过设置页移除该目录来主动清库。
+  if (files.length === 0) {
+    const known = countTracksByFolder(rootPath)
+    if (known > 0) {
+      console.warn(
+        `scanFolder: 未发现任何音频文件但库中有 ${known} 条记录，已跳过缺失清理（疑似共享未挂载或权限异常）:`,
+        rootPath
+      )
+      return []
+    }
+  }
 
   // 清理数据库中存在但文件已不存在的记录（歌曲被删除/移动后同步移除）
   const removed = deleteTracksWithMissingFiles(rootPath, new Set(files))

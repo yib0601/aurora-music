@@ -8,6 +8,7 @@ import {
   extractShareUrl,
   parsePlaylistLink,
   matchTracksByNames,
+  dedupeTracksForDisplay,
   scoreOnlineResult,
 } from '@aurora/shared'
 import type { Track, ParsedSong, OnlineTrackSearchResult } from '@/types'
@@ -98,7 +99,12 @@ export function usePlaylistImport() {
       return null
     }
 
-    const localMatches = matchTracksByNames(songs, useLibraryStore.getState().tracks)
+    // 在去重后的曲库上做名称匹配：同一首歌既有本机副本又有 NAS 副本时，
+    // 导入的歌单绑定到本机副本（用户偏好本机，且播放不依赖网络）
+    const localMatches = matchTracksByNames(
+      songs,
+      dedupeTracksForDisplay(useLibraryStore.getState().tracks).tracks
+    )
     setPhase('idle')
     return { songs, localMatches, suggestedName }
   }, [])

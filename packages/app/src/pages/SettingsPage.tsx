@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PageLayout } from '@/components/PageLayout'
 import { useLibraryStore } from '@/stores/libraryStore'
+import type { LibrarySourceConfig } from '@/types'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform } from '@/services/platform'
@@ -369,6 +370,328 @@ function SourceAddDialog({
   )
 }
 
+/** 网络存储来源的探测/扫描状态（每个来源一条，互不干扰） */
+type LibrarySourceStatus = { loading?: boolean; ok?: boolean; message?: string }
+
+/** 添加网络存储（WebDAV）来源弹窗 */
+function LibrarySourceAddDialog({
+  open,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (source: Omit<LibrarySourceConfig, 'id' | 'enabled'>) => void
+}) {
+  const [name, setName] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [rootPath, setRootPath] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      setName('')
+      setBaseUrl('')
+      setUsername('')
+      setPassword('')
+      setRootPath('')
+    }
+  }, [open])
+
+  const urlOk = /^https?:\/\/.+/i.test(baseUrl.trim())
+  const canSave = urlOk
+
+  const handleSave = () => {
+    if (!canSave) return
+    onSave({
+      kind: 'webdav',
+      name: name.trim() || '网络存储',
+      baseUrl: baseUrl.trim().replace(/\/+$/, ''),
+      username: username.trim() || undefined,
+      password: password || undefined,
+      rootPath: rootPath.trim().replace(/^\/+|\/+$/g, ''),
+    })
+    onOpenChange(false)
+  }
+
+  const inputCls =
+    'w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-white text-tagline">添加网络存储</DialogTitle>
+          <DialogDescription className="font-text text-caption text-white/60">
+            支持标准 WebDAV：群晖 / 威联通 / Nextcloud / rclone serve webdav 等。添加后可先「测试连接」，再扫描入库。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <p className="font-text text-caption text-white/60 mb-1.5">名称（可选）</p>
+            <input
+              type="text"
+              value={name}
+              placeholder="如：家里的群晖"
+              onChange={(e) => setName(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <p className="font-text text-caption text-white/60 mb-1.5">服务地址</p>
+            <input
+              type="text"
+              value={baseUrl}
+              placeholder="如：https://nas.example.com:5006/dav"
+              onChange={(e) => setBaseUrl(e.target.value)}
+              className={`${inputCls} ${baseUrl.trim() && !urlOk ? 'border-coral/60' : ''}`}
+            />
+            <p className="font-text text-caption text-white/40 mt-1">
+              群晖为 http(s)://主机:5006/共享文件夹名；Nextcloud 为 https://主机/remote.php/dav/files/用户名
+            </p>
+          </div>
+          <div>
+            <p className="font-text text-caption text-white/60 mb-1.5">音乐库根目录（可选）</p>
+            <input
+              type="text"
+              value={rootPath}
+              placeholder="如：Music，留空表示服务地址本身"
+              onChange={(e) => setRootPath(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="font-text text-caption text-white/60 mb-1.5">用户名（可选）</p>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className={inputCls}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <p className="font-text text-caption text-white/60 mb-1.5">口令（可选）</p>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputCls}
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+          <p className="font-text text-caption text-white/40">
+            口令仅保存在本机配置中，不会写入曲库、也不会出现在播放地址里（远端请求由主进程代理）。
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" size="sm" className="h-9 px-4 text-white/60 hover:text-white/90" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button
+            size="sm"
+            className="h-9 px-5 bg-mint text-mint-fg font-semibold hover:bg-mint/90 disabled:opacity-40 disabled:hover:bg-mint"
+            disabled={!canSave}
+            onClick={handleSave}
+          >
+            添加
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** 网络存储来源卡片：测试连接 / 扫描入库 / 编辑 / 移除 */
+function LibrarySourceCard({
+  source,
+  status,
+  onUpdate,
+  onProbe,
+  onScan,
+  onRemove,
+}: {
+  source: LibrarySourceConfig
+  status: LibrarySourceStatus
+  onUpdate: (updates: Partial<LibrarySourceConfig>) => void
+  onProbe: () => void
+  onScan: () => void
+  onRemove: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [nameDraft, setNameDraft] = useState(source.name)
+  const [baseUrlDraft, setBaseUrlDraft] = useState(source.baseUrl || '')
+  const [usernameDraft, setUsernameDraft] = useState(source.username || '')
+  const [passwordDraft, setPasswordDraft] = useState(source.password || '')
+  const [rootPathDraft, setRootPathDraft] = useState(source.rootPath || '')
+
+  const startEditing = () => {
+    setNameDraft(source.name)
+    setBaseUrlDraft(source.baseUrl || '')
+    setUsernameDraft(source.username || '')
+    setPasswordDraft(source.password || '')
+    setRootPathDraft(source.rootPath || '')
+    setEditing(true)
+  }
+
+  const urlOk = /^https?:\/\/.+/i.test(baseUrlDraft.trim())
+  const canSave = urlOk && nameDraft.trim().length > 0
+
+  const handleSave = () => {
+    if (!canSave) return
+    onUpdate({
+      name: nameDraft.trim(),
+      baseUrl: baseUrlDraft.trim().replace(/\/+$/, ''),
+      username: usernameDraft.trim() || undefined,
+      password: passwordDraft || undefined,
+      rootPath: rootPathDraft.trim().replace(/^\/+|\/+$/g, ''),
+    })
+    setEditing(false)
+  }
+
+  const inputCls =
+    'w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+
+  return (
+    <div className="bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 hover:border-white/14 transition-colors duration-200 ease-mineradio">
+      <div className="flex items-center gap-2">
+        <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
+        <div className="min-w-0 flex-1">
+          <p className="font-text text-caption-strong text-white/85 truncate">{source.name}</p>
+          <p className="font-text text-caption text-white/45 truncate">
+            WebDAV · {source.baseUrl}
+            {source.rootPath ? `/${source.rootPath}` : ''}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={source.enabled}
+          title={source.enabled ? '已启用（启动时自动扫描该来源）' : '已停用（启动时不再自动扫描，可手动扫描）'}
+          onClick={() => onUpdate({ enabled: !source.enabled })}
+          className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
+            source.enabled ? 'bg-mint' : 'bg-white/15'
+          }`}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-mineradio ${
+              source.enabled ? 'translate-x-4.5' : 'translate-x-1'
+            }`}
+          />
+        </button>
+        {!editing && (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="编辑"
+            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
+            onClick={startEditing}
+          >
+            <Pencil className="h-4 w-4" strokeWidth={1.6} />
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          title="移除来源（同时从音乐库移除该来源的歌曲）"
+          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+          onClick={onRemove}
+        >
+          <Trash2 className="h-4 w-4" strokeWidth={1.6} />
+        </Button>
+      </div>
+
+      {editing ? (
+        <div className="mt-3 space-y-2.5">
+          <input
+            type="text"
+            value={nameDraft}
+            placeholder="名称"
+            onChange={(e) => setNameDraft(e.target.value)}
+            className={inputCls}
+          />
+          <input
+            type="text"
+            value={baseUrlDraft}
+            placeholder="服务地址，如 https://nas.example.com:5006/dav"
+            onChange={(e) => setBaseUrlDraft(e.target.value)}
+            className={`${inputCls} ${baseUrlDraft.trim() && !urlOk ? 'border-coral/60' : ''}`}
+          />
+          <input
+            type="text"
+            value={rootPathDraft}
+            placeholder="音乐库根目录（可选），如 Music"
+            onChange={(e) => setRootPathDraft(e.target.value)}
+            className={inputCls}
+          />
+          <div className="grid grid-cols-2 gap-2.5">
+            <input
+              type="text"
+              value={usernameDraft}
+              placeholder="用户名（可选）"
+              onChange={(e) => setUsernameDraft(e.target.value)}
+              className={inputCls}
+              autoComplete="off"
+            />
+            <input
+              type="password"
+              value={passwordDraft}
+              placeholder="口令（可选）"
+              onChange={(e) => setPasswordDraft(e.target.value)}
+              className={inputCls}
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" size="sm" className="h-8 px-3 text-white/60 hover:text-white/90" onClick={() => setEditing(false)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 px-4 bg-mint text-mint-fg font-semibold hover:bg-mint/90 disabled:opacity-40 disabled:hover:bg-mint"
+              disabled={!canSave}
+              onClick={handleSave}
+            >
+              保存
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2.5 flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8 px-3"
+            disabled={status.loading}
+            onClick={onProbe}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.6} />
+            测试连接
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8 px-3"
+            disabled={status.loading}
+            onClick={onScan}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${status.loading ? 'animate-spin' : ''}`} strokeWidth={1.6} />
+            扫描入库
+          </Button>
+          {status.message && (
+            <p className={`font-text text-caption truncate ${status.ok ? 'text-mint/80' : 'text-coral/80'}`}>
+              {status.message}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const theme = useLibraryStore((s) => s.theme)
   const setTheme = useLibraryStore((s) => s.setTheme)
@@ -394,6 +717,16 @@ export function SettingsPage() {
   const addPlaylistResolverSource = useLibraryStore((s) => s.addPlaylistResolverSource)
   const updatePlaylistResolverSource = useLibraryStore((s) => s.updatePlaylistResolverSource)
   const removePlaylistResolverSource = useLibraryStore((s) => s.removePlaylistResolverSource)
+
+  // 网络存储（WebDAV）来源：与上面三类「歌源」不同，这是会入库的持久曲库来源
+  const librarySources = useLibraryStore((s) => s.librarySources)
+  const addLibrarySource = useLibraryStore((s) => s.addLibrarySource)
+  const updateLibrarySource = useLibraryStore((s) => s.updateLibrarySource)
+  const removeLibrarySource = useLibraryStore((s) => s.removeLibrarySource)
+  const [libraryStatus, setLibraryStatus] = useState<Record<string, LibrarySourceStatus>>({})
+  const [addLibraryOpen, setAddLibraryOpen] = useState(false)
+  // 仅桌面端实现了主进程侧的 WebDAV 代理与扫描；Web/移动端不展示该分区
+  const supportsLibrarySources = typeof platform.scanLibrarySource === 'function'
 
   const { devices, selectedDeviceId, setSelectedDeviceId } = useAudioDevices()
 
@@ -493,6 +826,74 @@ export function SettingsPage() {
     }
   }
 
+  /**
+   * 测试网络存储连通性：只列举根目录，不递归、不入库，用于确认地址与账号是否正确。
+   */
+  const handleProbeLibrarySource = async (source: LibrarySourceConfig) => {
+    setLibraryStatus((s) => ({ ...s, [source.id]: { loading: true } }))
+    try {
+      const result = await platform.probeLibrarySource?.(source.id)
+      setLibraryStatus((s) => ({
+        ...s,
+        [source.id]: { loading: false, ok: result?.ok, message: result?.message },
+      }))
+    } catch (err) {
+      setLibraryStatus((s) => ({
+        ...s,
+        [source.id]: { loading: false, ok: false, message: (err as Error).message },
+      }))
+    }
+  }
+
+  /**
+   * 扫描网络存储并入库。渐进式结果经 track:scanned 事件流式刷新曲库，
+   * 这里只负责给出「是否完整」的反馈——有目录列举失败时必须明确告知用户，
+   * 因为那种情况下应用会保守地跳过缺失清理，曲库可能与远端不一致。
+   */
+  const handleScanLibrarySource = async (source: LibrarySourceConfig) => {
+    setLibraryStatus((s) => ({ ...s, [source.id]: { loading: true } }))
+    try {
+      const result = await platform.scanLibrarySource?.(source.id)
+      if (result?.tracks) useLibraryStore.getState().setTracks(result.tracks)
+      const count = result?.tracks.length ?? 0
+      setLibraryStatus((s) => ({
+        ...s,
+        [source.id]: result?.complete
+          ? { loading: false, ok: true, message: `扫描完成，曲库共 ${count} 首` }
+          : {
+              loading: false,
+              ok: false,
+              message: `扫描完成，但有 ${result?.failedDirs ?? 0} 个目录无法访问，已保留原记录`,
+            },
+      }))
+    } catch (err) {
+      setLibraryStatus((s) => ({
+        ...s,
+        [source.id]: { loading: false, ok: false, message: (err as Error).message },
+      }))
+    }
+  }
+
+  /** 移除网络存储来源：连同该来源的曲目一起从音乐库删除（远端文件不受影响） */
+  const handleRemoveLibrarySource = async (source: LibrarySourceConfig) => {
+    const prefix = `webdav:${source.id}/`
+    const affected = useLibraryStore.getState().tracks.filter((t) => t.path.startsWith(prefix)).length
+    const ok = window.confirm(
+      affected > 0
+        ? `移除网络存储「${source.name}」？\n该来源下的 ${affected} 首歌曲会同时从音乐库中移除（远端文件不会被删除）。`
+        : `移除网络存储「${source.name}」？`
+    )
+    if (!ok) return
+    // 先从配置里摘掉，避免移除过程中后台扫描又把曲目写回（与本地目录移除同一套顺序）
+    removeLibrarySource(source.id)
+    try {
+      const remaining = await platform.removeLibrarySource?.(source.id)
+      if (remaining) useLibraryStore.getState().setTracks(remaining)
+    } catch (err) {
+      console.warn('移除来源曲目失败，已解除该来源配置:', err)
+    }
+  }
+
   return (
     <PageLayout header={
       // 设置页内容列较窄（720px），居中放置与其他页面的 1200px 居中内容列共享同一视觉轴
@@ -574,6 +975,47 @@ export function SettingsPage() {
               )}
             </div>
           </section>
+
+          {supportsLibrarySources && (
+            <section className="card-utility p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="font-display text-tagline text-white">网络存储</h2>
+                  <p className="font-text text-caption text-white/60 mt-0.5">
+                    NAS / WebDAV 上的音乐会被扫描入库并长期保留，与本地目录、在线搜索并列成为第三类来源
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 px-3.5 flex-shrink-0"
+                  onClick={() => setAddLibraryOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                  添加
+                </Button>
+              </div>
+              {librarySources.length === 0 ? (
+                <p className="font-text text-caption text-white/60 py-2">
+                  尚未添加网络存储。支持群晖 / 威联通 / Nextcloud / rclone serve webdav 等标准 WebDAV 服务
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {librarySources.map((source) => (
+                    <LibrarySourceCard
+                      key={source.id}
+                      source={source}
+                      status={libraryStatus[source.id] || {}}
+                      onUpdate={(updates) => updateLibrarySource(source.id, updates)}
+                      onProbe={() => handleProbeLibrarySource(source)}
+                      onScan={() => handleScanLibrarySource(source)}
+                      onRemove={() => handleRemoveLibrarySource(source)}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="card-utility p-5">
             <h2 className="font-display text-tagline mb-4 text-white">下载</h2>
@@ -878,6 +1320,11 @@ export function SettingsPage() {
         kind="playlist"
         onOpenChange={setAddPlaylistOpen}
         onSave={(source) => addPlaylistResolverSource({ ...source, enabled: true })}
+      />
+      <LibrarySourceAddDialog
+        open={addLibraryOpen}
+        onOpenChange={setAddLibraryOpen}
+        onSave={(source) => addLibrarySource({ ...source, enabled: true })}
       />
     </PageLayout>
   )

@@ -9,6 +9,7 @@ import type {
   LyricsSearchOptions,
   LyricsSearchResult,
   Track,
+  LibrarySourceConfig,
 } from '@/types'
 import { createMobilePlatform as createMobilePlatformImpl, setFolderPickerHandler } from './mobile'
 import { createWebPlatform, isFileSystemAccessSupported } from './web'
@@ -68,6 +69,22 @@ export interface PlatformExtension {
     headers?: Record<string, string>,
     downloadDir?: string
   ) => Promise<{ savedPath: string }>
+
+  // ─── 媒体库来源（WebDAV 网络存储，目前仅桌面端实现）─────────────────
+  // 与「在线歌源」不同：媒体库来源是持久曲库（入库、地址长期有效、需要鉴权），
+  // 口令交由主进程保管，渲染层只持有 sourceId，播放走 aurora-remote:// 协议代理。
+  /** 把来源配置同步给主进程（启动与配置变更时调用） */
+  syncLibrarySources?: (sources: LibrarySourceConfig[]) => Promise<void>
+  /** 扫描某个来源并入库；complete=false 表示有目录列举失败（调用方不应据此清库） */
+  scanLibrarySource?: (
+    sourceId: string
+  ) => Promise<{ tracks: Track[]; complete: boolean; failedDirs: number }>
+  /** 探测来源可用性（设置页「测试连接」） */
+  probeLibrarySource?: (
+    sourceId: string
+  ) => Promise<{ ok: boolean; message: string; sample?: string[] }>
+  /** 移除来源及其全部曲目，返回移除后的全库 */
+  removeLibrarySource?: (sourceId: string) => Promise<Track[]>
 }
 
 class NoopDatabase implements DatabaseAdapter {
@@ -223,6 +240,24 @@ export function createDesktopPlatform(): Platform {
     async downloadOnlineTrack(track, headers, downloadDir) {
       if (!api?.downloadOnlineTrack) throw new Error('当前版本不支持下载')
       return api.downloadOnlineTrack(track, headers, downloadDir)
+    },
+
+    // ─── 媒体库来源（WebDAV）：配置与请求都在主进程，渲染层只传 sourceId ───
+    async syncLibrarySources(sources: LibrarySourceConfig[]) {
+      if (!api?.syncLibrarySources) return
+      return api.syncLibrarySources(sources)
+    },
+    async scanLibrarySource(sourceId: string) {
+      if (!api?.scanLibrarySource) throw new Error('当前平台不支持网络存储')
+      return api.scanLibrarySource(sourceId)
+    },
+    async probeLibrarySource(sourceId: string) {
+      if (!api?.probeLibrarySource) return { ok: false, message: '当前平台不支持网络存储' }
+      return api.probeLibrarySource(sourceId)
+    },
+    async removeLibrarySource(sourceId: string) {
+      if (!api?.removeLibrarySource) return []
+      return api.removeLibrarySource(sourceId)
     },
   }
 }
