@@ -552,6 +552,7 @@ function emitPlayStats(track: Track) {
     trackId: track.id,
     lastPlayedAt: Date.now(),
     playCount: (track.playCount || 0) + 1,
+    track,
   })
 }
 

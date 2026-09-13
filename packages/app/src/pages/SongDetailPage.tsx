@@ -12,6 +12,8 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { loadLyricsForTrack } from '@/services/lyrics.service'
+import { ensurePlayableTrack } from '@/services/playlistIO.service'
+import { toast } from '@/components/common/Toast'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -160,15 +162,18 @@ export function SongDetailPage() {
     lastTrackIdRef.current = curId
   }, [currentTrack, id, navigate])
 
-  // 从音乐库查找，找不到则回退到播放器队列（如在线搜索的歌曲）
+  const recentPlayedTracks = useLibraryStore((s) => s.recentPlayedTracks)
+  // 从音乐库查找，找不到则回退到播放器队列（如在线搜索的歌曲），
+  // 再回退到最近播放记录（在线歌曲不在曲库/队列中时仍可查看）
   const track = useMemo(() => {
     const fromLibrary = tracks.find((t) => t.id === id)
     if (fromLibrary) return fromLibrary
     const fromQueue = usePlayerStore
       .getState()
       .queue.find((t) => t.id === id)
-    return fromQueue || null
-  }, [id, tracks])
+    if (fromQueue) return fromQueue
+    return recentPlayedTracks.find((t) => t.id === id) || null
+  }, [id, tracks, recentPlayedTracks])
 
   const isLiked = track ? likedTracks.has(track.id) : false
   const isCurrent = !!track && currentTrack?.id === track.id
@@ -181,7 +186,7 @@ export function SongDetailPage() {
       .sort((a, b) => (a.trackNumber || 0) - (b.trackNumber || 0))
   }, [track, tracks])
 
-  const handlePlay = () => {
+  const handlePlay = async () => {
     if (!track) return
     const player = usePlayerStore.getState()
     if (isCurrent) {
@@ -192,7 +197,13 @@ export function SongDetailPage() {
       const idx = albumTracks.findIndex((t) => t.id === track.id)
       player.playQueue(albumTracks, idx < 0 ? 0 : idx)
     } else {
-      player.playTrack(track)
+      // 在线曲目（如从最近播放进入）播放地址可能已过期，播放前按需取址
+      const playable = await ensurePlayableTrack(track)
+      if (!playable) {
+        toast('无法播放该在线歌曲：未配置音乐源或搜索无结果', { type: 'error' })
+        return
+      }
+      player.playTrack(playable)
     }
   }
 

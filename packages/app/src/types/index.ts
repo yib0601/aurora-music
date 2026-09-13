@@ -51,6 +51,8 @@ export interface Track {
   onlineSource?: string
   /** 来源展示名（源配置的 name） */
   onlineSourceName?: string
+  /** 音频实际来源后端标识（源提供 qualitySource 字段时才有），行内展示 */
+  onlineAudioSource?: string
   onlineId?: string
 }
 
