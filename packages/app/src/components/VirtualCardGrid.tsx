@@ -25,7 +25,10 @@ import type { Track } from '@/types'
  * 只渲染可视区域内的行，数千首歌曲的网格视图不再一次性创建全部卡片。
  *
  * 行高按当前列宽估算（卡片 ≈ 正方形封面 + 两行文字），
- * 列数随视口宽度匹配 Tailwind 断点：2 / sm:3 / md:4 / lg:5。
+ * 列数按滚动容器宽度匹配 Tailwind 断点：2 / sm:3 / md:4 / lg:5。
+ * 注意：列数必须由容器宽度决定（而非视口断点 class）——右侧 Now Playing 面板
+ * 展开时容器比视口窄，若行用视口断点列数会与切片/行高估算的列数不一致，
+ * 卡片被 grid 行高拉伸出现大片空白。
  */
 
 function getColumnCount(width: number): number {
@@ -194,8 +197,13 @@ export const VirtualCardGrid = memo(function VirtualCardGrid({
         return (
           <div
             key={vi.key}
-            className="absolute left-0 w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
-            style={{ height: vi.size, transform: `translateY(${vi.start}px)` }}
+            className="absolute left-0 w-full grid gap-4"
+            style={{
+              height: vi.size,
+              transform: `translateY(${vi.start}px)`,
+              // 与 getColumnCount(containerWidth) 同一列数，保证卡片宽度与行高估算一致
+              gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
+            }}
           >
             {rowTracks.map((track, i) => (
               <TrackCard
