@@ -35,6 +35,7 @@ import { MobileFolderPicker } from '@/components/MobileFolderPicker'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { SearchOverlay } from '@/components/SearchOverlay'
 import { useUIStore } from '@/stores/uiStore'
+import { UpdateDownloadDialog } from '@/components/UpdateDownloadDialog'
 import {
   checkForUpdate,
   shouldShowStartupBanner,
@@ -622,6 +623,9 @@ function AppLayout() {
 
       {/* 搜索浮层：portal 到 body 全屏覆盖，任意页面唤起均可见 */}
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
+
+      {/* 内置软件更新：下载进度/安装对话框（全局唯一实例，横幅与设置页共用） */}
+      <UpdateDownloadDialog />
 
       <TitleBar />
 
