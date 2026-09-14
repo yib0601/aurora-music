@@ -134,10 +134,21 @@ export function LibraryPage() {
   }
 
   // 重新扫描所有已配置目录，同步移除已删除文件对应的曲目记录
+  const [rescanning, setRescanning] = useState(false)
   const handleRescan = async () => {
-    if (!platform.scanFolder || scanFolders.length === 0) return
+    if (!platform.scanFolder || scanFolders.length === 0 || rescanning) return
+    setRescanning(true)
+    let hasError = false
     for (const folder of scanFolders) {
-      await platform.scanFolder(folder).catch(() => {})
+      try {
+        await platform.scanFolder(folder)
+      } catch {
+        hasError = true
+      }
+    }
+    setRescanning(false)
+    if (hasError) {
+      toast('部分目录扫描失败，请检查目录是否存在且可访问', { type: 'error', duration: 5000 })
     }
   }
 
@@ -378,10 +389,11 @@ export function LibraryPage() {
             {tracks.length > 0 && scanFolders.length > 0 && (
               <button
                 onClick={handleRescan}
-                title="重新扫描，同步已删除的歌曲"
+                disabled={rescanning}
+                title={rescanning ? '正在扫描…' : '重新扫描，同步已删除的歌曲'}
                 className="btn-icon"
               >
-                <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <RefreshCw className={`h-3.5 w-3.5 ${rescanning ? 'animate-spin' : ''}`} strokeWidth={1.5} />
               </button>
             )}
             {tracks.length > 0 && libraryTab === 'songs' && (

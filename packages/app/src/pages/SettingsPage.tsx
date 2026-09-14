@@ -10,6 +10,7 @@ import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform } from '@/services/platform'
 import { isDesktop } from '@/lib/utils'
+import { toast } from '@/components/common/Toast'
 import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 
@@ -790,7 +791,11 @@ export function SettingsPage() {
     const folder = await platform.pickFolder()
     if (folder) {
       useLibraryStore.getState().addScanFolder(folder)
-      await platform.scanFolder?.(folder)
+      try {
+        await platform.scanFolder?.(folder)
+      } catch {
+        toast(`扫描目录「${folder}」失败，请检查目录是否存在且可访问`, { type: 'error', duration: 5000 })
+      }
     }
   }
 

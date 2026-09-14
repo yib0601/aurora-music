@@ -389,16 +389,20 @@ function AppLayout() {
 
     // 订阅平台事件，收集取消函数以便 effect 清理时移除，避免监听器泄漏/重复注册
     const unsubscribers: Array<() => void> = []
+    // 初始加载的版本号为 0：scan:complete 事件将递增版本号，
+    // 如果 getAllTracks 延迟响应在 scan:complete 之后到达，版本号更小，会被跳过
     if (platform.getAllTracks) {
       platform.getAllTracks().then((tracks: Track[]) => {
-        useLibraryStore.getState().setTracks(tracks)
+        useLibraryStore.getState().setTracks(tracks, 0)
       })
     }
+    // scan:complete 递增版本号，确保其数据优先级高于 getAllTracks
+    let scanCompleteVersion = 1
     if (platform.onTracksScanned) {
       unsubscribers.push(
         platform.onTracksScanned((scannedTracks: Track[]) => {
           flushScannedTracks()
-          useLibraryStore.getState().setTracks(scannedTracks)
+          useLibraryStore.getState().setTracks(scannedTracks, scanCompleteVersion++)
         })
       )
     }
@@ -439,20 +443,29 @@ function AppLayout() {
       unsubscribers.push(
         platform.onScanError((error: { folder: string; message: string }) => {
           console.warn('[Scan] 后台扫描失败:', error.message)
-          if (!isMobile()) return
-          checkMediaPermissions().then((granted) => {
-            if (!granted) {
-              // 权限缺失：弹引导卡片（幂等，多个目录连续失败不会重复弹多个）
-              setNeedsStoragePermission(true)
-            } else {
-              // 权限正常却仍失败（目录被删/损坏等）：5 秒去重，避免多目录连续弹窗
-              const now = Date.now()
-              if (now - lastErrorAt > 5000) {
-                lastErrorAt = now
-                alert(error.message)
+          if (isMobile()) {
+            checkMediaPermissions().then((granted) => {
+              if (!granted) {
+                // 权限缺失：弹引导卡片（幂等，多个目录连续失败不会重复弹多个）
+                setNeedsStoragePermission(true)
+              } else {
+                // 权限正常却仍失败（目录被删/损坏等）：5 秒去重，避免多目录连续弹窗
+                const now = Date.now()
+                if (now - lastErrorAt > 5000) {
+                  lastErrorAt = now
+                  alert(error.message)
+                }
               }
+            }).catch(() => {})
+          } else {
+            // 桌面端同样提示扫描失败（5 秒去重），否则用户只看到歌曲数目不变
+            // 却完全不知道扫描失败了，极易误认为是软件本身的缺陷
+            const now = Date.now()
+            if (now - lastErrorAt > 5000) {
+              lastErrorAt = now
+              toast(error.message, { type: 'error', duration: 5000 })
             }
-          }).catch(() => {})
+          }
         })
       )
     }

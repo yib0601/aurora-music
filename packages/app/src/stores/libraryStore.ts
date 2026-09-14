@@ -50,7 +50,7 @@ interface LibraryState {
   /** 默认下载音质：128 标准 / 320 高品质 / flac 无损（源不支持时按其默认地址下载） */
   downloadQuality: DownloadQuality
 
-  setTracks: (tracks: Track[]) => void
+  setTracks: (tracks: Track[], version?: number) => void
   setAlbums: (albums: Album[]) => void
   addTracks: (tracks: Track[]) => void
   updateTrack: (id: string, updates: Partial<Track>) => void
@@ -96,6 +96,9 @@ interface LibraryState {
   setDownloadQuality: (quality: DownloadQuality) => void
 }
 
+/** 递增版本号：防止 getAllTracks 的延迟响应用旧数据覆盖 scan:complete 的新数据 */
+let tracksVersion = 0
+
 export const useLibraryStore = create<LibraryState>()(
   persist(
     (set, get) => ({
@@ -122,7 +125,11 @@ export const useLibraryStore = create<LibraryState>()(
       downloadDir: null,
       downloadQuality: 'flac',
 
-      setTracks: (tracks) => {
+      setTracks: (tracks, version?: number) => {
+        // 版本号保护：scan:complete 事件带的版本号比 getAllTracks 的大，
+        // 如果 getAllTracks 的延迟响应（version 未传或更小）在 scan:complete 之后到达，
+        // 跳过此次写入，避免旧数据覆盖新数据
+        if (version !== undefined && version < tracksVersion) return
         // 内容指纹比较：扫描完成事件每次 IPC 传来的都是全新对象引用，
         // 若仅浅比较引用会认为变化了，导致订阅 tracks 的组件（如歌词/详情页）无谓重渲染。
         // 基于 id + 关键字段生成指纹，内容不变则跳过 set。
@@ -130,6 +137,7 @@ export const useLibraryStore = create<LibraryState>()(
         if (prev === tracks) return
         const fp = (t: Track) => `${t.id}|${t.title}|${t.artist}|${t.coverPath ?? ''}|${t.liked ? 1 : 0}|${t.playCount ?? 0}|${t.lastPlayedAt ?? ''}`
         if (prev.length === tracks.length && prev.map(fp).join('\n') === tracks.map(fp).join('\n')) return
+        tracksVersion = version ?? tracksVersion + 1
         set({ tracks, likedTracks: new Set(tracks.filter((t) => t.liked).map((t) => t.id)) })
       },
       setAlbums: (albums) => set({ albums }),

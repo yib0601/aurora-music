@@ -41,6 +41,9 @@ export function initDatabase(): Database.Database {
   }
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
+  // 等待锁超时 5 秒：Windows 上杀毒软件实时扫描会临时锁住数据库文件，
+  // 不设 busy_timeout 时 SQLITE_BUSY 会立即失败，导致扫描写入静默丢失
+  db.pragma('busy_timeout = 5000')
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS tracks (
