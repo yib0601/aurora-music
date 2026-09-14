@@ -17,7 +17,9 @@ export function SearchEntry() {
       className="search-entry"
     >
       <Search className="h-4 w-4 flex-shrink-0" strokeWidth={1.5} />
-      <span className="font-text text-[13px] tracking-[-0.15px] whitespace-nowrap">搜索</span>
+      <span className="search-entry-label font-text text-[13px] tracking-[-0.15px] whitespace-nowrap">
+        搜索
+      </span>
     </button>
   )
 }
