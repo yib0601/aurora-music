@@ -605,6 +605,21 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .search-entry:hover { color: var(--btn-icon-hover-color); background: var(--btn-icon-hover-bg); border-color: rgb(var(--tw-white) / .16); transform: translateY(-1px); }
   .search-entry:active { transform: translateY(0) scale(.97); }
 
+  /* 小屏（<640px，手机）压缩态：手机内容列仅约 358px，保留 120px 硬性 min-width
+   * 会把同行页面大标题挤成 0 宽（标题文字消失）、工具栏整体溢出屏幕右缘。
+   * 小屏撤掉 min-width 与横向 padding、隐藏「搜索」文字只留放大镜，
+   * 退化为与 btn-icon 同尺寸的 36x36 方形图标按钮。 */
+  @media (max-width: 639px) {
+    .search-entry {
+      min-width: 0;
+      width: 36px;
+      padding: 0;
+      gap: 0;
+      justify-content: center;
+    }
+    .search-entry .search-entry-label { display: none; }
+  }
+
   /* 分段控件容器：标签栏 / 视图切换 */
   .segmented {
     display: inline-flex;
