@@ -108,6 +108,46 @@ function isNetworkBackedTrack(track: Track | null | undefined): boolean {
   return !!track.onlineUrl || !!track.remoteUrl || /^https?:\/\//i.test(track.path)
 }
 
+/**
+ * 启动时恢复在线曲目：持久化时 onlineUrl 已被剥离（歌源直链会过期），
+ * 用用户配置的歌源按元信息重新取址，成功后加载（不自动播放）并 seek 到持久化进度，
+ * 同时把新地址回填到队列与 currentTrack。
+ * 失败（未配置歌源 / 无结果 / 网络异常）时静默：曲目元信息仍保留在 UI，
+ * 用户点播放会经 ensurePlayableTrack 再次取址。
+ */
+async function restoreOnlineTrack(): Promise<void> {
+  const track = usePlayerStore.getState().currentTrack
+  if (!track) return
+  if (useNative()) {
+    // 移动端：原生引擎可能仍持有有效流并续播中（START_STICKY），先对账；
+    // 引擎活跃（snap.index >= 0）则无需重新取址，仅同步 UI
+    await reconcileNativePlayback().catch(() => {})
+    if (nativeBootstrapped) return
+  }
+  // 动态导入：playlistIO → stores(library/playlist) 与 playerStore 静态互引会形成模块级循环依赖
+  const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
+  const playable = await ensurePlayableTrack(track)
+  if (!playable) return
+  const st = usePlayerStore.getState()
+  // 重新取址是异步的，期间用户可能已切歌：不覆盖用户的当前操作
+  if (st.currentTrack?.id !== track.id) return
+  // 把取到新地址的曲目回填（队列里同 id 的条目一并更新，避免续播时仍拿旧快照）
+  usePlayerStore.setState({
+    currentTrack: playable,
+    queue: st.queue.map((t) => (t.id === track.id ? playable : t)),
+  })
+  if (useNative()) {
+    // 移动端：队列已带新地址下发，从持久化进度引导但不自动播放
+    nativeBootstrapPlay(st.progress, false)
+    return
+  }
+  audioPlayTrack(playable, st.volume, st.muted, false)
+  const seekPos = st.progress
+  onCurrentTrackLoad(() => {
+    audioSeekTo(seekPos)
+  })
+}
+
 // ─── 移动端原生播放引擎桥接 ──────────────────────────────────────
 // 锁屏后系统会杀掉 WebView 渲染进程，WebView 内的 HTML5 Audio 会中断且
 // 锁屏控件失效，因此移动端音频由原生 MediaPlayer 播放，JS 仅管理状态。
@@ -480,10 +520,14 @@ export const usePlayerStore = create<PlayerState>()(
       restorePlayback: () => {
         const state = get()
         if (!state.currentTrack || state.currentIndex < 0) return
-        // 在线曲目的播放地址已在持久化时剥离（地址会过期），无有效来源则跳过恢复，
-        // 避免用空地址创建 Howl 导致加载报错；远端媒体库曲目的 remoteUrl 会被保留
+        // 在线曲目的播放地址（onlineUrl）已在持久化时剥离（歌源直链会过期）；
+        // 远端媒体库曲目的 remoteUrl 与本地曲目的 path 会被保留，可直接恢复。
+        // 在线曲目需要按元信息重新搜索取址后才能恢复。
         const src = state.currentTrack.onlineUrl || state.currentTrack.remoteUrl || state.currentTrack.path
-        if (!src) return
+        if (!src) {
+          void restoreOnlineTrack()
+          return
+        }
         if (useNative()) {
           // 移动端原生引擎：进程被杀后服务可能已由 START_STICKY 自动续播，
           // 先与原生快照对账（若引擎在播则直接同步 UI），否则仅恢复元数据，
@@ -507,8 +551,8 @@ export const usePlayerStore = create<PlayerState>()(
         muted: state.muted,
         repeatMode: state.repeatMode,
         shuffleMode: state.shuffleMode,
-        // 在线播放地址（onlineUrl）有效期通常只有几十分钟，持久化后恢复必然失效；
-        // 剥离后恢复播放时由 audio.service 走错误跳过逻辑，避免用过期 URL 卡死
+        // 在线播放地址（onlineUrl）有效期通常只有几十分钟，持久化后恢复必然失效，
+        // 故剥离；恢复时由 restoreOnlineTrack 按元信息重新搜索取址（见 restorePlayback）
         currentTrack: stripOnlineUrl(state.currentTrack),
         queue: state.queue.map(stripOnlineUrl),
         currentIndex: state.currentIndex,
