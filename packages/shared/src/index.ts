@@ -34,7 +34,7 @@ export {
   TITLE_THRESHOLD,
 } from './importMatch'
 export { extractShareUrl, resolvePlaylistUrl, parsePlaylistLink } from './playlistResolver'
-export type { TrackIdentityFields } from './trackIdentity'
+export type { TrackIdentityFields, DuplicateGroup } from './trackIdentity'
 export {
   DURATION_MATCH_TOLERANCE,
   isLocalCopy,

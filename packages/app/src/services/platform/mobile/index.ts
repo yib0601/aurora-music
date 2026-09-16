@@ -466,7 +466,8 @@ export function createMobilePlatform(): PlatformInterface & {
       }
 
       // 源直链的音频大多不带内嵌封面，下载后用搜索结果里的 coverUrl 嵌入封面
-      // （MP3 写 ID3v2 APIC，FLAC 写 PICTURE 块）。失败只记日志、保留原文件。
+      // （MP3 写 ID3v2 APIC，FLAC 写 PICTURE 块，M4A/MP4 写 ilst covr）。
+      // 失败只记日志、保留原文件。
       if (typeof track.coverUrl === 'string' && /^https?:\/\//i.test(track.coverUrl)) {
         try {
           await embedCoverIntoDownloaded(savePath, track)

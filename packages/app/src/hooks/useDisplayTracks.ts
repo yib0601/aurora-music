@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { dedupeTracksForDisplay } from '@aurora/shared'
+import type { DuplicateGroup } from '@aurora/shared'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { Track } from '@/types'
 
@@ -14,7 +15,12 @@ import type { Track } from '@/types'
  * 注意这只影响展示：被隐藏的副本仍留在曲库中，歌单/收藏/播放历史对它的引用
  * 照常有效（详见 dedupeTracksForDisplay 的说明）。
  */
-export function useDisplayTracks(): { tracks: Track[]; hidden: number } {
+export function useDisplayTracks(): {
+  tracks: Track[]
+  hidden: number
+  /** 重复组明细：留了哪份、藏了哪份（供悬停浮层展示具体名单） */
+  groups: DuplicateGroup<Track>[]
+} {
   const tracks = useLibraryStore((s) => s.tracks)
   return useMemo(() => dedupeTracksForDisplay(tracks), [tracks])
 }

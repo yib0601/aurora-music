@@ -17,6 +17,8 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, formatTime, cn } from '@/lib/utils'
 import { CoverImage } from '@/components/common/CoverImage'
+import { DuplicateBadge } from '@/components/common/DuplicateInfo'
+import type { DuplicateGroup } from '@aurora/shared'
 import type { Track } from '@/types'
 
 /**
@@ -105,6 +107,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
   onPlay,
   onCreatePlaylist,
   style,
+  duplicateGroup,
 }: {
   track: Track
   idx: number
@@ -112,6 +115,8 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
   onPlay: (idx: number) => void
   onCreatePlaylist: (trackId: string) => void
   style?: CSSProperties
+  /** 该副本另有被隐藏的重复副本时传入，行内展示「重复」徽标 */
+  duplicateGroup?: DuplicateGroup<Track>
 }) {
   const navigate = useNavigate()
   // 网络存储曲目的来源名：用来在列表里区分「本机」与 NAS 曲目。
@@ -161,6 +166,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                 <span className="font-text font-semibold text-[14px] truncate text-white tracking-[-0.224px]">
                   {track.title}
                 </span>
+                {duplicateGroup && <DuplicateBadge group={duplicateGroup} />}
                 {sourceName && (
                   <span
                     title={`来自网络存储「${sourceName}」`}
@@ -242,11 +248,14 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
   scrollRef,
   onPlayRow,
   onCreatePlaylist,
+  duplicateMap,
 }: {
   tracks: Track[]
   scrollRef: RefObject<HTMLDivElement>
   onPlayRow: (index: number) => void
   onCreatePlaylist: (trackId: string) => void
+  /** 胜出副本 id → 重复组：行内「重复」徽标的数据来源 */
+  duplicateMap?: ReadonlyMap<string, DuplicateGroup<Track>>
 }) {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const isMd = useIsDesktopWidth()
@@ -285,6 +294,7 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
               liked={likedTracks.has(track.id)}
               onPlay={onPlayRow}
               onCreatePlaylist={onCreatePlaylist}
+              duplicateGroup={duplicateMap?.get(track.id)}
               style={{
                 position: 'absolute',
                 top: 0,

@@ -21,6 +21,17 @@
 /** 判定为同一首歌的时长容差（秒） */
 export const DURATION_MATCH_TOLERANCE = 1
 
+/**
+ * 一组被判定为「同一首歌」的副本明细，供 UI 明示「哪首重复了、
+ * 留了哪份、藏了哪份」——只给隐藏条数而不给名单，用户无从核对。
+ */
+export interface DuplicateGroup<T = TrackIdentityFields> {
+  /** 展示保留的副本（择优规则见 preferTrackCopy） */
+  kept: T
+  /** 被隐藏的副本（保持传入顺序） */
+  hiddenCopies: T[]
+}
+
 /** 判定与择优所需的最小字段集 */
 export interface TrackIdentityFields {
   id: string
@@ -65,13 +76,14 @@ export function preferTrackCopy<T extends TrackIdentityFields>(a: T, b: T): T {
  * 只影响"展示"，不删除任何记录：被隐藏的副本仍留在曲库里，歌单、收藏、
  * 播放历史对它的引用全部照常有效；即使本机副本后来被删掉，远端副本也还在。
  *
- * 同时返回隐藏条数，供 UI 明示"已隐藏 N 首重复曲目"——静默藏歌是不可接受的，
+ * 同时返回隐藏条数与逐组明细（groups：留了哪份、藏了哪份），供 UI 明示
+ * "已隐藏 N 首重复曲目"并支持悬停查看具体名单——静默藏歌是不可接受的，
  * 用户必须能看见发生了什么、也才有办法去核对。
  */
 export function dedupeTracksForDisplay<T extends TrackIdentityFields>(
   tracks: T[]
-): { tracks: T[]; hidden: number } {
-  if (tracks.length < 2) return { tracks, hidden: 0 }
+): { tracks: T[]; hidden: number; groups: DuplicateGroup<T>[] } {
+  if (tracks.length < 2) return { tracks, hidden: 0, groups: [] }
 
   // 两段式：先按「歌名 + 歌手」分桶，再在桶内按时长归组。
   // 时长是带容差的数值比较，无法直接进字符串键，只能先分桶。
@@ -88,24 +100,29 @@ export function dedupeTracksForDisplay<T extends TrackIdentityFields>(
   }
 
   const hiddenIds = new Set<string>()
+  const dupGroups: DuplicateGroup<T>[] = []
   for (const list of buckets.values()) {
     if (list.length < 2) continue
-    const groups: Array<{ rep: number; members: T[] }> = []
+    const durGroups: Array<{ rep: number; members: T[] }> = []
     for (const { duration, track } of list) {
-      const group = groups.find((g) => Math.abs(g.rep - duration) <= DURATION_MATCH_TOLERANCE)
+      const group = durGroups.find((g) => Math.abs(g.rep - duration) <= DURATION_MATCH_TOLERANCE)
       if (group) group.members.push(track)
-      else groups.push({ rep: duration, members: [track] })
+      else durGroups.push({ rep: duration, members: [track] })
     }
-    for (const group of groups) {
+    for (const group of durGroups) {
       if (group.members.length < 2) continue
       const winner = group.members.reduce((best, cur) => preferTrackCopy(cur, best))
-      for (const member of group.members) {
-        if (member.id !== winner.id) hiddenIds.add(member.id)
-      }
+      const hiddenCopies = group.members.filter((m) => m.id !== winner.id)
+      for (const member of hiddenCopies) hiddenIds.add(member.id)
+      dupGroups.push({ kept: winner, hiddenCopies })
     }
   }
 
-  if (hiddenIds.size === 0) return { tracks, hidden: 0 }
+  if (hiddenIds.size === 0) return { tracks, hidden: 0, groups: [] }
   // 保持原有顺序（数据库顺序 / 用户排序），只是把落选副本摘掉
-  return { tracks: tracks.filter((t) => !hiddenIds.has(t.id)), hidden: hiddenIds.size }
+  return {
+    tracks: tracks.filter((t) => !hiddenIds.has(t.id)),
+    hidden: hiddenIds.size,
+    groups: dupGroups,
+  }
 }
