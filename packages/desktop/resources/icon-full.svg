@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A1128"/>
+      <stop offset="0.55" stop-color="#152A5C"/>
+      <stop offset="1" stop-color="#1E418F"/>
+    </linearGradient>
+    <linearGradient id="note" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DFF6FF"/>
+    </linearGradient>
+    <filter id="auroraBlur" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="noteGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#8FE9FF" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g filter="url(#auroraBlur)" fill="none" stroke-linecap="round">
+    <path d="M-40 290 C 70 260, 150 200, 220 135 S 370 50, 560 28" stroke="#F0A6FF" stroke-width="10" opacity="0.45"/>
+    <path d="M-40 330 C 80 300, 160 240, 230 170 S 380 80, 560 60" stroke="#9CFFDF" stroke-width="30" opacity="0.6"/>
+    <path d="M-40 380 C 100 340, 180 280, 250 210 S 400 110, 560 95" stroke="#8FE9FF" stroke-width="52" opacity="0.55"/>
+    <path d="M-40 430 C 120 390, 200 320, 270 250 S 420 150, 560 135" stroke="#73A7FF" stroke-width="42" opacity="0.5"/>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="100" cy="110" r="3" opacity="0.9"/>
+    <circle cx="420" cy="92" r="2.5" opacity="0.7"/>
+    <circle cx="452" cy="330" r="2.5" opacity="0.6"/>
+    <circle cx="72" cy="300" r="2" opacity="0.5"/>
+    <path d="M140 158 L144 176 L162 180 L144 184 L140 202 L136 184 L118 180 L136 176 Z" opacity="0.9"/>
+    <path d="M396 236 L399 248 L411 251 L399 254 L396 266 L393 254 L381 251 L393 248 Z" opacity="0.8"/>
+  </g>
+  <g filter="url(#noteGlow)" fill="url(#note)">
+    <path d="M217 350 L217 196 L349 166 L349 320 L323 326 L323 202 L243 220 L243 356 Z"/>
+    <ellipse cx="186" cy="352" rx="35" ry="27" transform="rotate(-18 186 352)"/>
+    <ellipse cx="318" cy="322" rx="35" ry="27" transform="rotate(-18 318 322)"/>
+  </g>
+</svg>

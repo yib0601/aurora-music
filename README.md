@@ -1,6 +1,12 @@
 # Aurora Music ⛅
 
-**Aurora Music** — 一款跨平台的音乐播放器，基于 Electron + React + Vite 构建，移动端通过 Capacitor 打包为 Android 应用。
+<p align="center">
+  <img src="./packages/desktop/resources/icon.svg" alt="Aurora Music 图标" width="128">
+</p>
+
+<p align="center">
+  <strong>Aurora Music</strong> — 一款跨平台的音乐播放器，基于 Electron + React + Vite 构建，移动端通过 Capacitor 打包为 Android 应用。
+</p>
 
 ---
 
