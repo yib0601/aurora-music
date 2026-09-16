@@ -460,8 +460,8 @@ export function registerIpcHandlers() {
       }
 
       // 源直链的音频大多不带内嵌封面（实测仅有文本标签），下载后无封面可提取。
-      // 用搜索结果里的 coverUrl 把封面嵌入文件（MP3 写 ID3v2 APIC，FLAC 写 PICTURE 块）。
-      // 嵌入失败只记日志、保留原文件，不影响下载结果。
+      // 用搜索结果里的 coverUrl 把封面嵌入文件（MP3 写 ID3v2 APIC，FLAC 写 PICTURE 块，
+      // M4A/MP4 写 ilst covr 并修正 stco 偏移）。嵌入失败只记日志、保留原文件，不影响下载结果。
       if (typeof track.coverUrl === 'string' && /^https?:\/\//i.test(track.coverUrl)) {
         try {
           const coverResp = await fetchWithTimeout(

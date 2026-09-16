@@ -145,9 +145,31 @@ describe('dedupeTracksForDisplay', () => {
   })
 
   it('空数组与单曲不做事、不算隐藏', () => {
-    expect(dedupeTracksForDisplay([])).toEqual({ tracks: [], hidden: 0 })
+    expect(dedupeTracksForDisplay([])).toEqual({ tracks: [], hidden: 0, groups: [] })
     const one = [track('only')]
-    expect(dedupeTracksForDisplay(one)).toEqual({ tracks: one, hidden: 0 })
+    expect(dedupeTracksForDisplay(one)).toEqual({ tracks: one, hidden: 0, groups: [] })
+  })
+
+  it('groups 明细：逐组给出保留与隐藏副本', () => {
+    const tracks = [
+      track('nas-b', { sourceId: 'lib-b', addedAt: 300 }),
+      track('nas-a', { sourceId: 'lib-a', addedAt: 100 }),
+      track('local', { addedAt: 900 }),
+      track('other', { title: '晴天' }),
+    ]
+    const res = dedupeTracksForDisplay(tracks)
+    expect(res.groups).toHaveLength(1)
+    expect(res.groups[0].kept.id).toBe('local')
+    // 隐藏副本保持传入顺序
+    expect(res.groups[0].hiddenCopies.map((t) => t.id)).toEqual(['nas-b', 'nas-a'])
+  })
+
+  it('groups 只含真实重复组，无重复时为空', () => {
+    const res = dedupeTracksForDisplay([
+      track('a', { title: 'A' }),
+      track('b', { title: 'B', sourceId: 'lib-a' }),
+    ])
+    expect(res.groups).toEqual([])
   })
 
   it('无重复时原样返回同一引用（避免无谓的重渲染）', () => {

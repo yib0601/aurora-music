@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, FileText, ChevronDown, Pencil, Check } from 'lucide-react'
+import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -915,7 +915,7 @@ export function SettingsPage() {
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         <div className="w-full max-w-[720px] mx-auto space-y-5 pb-8">
           <section className="card-utility p-5">
-            <h2 className="font-display text-tagline mb-5 text-white">外观</h2>
+            <h2 className="font-display text-tagline mb-4 text-white">通用</h2>
             <div className="space-y-6">
               <div>
                 <p className="font-text text-caption-strong mb-3 text-white/80">主题</p>
@@ -941,6 +941,41 @@ export function SettingsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+              {/* 输出设备：与主题同卡，用细分隔线区分两组设置 */}
+              <div className="border-t border-white/[0.06] pt-5">
+                <p className="font-text text-caption-strong mb-3 text-white/80">输出设备</p>
+                {devices.length === 0 ? (
+                  <p className="font-text text-caption text-white/60 py-2">未检测到可用的输出设备</p>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="group w-full flex items-center justify-between gap-2 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-2.5 font-text text-caption text-white/80 outline-none hover:bg-white/[0.06] hover:border-white/14 focus:border-mint/50 transition-colors duration-200 ease-mineradio"
+                      >
+                        <span className="truncate text-left">
+                          {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '选择输出设备'}
+                        </span>
+                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-white/40 transition-transform duration-200 ease-mineradio group-data-[state=open]:rotate-180" strokeWidth={1.6} />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-72 overflow-y-auto scrollbar-thin p-1">
+                      {devices.map((d) => (
+                        <DropdownMenuItem
+                          key={d.deviceId}
+                          onClick={() => handleDeviceChange(d.deviceId)}
+                          className="gap-2 rounded-xs px-2.5 py-2 text-[13px]"
+                        >
+                          <span className="truncate">{d.label}</span>
+                          {d.deviceId === selectedDeviceId && (
+                            <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-mint" strokeWidth={2} />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </div>
           </section>
@@ -978,49 +1013,43 @@ export function SettingsPage() {
                   ))}
                 </div>
               )}
-            </div>
-          </section>
 
-          {supportsLibrarySources && (
-            <section className="card-utility p-5">
-              <div className="flex items-start justify-between gap-3 mb-4">
-                <div>
-                  <h2 className="font-display text-tagline text-white">网络存储</h2>
-                  <p className="font-text text-caption text-white/60 mt-0.5">
-                    NAS / WebDAV 上的音乐会被扫描入库并长期保留，与本地目录、在线搜索并列成为第三类来源
+              {/* 网络存储（仅桌面端）：与本地目录同属曲库来源，合并进本卡片，用细分隔线区分 */}
+              {supportsLibrarySources && (
+                <div className="border-t border-white/[0.06] pt-5">
+                  <div className="flex items-center justify-between">
+                    <p className="font-text text-caption-strong text-white/80">网络存储</p>
+                    <Button variant="secondary" size="sm" className="h-8 px-3" onClick={() => setAddLibraryOpen(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" strokeWidth={1.6} />
+                      添加
+                    </Button>
+                  </div>
+                  <p className="font-text text-caption text-white/45 mt-0.5 mb-3">
+                    NAS / WebDAV 上的音乐会被扫描入库并长期保留
                   </p>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-9 px-3.5 flex-shrink-0"
-                  onClick={() => setAddLibraryOpen(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                  添加
-                </Button>
-              </div>
-              {librarySources.length === 0 ? (
-                <p className="font-text text-caption text-white/60 py-2">
-                  尚未添加网络存储。支持群晖 / 威联通 / Nextcloud / rclone serve webdav 等标准 WebDAV 服务
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {librarySources.map((source) => (
-                    <LibrarySourceCard
-                      key={source.id}
-                      source={source}
-                      status={libraryStatus[source.id] || {}}
-                      onUpdate={(updates) => updateLibrarySource(source.id, updates)}
-                      onProbe={() => handleProbeLibrarySource(source)}
-                      onScan={() => handleScanLibrarySource(source)}
-                      onRemove={() => handleRemoveLibrarySource(source)}
-                    />
-                  ))}
+                  {librarySources.length === 0 ? (
+                    <p className="font-text text-caption text-white/60">
+                      尚未添加，支持群晖 / 威联通 / Nextcloud 等标准 WebDAV 服务
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {librarySources.map((source) => (
+                        <LibrarySourceCard
+                          key={source.id}
+                          source={source}
+                          status={libraryStatus[source.id] || {}}
+                          onUpdate={(updates) => updateLibrarySource(source.id, updates)}
+                          onProbe={() => handleProbeLibrarySource(source)}
+                          onScan={() => handleScanLibrarySource(source)}
+                          onRemove={() => handleRemoveLibrarySource(source)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </section>
-          )}
+            </div>
+          </section>
 
           <section className="card-utility p-5">
             <h2 className="font-display text-tagline mb-4 text-white">下载</h2>
@@ -1028,7 +1057,7 @@ export function SettingsPage() {
               <div>
                 <p className="font-text text-caption-strong text-white/80">默认下载音质</p>
                 <p className="font-text text-caption text-white/60 mt-0.5 mb-3">
-                  需歌源支持：接口地址含 {'{quality}'} 占位符或返回多音质地址（qualityUrls / url_320 / url_flac 等），不支持时按源默认地址下载
+                  需歌源支持对应音质，不支持时按源默认地址下载
                 </p>
                 <div className="flex gap-2">
                   {downloadQualityOptions.map(({ value, label }) => (
@@ -1051,7 +1080,7 @@ export function SettingsPage() {
                     <div>
                       <p className="font-text text-caption-strong text-white/80">默认下载目录</p>
                       <p className="font-text text-caption text-white/60 mt-0.5">
-                        设置后下载在线歌曲直接存入该目录，不再弹保存对话框
+                        设置后在线歌曲直接存入该目录，不再弹保存对话框
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -1075,14 +1104,14 @@ export function SettingsPage() {
           </section>
 
           <section className="card-utility p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">在线搜索</h2>
+            <h2 className="font-display text-tagline mb-4 text-white">在线源</h2>
             <div className="space-y-5">
               {/* 音乐源：应用不内置任何源，全部由用户按协议配置 */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="font-text text-caption-strong text-white/80">音乐源</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">配置符合协议的搜索接口，可添加多个</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">配置搜索接口，可添加多个</p>
                   </div>
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddMusicOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
@@ -1091,10 +1120,7 @@ export function SettingsPage() {
                 </div>
 
                 {onlineSources.length === 0 ? (
-                  <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-md px-3.5 py-6 text-center">
-                    <Cloud className="h-6 w-6 text-white/30 mx-auto mb-2" strokeWidth={1.4} />
-                    <p className="font-text text-caption text-white/50">尚未配置音乐源，在线搜索将不可用</p>
-                  </div>
+                  <p className="font-text text-caption text-white/50 px-1 py-1">尚未配置，在线搜索暂不可用</p>
                 ) : (
                   <div className="space-y-2.5">
                     {onlineSources.map((src) => (
@@ -1119,7 +1145,7 @@ export function SettingsPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="font-text text-caption-strong text-white/80">歌词源</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">用户配置优先生效，未命中时自动回退到内置歌词源兜底</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">配置优先生效，未命中时回退内置歌词源</p>
                   </div>
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddLyricsOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
@@ -1128,10 +1154,7 @@ export function SettingsPage() {
                 </div>
 
                 {lyricsSources.length === 0 ? (
-                  <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-md px-3.5 py-6 text-center">
-                    <FileText className="h-6 w-6 text-white/30 mx-auto mb-2" strokeWidth={1.4} />
-                    <p className="font-text text-caption text-white/50">尚未配置歌词源，将使用内置歌词源获取在线歌词</p>
-                  </div>
+                  <p className="font-text text-caption text-white/50 px-1 py-1">尚未配置，自动回退到内置歌词源</p>
                 ) : (
                   <div className="space-y-2.5">
                     {lyricsSources.map((src) => (
@@ -1167,10 +1190,7 @@ export function SettingsPage() {
                 </div>
 
                 {playlistResolverSources.length === 0 ? (
-                  <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-md px-3.5 py-6 text-center">
-                    <Cloud className="h-6 w-6 text-white/30 mx-auto mb-2" strokeWidth={1.4} />
-                    <p className="font-text text-caption text-white/50">尚未配置歌单解析源，分享链接导入不可用（纯文本导入不受影响）</p>
-                  </div>
+                  <p className="font-text text-caption text-white/50 px-1 py-1">尚未配置，分享链接导入不可用（纯文本导入不受影响）</p>
                 ) : (
                   <div className="space-y-2.5">
                     {playlistResolverSources.map((src) => (
@@ -1190,47 +1210,6 @@ export function SettingsPage() {
                 )}
               </div>
 
-            </div>
-          </section>
-
-          <section className="card-utility p-5">
-            <h2 className="font-display text-tagline mb-5 text-white">音频</h2>
-            <div className="space-y-4">
-              <div>
-                <p className="font-text text-caption-strong mb-3 text-white/80">输出设备</p>
-                {devices.length === 0 ? (
-                  <p className="font-text text-caption text-white/60 py-2">未检测到可用的输出设备</p>
-                ) : (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="group w-full flex items-center justify-between gap-2 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-2.5 font-text text-caption text-white/80 outline-none hover:bg-white/[0.06] hover:border-white/14 focus:border-mint/50 transition-colors duration-200 ease-mineradio"
-                      >
-                        <span className="truncate text-left">
-                          {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '选择输出设备'}
-                        </span>
-                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-white/40 transition-transform duration-200 ease-mineradio group-data-[state=open]:rotate-180" strokeWidth={1.6} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-72 overflow-y-auto scrollbar-thin p-1">
-                      {devices.map((d) => (
-                        <DropdownMenuItem
-                          key={d.deviceId}
-                          onClick={() => handleDeviceChange(d.deviceId)}
-                          className="gap-2 rounded-xs px-2.5 py-2 text-[13px]"
-                        >
-                          <span className="truncate">{d.label}</span>
-                          {d.deviceId === selectedDeviceId && (
-                            <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-mint" strokeWidth={2} />
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                <p className="font-text text-caption text-white/40 mt-2">切换输出设备会影响当前播放</p>
-              </div>
             </div>
           </section>
 

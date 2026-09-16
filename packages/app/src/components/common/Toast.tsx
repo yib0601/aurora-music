@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, CheckCircle2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react'
 
 export interface ToastAction {
   label: string
@@ -8,7 +8,8 @@ export interface ToastAction {
 }
 
 export interface ToastOptions {
-  type?: 'success' | 'error'
+  /** info：进行中提示（旋转图标），用于下载开始等既非成功也非失败的过渡提示 */
+  type?: 'success' | 'error' | 'info'
   /** 自动关闭毫秒数；带操作按钮时默认 8000，否则 4000 */
   duration?: number
   action?: ToastAction
@@ -17,7 +18,7 @@ export interface ToastOptions {
 interface ToastItem {
   id: number
   message: string
-  type: 'success' | 'error'
+  type: 'success' | 'error' | 'info'
   duration: number
   action?: ToastAction
 }
@@ -73,6 +74,8 @@ export function ToastHost() {
         >
           {t.type === 'error' ? (
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-coral" strokeWidth={1.8} />
+          ) : t.type === 'info' ? (
+            <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-mint/80" strokeWidth={1.8} />
           ) : (
             <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint" strokeWidth={1.8} />
           )}

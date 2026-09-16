@@ -29,6 +29,7 @@ import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { toast } from '@/components/common/Toast'
 import { useDisplayTracks } from '@/hooks/useDisplayTracks'
+import { DuplicateSummaryHover } from '@/components/common/DuplicateInfo'
 import { VirtualTrackTable, VirtualTrackRow } from '@/components/VirtualTrackTable'
 import { VirtualCardGrid } from '@/components/VirtualCardGrid'
 import type { Track, SortField, LibraryTab } from '@/types'
@@ -84,7 +85,7 @@ const savedScrollPositions: Record<string, number> = {}
 export function LibraryPage() {
   // 展示用曲库：同一首歌在多来源都有时只留优先副本（本机优先，否则第一次扫到的）。
   // hidden 用于在页面上明示隐藏了多少条，避免「歌莫名变少了」而用户无从察觉
-  const { tracks, hidden: hiddenDuplicates } = useDisplayTracks()
+  const { tracks, hidden: hiddenDuplicates, groups: duplicateGroups } = useDisplayTracks()
   const viewMode = useLibraryStore((s) => s.viewMode)
   const setViewMode = useLibraryStore((s) => s.setViewMode)
   const scanFolders = useLibraryStore((s) => s.scanFolders)
@@ -270,6 +271,14 @@ export function LibraryPage() {
     ? (selectedGroup.type === 'album' ? albumGroups : artistGroups).find((g) => g.key === selectedGroup.key) ?? null
     : null
 
+  // 胜出副本 id → 重复组：行内徽标据此标记「该展示副本另有被隐藏的副本」。
+  // 分组详情等局部列表同样复用这张全局表（只标记，不影响行集合）。
+  const duplicateMap = useMemo(() => {
+    const map = new Map<string, (typeof duplicateGroups)[number]>()
+    for (const g of duplicateGroups) map.set(g.kept.id, g)
+    return map
+  }, [duplicateGroups])
+
   // 行内「立即播放/双击播放」使用的当前队列（分组详情页取该组歌曲，否则取排序后的全表）。
   // 用 ref 保存、点击时才读取：避免把 queue 数组当 prop 传给每一行——数据每次更新
   // 数组都会换引用，会让 memo 化的行全部重渲染。effect 里写入保证只记录已提交的渲染。
@@ -334,14 +343,10 @@ export function LibraryPage() {
             <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
               {tracks.length === 0 ? '导入音乐，开始构建你的专属音乐库' : `${tracks.length} 首歌曲`}
               {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
-                  被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效 */}
+                  被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效。
+                  悬停提示逐组列出具体名单——只给条数不给名单，用户无从核对 */}
               {hiddenDuplicates > 0 && (
-                <span
-                  className="ml-2 text-white/35"
-                  title="同一首歌（歌名 + 歌手 + 时长均相同）在多个来源都存在时只显示一份：本机文件优先，其次是第一次扫描到的。记录本身没有删除。"
-                >
-                  · 已隐藏 {hiddenDuplicates} 首重复曲目
-                </span>
+                <DuplicateSummaryHover hidden={hiddenDuplicates} groups={duplicateGroups} />
               )}
             </p>
           </div>
@@ -492,6 +497,7 @@ export function LibraryPage() {
                 liked={likedTracks.has(track.id)}
                 onPlay={handlePlayRow}
                 onCreatePlaylist={openCreatePlaylistDialog}
+                duplicateGroup={duplicateMap.get(track.id)}
               />
             ))}
           </div>
@@ -511,6 +517,7 @@ export function LibraryPage() {
             scrollRef={songsScrollRef}
             onPlayRow={handlePlayRow}
             onCreatePlaylist={openCreatePlaylistDialog}
+            duplicateMap={duplicateMap}
           />
         </div>
       ) : (
@@ -524,6 +531,7 @@ export function LibraryPage() {
             scrollRef={songsScrollRef}
             onPlayRow={handlePlayRow}
             onCreatePlaylist={openCreatePlaylistDialog}
+            duplicateMap={duplicateMap}
           />
         </div>
       )}

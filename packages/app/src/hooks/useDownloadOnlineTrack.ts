@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { toast } from '@/components/common/Toast'
+import { toast, dismissToast } from '@/components/common/Toast'
 import type { Track, DownloadQuality } from '@/types'
 
 /** 音质回退链：设置的档位不可用时，依次尝试其余档位，最终回退到源默认地址 */
@@ -38,6 +38,9 @@ export function useDownloadOnlineTrack() {
   const download = useCallback(async (track: Track) => {
     if (!track.onlineUrl || downloadingIdsRef.current.has(track.id)) return
     setDownloadingIds((prev) => new Set(prev).add(track.id))
+    // 下载发起即提示（桌面端无下载进度回调，这是唯一的过程反馈）；
+    // 后续完成/失败/取消提示出现时自动收起，避免多首连下时残留堆叠
+    const startToastId = toast(`正在下载「${track.title}」…`, { type: 'info', duration: 60000 })
     try {
       // 取该曲来源配置的附加请求头（Referer/UA 等），保证下载与搜索请求一致
       const source = useLibraryStore.getState().onlineSources.find((s) => s.id === track.onlineSource)
@@ -51,10 +54,12 @@ export function useDownloadOnlineTrack() {
         downloadDir || undefined
       )
       if (downloadDir) {
+        dismissToast(startToastId)
         toast(`下载完成\n已保存到：${savedPath}`)
       } else {
         // 本次走了保存对话框：提供「设为默认下载目录」操作，点击后不再每次询问
         const dir = savedPath.replace(/[\\/][^\\/]*$/, '')
+        dismissToast(startToastId)
         toast(`下载完成\n已保存到：${savedPath}`, {
           action: {
             label: '设为默认下载目录',
@@ -66,6 +71,8 @@ export function useDownloadOnlineTrack() {
         })
       }
     } catch (err: any) {
+      // 下载终态出现（完成/失败/用户在保存对话框取消）：收起「正在下载」提示
+      dismissToast(startToastId)
       // 用户在保存对话框点了取消，不算失败
       if (err?.message !== '已取消保存' && err?.message !== '缺少存储权限') {
         toast(err?.message || '下载失败，请稍后重试', { type: 'error' })

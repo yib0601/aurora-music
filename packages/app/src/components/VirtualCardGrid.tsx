@@ -18,6 +18,8 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, cn } from '@/lib/utils'
 import { CoverImage } from '@/components/common/CoverImage'
 import { PlaylistSubmenuItems } from '@/components/VirtualTrackTable'
+import { DuplicateBadge } from '@/components/common/DuplicateInfo'
+import type { DuplicateGroup } from '@aurora/shared'
 import type { Track } from '@/types'
 
 /**
@@ -48,12 +50,15 @@ export const TrackCard = memo(function TrackCard({
   liked,
   onPlay,
   onCreatePlaylist,
+  duplicateGroup,
 }: {
   track: Track
   idx: number
   liked: boolean
   onPlay: (idx: number) => void
   onCreatePlaylist: (trackId: string) => void
+  /** 该副本另有被隐藏的重复副本时传入，卡片展示「重复」徽标 */
+  duplicateGroup?: DuplicateGroup<Track>
 }) {
   const navigate = useNavigate()
 
@@ -102,8 +107,9 @@ export const TrackCard = memo(function TrackCard({
               />
             </button>
           </div>
-          <p className="font-text text-[14px] font-semibold truncate text-white tracking-[-0.224px]">
-            {track.title}
+          <p className="flex items-center gap-1.5 min-w-0 font-text text-[14px] font-semibold text-white tracking-[-0.224px]">
+            <span className="truncate">{track.title}</span>
+            {duplicateGroup && <DuplicateBadge group={duplicateGroup} />}
           </p>
           <p className="font-text text-[12px] text-white/50 truncate mt-0.5 tracking-[-0.12px]">
             {track.artist}
@@ -151,11 +157,14 @@ export const VirtualCardGrid = memo(function VirtualCardGrid({
   scrollRef,
   onPlayRow,
   onCreatePlaylist,
+  duplicateMap,
 }: {
   tracks: Track[]
   scrollRef: RefObject<HTMLDivElement>
   onPlayRow: (index: number) => void
   onCreatePlaylist: (trackId: string) => void
+  /** 胜出副本 id → 重复组：卡片「重复」徽标的数据来源 */
+  duplicateMap?: ReadonlyMap<string, DuplicateGroup<Track>>
 }) {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const [containerWidth, setContainerWidth] = useState(() => scrollRef.current?.clientWidth ?? 800)
@@ -213,6 +222,7 @@ export const VirtualCardGrid = memo(function VirtualCardGrid({
                 liked={likedTracks.has(track.id)}
                 onPlay={onPlayRow}
                 onCreatePlaylist={onCreatePlaylist}
+                duplicateGroup={duplicateMap?.get(track.id)}
               />
             ))}
           </div>
