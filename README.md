@@ -8,6 +8,10 @@
   <strong>Aurora Music</strong> — 一款跨平台的音乐播放器，基于 Electron + React + Vite 构建，移动端通过 Capacitor 打包为 Android 应用。
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue" alt="PolyForm Noncommercial License 1.0.0">
+</p>
+
 ---
 
 ## 截图
@@ -31,12 +35,14 @@
 ### 播放与音乐库
 
 - 🎵 **本地音乐播放** — 扫描本地文件夹，渐进式入库（边扫描边显示，无需等待全部解析完成）
-- 🔀 **智能播放控制** — 顺序/随机/单曲循环，播放队列管理
-- 📜 **歌词滚动** — 同步显示歌词（LRC 格式支持），支持配置多个在线歌词源自动匹配
+- 🗄️ **远端媒体库（WebDAV）** — 挂载群晖 / 威联通 / Nextcloud / rclone 等标准 WebDAV 服务，浏览并播放远端曲目，扫描入库后长期保留（桌面端）
+- 📥 **歌单导入** — 粘贴其他平台的歌单分享链接（经自配解析源解析）或纯文本（本地处理、零网络请求），自动匹配本地曲库，跨来源防串味
+- 🔀 **智能播放控制** — 顺序/随机/单曲循环，播放队列管理与去重
+- 📜 **歌词滚动** — 同步显示歌词（LRC 格式，含逐字尖括号时间戳），支持配置多个在线歌词源自动匹配
 - 📊 **音频可视化** — 内置频谱可视化器，动态主题色提取
 - 🔍 **快速搜索** — 按标题、艺术家、专辑搜索，附带历史搜索记录
 - ❤️ **收藏与最近播放** — 标记喜爱的歌曲，追踪播放历史与播放次数
-- 🌐 **在线搜索与下载** — 按歌源协议配置音源后，可在线搜索、试听并下载歌曲到本地音乐库
+- 🌐 **在线搜索与下载** — 按歌源协议配置音源后，可在线搜索、试听并下载歌曲到本地音乐库（启动时可自动恢复在线歌曲播放）
 
 ### 外观
 
@@ -54,11 +60,12 @@
 - 📱 **原生播放引擎** — MediaSession 前台服务，锁屏/后台稳定播放不中断
 - 🔒 **锁屏控件** — 系统锁屏界面与通知栏媒体控制，深度灭屏后自动恢复播放进度
 - 📂 **文件夹导入** — 系统文件夹选择器导入音乐，未授权存储权限时自动引导
+- ⬅️ **返回键分层处理** — 先关浮层再退路由，主屏二次确认退出
 - 🎛️ **移动端适配 UI** — 汉堡导航、全屏 Now Playing 页面
 
 ### 其他
 
-- ⬆️ **应用内更新提示** — 启动时检查新版本并展示更新横幅，按发行版推荐匹配的安装包（Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage）
+- ⬆️ **应用内更新** — 启动时检查新版本并展示更新横幅，按发行版推荐匹配的安装包（Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage），支持应用内下载并一键安装（进度对话框，下载可收起后台继续）
 
 ---
 
@@ -87,6 +94,15 @@
 ### 请求头
 
 请求头为可选 JSON 对象，用于需要鉴权或特定 Referer / User-Agent 的接口。
+
+### 网络存储（WebDAV）来源
+
+与上述三类「歌源」不同，这是会入库的持久曲库来源（设置 → 媒体库，仅桌面端）：
+
+- 支持标准 WebDAV 服务：群晖、威联通、Nextcloud、`rclone serve webdav` 等。
+- 配置项：服务器地址、用户名、口令与自定义请求头；添加后可先「测试连接」，再扫描入库。
+- 口令仅保存在本机配置中，不会写入曲库、也不会出现在播放地址里（远端请求由主进程代理）。
+- 移除来源时会连同该来源的曲目一起从音乐库删除（远端文件不受影响）。
 
 ---
 
@@ -140,7 +156,7 @@ aurora-music/
 │   │   └── dist/             # 构建输出
 │   ├── desktop/          # Electron 桌面应用
 │   │   ├── src/
-│   │   │   ├── ipc/         # IPC 处理器（扫描、数据库、在线搜索、窗口控制）
+│   │   │   ├── ipc/         # IPC 处理器（扫描、数据库、在线搜索、远端库、窗口控制）
 │   │   │   ├── main.ts      # Electron 主进程（无边框窗口 + 托盘）
 │   │   │   ├── preload.ts   # 上下文隔离 API 桥
 │   │   │   └── types.ts
@@ -154,9 +170,10 @@ aurora-music/
 │   │   │       ├── MediaSessionPlugin.kt     # WebView ↔ 原生播放桥
 │   │   │       └── PermissionPlugin.kt       # 存储权限桥
 │   │   └── capacitor.config.ts
-│   └── shared/           # @aurora/shared：歌源协议规范与执行器（音源/歌词源）
-├── scripts/              # 打包辅助脚本（postinst / postremove / build）
+│   └── shared/           # @aurora/shared：歌源协议规范与执行器、WebDAV 客户端、曲目身份识别
+├── scripts/              # 打包辅助脚本（postinst / postremove / build / APK 签名校验）
 ├── build-rpm.sh          # RPM 打包脚本（基于 fpm）
+├── build-deb.sh          # DEB 打包脚本
 ├── .github/workflows/    # CI：tag 触发 Release（Windows/Linux/Android）
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
@@ -180,7 +197,7 @@ aurora-music/
 | 桌面壳 | Electron 43（无边框 + 自定义缩放 + 托盘）|
 | 移动端 | Capacitor 6（Android 原生播放引擎 + MediaSession）|
 | 本地数据库 | better-sqlite3 / @capacitor-community/sqlite + music-metadata |
-| 歌源协议 | @aurora/shared（音源/歌词源协议规范与执行器）|
+| 歌源协议 | @aurora/shared（音源/歌词源协议规范与执行器、WebDAV 客户端）|
 | 包管理 | pnpm workspace monorepo |
 
 ---
@@ -326,4 +343,13 @@ adb uninstall com.aurora.music   # 或在手机上长按图标 → 卸载
 
 ## 许可
 
-[MIT](./LICENSE) © 2026 yib0601
+本项目采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)（**非商用协议**）。
+
+**中文摘要**（非法律意见，以协议原文为准）：
+
+- ✅ 允许：个人使用、学习、研究、二次修改与分发（须附带协议条款与版权声明）
+- ❌ 禁止：任何以商业为目的的使用、分发或衍生（包括但不限于商业运营、打包进商业产品、提供付费服务）
+- 公益、教育、公共研究等非营利组织的使用不受限制
+- 如需商业授权，请联系仓库作者
+
+> 注意：v0.4.2 及更早版本发布时采用 MIT 协议，那些已发布版本的授权不受本次变更影响；本协议自其后的版本起生效。

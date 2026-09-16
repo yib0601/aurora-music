@@ -29,7 +29,7 @@ fpm -s dir -t rpm \
   --url "https://github.com/aurora-music/aurora-music" \
   --vendor "Aurora Music" \
   --maintainer "Aurora Music <aurora-music@example.com>" \
-  --license "MIT" \
+  --license "PolyForm-Noncommercial-1.0.0" \
   --category "AudioVideo" \
   --rpm-digest sha256 \
   --after-install scripts/postinst.sh \

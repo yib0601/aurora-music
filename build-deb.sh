@@ -36,7 +36,7 @@ fpm -s dir -t deb \
   --url "https://github.com/aurora-music/aurora-music" \
   --vendor "Aurora Music" \
   --maintainer "Aurora Music <aurora-music@example.com>" \
-  --license "MIT" \
+  --license "PolyForm-Noncommercial-1.0.0" \
   --category "sound" \
   --depends "libxtst6" \
   --depends "libuuid1" \
