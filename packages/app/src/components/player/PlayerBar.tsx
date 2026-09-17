@@ -97,14 +97,21 @@ export function PlayerBar({
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
 
   // ───────────────────────── 移动端紧凑布局 ─────────────────────────
-  // 去掉桌面 grid + 音量控件；触控目标 ≥ 44×44；封面/标题点击进全屏 Now Playing
+  // 去掉桌面 grid + 音量控件；触控目标 ≥ 44×44；整条点击进全屏 Now Playing
   if (mobile) {
     const openNowPlaying = () => {
+      // 空态（无当前歌曲）也允许展开全屏播放器，由它展示空态引导，
+      // 避免「点哪都没反应」；有歌曲时展开全屏 Now Playing
       if (onOpenNowPlaying) onOpenNowPlaying()
       else if (currentTrack) navigate(`/song/${currentTrack.id}`)
     }
     return (
-      <div className="glass-saved-panel rounded-[20px] px-3 py-2 flex items-center gap-1.5 relative overflow-hidden">
+      <div
+        onClick={openNowPlaying}
+        role="button"
+        aria-label="展开播放器"
+        className="glass-saved-panel rounded-[20px] px-3 py-2 flex items-center gap-1.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
+      >
         {/* 顶部进度细线：迷你条上一眼可见播放进度 */}
         <div className="absolute inset-x-0 top-0 h-[2px] bg-white/[0.08]">
           <div
@@ -116,11 +123,8 @@ export function PlayerBar({
             }}
           />
         </div>
-        <button
-          onClick={openNowPlaying}
-          title="展开播放器"
-          className="flex items-center gap-2.5 min-w-0 flex-1 py-1 active:scale-[0.99] transition"
-        >
+        {/* 封面 + 标题：整条热区的一部分，点击事件由外层容器统一处理 */}
+        <div className="flex items-center gap-2.5 min-w-0 flex-1 py-1">
           <div className="w-10 h-10 rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
             <CoverImage
               track={currentTrack}
@@ -137,11 +141,17 @@ export function PlayerBar({
               {currentTrack?.artist || '选择一首歌曲'}
             </p>
           </div>
-        </button>
+        </div>
 
+        {/* disabled 时 pointer-events-none：React 对 disabled 按钮跳过 onClick（stopPropagation
+            随之失效）且真实点击不派发事件，会让热区出现「死区」；穿透到外层容器后，
+            空态下点任意位置都统一展开全屏播放器 */}
         <button
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40"
-          onClick={onPrevious}
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40 disabled:pointer-events-none"
+          onClick={(e) => {
+            e.stopPropagation()
+            onPrevious()
+          }}
           disabled={!currentTrack}
           aria-label="上一首"
         >
@@ -149,8 +159,11 @@ export function PlayerBar({
         </button>
         {/* 主播放按钮与全屏播放页保持一致：mint 实心圆 + 深色图标 */}
         <button
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_6px_18px_rgba(0,245,212,.28),inset_0_1px_0_rgba(255,255,255,.25)] active:scale-95 transition disabled:opacity-40"
-          onClick={onTogglePlay}
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_6px_18px_rgba(0,245,212,.28),inset_0_1px_0_rgba(255,255,255,.25)] active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none"
+          onClick={(e) => {
+            e.stopPropagation()
+            onTogglePlay()
+          }}
           disabled={!currentTrack}
           aria-label={isPlaying ? '暂停' : '播放'}
         >
@@ -161,8 +174,11 @@ export function PlayerBar({
           )}
         </button>
         <button
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40"
-          onClick={onNext}
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40 disabled:pointer-events-none"
+          onClick={(e) => {
+            e.stopPropagation()
+            onNext()
+          }}
           disabled={!currentTrack}
           aria-label="下一首"
         >
