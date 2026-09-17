@@ -4,6 +4,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/common/Toast'
 import { useUpdateDownloadStore } from '@/stores/updateDownloadStore'
+import { isMobile } from '@/lib/utils'
+import {
+  canInstallApk,
+  installApk,
+  openInstallPermissionSettings,
+} from '@/services/mobile-update'
 
 /**
  * 内置更新下载/安装对话框（全局唯一实例，由 App 挂载）。
@@ -23,6 +29,7 @@ const INSTALL_HINT: Record<string, string> = {
   appimage: '启动新版本后将退出当前应用，直接运行新文件即完成更新',
   deb: '将打开系统终端执行 sudo 安装命令，输入密码确认即可',
   rpm: '将打开系统终端执行 sudo 安装命令，输入密码确认即可',
+  apk: '将调起系统安装界面，按提示确认安装；若提示未授权，请先允许本应用「安装未知应用」',
 }
 
 export function UpdateDownloadDialog() {
@@ -51,10 +58,24 @@ export function UpdateDownloadDialog() {
     }
   }
 
+  /**
+   * 点击安装：
+   * - Android：走 FileProvider 调起系统安装器；未授予「安装未知应用」时引导去设置页；
+   *   按产品要求只调起安装器，不做静默安装，用户仍需在系统界面确认。
+   * - 桌面端：交给 Electron 主进程按包类型启动安装器 / 终端。
+   */
   const handleInstall = async () => {
     if (!filePath || !task || installing) return
     setInstalling(true)
     try {
+      if (isMobile()) {
+        const result = await installApk(filePath)
+        if (!result.launched && result.needPermission) {
+          toast('请先允许本应用安装未知应用，授权后回来再次点击「去安装」', { duration: 8000 })
+          await openInstallPermissionSettings()
+        }
+        return
+      }
       const api = (window as any).electronAPI.updater
       const result = await api.install(filePath, task.kind)
       if (result?.action === 'terminal') {
@@ -135,18 +156,21 @@ export function UpdateDownloadDialog() {
               <p className="font-text text-[11px] leading-4 text-white/45">{INSTALL_HINT[task.kind]}</p>
             )}
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={handleReveal}>
-                <FolderOpen className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.8} />
-                打开文件夹
-              </Button>
-              {task && task.kind !== 'apk' && (
+              {/* 「打开文件夹」依赖桌面端 shell.showItemInFolder；移动端无对等能力，隐藏 */}
+              {!isMobile() && (
+                <Button variant="ghost" size="sm" onClick={handleReveal}>
+                  <FolderOpen className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.8} />
+                  打开文件夹
+                </Button>
+              )}
+              {task && (
                 <Button size="sm" onClick={handleInstall} disabled={installing}>
                   {installing ? (
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
                   ) : (
                     <Download className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.8} />
                   )}
-                  现在安装
+                  {isMobile() ? '去安装' : '现在安装'}
                 </Button>
               )}
               <Button variant="secondary" size="sm" onClick={reset}>

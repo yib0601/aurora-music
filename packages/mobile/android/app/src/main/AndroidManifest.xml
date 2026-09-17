@@ -12,6 +12,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Android 13+ 通知栏媒体控件需要运行时申请 POST_NOTIFICATIONS -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 应用内更新：调起系统安装器安装下载好的 APK。
+         Android 8.0+ 还需用户在「安装未知应用」中为本应用单独授权（UpdatePlugin 负责引导） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 系统 DownloadManager 下载更新包（后台进行，App 被杀也不中断） -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 
     <application
         android:allowBackup="true"

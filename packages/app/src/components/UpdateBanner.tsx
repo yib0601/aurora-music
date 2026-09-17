@@ -17,6 +17,7 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
     if (inAppAvailable) {
       const started = startInAppDownload({
         url: info.assetUrl!,
+        altUrls: info.assetUrls,
         kind: info.assetKind!,
         version: info.version,
         label: info.assetLabel,

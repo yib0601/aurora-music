@@ -27,6 +27,29 @@ export interface UpdaterDonePayload {
 /** 支持的安装包类型白名单（渲染层传入，避免被伪造出任意文件） */
 const INSTALLER_KINDS = new Set(['apk', 'exe', 'appimage', 'deb', 'rpm'])
 
+/**
+ * 下载地址白名单：GitHub 官方域名，或「公共加速前缀 + GitHub 原始链接」。
+ * 与渲染层 services/update-source.ts 的前缀列表保持一致（主进程无法复用 app 包代码）。
+ * 任何其他域名一律拒绝，避免该 IPC 被利用来下载任意文件。
+ */
+const GITHUB_HOSTS = new Set(['github.com', 'objects.githubusercontent.com'])
+const PROXY_HOSTS = new Set(['gh-proxy.com', 'ghfast.top'])
+
+function hostOf(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' ? parsed.host.toLowerCase() : null
+  } catch {
+    return null
+  }
+}
+
+function isAllowedDownloadUrl(url: string): boolean {
+  const host = hostOf(url)
+  if (!host) return false
+  return GITHUB_HOSTS.has(host) || PROXY_HOSTS.has(host)
+}
+
 /** 下载中的请求；同一时间只允许一个，新请求会拒绝（渲染层已有互斥，这里兜底） */
 let activeAbort: AbortController | null = null
 
@@ -80,6 +103,54 @@ function uniquePath(dir: string, fileName: string): string {
 }
 
 /**
+ * 单个下载源的「建连超时」：大陆网络下直连 GitHub 失败时 TCP 建连会挂起
+ * 10~40s（不是立刻报错），必须先超时放弃再换下一个源，否则降级兜底形同虚设。
+ * 只约束「拿到响应头」这一步；开始写盘后不再限时，避免大包被误杀。
+ */
+const CONNECT_TIMEOUT_MS = 8000
+
+/**
+ * 组装下载候选地址列表（GitHub 官方直链 + 加速前缀）。
+ * 渲染层传入的 altUrls 只是「顺序建议」，每一项仍逐个校验：
+ * 只接受 GitHub 官方域名或白名单加速域名，避免被伪造出任意文件下载。
+ */
+function normalizeDownloadUrls(url: unknown, altUrls: unknown): string[] {
+  const raw = [url, ...(Array.isArray(altUrls) ? altUrls : [])]
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    if (!isAllowedDownloadUrl(item)) continue
+    if (seen.has(item)) continue
+    seen.add(item)
+    result.push(item)
+  }
+  return result
+}
+
+/** 带建连超时的 fetch：signal 由外部传入，超时只中断本次请求 */
+async function fetchWithConnectTimeout(url: string, signal: AbortSignal): Promise<Response> {
+  const timer = new AbortController()
+  const timeoutId = setTimeout(() => timer.abort(), CONNECT_TIMEOUT_MS)
+  const onAbort = () => timer.abort()
+  signal.addEventListener('abort', onAbort)
+  try {
+    return await fetch(url, {
+      headers: {
+        // GitHub release 资源的下载会 302 到 objects.githubusercontent.com，fetch 自动跟随
+        'User-Agent': 'Aurora-Music-Updater',
+        Accept: '*/*',
+      },
+      redirect: 'follow',
+      signal: timer.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
+/**
  * 向窗口发送事件的安全封装：handlers.ts 里的 sendToRenderer 是模块私有，
  * 这里由 registerUpdaterIpc 注入主窗口引用。
  */
@@ -88,10 +159,9 @@ let send: (channel: string, ...args: unknown[]) => void = () => {}
 export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[]) => void) {
   send = sender
 
-  ipcMain.handle('updater:download', async (_event, url: unknown, kind: unknown) => {
-    if (typeof url !== 'string' || !/^https:\/\/(objects\.githubusercontent\.com|github\.com)\//i.test(url)) {
-      throw new Error('下载地址无效')
-    }
+  ipcMain.handle('updater:download', async (_event, url: unknown, kind: unknown, altUrls: unknown) => {
+    const candidates = normalizeDownloadUrls(url, altUrls)
+    if (!candidates.length) throw new Error('下载地址无效')
     if (typeof kind !== 'string' || !INSTALLER_KINDS.has(kind)) {
       throw new Error('安装包类型无效')
     }
@@ -99,25 +169,38 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
 
     const abort = new AbortController()
     activeAbort = abort
-    const savePath = uniquePath(downloadDir(), fileNameFromUrl(url, kind))
+    // 文件名统一按 GitHub 官方原始链接推导：加速链接的 pathname 同样是原始链接
+    const savePath = uniquePath(downloadDir(), fileNameFromUrl(candidates[0], kind))
 
     try {
-      let resp: Response
-      try {
-        resp = await fetch(url, {
-          headers: {
-            // GitHub release 资源的下载会 302 到 objects.githubusercontent.com，fetch 自动跟随
-            'User-Agent': 'Aurora-Music-Updater',
-            Accept: '*/*',
-          },
-          redirect: 'follow',
-          signal: abort.signal,
-        })
-      } catch {
-        throw new Error('下载失败：网络连接异常')
+      // 多源依次尝试：直连 GitHub 失败（大陆网络常见）时自动换加速前缀。
+      // 只在「拿响应头」阶段失败时换源；已开始写盘后中断属于传输失败，
+      // 不重试以免把半截文件当成功（失败时下方会清理残留）。
+      let resp: Response | null = null
+      let connectError: unknown = null
+      for (const candidate of candidates) {
+        if (abort.signal.aborted) break
+        try {
+          const res = await fetchWithConnectTimeout(candidate, abort.signal)
+          if (!res.ok || !res.body) {
+            connectError = new Error(`服务器返回 HTTP ${res.status}`)
+            continue
+          }
+          resp = res
+          break
+        } catch (err) {
+          // 取消是用户意图，立刻退出，不再换源
+          if (abort.signal.aborted) break
+          connectError = err
+        }
       }
-      if (!resp.ok || !resp.body) {
-        throw new Error(`下载失败：服务器返回 HTTP ${resp.status}`)
+
+      if (!resp || !resp.body) {
+        if (abort.signal.aborted) throw new Error('已取消下载')
+        const detail = connectError instanceof Error ? connectError.message : ''
+        throw new Error(
+          /HTTP \d+/.test(detail) ? `下载失败：${detail}` : '下载失败：网络连接异常（已尝试所有下载源）'
+        )
       }
 
       const lengthHeader = resp.headers.get('content-length')
