@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic, ChevronUp } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn, formatTime, isMobile } from '@/lib/utils'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
@@ -96,8 +96,13 @@ export function PlayerBar({
   // 播放模式激活：shuffle 开启 或 repeat 非 off
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
 
-  // ───────────────────────── 移动端紧凑布局 ─────────────────────────
-  // 去掉桌面 grid + 音量控件；触控目标 ≥ 44×44；整条点击进全屏 Now Playing
+  // ───────────────────────── 移动端迷你条 ─────────────────────────
+  // 只保留「封面 + 标题」（整条热区，点击进全屏）与「播放/暂停」两件东西。
+  // 上一首/下一首/队列从迷你条移除：全屏播放页内本就有完整控件（含队列），
+  // Android 通知栏/锁屏媒体控制同样能切歌，功能没有净损失。
+  // 动因是单手可达性——原先右侧四个按钮占掉近半条宽度，而单手拇指的自然
+  // 落点恰在这片「点了不会进详情」的区域，导致必须特意挪到最左侧才能展开。
+  // 缩掉按钮后可点区域占到条宽的 ~80%，另加一枚淡色上箭头做可展开暗示。
   if (mobile) {
     const openNowPlaying = () => {
       // 空态（无当前歌曲）也允许展开全屏播放器，由它展示空态引导，
@@ -110,7 +115,7 @@ export function PlayerBar({
         onClick={openNowPlaying}
         role="button"
         aria-label="展开播放器"
-        className="glass-saved-panel rounded-[20px] px-3 py-2 flex items-center gap-1.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
+        className="glass-saved-panel rounded-[20px] pl-3 pr-2 py-2 flex items-center gap-2 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
       >
         {/* 顶部进度细线：迷你条上一眼可见播放进度 */}
         <div className="absolute inset-x-0 top-0 h-[2px] bg-white/[0.08]">
@@ -123,7 +128,7 @@ export function PlayerBar({
             }}
           />
         </div>
-        {/* 封面 + 标题：整条热区的一部分，点击事件由外层容器统一处理 */}
+        {/* 封面 + 标题：占满整条（除播放键），点击事件由外层容器统一处理 */}
         <div className="flex items-center gap-2.5 min-w-0 flex-1 py-1">
           <div className="w-10 h-10 rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
             <CoverImage
@@ -141,25 +146,20 @@ export function PlayerBar({
               {currentTrack?.artist || '选择一首歌曲'}
             </p>
           </div>
+          {/* 可展开暗示：整条都能点，这枚淡箭头只是让人一眼知道「这里能展开」 */}
+          <ChevronUp
+            className="h-4 w-4 flex-shrink-0 ml-auto mr-1 text-white/25"
+            strokeWidth={2}
+            aria-hidden
+          />
         </div>
 
-        {/* disabled 时 pointer-events-none：React 对 disabled 按钮跳过 onClick（stopPropagation
-            随之失效）且真实点击不派发事件，会让热区出现「死区」；穿透到外层容器后，
-            空态下点任意位置都统一展开全屏播放器 */}
+        {/* 主播放按钮与全屏播放页保持一致：mint 实心圆 + 深色图标。
+            disabled 时 pointer-events-none：React 对 disabled 按钮跳过 onClick
+            （stopPropagation 随之失效）且真实点击不派发事件，会让热区出现「死区」；
+            穿透到外层容器后，空态下点任意位置都统一展开全屏播放器 */}
         <button
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40 disabled:pointer-events-none"
-          onClick={(e) => {
-            e.stopPropagation()
-            onPrevious()
-          }}
-          disabled={!currentTrack}
-          aria-label="上一首"
-        >
-          <SkipBack className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
-        </button>
-        {/* 主播放按钮与全屏播放页保持一致：mint 实心圆 + 深色图标 */}
-        <button
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_6px_18px_rgba(0,245,212,.28),inset_0_1px_0_rgba(255,255,255,.25)] active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none"
+          className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_6px_18px_rgba(0,245,212,.28),inset_0_1px_0_rgba(255,255,255,.25)] active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none"
           onClick={(e) => {
             e.stopPropagation()
             onTogglePlay()
@@ -172,31 +172,6 @@ export function PlayerBar({
           ) : (
             <Play className="h-5 w-5 ml-0.5" fill="currentColor" strokeWidth={1.5} />
           )}
-        </button>
-        <button
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40 disabled:pointer-events-none"
-          onClick={(e) => {
-            e.stopPropagation()
-            onNext()
-          }}
-          disabled={!currentTrack}
-          aria-label="下一首"
-        >
-          <SkipForward className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
-        </button>
-        <button
-          className={cn(
-            'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
-            showQueuePanel ? 'text-mint bg-mint/[0.10]' : 'text-white/60',
-          )}
-          onClick={(e) => {
-            // 同桌面端：阻止冒泡，避免刚打开的浮层被 document 外部点击监听立刻关掉
-            e.stopPropagation()
-            toggleQueuePanel()
-          }}
-          aria-label="队列"
-        >
-          <ListMusic className="h-5 w-5" strokeWidth={1.5} />
         </button>
       </div>
     )
