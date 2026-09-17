@@ -19,10 +19,11 @@ const electronAPI = {
   }> => ipcRenderer.invoke('system:getInfo'),
   // 内置软件更新：主进程流式下载安装包到「下载」目录（进度经事件推送），
   // 下载完成后可直接启动安装器（exe）/ 新版本（AppImage），或打开终端执行
-  // sudo 覆盖安装命令（deb/rpm）。url 只接受 GitHub release 资源直链。
+  // sudo 覆盖安装命令（deb/rpm）。url/altUrls 只接受 GitHub release 资源直链
+  // 与白名单加速链接；altUrls 为候选加速源，主进程在直连失败时依次降级重试。
   updater: {
-    download: (url: string, kind: string): Promise<{ filePath: string }> =>
-      ipcRenderer.invoke('updater:download', url, kind),
+    download: (url: string, kind: string, altUrls?: string[]): Promise<{ filePath: string }> =>
+      ipcRenderer.invoke('updater:download', url, kind, altUrls ?? []),
     cancel: (): Promise<void> => ipcRenderer.invoke('updater:cancel'),
     // 在文件管理器中定位安装包
     reveal: (filePath: string): Promise<void> => ipcRenderer.invoke('updater:reveal', filePath),

@@ -2,4 +2,7 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+    <!-- 应用内更新：UpdatePlugin 把 APK 下载到 getExternalFilesDir(DIRECTORY_DOWNLOADS)，
+         安装时经 FileProvider 以 content:// 共享给系统安装器（Android 7.0+ 禁止 file:// 跨应用） -->
+    <external-files-path name="update_downloads" path="Download" />
 </paths>

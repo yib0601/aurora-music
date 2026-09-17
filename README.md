@@ -65,7 +65,8 @@
 
 ### 其他
 
-- ⬆️ **应用内更新** — 启动时检查新版本并展示更新横幅，按发行版推荐匹配的安装包（Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage），支持应用内下载并一键安装（进度对话框，下载可收起后台继续）
+- ⬆️ **应用内更新** — 启动时检查新版本并展示更新横幅，按平台推荐匹配的安装包（Windows 给 EXE、Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage、Android 给 APK）。桌面端与 Android 均支持应用内下载（进度对话框，下载可收起后台继续），下载源按「GitHub 官方 → 公共加速前缀」自动降级；桌面端可一键安装，Android 下载完成后调起系统安装器
+- 📲 **Android 内置更新** — 下载在原生后台线程进行（不依赖系统 DownloadManager，定制 ROM 缺失该服务也能用），APK 落在应用私有目录无需存储权限；未授予「安装未知应用」时自动引导到系统授权页
 
 ---
 

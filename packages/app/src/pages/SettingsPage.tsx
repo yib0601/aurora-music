@@ -776,6 +776,7 @@ export function SettingsPage() {
     if (isInAppUpdateAvailable() && updateInfo.assetUrl && updateInfo.assetKind) {
       const started = startInAppDownload({
         url: updateInfo.assetUrl,
+        altUrls: updateInfo.assetUrls,
         kind: updateInfo.assetKind,
         version: updateInfo.version,
         label: updateInfo.assetLabel,
