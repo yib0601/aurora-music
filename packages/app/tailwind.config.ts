@@ -48,19 +48,13 @@ const config: Config = {
           'hair-2': 'var(--fc-hair-2)',
           accent: 'var(--fc-accent)',
           'accent-hov': 'var(--fc-accent-hov)',
-          blue: '#2442ff',
-          warm: '#f8f4ee',
+          // 单一辅助色（不参与交互语义，仅歌词高亮/装饰用）
+          'accent-2': 'var(--fc-accent-2)',
         },
         mint: 'rgb(var(--tw-mint) / <alpha-value>)',
         // mint 按钮/徽章上的前景色：深色主题深墨字、浅色主题白字（随 --tw-mint-fg 翻转）
         'mint-fg': 'rgb(var(--tw-mint-fg) / <alpha-value>)',
-        champagne: '#f4d28a',
         coral: 'rgb(var(--tw-coral) / <alpha-value>)',
-        chill: {
-          cyan: '#8fe9ff',
-          blue: '#73a7ff',
-          mint: '#9cffdf',
-        },
         // ===== DeepSeek Harness 色板（新增命名空间，不与上面任何 token 冲突）=====
         // 全部指向 --ds-color-* CSS 变量（由 src/styles/ds-tokens.css 定义 light/dark 双套值）。
         //

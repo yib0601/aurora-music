@@ -31,12 +31,16 @@
  * ---------------------------------------------------------------------------
  * 风格取向：结构 / 材质 / 排版 / 中性灰阶取自 DeepSeek Harness
  * （规范见 docs/design-system.md，取值唯一权威来源
- * src/styles/ds-tokens.css 的 `--ds-*`）；**主交互色保留 Mineradio mint**，
- * DS 品牌蓝仅作为新增的辅助可选色（--fc-ds-blue*），不参与交互语义。
+ * src/styles/ds-tokens.css 的 `--ds-*`）；**主交互色保留 Mineradio mint**。
+ *
+ * 配色体系（收敛为「2 色相 + 中性灰阶」，见下方变量块）：
+ *   主色 = mint（--fc-accent / --tw-mint），承担全部交互语义
+ *   辅助色 = 辅助蓝（--fc-accent-2），**不参与交互语义**，仅歌词高亮 / 装饰 / 频谱次色
+ *   其余一律走 DS 中性灰阶；危险语义单独用 --tw-coral
  *
  * 核心：
  *   1. 深色优先；页面底 / 表面 / 发丝边 / 文字灰阶按 DS 中性灰阶重排
- *   2. 主交互色 mint #00F5D4（浅色 #009C88），DS 蓝 #6799fe / #4d6bfe 为辅助
+ *   2. 主交互色 mint #00F5D4（浅色 #009C88）
  *   3. 玻璃材质：模糊半径向 DS 的 --ds-blur-glass(12px) 收敛，阴影层数大幅精简
  *   4. SVG 玻璃滤镜（control-glass-svg-ok 启用 url() 滤镜，由 GlassSvgFilter 组件提供）
  *   5. 字体：**保持项目原有中文优先栈不变**（设计稿不引入商业品牌字体，避免版权风险）
@@ -62,19 +66,15 @@
     --fc-accent: #00F5D4;
     --fc-accent-hov: #00E0BE;
     --fc-accent-rgb: 0, 245, 212;
-    /* DS 品牌蓝（辅助可选色，明暗两套下取值不同故两处都声明；默认不被交互语义使用） */
-    --fc-ds-blue: #6799fe;
-    --fc-ds-blue-deep: #fff;
-    --fc-ds-blue-medium: #fff;
-    --fc-ds-blue-light: #73a3d2;
-    --fc-blue: #2442ff;
-    --fc-warm: #f8f4ee;
-    --chill-cyan: #8fe9ff;
-    --chill-blue: #73a7ff;
-    --chill-mint: #9cffdf;
-    --champagne: #f4d28a;
-    --champagne-deep: #9a6f2c;
-    --coral: #ff5367;
+    /* ===== 配色体系：mint 主色 + 单一辅助色 + DS 中性灰阶 =====
+     * 收敛原则（避免「两套颜色词汇并行」）：
+     *   - 交互语义色只有 mint 一个（--fc-accent / --tw-mint / --chill-* 已删）
+     *   - 辅助色只有 DS 蓝一个，**不参与交互语义**，仅用于歌词高亮与装饰
+     *   - 其余一律走 DS 中性灰阶，不再新增第三、第四色相
+     * 历史遗留的 --chill-cyan/-blue/-mint、--champagne*、--coral、--fc-blue、
+     * --fc-warm、--fc-ds-blue* 全部 0 引用，已删除；原先实际使用的
+     * 香槟金（频谱 42°、TitleBar hover）现统一走 --fc-accent-2。 */
+    --fc-accent-2: #4d9fd8;
 
     color-scheme: dark;
 
@@ -87,20 +87,40 @@
     /* mint 按钮上的前景色：深色主题 mint 很亮用深墨字，浅色主题 mint 加深后用白字 */
     --tw-mint-fg: 3 6 8;
 
-    /* ===== 玻璃材质（DS 化：模糊 12px、极轻发丝边、阴影层数精简） =====
-     * DS --ds-blur-glass = 12px，--ds-color-bg-surface-* 为半透明白叠加 */
-    --glass-regular-bg: rgba(18,18,18,.72);
-    --glass-strong-bg: rgba(20,20,20,.82);
-    --glass-subtle-bg: rgba(16,16,16,.55);
-    --glass-edge-highlight: rgba(255,255,255,.10);
-    --glass-edge-highlight-strong: rgba(255,255,255,.12);
-    --glass-strong-shadow: 0 8px 24px rgba(0,0,0,.34);
-    --glass-floating-bg: linear-gradient(145deg, rgba(24,24,24,.88), rgba(10,10,10,.92));
-    --glass-floating-border: rgba(255,255,255,.08);
-    --glass-floating-shadow: 0 16px 48px rgba(0,0,0,.40), inset 0 1px 0 rgba(255,255,255,.08);
-    --glass-popover-bg: rgba(20,20,20,.86);
-    --glass-popover-border: rgba(255,255,255,.08);
-    --glass-popover-shadow: 0 12px 32px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.08);
+    /* ===== 玻璃材质（通透化重做） =====
+     * 改造前问题：底为 rgba(18,18,18,.72)，72% 不透明的近黑把背景「盖住」，
+     * 玻璃只呈现自己的深灰，看不出背后色场 —— 模糊白付。
+     * 现采用参考站实测的做法：玻璃底是「压暗场」而非「不透明灰」——
+     * 参考站代码卡片用 rgba(0,0,0,.2)（20% 黑）叠在明亮色场上，既压住亮度
+     * 保证文字可读，又让色场色相完整透出。这里沿用同一思路，用低 alpha 的
+     * 冷调黑（带一点蓝，模拟玻璃散射）替代原来的 72% 近黑。 */
+    /* 玻璃底 = 「轻微压暗」+「白色提亮」两层叠加：
+     * 单用半透明黑，在色场较暗的区域玻璃会比页面更黑（像挖了个洞）；
+     * 叠一层极淡白后，玻璃在任何底色上都稳定地「比背景亮一档」，
+     * 这才是玻璃该有的存在感（对应 DS 的 surface 叠色哲学）。 */
+    /* 压暗层的冷黑 alpha 是「通透度」的主旋钮，不是模糊半径。
+     * 实测标定：受光场色 L≈0.0576 上，冷黑 .26 的 regular 玻璃合成后
+     * L≈0.0474（ΔL=-0.010）；而 floating/popover 原先用 .48/.50，
+     * 合成后 L≈0.027（ΔL=-0.030）—— 是 regular 的三倍压暗，
+     * 结果「浮层」比普通面板更不透，与层级语义相反。
+     * 现统一收敛：越靠上的层级压暗越轻，靠 inset 高光与投影区分层次，
+     * 而不是靠「谁更黑」。
+     * ⚠️ 上层浮层仍压得更暗一点点（.20 vs .16），因为浮层背后可能是
+     *    任意内容（歌词、封面），需要略强的可读性兜底。 */
+    --glass-regular-bg: linear-gradient(rgba(255,255,255,.055), rgba(255,255,255,.045)), rgba(0, 6, 14, .17);
+    --glass-strong-bg: linear-gradient(rgba(255,255,255,.075), rgba(255,255,255,.06)), rgba(0, 6, 14, .24);
+    --glass-subtle-bg: linear-gradient(rgba(255,255,255,.035), rgba(255,255,255,.03)), rgba(0, 6, 14, .10);
+    --glass-edge-highlight: rgba(255,255,255,.20);
+    --glass-edge-highlight-strong: rgba(255,255,255,.26);
+    --glass-strong-shadow: 0 8px 32px rgba(0,0,0,.26);
+    --glass-floating-bg: linear-gradient(rgba(255,255,255,.045), rgba(255,255,255,.045)), rgba(0, 8, 18, .24);
+    --glass-floating-border: rgba(255,255,255,.16);
+    --glass-floating-shadow: 0 16px 48px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.20);
+    --glass-popover-bg: linear-gradient(rgba(255,255,255,.045), rgba(255,255,255,.045)), rgba(0, 8, 18, .26);
+    --glass-popover-border: rgba(255,255,255,.16);
+    /* 下拉/弹层阴影沿用参考站 .ds-glass-dropdown 的三层结构：
+     * 1px 接触线 + 4px 环境晕 + 32px 柔和投影，全部低 alpha 纯黑。 */
+    --glass-popover-shadow: 0 0 1px 0 rgba(0,0,0,.20), 0 0 4px 0 rgba(0,0,0,.04), 0 12px 32px 0 rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.14);
 
     /* 表面层（DS 中性灰阶：surface-1 hsla(0,0%,100%,.06) / surface-2 .04） */
     --surface-card-bg: rgba(255,255,255,.06);
@@ -200,18 +220,18 @@
     --glass-shadow: 0 12px 32px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.08);
     --glass-shadow-focus: 0 14px 36px rgba(0,0,0,.32), 0 0 0 1px rgba(var(--fc-accent-rgb),.22), inset 0 1px 0 rgba(255,255,255,.10);
 
-    /* Saved 玻璃面板/按钮系统（DS 化：8 层阴影 → 2 层，半径对齐 DS panel/media） */
-    --saved-panel-glass-bg: rgba(255,255,255,.04);
-    --saved-panel-glass-filter: blur(12px) saturate(1.4);
+    /* Saved 玻璃面板/按钮系统（通透化：模糊提到 24px 量级 + 加强内高光与饱和） */
+    --saved-panel-glass-bg: rgba(255,255,255,.05);
+    --saved-panel-glass-filter: blur(24px) saturate(1.6) brightness(1.05);
     --saved-panel-glass-svg-filter: url(#mineradio-control-glass-filter) saturate(1);
-    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.22);
+    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 8px 32px rgba(0,0,0,.30);
     --saved-panel-glass-radius: 100px;
-    --saved-button-glass-bg: rgba(255,255,255,.04);
-    --saved-button-glass-filter: blur(12px) saturate(1.4);
+    --saved-button-glass-bg: rgba(255,255,255,.05);
+    --saved-button-glass-filter: blur(20px) saturate(1.5) brightness(1.05);
     --saved-button-glass-svg-filter: url(#mineradio-control-glass-filter) saturate(1);
-    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 14px rgba(0,0,0,.20);
-    --saved-button-glass-hover-bg: rgba(255,255,255,.08);
-    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 6px 18px rgba(0,0,0,.24);
+    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 4px 14px rgba(0,0,0,.26);
+    --saved-button-glass-hover-bg: rgba(255,255,255,.10);
+    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 6px 18px rgba(0,0,0,.30);
 
     /* 产品图阴影（未消费，统一走 DS 克制投影） */
     --product-shadow: 0 4px 16px rgba(0, 0, 0, 0.20);
@@ -221,10 +241,22 @@
     --ease-mineradio: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-mineradio-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
-    /* ambient 光晕（封面色驱动，默认薄荷青+香槟金） */
-    --ambient-from: rgba(0, 245, 212, 0.08);
-    --ambient-to: rgba(244, 210, 138, 0.04);
-    --ambient-glow: rgba(0, 245, 212, 0.06);
+    /* ===== ambient 色场（封面色驱动，默认品牌 mint + 深蓝） =====
+     * 通透感公式：玻璃 = 背后可折射的色彩 x 折射率。blur() 作用在近纯黑上
+     * 数学上等于无效果，因此这里必须给出「值得被折射」的高不透明度色场。
+     * 色值区间对齐参考站实测的三层极光（#1A3870 / #2D5F9E / #4A8AC4，
+     * opacity .3/.4/.2，blur 80/100/60px），本项目保留 mint 品牌色相。
+     * 注意参考站用的是「不透明色 + 元素 opacity」，本项目用「带 alpha 的色」。
+     * alpha 是实测标定的：参考站色场亮度 L≈0.05~0.069，
+     * 早先 .50/.62/.48 实测到 L≈0.07~0.11（过亮 1.6×），故回调至此。 */
+    --ambient-from: rgba(0, 214, 186, 0.34);
+    --ambient-to: rgba(20, 92, 158, 0.50);
+    --ambient-glow: rgba(74, 140, 200, 0.38);
+    /* 色场底层：给纯黑页面一个「有颜色的底」，让叠加色斑有基色可混。
+     * 这一点是通透感的隐形前提：纯黑底会把半透明色斑的饱和度吃掉大半。 */
+    --ambient-base: #0a1524;
+    /* 色场整体不透明度（原 0.7 偏弱，抬到 1 让色斑足量透出） */
+    --ambient-strength: 1;
 
     --tile-border-rgb: 255 255 255;
   }
@@ -257,11 +289,8 @@
     --fc-accent: #009C88;
     --fc-accent-hov: #008574;
     --fc-accent-rgb: 0, 156, 136;
-    /* DS 品牌蓝（浅色原值；辅助可选色） */
-    --fc-ds-blue: #4d6bfe;
-    --fc-ds-blue-deep: #3a65c2;
-    --fc-ds-blue-medium: #4176e6;
-    --fc-ds-blue-light: #73a3d2;
+    /* 辅助色（浅底加深版；与深色同一色相，仅压暗保证可读） */
+    --fc-accent-2: #2b7db5;
 
     /* shadcn 兼容变量（浅色）· 灰阶对齐 DS */
     --background: 0 0% 98%;
@@ -284,19 +313,24 @@
     --input: 0 0% 90%;
     --ring: 172 100% 30%;
 
-    /* 玻璃材质：磨砂白玻璃（DS 化：收敛阴影层数 + 发丝边） */
-    --glass-regular-bg: rgba(255,255,255,.72);
-    --glass-strong-bg: rgba(255,255,255,.86);
-    --glass-subtle-bg: rgba(255,255,255,.55);
+    /* 玻璃材质：浅色下是「提亮场」——同样降低不透明度让色场透出，
+     * 但方向相反（用半透明白提亮，而非半透明黑压暗）。
+     * 浅色底本身亮，玻璃需保留足够白度保证黑字可读，因此白度下限比
+     * 深色的压暗上限更保守：regular 收到 .40 后，黑字在受光场上仍 >7:1。
+     * floating/popover 原先 .68/.70 远超 regular，浮层反而最不透；
+     * 现收敛到与 regular 同量级（仅高一点保证弹层可读性）。 */
+    --glass-regular-bg: rgba(255,255,255,.40);
+    --glass-strong-bg: rgba(255,255,255,.56);
+    --glass-subtle-bg: rgba(255,255,255,.26);
     --glass-edge-highlight: rgba(255,255,255,.92);
     --glass-edge-highlight-strong: rgba(255,255,255,.96);
-    --glass-strong-shadow: 0 8px 24px rgba(0,0,0,.10);
-    --glass-floating-bg: linear-gradient(145deg, rgba(255,255,255,.94), rgba(249,249,249,.96));
+    --glass-strong-shadow: 0 8px 24px rgba(20,40,70,.10);
+    --glass-floating-bg: rgba(255,255,255,.56);
     --glass-floating-border: rgba(0,0,0,.08);
-    --glass-floating-shadow: 0 16px 44px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.9);
-    --glass-popover-bg: rgba(255,255,255,.94);
+    --glass-floating-shadow: 0 16px 44px rgba(20,40,70,.14), inset 0 1px 0 rgba(255,255,255,.9);
+    --glass-popover-bg: rgba(255,255,255,.58);
     --glass-popover-border: rgba(0,0,0,.08);
-    --glass-popover-shadow: 0 12px 32px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.9);
+    --glass-popover-shadow: 0 0 1px 0 rgba(0,0,0,.10), 0 0 4px 0 rgba(0,0,0,.03), 0 12px 32px 0 rgba(20,40,70,.12), inset 0 1px 0 rgba(255,255,255,.9);
 
     --glass-bg: linear-gradient(112deg, rgba(255,255,255,.74), rgba(250,250,250,.80) 48%, rgba(243,243,243,.86));
     --glass-bg-focus: linear-gradient(112deg, rgba(255,255,255,.84), rgba(252,252,252,.88) 50%, rgba(246,246,246,.92));
@@ -305,12 +339,12 @@
     --glass-shadow: 0 12px 32px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.85);
     --glass-shadow-focus: 0 14px 36px rgba(0,0,0,.12), 0 0 0 1px rgba(var(--fc-accent-rgb),.28), inset 0 1px 0 rgba(255,255,255,.9);
 
-    --saved-panel-glass-bg: rgba(255,255,255,.45);
-    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 8px 24px rgba(0,0,0,.08);
-    --saved-button-glass-bg: rgba(255,255,255,.50);
-    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 4px 14px rgba(0,0,0,.08);
-    --saved-button-glass-hover-bg: rgba(255,255,255,.68);
-    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 6px 18px rgba(0,0,0,.10);
+    --saved-panel-glass-bg: rgba(255,255,255,.42);
+    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 8px 24px rgba(20,40,70,.10);
+    --saved-button-glass-bg: rgba(255,255,255,.44);
+    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 4px 14px rgba(20,40,70,.10);
+    --saved-button-glass-hover-bg: rgba(255,255,255,.62);
+    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.92), 0 6px 18px rgba(20,40,70,.12);
 
     /* 表面分层（DS 浅色：白底叠加 + 黑发丝边） */
     --surface-card-bg: rgba(255,255,255,.80);
@@ -341,10 +375,16 @@
     --titlebar-btn-hover-shadow: 0 4px 12px rgba(0,0,0,.07);
     --titlebar-hover-accent: #8a6320;
 
-    /* ambient 光晕：浅色下稍增强，让白底玻璃有内容可折射 */
-    --ambient-from: rgba(0, 156, 136, 0.10);
-    --ambient-to: rgba(244, 210, 138, 0.14);
-    --ambient-glow: rgba(0, 156, 136, 0.08);
+    /* ambient 色场：浅色下同样需要足够强度，否则白底玻璃无内容可折射。
+     * 但浅色是「越加越亮」：alpha 过高会把底色冲到 L≈0.88，
+     * 白玻璃叠在近白场上等于消失。故浅色色斑必须比深色明显更轻。
+     * 色相与深色一致（mint → 辅助蓝），浅色下改用同色相的浅淡版本，
+     * 不再用与体系无关的香槟金。 */
+    --ambient-from: rgba(0, 176, 152, 0.22);
+    --ambient-to: rgba(77, 159, 216, 0.26);
+    --ambient-glow: rgba(56, 170, 235, 0.18);
+    --ambient-base: #eef3fa;
+    --ambient-strength: 1;
   }
 }
 
@@ -380,11 +420,8 @@ html:not(.dark) input[type='range'].volume-bar:active::-webkit-slider-thumb {
   box-shadow: 0 0 0 5px rgb(var(--tw-mint) / .22), 0 0 16px rgb(var(--tw-mint) / .55), 0 2px 8px rgba(20,24,40,.25);
 }
 
-/* 浅色下底部压暗层改为轻微的顶部提亮 + 底部微暗 */
-html:not(.dark) .ambient-backdrop::after {
-  background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(20,24,40,.05));
-  opacity: 0.5;
-}
+/* 浅色主题的色场由 --ambient-* token 驱动（见 html:not(.dark) 变量块），
+ * 此处不再覆盖 .ambient-blob，否则会盖掉色场本身。 */
 
 /* ===== 浅色主题可读性：低透明度文字加深 =====
  * 深色主题里 text-white/30~60 是"暗灰白"，视觉层级靠亮度差；
@@ -515,28 +552,31 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .glass-floating {
     border: 1px solid var(--glass-floating-border);
     background: var(--glass-floating-bg);
-    backdrop-filter: blur(12px) saturate(1.08);
-    -webkit-backdrop-filter: blur(12px) saturate(1.08);
+    /* 参考站浮层用较长模糊（其代码卡片 blur(24px)）：足够的模糊才能把背后色场
+     * 柔化成「色雾」而非可辨认的形状 —— 这是玻璃质感的关键。
+     * saturate 提升让透出的色场更鲜活；brightness 微提避免压暗后发灰。 */
+    backdrop-filter: blur(24px) saturate(1.5) brightness(1.06);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5) brightness(1.06);
     box-shadow: var(--glass-floating-shadow);
   }
 
   /* 通用玻璃面板（侧栏/标题栏/右侧 Now Playing） */
   .glass-regular {
     background: var(--glass-regular-bg);
-    backdrop-filter: blur(12px) saturate(1.25);
-    -webkit-backdrop-filter: blur(12px) saturate(1.25);
+    backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
     box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
   .glass-strong {
     background: var(--glass-strong-bg);
-    backdrop-filter: blur(14px) saturate(1.35);
-    -webkit-backdrop-filter: blur(14px) saturate(1.35);
+    backdrop-filter: blur(28px) saturate(1.6) brightness(1.06);
+    -webkit-backdrop-filter: blur(28px) saturate(1.6) brightness(1.06);
     box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight-strong), var(--glass-strong-shadow);
   }
   .glass-subtle {
     background: var(--glass-subtle-bg);
-    backdrop-filter: blur(10px) saturate(1.20);
-    -webkit-backdrop-filter: blur(10px) saturate(1.20);
+    backdrop-filter: blur(18px) saturate(1.4) brightness(1.04);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4) brightness(1.04);
     box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
 }
@@ -948,28 +988,103 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
   position: relative;
   isolation: isolate;
 }
+/* 底层：给页面一个「有颜色的底」。纯黑底会让任何半透明色斑严重降饱和，
+ * 这正是改造前色场几乎看不见的原因之一。 */
 .ambient-backdrop::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -2;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse 55% 45% at 20% 15%, var(--ambient-from), transparent 60%),
-    radial-gradient(ellipse 40% 35% at 75% 80%, var(--ambient-to), transparent 65%),
-    radial-gradient(ellipse 35% 25% at 40% 40%, var(--ambient-glow), transparent 70%);
-  opacity: 0.7;
-  transition: background 0.6s var(--ease-mineradio);
+  background-color: var(--ambient-base);
 }
-.ambient-backdrop::after {
-  content: '';
+/* 色场：多个独立色斑层，各自 filter: blur() 柔化边界。
+ * 技术依据（参考站实测）：其蓝色极光 = 「radial-gradient 色块 + filter: blur(60~100px)」，
+ * 而非 backdrop-filter —— filter 作用于元素自身、走合成层，
+ * 比 backdrop-filter 的逐帧重采样便宜得多。
+ *
+ * ⚠️ 关键：色斑必须**分层独立**，不能塞进同一个元素的 background 列表。
+ * 原因：多层 radial-gradient 在同一元素里会先叠加成一张图、再整体模糊，
+ * 结果是各色光互相中和成一片灰雾；分开成独立元素后，每层各自保持色相与边缘，
+ * 玻璃才折射得出「一条一条的光带」而不是「一团糊」。 */
+.ambient-blob {
   position: absolute;
-  inset: 0;
-  z-index: -1;
   pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(0,0,0,.06), rgba(0,0,0,.16));
-  opacity: 0.6;
+  z-index: -1;
+  border-radius: 50%;
+  will-change: transform;
+  /* 切歌时色斑平滑过渡（依赖上方 @property 注册；未注册则此项无效但不报错） */
+  transition: --ambient-from 0.9s var(--ease-mineradio),
+              --ambient-to 0.9s var(--ease-mineradio),
+              --ambient-glow 0.9s var(--ease-mineradio);
+}
+
+/* 主色斑：跟随封面主色，承担「一条可见的光带」的角色。
+ * inset:-20% 让色斑溢出容器，避免模糊后边缘露出直角。 */
+.ambient-blob--primary {
+  inset: -20%;
+  background: radial-gradient(circle at 18% 45%, var(--ambient-from) 0%, transparent 68%);
+  filter: blur(90px);
+  opacity: calc(var(--ambient-strength) * 0.95);
+  animation: ambient-drift-a 34s ease-in-out infinite alternate;
+}
+/* 次色斑：跟随封面次色，与主色斑拉开位置形成横向色相渐变 */
+.ambient-blob--secondary {
+  inset: -20%;
+  background: radial-gradient(ellipse 46% 62% at 78% 62%, var(--ambient-to) 0%, transparent 70%);
+  filter: blur(110px);
+  opacity: calc(var(--ambient-strength) * 1);
+  animation: ambient-drift-b 46s ease-in-out infinite alternate;
+}
+/* 高光斑：最亮的一层，位于画面中部偏下，是「通透感」的亮度来源。
+ * 没有这一层时，前两层只是「有色」，透不出「有光」。 */
+.ambient-blob--glow {
+  inset: -20%;
+  background: radial-gradient(ellipse 58% 40% at 50% 72%, var(--ambient-glow) 0%, transparent 66%);
+  filter: blur(80px);
+  opacity: calc(var(--ambient-strength) * 0.85);
+  animation: ambient-drift-c 40s ease-in-out infinite alternate;
+}
+/* 底层色阶：从顶部到底部做一个极轻的明度爬升，
+ * 让画面有「纵深」而不是均匀一块；透明到色，不引入新色相。 */
+.ambient-blob--depth {
+  inset: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--ambient-to) 22%, transparent) 62%,
+    color-mix(in srgb, var(--ambient-glow) 30%, transparent) 100%);
+  filter: none;
+  opacity: var(--ambient-strength);
+}
+
+/* 用 @property 把色场变量注册成「可插值类型」。
+ * 默认情况下自定义属性是离散的（DISCRETE），改值会瞬间跳变，
+ * 所以切歌时背景色是「啪」地换掉；注册成 <color> 后才能平滑过渡。
+ * 不支持 @property 的旧内核会忽略此块，退化为瞬时切换，不影响可用性。 */
+@property --ambient-from { syntax: '<color>'; inherits: true; initial-value: rgba(0, 245, 212, 0.28); }
+@property --ambient-to   { syntax: '<color>'; inherits: true; initial-value: rgba(20, 90, 150, 0.42); }
+@property --ambient-glow { syntax: '<color>'; inherits: true; initial-value: rgba(74, 138, 196, 0.26); }
+
+/* 色场缓慢漂移：让玻璃背后的可折射内容「活着」。幅度刻意很小，
+ * 且 transform 走合成层，不触发布局/重绘。
+ * 三层用不同周期与方向，避免整块同步移动带来的「贴纸感」。 */
+@keyframes ambient-drift-a {
+  from { transform: translate3d(-2%, -1.5%, 0) scale(1.03); }
+  to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
+}
+@keyframes ambient-drift-b {
+  from { transform: translate3d(2.5%, 1%, 0) scale(1.06); }
+  to   { transform: translate3d(-2%, -2.5%, 0) scale(1.01); }
+}
+@keyframes ambient-drift-c {
+  from { transform: translate3d(0, 2%, 0) scale(1.05); }
+  to   { transform: translate3d(1.5%, -1.5%, 0) scale(1.1); }
+}
+
+/* 尊重系统「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .ambient-blob { animation: none; }
 }
 
 /* ===== 歌词高亮（渐变文字 + 发光） =====
@@ -1004,12 +1119,20 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 .glass-flat .glass-search-box,
 .glass-flat .glass-popover {
   background: var(--fc-paper);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  /* !important 是必需的，不是偷懒：
+   * html.control-glass-svg-ok .glass-saved-panel（0,2,1）特异性高于
+   * .glass-flat .glass-saved-panel（0,2,0），不加 !important 时总开关会静默失效，
+   * 播放条仍按 24px 模糊重算 —— 恰好在「性能降级」模式下保留最贵的操作。
+   * 与下方 .resizing/.glass-perf-lite 的写法保持一致。 */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   box-shadow: none;
 }
-.glass-flat .ambient-backdrop::before,
-.glass-flat .ambient-backdrop::after { display: none; }
+/* 色斑是独立元素（可关），::before 是静态底（必须保留，否则背景变黑）。
+ * --depth 保留：它是纯 linear-gradient、无 filter，代价近似为零，
+ * 留着能让降级态背景仍有明度纵深，不至于退回一块死黑。 */
+.glass-flat .ambient-blob { display: none; }
+.glass-flat .ambient-blob--depth { display: block; }
 
 /* .resizing / .glass-perf-lite 性能降级
    - .resizing：窗口拖拽缩放期间
@@ -1035,6 +1158,10 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-.resizing .ambient-backdrop::before,
-.resizing .ambient-backdrop::after { opacity: 0; }
+/* .resizing 期间只需停掉「带 filter 的色斑」（blur 每帧重算昂贵），
+ * ::before 是静态纯色底、--depth 是无 filter 的线性渐变，都必须保留，
+ * 否则缩放时背景会闪黑。
+ * 同时停掉色场漂移动画，避免与窗口缩放叠加掉帧。 */
+.resizing .ambient-blob { opacity: 0; animation: none; }
+.resizing .ambient-blob--depth { opacity: var(--ambient-strength); }
 .resizing { cursor: inherit; }

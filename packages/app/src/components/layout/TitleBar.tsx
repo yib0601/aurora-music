@@ -8,8 +8,9 @@ import { isDesktop } from '@/lib/utils'
  * - 极简：移除品牌名，仅保留右侧窗口控制按钮
  * - 拖拽区域：titlebar-drag / titlebar-no-drag
  * - 按钮规格：38×30px + 圆角对齐 DS media 档（10px）+ 1px 发丝描边 hover
- *   - min/max hover 用香槟色（#fff1bd / rgba(244,210,138,.14)）
- *   - close hover 用珊瑚红（rgba(255,86,100,.86)）
+ *   - min/max hover 用辅助色（--fc-accent-2，体系内唯一辅助色相）
+ *   - close hover 用语义危险色（--tw-coral）
+ * 颜色一律走 token，不在此硬编码色值。
  * 仅视觉调整：onClick 绑定、title、图标与条件渲染逻辑均未改动。
  */
 export function TitleBar() {
@@ -52,14 +53,14 @@ export function TitleBar() {
         <button
           onClick={handleMinimize}
           title="最小化"
-          className={`${btnBase} hover:text-white dark:hover:text-[#fff1bd]`}
+          className={`${btnBase} hover:text-fc-accent-2`}
         >
           <Minus className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
         <button
           onClick={handleMaximize}
           title={isMaximized ? '还原' : '最大化'}
-          className={`${btnBase} hover:text-white dark:hover:text-[#fff1bd]`}
+          className={`${btnBase} hover:text-fc-accent-2`}
         >
           {isMaximized ? (
             <PanelTopClose className="h-3 w-3" strokeWidth={2} />

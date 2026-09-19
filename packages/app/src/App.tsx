@@ -725,6 +725,15 @@ function AppLayout() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground ambient-backdrop">
+      {/* 色场色斑层：四个独立元素，各自 filter: blur()。
+          必须分开成独立元素——若把多段 radial-gradient 塞进同一个元素的 background，
+          它们会先叠加成一张图再整体模糊，各色相互相中和成一片灰雾；
+          独立分层后每层各自保持色相与边缘，玻璃才折射得出「一条条光带」。
+          z-index:-1 + 根容器 isolation:isolate，保证始终沉在所有内容之下。 */}
+      <div aria-hidden className="ambient-blob ambient-blob--depth" />
+      <div aria-hidden className="ambient-blob ambient-blob--primary" />
+      <div aria-hidden className="ambient-blob ambient-blob--secondary" />
+      <div aria-hidden className="ambient-blob ambient-blob--glow" />
       {/* 歌曲详情页沉浸背景：封面模糊背景提升到窗口级，覆盖顶部标题栏区域，消除顶部黑边 */}
       {/* 延迟 320ms 挂载：等侧栏/瓷砖折叠动画结束再渲染背景，
           否则动画期间每帧重算模糊，展开过程严重掉帧；
