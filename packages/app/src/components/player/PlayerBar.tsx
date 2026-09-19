@@ -24,10 +24,14 @@ interface PlayerBarProps {
 }
 
 /**
- * Mineradio 悬浮胶囊控制台风格 PlayerBar
- * - 胶囊形玻璃面板（glass-saved-panel）
+ * PlayerBar（DS 皮肤）
+ * - 底部悬浮面板沿用项目既有玻璃类 glass-saved-panel（内部是纯透明 blur，不启用 SVG 位移滤镜），
+ *   它已登记在 globals.css 的 .glass-perf-lite / .resizing 降级名单中：
+ *   详情页折叠动画与窗口拖拽缩放期间 blur 会被强制关闭，不会逐帧重算模糊。
+ *   ⚠️ 不要新增未登记的自定义玻璃类——换掉类名的同时也就脱离了降级管辖。
+ * - 发丝描边 + DS 的 16/24px 圆角阶梯，去掉多层大投影
  * - 顶部进度条 + 三列控制网格（曲目信息 / 播放控制 / 音量）
- * - 主播放按钮使用 glass-saved-button 圆形玻璃
+ * - 主播放按钮为圆形实心 mint 块（DS 的 pill 语义 + 项目品牌色）
  * - 普通控制按钮使用 btn-icon（28×28，8px 圆角）
  *
  * ⚠️ 性能：isPlaying / progress / duration 在此自行订阅，
@@ -110,22 +114,22 @@ export function PlayerBar({
         onClick={openNowPlaying}
         role="button"
         aria-label="展开播放器"
-        className="glass-saved-panel rounded-[20px] px-3 py-2 flex items-center gap-1.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
+        className="glass-saved-panel rounded-[16px] border border-white/[0.06] px-3 py-2 flex items-center gap-1.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
       >
         {/* 顶部进度细线：迷你条上一眼可见播放进度 */}
-        <div className="absolute inset-x-0 top-0 h-[2px] bg-white/[0.08]">
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-white/[0.06]">
           <div
             className="h-full rounded-r-full transition-[width] duration-300 ease-linear"
             style={{
               width: `${progressPercent}%`,
               background: 'linear-gradient(to right, rgba(var(--fc-accent-rgb),.35), rgba(var(--fc-accent-rgb),.95))',
-              boxShadow: progressPercent > 0 ? '0 0 8px rgba(var(--fc-accent-rgb),.5)' : 'none',
+              boxShadow: progressPercent > 0 ? '0 0 6px rgba(var(--fc-accent-rgb),.32)' : 'none',
             }}
           />
         </div>
         {/* 封面 + 标题：整条热区的一部分，点击事件由外层容器统一处理 */}
         <div className="flex items-center gap-2.5 min-w-0 flex-1 py-1">
-          <div className="w-10 h-10 rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-[10px] flex-shrink-0 overflow-hidden bg-white/[0.04] flex items-center justify-center">
             <CoverImage
               track={currentTrack}
               alt={currentTrack?.title}
@@ -134,7 +138,7 @@ export function PlayerBar({
             />
           </div>
           <div className="min-w-0 flex flex-col">
-            <p className="text-[13px] font-bold text-white/92 truncate tracking-[-0.224px]">
+            <p className="text-[13px] font-medium text-white/92 truncate tracking-[-0.224px]">
               {currentTrack?.title || '未在播放'}
             </p>
             <p className="text-[10.5px] text-white/48 truncate tracking-[-0.12px]">
@@ -159,7 +163,7 @@ export function PlayerBar({
         </button>
         {/* 主播放按钮与全屏播放页保持一致：mint 实心圆 + 深色图标 */}
         <button
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_6px_18px_rgba(0,245,212,.28),inset_0_1px_0_rgba(255,255,255,.25)] active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none"
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_2px_4px_rgba(0,0,0,.16),inset_0_1px_0_rgba(255,255,255,.18)] active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none"
           onClick={(e) => {
             e.stopPropagation()
             onTogglePlay()
@@ -205,7 +209,7 @@ export function PlayerBar({
   // ───────────────────────── 桌面端三列网格（原布局） ─────────────────────────
   // 大屏（≥1500px，如 1080p@125% 全屏）整体放大一档，避免全屏下控件显得过小
   return (
-    <div className="glass-saved-panel rounded-[24px] px-[18px] min-[1500px]:px-6 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
+    <div className="glass-saved-panel border border-white/[0.06] rounded-[24px] px-[18px] min-[1500px]:px-6 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
       {/* 进度条 - 居中 */}
       <div className="flex items-center gap-3">
         <span className="text-[12px] min-[1500px]:text-[13px] text-white/50 w-12 text-right tabular-nums">
@@ -241,10 +245,10 @@ export function PlayerBar({
           <button
             onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
             title="查看歌曲详情"
-            className="w-[40px] h-[40px] min-[1500px]:w-12 min-[1500px]:h-12 rounded-[8px] flex-shrink-0 overflow-hidden bg-white/5 flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+            className="w-[40px] h-[40px] min-[1500px]:w-12 min-[1500px]:h-12 rounded-[10px] flex-shrink-0 overflow-hidden bg-white/[0.04] flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
             style={{
               boxShadow:
-                '0 6px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07)',
+                '0 2px 6px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.06)',
             }}
           >
             <CoverImage
@@ -255,7 +259,7 @@ export function PlayerBar({
             />
           </button>
           <div className="min-w-0 flex flex-col gap-0.5">
-            <p className="text-[12.5px] min-[1500px]:text-[14px] font-bold text-white/92 truncate hover:text-white hover:[text-shadow:0_0_12px_rgba(0,245,212,.16)] transition-all">
+            <p className="text-[12.5px] min-[1500px]:text-[14px] font-medium text-white/92 truncate transition-colors hover:text-white">
               {currentTrack?.title || '未在播放'}
             </p>
             <p className="text-[10.5px] min-[1500px]:text-[12px] text-white/48 truncate">
@@ -269,8 +273,7 @@ export function PlayerBar({
           <button
             className={cn(
               'btn-icon btn-xl',
-              playModeActive &&
-                'text-mint [text-shadow:0_0_8px_rgba(0,245,212,.12)]',
+              playModeActive && 'text-mint',
             )}
             onClick={onCyclePlayMode}
             title={
@@ -300,12 +303,12 @@ export function PlayerBar({
           >
             <SkipBack className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
           </button>
-          {/* 主播放按钮：圆形 glass-saved-button，44×44 */}
+          {/* 主播放按钮：圆形实心 mint（44×44），DS 的 pill 语义 + 项目品牌色 */}
           <button
-            className="glass-saved-button w-[44px] h-[44px] min-[1500px]:w-[52px] min-[1500px]:h-[52px] rounded-full flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none"
+            className="w-[44px] h-[44px] min-[1500px]:w-[52px] min-[1500px]:h-[52px] rounded-full bg-mint flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none shadow-[0_2px_6px_rgba(0,0,0,.18),inset_0_1px_0_rgba(255,255,255,.18)] transition-transform duration-200 ease-apple hover:scale-[1.03]"
             onClick={onTogglePlay}
             disabled={!currentTrack}
-            style={{ color: 'rgb(var(--tw-white) / .96)' }}
+            style={{ color: 'rgb(var(--tw-mint-fg))' }}
           >
             {isPlaying ? (
               <Pause className="h-[18px] w-[18px] min-[1500px]:h-[22px] min-[1500px]:w-[22px]" fill="currentColor" strokeWidth={1.5} />

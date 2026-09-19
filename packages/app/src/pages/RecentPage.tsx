@@ -93,8 +93,8 @@ export function RecentPage() {
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative mb-6">
-            <div className="absolute -inset-16 bg-gradient-to-b from-mint/8 to-transparent rounded-full blur-3xl" />
-            <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+            <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
+            <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
               <Clock className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
@@ -117,7 +117,7 @@ export function RecentPage() {
             <table className="w-full font-text text-body">
               {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
               <thead className="hidden md:table-header-group">
-                <tr className="border-b border-white/10">
+                <tr className="border-b border-white/[0.08]">
                   <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">标题</th>
                   <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">艺术家</th>
                   <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">专辑</th>
@@ -129,7 +129,7 @@ export function RecentPage() {
                   <ContextMenu key={track.id}>
                     <ContextMenuTrigger asChild>
                       <tr
-                        className="row-hover cursor-pointer border-b border-white/5 last:border-0 hover:bg-mint/[0.075]"
+                        className="row-hover cursor-pointer border-b border-white/[0.05] last:border-0"
                         onClick={() => handlePlay(track, idx)}
                       >
                         <td className="py-2 px-1.5 md:py-2.5 md:px-3 max-w-xs">
@@ -145,7 +145,7 @@ export function RecentPage() {
                                 }
                               }}
                               title="查看歌曲详情"
-                              className="w-11 h-11 md:w-9 md:h-9 rounded-[8px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+                              className="w-11 h-11 md:w-9 md:h-9 rounded-[10px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
                             >
                               <CoverImage
                                 track={track}

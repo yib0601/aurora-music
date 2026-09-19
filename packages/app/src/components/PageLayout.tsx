@@ -23,10 +23,12 @@ export function PageLayout({ title, subtitle, header, children, className }: Pag
     // 移动端收窄左右内边距、缩小大标题字号，避免小屏上内容拥挤
     // 全屏/超宽屏限宽居中：内容列拉满到 1400px+ 时表格行过宽、阅读松散，
     // max-w 让内容保持舒适行宽并与居中悬浮播放条形成一致的视觉轴
+    // 间距对齐 DS 阶梯（4/8/12/16/24/32/40/56/80），标题字重按 DS 取 500
+    // 并用 -0.02em 收紧字距（中文笔画多，正字距会显得松散）
     <div className={cn('flex flex-col h-full px-4 pt-4 md:px-8 md:pt-8 pb-[calc(100px+env(safe-area-inset-bottom))] lg:pb-32 mx-auto w-full max-w-[1200px]', className)}>
       {header ?? (title && (
         <div className="mb-6 md:mb-8">
-          <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+          <h1 className="font-display text-[24px] md:text-[32px] font-medium tracking-[-0.02em] text-white/[0.98] leading-tight">
             {title}
           </h1>
           {subtitle && (

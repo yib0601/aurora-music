@@ -1,0 +1,817 @@
+/* ============================================================================
+ * ds-components.css — DeepSeek Harness 设计风格 · 组件与效果层
+ * ----------------------------------------------------------------------------
+ * 来源：https://www.deepseek.com/harness/en/ 线上 CSS 的逆向精确提取
+ *       （原始素材 /tmp/ds.css；关键帧与计算样式见 /tmp/dshstyle/probe.json）。
+ *       所有规则均为原站原值，未做臆造；仅注释与分组为本项目新增。
+ *
+ * 作用域约定（与 ds-tokens.css 同一约定，重要）：
+ *   1. 所有类名以 `.ds-` 开头，命名空间天然与项目既有 `.fc-*` / Tailwind /
+ *      shadcn 隔离，**不会覆盖** Mineradio 主题（`--fc-*`、shadcn HSL 变量）。
+ *   2. 变量全部读取 `--ds-*`，不回写任何全局变量；本文件不改动 `:root`。
+ *   3. 依赖：需先引入 ds-tokens.css（提供两套 token），并在容器上挂
+ *      `data-ds-theme="light|dark"`。
+ *   4. 原站部分规则是浅色取向（如 `.ds-grid-bg` 的网格线用 rgba(0,0,0,.025)），
+ *      深色主题下的差异见对应规则上方的注释。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * 0. 可动画自定义属性（conic 旋转描边必需）
+ *    没有 @property 时 `--border-angle` 是离散字符串，无法插值，描边不会转。
+ * ------------------------------------------------------------------------- */
+@property --border-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* ---------------------------------------------------------------------------
+ * 1. 布局容器
+ *    原站断点递进：sm → min(100% - 48px, 1140px)
+ *                  md → min(100% - 144px, 1140px)
+ *                  lg → min(100% - 160px, 1280px)
+ * ------------------------------------------------------------------------- */
+.ds-container {
+  width: min(100% - 48px, 1140px);
+  margin-inline: auto;
+}
+
+@media (min-width: 768px) {
+  .ds-container {
+    width: min(100% - 144px, 1140px);
+  }
+}
+
+@media (min-width: 1560px) {
+  .ds-container {
+    width: min(100% - 160px, 1280px);
+  }
+}
+
+/* 首屏高度：移动端 100svh（规避移动浏览器地址栏抖动），桌面端固定 100vh 并封顶 */
+.ds-hero-height {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+@media (min-width: 768px) {
+  .ds-hero-height {
+    min-height: unset;
+    height: 100vh;
+    max-height: 1000px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. 按钮基类（共享）
+ *    变体：primary / secondary / ghost / ghost-static / liquid / text
+ * ------------------------------------------------------------------------- */
+.ds-btn-primary,
+.ds-btn-secondary,
+.ds-btn-ghost,
+.ds-btn-ghost-static,
+.ds-btn-liquid,
+.ds-btn-text {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--ds-radius-pill);
+  box-sizing: border-box;
+  font-family: var(--ds-font-sans);
+  font-weight: 500;
+  line-height: 120%;
+  text-decoration: none;
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* 径向扩散 hover：::after 从中心 scale(0) → scale(1)，z-index:-1 垫在文字下 */
+.ds-btn-primary::after,
+.ds-btn-secondary::after,
+.ds-btn-ghost::after,
+.ds-btn-ghost-static::after,
+.ds-btn-liquid::after,
+.ds-btn-text::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  opacity: 0;
+  z-index: -1;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.36s ease-out, opacity 0.1s ease;
+}
+
+.ds-btn-primary:hover::after,
+.ds-btn-secondary:hover::after,
+.ds-btn-ghost:hover::after,
+.ds-btn-ghost-static:hover::after,
+.ds-btn-liquid:hover::after,
+.ds-btn-text:hover::after {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.ds-btn-primary::after {
+  background: var(--ds-btn-primary-hover-bg);
+}
+
+.ds-btn-secondary::after {
+  background: var(--ds-btn-secondary-hover-bg);
+}
+
+.ds-btn-ghost::after {
+  background: var(--ds-btn-ghost-hover-bg);
+}
+
+.ds-btn-ghost-static::after {
+  background: var(--ds-btn-ghost-static-hover-bg);
+}
+
+.ds-btn-liquid::after {
+  background: var(--ds-btn-liquid-hover-bg);
+}
+
+.ds-btn-text::after {
+  background: var(--ds-btn-secondary-hover-bg);
+}
+
+/* --- primary：实心高对比主按钮 --- */
+.ds-btn-primary {
+  background: var(--ds-btn-primary-bg);
+  color: var(--ds-btn-primary-text);
+  border: 1px solid var(--ds-btn-primary-border);
+}
+
+/* --- secondary：玻璃按钮，hover 只过渡描边色 --- */
+.ds-btn-secondary {
+  background: var(--ds-btn-secondary-bg);
+  color: var(--ds-btn-secondary-text);
+  border: 1px solid var(--ds-btn-secondary-border);
+  backdrop-filter: blur(var(--ds-blur-glass));
+  -webkit-backdrop-filter: blur(var(--ds-blur-glass));
+  transition: border-color 0.35s ease;
+}
+
+.ds-btn-secondary:hover {
+  border-color: var(--ds-btn-secondary-hover-border);
+}
+
+/* --- ghost：跟随主题，字重 400 --- */
+.ds-btn-ghost {
+  background: var(--ds-btn-ghost-bg);
+  color: var(--ds-btn-ghost-text);
+  border: 1px solid var(--ds-btn-ghost-border);
+  font-weight: 400;
+  transition: border-color 0.2s;
+}
+
+.ds-btn-ghost:hover {
+  border-color: var(--ds-btn-ghost-hover-border);
+}
+
+/* --- ghost-static：文字恒定深色，用于浅色底图/封面之上 --- */
+.ds-btn-ghost-static {
+  background: var(--ds-btn-ghost-static-bg);
+  color: var(--ds-btn-ghost-static-text);
+  border: 1px solid var(--ds-btn-ghost-static-border);
+  transition: border-color 0.35s ease;
+}
+
+.ds-btn-ghost-static:hover {
+  border-color: var(--ds-btn-ghost-static-hover-border);
+}
+
+/* --- liquid：液体玻璃，靠内高光 + 外阴影塑造厚度 --- */
+.ds-btn-liquid {
+  border: none;
+  background: var(--ds-btn-liquid-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--ds-color-static-black);
+  box-shadow: 0 2px 8px rgba(115, 163, 210, 0.1),
+    inset 0 1px 1px hsla(0, 0%, 100%, 0.6);
+  transition: box-shadow 0.2s;
+}
+
+.ds-btn-liquid:hover {
+  box-shadow: 0 4px 12px rgba(115, 163, 210, 0.2),
+    inset 0 1px 1px hsla(0, 0%, 100%, 0.8);
+}
+
+/* --- text：无底文字按钮（字号/内距自带，与尺寸类解耦） --- */
+.ds-btn-text {
+  padding: var(--ds-space-3) 16px var(--ds-space-3) 22px;
+  background: transparent;
+  /* 链接型按钮取品牌强调色：默认 = 原站品牌蓝，可被 --ds-color-brand-accent 覆写 */
+  color: var(--ds-color-brand-accent);
+  border: 1px solid transparent;
+  transition: color 0.35s ease, border-color 0.35s ease;
+}
+
+/* --- 尺寸：-m / -s / -xs，并对齐内部 svg 与文字基线 --- */
+.ds-btn-m {
+  font-size: 15px;
+  padding: 11px 18px;
+}
+
+.ds-btn-m svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ds-btn-s {
+  font-size: 14px;
+  padding: var(--ds-space-2) var(--ds-space-3);
+}
+
+.ds-btn-s svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ds-btn-xs {
+  font-size: 14px;
+  padding: 6px 12px;
+}
+
+.ds-btn-xs svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 极窄屏（≤448px）按钮组纵向排布并撑满 */
+@media (max-width: 448px) {
+  .ds-cta-btn-group,
+  .ds-hero-cta-group,
+  .ds-mobile-menu-footer {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .ds-mobile-menu-footer .ds-btn-s {
+    font-size: 15px;
+    padding: var(--ds-space-3) 20px;
+    width: 100%;
+  }
+
+  .ds-mobile-menu-footer .ds-btn-s svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .ds-cta-btn-group > *,
+  .ds-cta-btn-group .ds-btn-secondary,
+  .ds-hero-cta-group > *,
+  .ds-hero-cta-group .ds-btn-secondary {
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. 文字层级
+ *    display / hero 使用 Montserrat 展示字，中文场景下 heading 类降字重
+ *    （`:lang(zh)` 规则，原站对 title 有此处理，此处对 heading 类一并适用）
+ * ------------------------------------------------------------------------- */
+.ds-text-display {
+  font-family: "Montserrat", var(--ds-font-sans);
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 140%;
+}
+
+@media (min-width: 768px) {
+  .ds-text-display {
+    font-size: 64px;
+  }
+}
+
+.ds-text-hero {
+  font-family: "Montserrat", var(--ds-font-sans);
+  font-size: 36px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 150%;
+}
+
+@media (min-width: 768px) {
+  .ds-text-hero {
+    font-size: 46px;
+  }
+}
+
+.ds-text-heading1 {
+  font-family: "Montserrat", var(--ds-font-sans);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 150%;
+}
+
+@media (min-width: 768px) {
+  .ds-text-heading1 {
+    font-size: 36px;
+  }
+}
+
+/* 原站未单独定义 heading2/heading3，按同级节奏（Montserrat · 500 · 150% · -.02em）
+   在 heading1 基础上降级推导，字号取 22px / 18px（MD 断点 28px / 20px）。 */
+.ds-text-heading2 {
+  font-family: "Montserrat", var(--ds-font-sans);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 150%;
+}
+
+@media (min-width: 768px) {
+  .ds-text-heading2 {
+    font-size: 28px;
+  }
+}
+
+.ds-text-heading3 {
+  font-family: "Montserrat", var(--ds-font-sans);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 150%;
+}
+
+@media (min-width: 768px) {
+  .ds-text-heading3 {
+    font-size: 20px;
+  }
+}
+
+/* 中文降字重：中文笔画密度高，500 字重在中文字体下视觉偏重 */
+.ds-text-display:lang(zh),
+:lang(zh) .ds-text-display,
+.ds-text-hero:lang(zh),
+:lang(zh) .ds-text-hero,
+.ds-text-heading1:lang(zh),
+:lang(zh) .ds-text-heading1,
+.ds-text-heading2:lang(zh),
+:lang(zh) .ds-text-heading2,
+.ds-text-heading3:lang(zh),
+:lang(zh) .ds-text-heading3,
+.ds-text-subtitle:lang(zh),
+:lang(zh) .ds-text-subtitle,
+.ds-text-title:lang(zh),
+:lang(zh) .ds-text-title {
+  font-weight: 400;
+}
+
+.ds-text-title {
+  font-family: var(--ds-font-sans);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 150%;
+}
+
+.ds-text-subtitle {
+  font-family: var(--ds-font-sans);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 150%;
+}
+
+.ds-text-body {
+  font-family: var(--ds-font-sans);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 160%;
+  text-wrap: pretty;
+}
+
+.ds-text-caption {
+  font-family: var(--ds-font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 150%;
+}
+
+.ds-text-xs {
+  font-family: var(--ds-font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 150%;
+}
+
+/* 品牌定制字标：Edit Undo 等宽 + 描边，用于 harness 字样 */
+.ds-font-harness {
+  font-family: Edit Undo, monospace;
+  font-size: 20px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ds-color-text-primary);
+  -webkit-text-stroke: 0.04em var(--ds-color-bg-page);
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. 背景网格（双向渐隐）
+ *    原站为浅色取向：网格线 rgba(0,0,0,.025)。
+ *    深色主题下请改挂同结构变量/覆写为 rgba(255,255,255,.025)，否则网格不可见。
+ * ------------------------------------------------------------------------- */
+.ds-grid-bg {
+  background-image: linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.025) 1px,
+      transparent 0
+    ),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.025) 1px, transparent 0);
+  background-size: 90px 90px;
+  background-position: 0 -12px;
+  -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      #000 15%,
+      #000 85%,
+      transparent
+    ),
+    linear-gradient(180deg, transparent 0, #000 15%, #000 85%, transparent);
+  -webkit-mask-composite: destination-in;
+  mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      #000 15%,
+      #000 85%,
+      transparent
+    ),
+    linear-gradient(180deg, transparent 0, #000 15%, #000 85%, transparent);
+  -webkit-mask-composite: source-in, xor;
+  mask-composite: intersect;
+}
+
+[data-ds-theme="dark"] .ds-grid-bg {
+  background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 0
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025) 1px, transparent 0);
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. 顶栏：固定包裹层 + 胶囊条 + 玻璃 :before + 滚动淡入
+ * ------------------------------------------------------------------------- */
+.ds-header-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  z-index: 50;
+  width: min(100% - 48px, 1140px);
+  padding: var(--ds-space-2) 0 0;
+}
+
+@media (min-width: 768px) {
+  .ds-header-wrapper {
+    width: min(100% - 144px, 1140px);
+    padding: var(--ds-space-2) 0 0;
+  }
+}
+
+@media (min-width: 1560px) {
+  .ds-header-wrapper {
+    width: min(100% - 160px, 1280px);
+  }
+}
+
+.ds-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 auto;
+  padding: 4px 0;
+  border-radius: var(--ds-radius-pill);
+  overflow: visible;
+  position: relative;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+/* 玻璃层：inset -1px 撑满并盖住 1px 边框，默认完全隐藏（含 visibility，
+   避免不可见元素仍参与命中测试/合成） */
+.ds-header-bar::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: var(--ds-color-bg-surface-raised);
+  backdrop-filter: blur(var(--ds-blur-glass));
+  -webkit-backdrop-filter: blur(var(--ds-blur-glass));
+  border: 1px solid var(--ds-color-border-default);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s ease-in-out, visibility 0s 0.4s;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.ds-header-bar.is-scrolled::before {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s ease-in-out, visibility 0s;
+}
+
+/* ---------------------------------------------------------------------------
+ * 6. 首屏入场动画
+ * ------------------------------------------------------------------------- */
+@keyframes ds-hero-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--enter-y, 20px));
+    filter: blur(var(--enter-blur, 0));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.ds-hero-enter {
+  animation: ds-hero-enter 0.8s ease-out backwards;
+}
+
+/* 错位入场：调用处内联
+   style="--enter-y:24px;--enter-blur:10px;animation-duration:.9s;animation-delay:.15s" */
+
+@keyframes arrow-sweep {
+  0% {
+    stroke-dashoffset: 20;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes blink {
+  0%,
+  to {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 7. Hero 卡片：conic 旋转描边 + hover 抬升
+ * ------------------------------------------------------------------------- */
+@keyframes rotating-border {
+  0% {
+    --border-angle: 0deg;
+  }
+
+  to {
+    --border-angle: 360deg;
+  }
+}
+
+.ds-hero-cta-block {
+  cursor: pointer;
+  position: relative;
+  background-color: var(--ds-color-bg-hero-cta);
+  border-color: var(--ds-color-border-input);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* 旋转描边：用 conic-gradient 铺满 + mask 挖空中心，只留 2px 环
+   默认 opacity 0，hover 才显形；动画常驻以便 hover 时角度连续 */
+.ds-hero-cta-block::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--border-angle),
+    rgba(58, 101, 194, 0.15) 0,
+    rgba(120, 170, 255, 0.7) 25%,
+    rgba(58, 101, 194, 0.15) 50%,
+    rgba(120, 170, 255, 0.7) 75%,
+    rgba(58, 101, 194, 0.15) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  animation: rotating-border 6s linear infinite;
+}
+
+.ds-hero-cta-block:hover::before {
+  opacity: 1;
+}
+
+.ds-hero-cta-block:hover {
+  background-color: hsla(0, 0%, 100%, 0.5);
+  border-color: transparent;
+}
+
+/* Hero 加入卡片：hover 抬升 4px + 背景/描边过渡，内部着色层轻微放大 */
+.ds-hero-join {
+  cursor: pointer;
+  background-color: var(--ds-color-bg-input);
+  border-color: var(--ds-color-border-input);
+  will-change: transform;
+  transform: translateZ(0);
+  transition: background-color 0.2s ease, border-color 0.2s ease,
+    transform 0.5s ease-out;
+}
+
+.ds-hero-join:hover {
+  background-color: var(--ds-color-bg-input-hover);
+  border-color: var(--ds-color-border-input-focus);
+  transform: translateY(-4px) translateZ(0);
+}
+
+/* 抬升卡片内的 ghost 按钮不参与径向扩散，避免与卡片背景叠加显脏 */
+.ds-hero-join .ds-btn-ghost::after {
+  display: none;
+}
+
+.ds-join-shader-bg {
+  will-change: transform;
+  transform: translateZ(0);
+  transition: transform 0.6s ease-out;
+}
+
+.ds-hero-join:hover .ds-join-shader-bg {
+  transform: scale(1.08) translateZ(0);
+}
+
+.ds-hero-join-title {
+  font-family: "Montserrat", var(--ds-font-sans);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 170%;
+  color: var(--ds-color-static-white);
+}
+
+.ds-hero-cta-title {
+  font-family: "Montserrat", var(--ds-font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 150%;
+  /* 标题取品牌强调色：默认原文为 --ds-color-brand-deep */
+  color: var(--ds-color-brand-accent);
+}
+
+:lang(zh) .ds-cjk-spacing {
+  letter-spacing: 0.1em;
+}
+
+/* ---------------------------------------------------------------------------
+ * 8. 玻璃下拉面板
+ * ------------------------------------------------------------------------- */
+.ds-glass-dropdown {
+  background: var(--ds-color-bg-overlay);
+  backdrop-filter: blur(var(--ds-blur-glass));
+  -webkit-backdrop-filter: blur(var(--ds-blur-glass));
+  border: 1px solid var(--ds-color-border-subtle);
+  border-radius: var(--ds-radius-panel);
+  box-shadow: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02),
+    0 12px 32px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+ * 9. 移动端全屏菜单
+ * ------------------------------------------------------------------------- */
+.ds-mobile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  background: var(--ds-color-bg-page);
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.ds-mobile-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ds-mobile-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--ds-space-5);
+  border: 1px solid transparent;
+}
+
+.ds-mobile-menu-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--ds-space-3) var(--ds-space-5);
+}
+
+.ds-mobile-menu-item {
+  display: flex;
+  align-items: center;
+  padding: var(--ds-space-5) 0;
+  border-bottom: 1px solid var(--ds-color-border-divider);
+  font-family: var(--ds-font-sans);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ds-color-text-primary);
+  text-decoration: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * 10. 语言切换（胶囊内的分段控件）
+ * ------------------------------------------------------------------------- */
+.ds-locale-toggle {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 3px;
+  border-radius: var(--ds-radius-pill);
+  border: 1px solid var(--ds-color-border-default);
+}
+
+.ds-locale-toggle-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-color-text-description);
+  transition: color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+
+.ds-locale-toggle-item.is-active {
+  background: var(--ds-color-bg-surface-raised);
+  color: var(--ds-color-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+ * 11. 无障碍：尊重系统「减少动态效果」
+ *     入场/描边/位移全部落定到终态，仅保留颜色与透明度过渡。
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .ds-hero-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  .ds-hero-cta-block::before {
+    animation: none;
+  }
+
+  .ds-hero-join,
+  .ds-join-shader-bg {
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .ds-hero-join:hover {
+    transform: none;
+  }
+
+  .ds-hero-join:hover .ds-join-shader-bg {
+    transform: none;
+  }
+
+  .ds-btn-primary::after,
+  .ds-btn-secondary::after,
+  .ds-btn-ghost::after,
+  .ds-btn-ghost-static::after,
+  .ds-btn-liquid::after,
+  .ds-btn-text::after {
+    transition: opacity 0.1s ease;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  .ds-header-bar::before,
+  .ds-mobile-menu,
+  .ds-locale-toggle-item {
+    transition-duration: 0.01ms;
+  }
+}

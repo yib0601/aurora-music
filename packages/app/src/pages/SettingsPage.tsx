@@ -102,8 +102,8 @@ function SourceEditorCard({
 
   return (
     <div
-      className={`bg-white/[0.04] border rounded-md px-3.5 py-3 transition-colors duration-200 ease-mineradio ${
-        enabled ? 'border-white/10' : 'border-white/10 opacity-60'
+      className={`bg-white/[0.03] border rounded-[10px] px-3.5 py-3 transition-colors duration-200 ease-mineradio ${
+        enabled ? 'border-white/[0.08]' : 'border-white/[0.08] opacity-55'
       }`}
     >
       <div className={`flex items-center gap-2 ${editing ? 'mb-2' : ''}`}>
@@ -124,7 +124,7 @@ function SourceEditorCard({
           aria-checked={enabled}
           onClick={() => onUpdate({ enabled: !enabled })}
           className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
-            enabled ? 'bg-mint' : 'bg-white/15'
+            enabled ? 'bg-mint' : 'bg-white/[0.12]'
           }`}
         >
           <span
@@ -138,7 +138,7 @@ function SourceEditorCard({
             variant="ghost"
             size="icon"
             title="编辑"
-            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
+            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
             <Pencil className="h-4 w-4" strokeWidth={1.6} />
@@ -147,7 +147,7 @@ function SourceEditorCard({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -160,7 +160,7 @@ function SourceEditorCard({
             value={apiUrlDraft}
             placeholder={placeholderUrl}
             onChange={(e) => setApiUrlDraft(e.target.value)}
-            className={`w-full bg-white/[0.03] border rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 ${
+            className={`w-full bg-white/[0.03] border rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 ${
               missingPlaceholders.length > 0 ? 'border-coral/60' : 'border-white/10'
             }`}
           />
@@ -189,7 +189,7 @@ function SourceEditorCard({
                   placeholder={'{"Authorization": "Bearer ..."}'}
                   onChange={(e) => handleHeadersChange(e.target.value)}
                   rows={2}
-                  className={`mt-1.5 w-full bg-white/[0.03] border rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 resize-none ${
+                  className={`mt-1.5 w-full bg-white/[0.03] border rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 resize-none ${
                     headersInvalid ? 'border-coral/60' : 'border-white/10'
                   }`}
                 />
@@ -290,7 +290,7 @@ function SourceAddDialog({
   }
 
   const inputCls =
-    'w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+    'w-full bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -417,7 +417,7 @@ function LibrarySourceAddDialog({
   }
 
   const inputCls =
-    'w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+    'w-full bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -554,10 +554,10 @@ function LibrarySourceCard({
   }
 
   const inputCls =
-    'w-full bg-white/[0.03] border border-white/10 rounded-sm px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+    'w-full bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
 
   return (
-    <div className="bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 hover:border-white/14 transition-colors duration-200 ease-mineradio">
+    <div className="bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 hover:border-white/[0.14] transition-colors duration-200 ease-mineradio">
       <div className="flex items-center gap-2">
         <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
         <div className="min-w-0 flex-1">
@@ -574,7 +574,7 @@ function LibrarySourceCard({
           title={source.enabled ? '已启用（启动时自动扫描该来源）' : '已停用（启动时不再自动扫描，可手动扫描）'}
           onClick={() => onUpdate({ enabled: !source.enabled })}
           className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
-            source.enabled ? 'bg-mint' : 'bg-white/15'
+            source.enabled ? 'bg-mint' : 'bg-white/[0.12]'
           }`}
         >
           <span
@@ -588,7 +588,7 @@ function LibrarySourceCard({
             variant="ghost"
             size="icon"
             title="编辑"
-            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-all duration-200 ease-mineradio"
+            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
             <Pencil className="h-4 w-4" strokeWidth={1.6} />
@@ -598,7 +598,7 @@ function LibrarySourceCard({
           variant="ghost"
           size="icon"
           title="移除来源（同时从音乐库移除该来源的歌曲）"
-          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -904,7 +904,7 @@ export function SettingsPage() {
     <PageLayout header={
       // 设置页内容列较窄（720px），居中放置与其他页面的 1200px 居中内容列共享同一视觉轴
       <div className="flex items-center gap-5 mb-8 max-w-[720px] mx-auto w-full">
-        <div className="w-16 h-16 rounded-xl glass-regular border border-white/10 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,.18)]">
+        <div className="w-16 h-16 rounded-[16px] glass-regular border border-white/[0.08] flex items-center justify-center">
           <SettingsIcon className="h-8 w-8 text-mint" strokeWidth={1.4} />
         </div>
         <div>
@@ -953,7 +953,7 @@ export function SettingsPage() {
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        className="group w-full flex items-center justify-between gap-2 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-2.5 font-text text-caption text-white/80 outline-none hover:bg-white/[0.06] hover:border-white/14 focus:border-mint/50 transition-colors duration-200 ease-mineradio"
+                        className="group w-full flex items-center justify-between gap-2 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-2.5 font-text text-caption text-white/80 outline-none hover:bg-white/[0.05] hover:border-white/[0.14] focus:border-mint/50 transition-colors duration-200 ease-mineradio"
                       >
                         <span className="truncate text-left">
                           {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '选择输出设备'}
@@ -999,13 +999,13 @@ export function SettingsPage() {
               ) : (
                 <div className="space-y-2">
                   {scanFolders.map((folder) => (
-                    <div key={folder} className="flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 hover:bg-white/[0.06] hover:border-white/14 transition-colors duration-200 ease-mineradio">
+                    <div key={folder} className="flex items-center justify-between bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 hover:bg-white/[0.05] hover:border-white/[0.14] transition-colors duration-200 ease-mineradio">
                       <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
                       <Button
                         variant="ghost"
                         size="icon"
                         title="移除目录（同时从音乐库移除该目录下的歌曲）"
-                        className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-all duration-200 ease-mineradio"
+                        className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
                         onClick={() => handleRemoveFolder(folder)}
                       >
                         <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -1096,7 +1096,7 @@ export function SettingsPage() {
                       </Button>
                     </div>
                   </div>
-                  <p className="font-text text-caption text-white/60 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3 truncate">
+                  <p className="font-text text-caption text-white/60 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 truncate">
                     {downloadDir ?? '未设置（每次下载都会询问保存位置）'}
                   </p>
                 </>
@@ -1229,7 +1229,7 @@ export function SettingsPage() {
               </div>
 
               {updateInfo && (
-                <div className="flex items-center justify-between bg-mint/[0.08] border border-mint/25 rounded-md px-3.5 py-3">
+                <div className="flex items-center justify-between bg-mint/[0.06] border border-mint/20 rounded-[10px] px-3.5 py-3">
                   <div className="min-w-0 mr-3">
                     <p className="font-text text-caption-strong text-white/90">
                       发现新版本 <span className="text-mint font-semibold">v{updateInfo.version}</span>
@@ -1271,14 +1271,14 @@ export function SettingsPage() {
               )}
 
               {updateState === 'latest' && (
-                <div className="flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3">
+                <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3">
                   <CheckCircle2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
                   <p className="font-text text-caption text-white/70">当前已是最新版本</p>
                 </div>
               )}
 
               {updateState === 'error' && (
-                <div className="flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-md px-3.5 py-3">
+                <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3">
                   <AlertCircle className="h-4 w-4 text-coral flex-shrink-0" strokeWidth={1.6} />
                   <p className="font-text text-caption text-white/70">检查失败，请确认网络后重试</p>
                 </div>

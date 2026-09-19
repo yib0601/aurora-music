@@ -33,10 +33,11 @@ const navItems = [
 ]
 
 /**
- * Mineradio 暗色玻璃风格 Sidebar
- * - 暗色优先，薄荷青（mint #00F5D4）为主色调
- * - active 态使用 mint/[0.10] 背景 + mint 微光 text-shadow
- * - hover 态使用 mint/[0.06] 背景，整体冷色调
+ * 侧边栏：Mineradio 品牌色 × DeepSeek Harness 结构语言
+ * - 品牌主色仍是 mint #00F5D4（项目识别），DS 负责结构/材质/排版
+ * - active 态按 DS 改为「surface 层级 + 1px 发丝描边」标识选中，
+ *   不再用大面积 mint 色块与 text-shadow 微光（DS Don't：不滥用发光）
+ * - 导航项圆角走 DS media 档（10px），间距走 DS 阶梯
  */
 export function Sidebar() {
   const navigate = useNavigate()
@@ -90,11 +91,11 @@ export function Sidebar() {
     <div className="flex-1 flex flex-col min-h-0 h-full">
       {/* 品牌区 */}
       <div className="flex items-center gap-3 px-4 py-5">
-        <div className="w-8 h-8 rounded-[10px] bg-mint flex items-center justify-center">
+        <div className="w-8 h-8 rounded-ds-media bg-mint flex items-center justify-center">
           <Music className="h-4 w-4 text-mint-fg" strokeWidth={2} />
         </div>
         <div className="flex flex-col">
-          <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-white/96 leading-tight">
+          <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-white/[0.96] leading-tight">
             Aurora
           </span>
           <span className="font-text text-[11px] text-white/40 leading-tight mt-0.5">
@@ -111,14 +112,14 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2.5 h-9 px-3 rounded-[10px] text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
+                'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
                 isActive
-                  ? 'bg-white/[0.08] border-white/10 text-white [text-shadow:0_0_12px_rgba(0,245,212,.18)] shadow-[inset_0_1px_0_rgba(255,255,255,.08)]'
+                  ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
                   : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
               )
             }
           >
-            <Icon className="h-[15px] w-[15px]" strokeWidth={1.5} />
+            <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
             {label}
           </NavLink>
         ))}
@@ -174,21 +175,21 @@ export function Sidebar() {
                       if (e.key === 'Enter') handleRename(pl.id)
                       if (e.key === 'Escape') { setEditingId(null); setEditingName('') }
                     }}
-                    className="h-7 text-[13px] px-2.5 py-0.5 flex-1 rounded-[8px]"
+                    className="h-7 text-[13px] px-2.5 py-0.5 flex-1 rounded-ds-sm"
                   />
                 ) : (
                   <NavLink
                     to={`/playlist/${pl.id}`}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center gap-2.5 h-9 px-3 rounded-[10px] flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
+                        'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
                         isActive
-                          ? 'bg-white/[0.08] border-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.08)]'
+                          ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
                           : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
                       )
                     }
                   >
-                    <ListMusic className="h-3.5 w-3.5 flex-shrink-0 opacity-50" strokeWidth={1.5} />
+                    <ListMusic className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint group-aria-[current=page]:opacity-100" strokeWidth={1.5} />
                     <span className="truncate text-[13px] tracking-[-0.224px]">{pl.name}</span>
                     <span className="text-[11px] text-white/30 ml-auto tabular-nums font-semibold">
                       {pl.trackIds.length}
@@ -200,7 +201,7 @@ export function Sidebar() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="rounded-[8px] opacity-0 group-hover:opacity-100 text-white/40 hover:text-white flex-shrink-0"
+                      className="rounded-ds-sm opacity-0 group-hover:opacity-100 text-white/40 hover:text-white flex-shrink-0"
                     >
                       <MoreHorizontal className="h-3 w-3" strokeWidth={1.5} />
                     </Button>

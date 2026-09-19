@@ -27,7 +27,7 @@ type RegisterRow = (id: string, el: HTMLDivElement | null) => void
 
 /** 行通用样式：content-visibility 让可视区外的行跳过渲染，百行级列表滚动不卡 */
 const ROW_CLASS =
-  'row-hover flex items-center gap-3 px-4 py-2.5 cursor-pointer group border-b border-white/5 last:border-0 hover:bg-mint/[0.075] [content-visibility:auto] [contain-intrinsic-size:auto_60px]'
+  'row-hover flex items-center gap-3 px-4 py-2 cursor-pointer group border-b border-white/[0.05] last:border-0 hover:bg-white/[0.04] [content-visibility:auto] [contain-intrinsic-size:auto_56px]'
 
 interface LocalResultRowProps {
   track: Track
@@ -72,7 +72,7 @@ const LocalResultRow = memo(function LocalResultRow({
         <div
           ref={rowRef}
           onMouseEnter={() => onHover(idx)}
-          className={cn(ROW_CLASS, isActive && 'bg-mint/[0.075]')}
+          className={cn(ROW_CLASS, isActive && 'bg-white/[0.06]')}
           onDoubleClick={() => onPlay(track, idx)}
         >
           {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
@@ -88,7 +88,7 @@ const LocalResultRow = memo(function LocalResultRow({
               onOpenDetail(track.id)
             }}
             title="查看歌曲详情"
-            className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+            className="w-10 h-10 rounded-[10px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
           >
             <CoverImage
               track={track}
@@ -111,7 +111,7 @@ const LocalResultRow = memo(function LocalResultRow({
               e.stopPropagation()
               onToggleLike(track.id)
             }}
-            className="h-7 w-7 flex items-center justify-center rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-apple hover:bg-mint/[0.075]"
+            className="h-7 w-7 flex items-center justify-center rounded-[10px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-apple hover:bg-mint/[0.075]"
           >
             <Heart
               className={cn('h-3.5 w-3.5', isLiked ? 'text-coral fill-coral' : 'text-white/40')}
@@ -195,7 +195,7 @@ const OnlineResultRow = memo(function OnlineResultRow({
         <div
           ref={rowRef}
           onMouseEnter={() => onHover(flatIdx)}
-          className={cn(ROW_CLASS, isActive && 'bg-mint/[0.075]')}
+          className={cn(ROW_CLASS, isActive && 'bg-white/[0.06]')}
           onDoubleClick={() => onPlay(track, idx, queue)}
         >
           {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
@@ -205,7 +205,7 @@ const OnlineResultRow = memo(function OnlineResultRow({
             </span>
             <Play className="w-3 h-3 absolute text-mint opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
           </span>
-          <div className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-10 h-10 rounded-[10px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden">
             {track.coverUrl ? (
               <img src={track.coverUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover product-shadow" referrerPolicy="no-referrer" />
             ) : (
@@ -221,7 +221,7 @@ const OnlineResultRow = memo(function OnlineResultRow({
           </span>
           {/* 音频实际来源后端标识（源提供 qualitySource 时展示，便于识别跨平台拼贴数据） */}
           {track.onlineAudioSource && (
-            <span className="font-text text-[10px] text-white/30 border border-white/10 rounded px-1 py-px hidden lg:block flex-shrink-0">
+            <span className="font-text text-[10px] text-white/30 border border-white/[0.08] rounded-[8px] px-1.5 py-px hidden lg:block flex-shrink-0">
               {track.onlineAudioSource}
             </span>
           )}
@@ -237,10 +237,10 @@ const OnlineResultRow = memo(function OnlineResultRow({
             title="下载歌曲"
             disabled={isDownloading}
             className={cn(
-              'h-7 w-7 flex items-center justify-center rounded-[8px] transition-opacity duration-200 ease-apple',
+              'h-7 w-7 flex items-center justify-center rounded-[10px] transition-opacity duration-200 ease-apple',
               isDownloading
                 ? 'opacity-100 text-mint'
-                : 'opacity-0 group-hover:opacity-100 hover:bg-mint/[0.075] text-white/40'
+                : 'opacity-0 group-hover:opacity-100 hover:bg-white/[0.06] text-white/40'
             )}
           >
             {isDownloading ? (
@@ -575,7 +575,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       {/* 浮层面板：顶部对齐的 Spotlight 面板，高度随结果自适应、最高 72vh。
           入场仅保留淡入：缩放/位移动画会让玻璃模糊区域逐帧变化，
           软件渲染下每帧重算模糊（全屏时尤甚），故去掉 zoom/slide */}
-      <div className="relative mt-[7vh] w-[calc(100%-2rem)] max-w-2xl max-h-[72vh] flex flex-col glass-floating rounded-2xl overflow-hidden animate-in fade-in-0 duration-200">
+      <div className="relative mt-[7vh] w-[calc(100%-2rem)] max-w-2xl max-h-[72vh] flex flex-col glass-floating rounded-[16px] overflow-hidden animate-in fade-in-0 duration-200">
         {/* 搜索输入行 */}
         <div className="flex items-center gap-3 h-14 px-4 flex-shrink-0 border-b border-white/[0.08]">
           <SearchIcon className="h-[18px] w-[18px] text-mint/70 flex-shrink-0" strokeWidth={1.6} />
@@ -600,7 +600,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
               <X className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
           )}
-          <kbd className="hidden sm:flex items-center h-7 px-2 rounded-[8px] bg-white/[0.06] border border-white/[0.08] font-text text-[11px] text-white/40 flex-shrink-0">
+          <kbd className="hidden sm:flex items-center h-7 px-2 rounded-[10px] bg-white/[0.06] border border-white/[0.08] font-text text-[11px] text-white/40 flex-shrink-0">
             Esc
           </kbd>
         </div>
@@ -612,7 +612,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
               <div className="flex flex-col items-center justify-center min-h-[280px]">
                 <div className="relative mb-5">
                   <div className="absolute -inset-10 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
-                  <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                  <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
                     <SearchIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
                   </div>
                 </div>
@@ -720,7 +720,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                         navigate('/settings')
                         onClose()
                       }}
-                      className="pill pill-md bg-mint/[0.12] text-mint hover:bg-mint/20"
+                      className="pill pill-md pill-soft text-mint"
                     >
                       前往设置音乐源
                     </button>

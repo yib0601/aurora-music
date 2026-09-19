@@ -303,7 +303,7 @@ export function LibraryPage() {
             className="group card-utility p-2.5 cursor-pointer"
             onClick={() => setSelectedGroup({ type, key: g.key })}
           >
-            <div className="aspect-square rounded-[8px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden transition-transform duration-200 ease-apple group-hover:scale-[1.02]">
+            <div className="aspect-square rounded-[10px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden transition-transform duration-200 ease-apple group-hover:scale-[1.02]">
               <CoverImage
                 track={g.coverTrackId ? { id: g.coverTrackId, coverPath: g.coverPath } : null}
                 alt={g.name}
@@ -424,8 +424,8 @@ export function LibraryPage() {
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative mb-6">
-            <div className="absolute -inset-16 bg-gradient-to-b from-mint/8 to-transparent rounded-full blur-3xl" />
-            <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+            <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
+            <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
               <MusicIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>

@@ -131,7 +131,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
                 <li>
                   <button
                     onClick={handleBack}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-md hover:bg-white/[0.06] transition-colors text-white/60"
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-ds-media hover:bg-white/[0.06] transition-colors text-white/60"
                   >
                     <ChevronLeft className="h-4 w-4" strokeWidth={1.8} />
                     <span className="font-text text-caption">返回上级</span>
@@ -142,10 +142,10 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
                 <li key={e.path}>
                   <button
                     onClick={() => handleEnter(e.name)}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-md bg-white/[0.03] border border-white/8 hover:bg-white/[0.08] hover:border-white/14 transition-all duration-200 ease-mineradio"
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-ds-media bg-white/[0.03] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.14] transition-all duration-200 ease-mineradio"
                   >
                     <Folder className="h-5 w-5 text-mint/80 flex-shrink-0" strokeWidth={1.6} />
-                    <span className="font-text text-caption text-white/90 truncate flex-1 text-left">
+                    <span className="font-text text-caption text-white/[0.90] truncate flex-1 text-left">
                       {e.name}
                     </span>
                     <ChevronRight className="h-4 w-4 text-white/30 flex-shrink-0" strokeWidth={1.8} />
@@ -157,7 +157,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
         </div>
 
         {/* 底部操作 */}
-        <DialogFooter className="px-5 py-4 border-t border-white/8 flex items-center justify-between gap-3 sm:justify-between">
+        <DialogFooter className="px-5 py-4 border-t border-white/[0.08] flex items-center justify-between gap-3 sm:justify-between">
           <span className="font-text text-caption text-white/60 truncate flex-1">
             当前：{currentPath || '存储根目录'}
           </span>

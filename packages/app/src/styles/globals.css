@@ -1,31 +1,72 @@
+/*
+ * DeepSeek Harness 设计 token 层
+ * ---------------------------------------------------------------------------
+ * 逆向自 https://www.deepseek.com/harness/en/，设计规范见
+ *   docs/design-system.md
+ *
+ * 本层只提供 `--ds-*` 设计变量（颜色/圆角/间距/阴影/模糊），以 `[data-ds-theme]`
+ * 作用域承载，**不使用 `:root`**，因此与下面的 Mineradio 主题（`--fc-*`）和
+ * shadcn 变量完全隔离、互不覆盖。
+ *
+ * 定位说明：本项目的视觉改造以「设计规范 + token」落地，不引入 DS 原站的
+ * 组件类库（.ds-btn-* / .ds-container 等）。原因：这套风格是作为**设计指导**
+ * 使用的，软件自身的组件语义类（.btn-primary / .card-* / .glass-* 等）已经
+ * 承担了组件层职责，再叠一层 .ds- 组件类只会产生两套并行的组件词汇。
+ * 若需要查看 DS 原站组件的完整视觉样例，另见（不参与生产构建）：
+ *   packages/app/src/styles/ds-components.reference.css
+ *   packages/app/public/ds-showcase.html
+ *
+ * 必须放在文件最顶部（@tailwind 之前）：CSS 规范要求 @import 先于其他规则，
+ * 且本项目的 PostCSS 未装 postcss-import，靠 Vite 内建 CSS 处理解析 —— 放在
+ * @tailwind 之后会被静默丢弃（已实测）。
+ */
+@import './ds-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Aurora Music — Mineradio 深色视觉风格
+ * Aurora Music — DS（DeepSeek Harness）结构 + Mineradio mint 品牌
+ * ---------------------------------------------------------------------------
+ * 风格取向：结构 / 材质 / 排版 / 中性灰阶取自 DeepSeek Harness
+ * （规范见 docs/design-system.md，取值唯一权威来源
+ * src/styles/ds-tokens.css 的 `--ds-*`）；**主交互色保留 Mineradio mint**，
+ * DS 品牌蓝仅作为新增的辅助可选色（--fc-ds-blue*），不参与交互语义。
+ *
  * 核心：
- *   1. 深色优先（canvas #08090B / paper #0E1014）
- *   2. 主交互色 mint #00F5D4，辅以 champagne / coral / chill 系列
- *   3. 玻璃材质系统：Saved Panel / Saved Button / Search / Popover / Floating / Regular / Strong / Subtle
+ *   1. 深色优先；页面底 / 表面 / 发丝边 / 文字灰阶按 DS 中性灰阶重排
+ *   2. 主交互色 mint #00F5D4（浅色 #009C88），DS 蓝 #6799fe / #4d6bfe 为辅助
+ *   3. 玻璃材质：模糊半径向 DS 的 --ds-blur-glass(12px) 收敛，阴影层数大幅精简
  *   4. SVG 玻璃滤镜（control-glass-svg-ok 启用 url() 滤镜，由 GlassSvgFilter 组件提供）
- *   5. 字体 Noto Sans SC 优先
+ *   5. 字体：**保持项目原有中文优先栈不变**（设计稿不引入商业品牌字体，避免版权风险）
  *   6. ambient-backdrop 提供封面色光晕供玻璃折射
+ *
+ * ⚠️ 本文件有两个独立 token 块：`:root`（深色，默认）与 `html:not(.dark)`（浅色）。
+ *    **任何「主题感知」变量的改动必须同步改两处**，否则一种主题正常、另一种崩掉。
+ *    验证脚本：见本任务自检（深浅双块同步检查）。
  */
 
 @layer base {
   :root {
-    /* ===== Mineradio 配色（深色优先） ===== */
-    --fc-bg: #08090B;
-    --fc-paper: #0E1014;
-    --fc-ink: #E8ECEF;
-    --fc-ink-2: #D2D7DC;
-    --fc-muted: #8A9099;
-    --fc-hair: #1A1D22;
-    --fc-hair-2: #262A31;
+    /* ===== Mineradio 配色（深色优先）· 中性灰阶对齐 DS =====
+     * DS: 页面底 #0a0a0a；表面为半透明白叠加 hsla(0,0%,100%,.06/.04/.02/.015/.12) */
+    --fc-bg: #0A0A0A;
+    --fc-paper: #121212;
+    --fc-ink: #FFFFFF;
+    --fc-ink-2: #D6D6D6;
+    --fc-muted: #8C8C8C;
+    --fc-hair: #1F1F1F;
+    --fc-hair-2: #2E2E2E;
+    /* 品牌主交互色：保留 Mineradio mint（项目品牌识别，语义为「交互」） */
     --fc-accent: #00F5D4;
     --fc-accent-hov: #00E0BE;
     --fc-accent-rgb: 0, 245, 212;
+    /* DS 品牌蓝（辅助可选色，明暗两套下取值不同故两处都声明；默认不被交互语义使用） */
+    --fc-ds-blue: #6799fe;
+    --fc-ds-blue-deep: #fff;
+    --fc-ds-blue-medium: #fff;
+    --fc-ds-blue-light: #73a3d2;
     --fc-blue: #2442ff;
     --fc-warm: #f8f4ee;
     --chill-cyan: #8fe9ff;
@@ -46,113 +87,134 @@
     /* mint 按钮上的前景色：深色主题 mint 很亮用深墨字，浅色主题 mint 加深后用白字 */
     --tw-mint-fg: 3 6 8;
 
-    /* ===== 主题感知表面/玻璃变量（浅色主题在 html:not(.dark) 中覆盖） ===== */
-    --glass-regular-bg: rgba(12,12,16,.55);
-    --glass-strong-bg: rgba(12,12,16,.72);
-    --glass-subtle-bg: rgba(12,12,16,.35);
-    --glass-edge-highlight: rgba(255,255,255,.16);
-    --glass-edge-highlight-strong: rgba(255,255,255,.18);
-    --glass-strong-shadow: 0 8px 32px rgba(0,0,0,.4);
-    --glass-floating-bg: linear-gradient(145deg, rgba(18,18,23,.82), rgba(8,8,12,.88));
-    --glass-floating-border: rgba(255,255,255,.075);
-    --glass-floating-shadow: 0 22px 70px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.065);
-    --glass-popover-bg: rgba(12,12,16,.78);
-    --glass-popover-border: rgba(255,255,255,.09);
-    --glass-popover-shadow: 0 18px 48px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.07);
+    /* ===== 玻璃材质（DS 化：模糊 12px、极轻发丝边、阴影层数精简） =====
+     * DS --ds-blur-glass = 12px，--ds-color-bg-surface-* 为半透明白叠加 */
+    --glass-regular-bg: rgba(18,18,18,.72);
+    --glass-strong-bg: rgba(20,20,20,.82);
+    --glass-subtle-bg: rgba(16,16,16,.55);
+    --glass-edge-highlight: rgba(255,255,255,.10);
+    --glass-edge-highlight-strong: rgba(255,255,255,.12);
+    --glass-strong-shadow: 0 8px 24px rgba(0,0,0,.34);
+    --glass-floating-bg: linear-gradient(145deg, rgba(24,24,24,.88), rgba(10,10,10,.92));
+    --glass-floating-border: rgba(255,255,255,.08);
+    --glass-floating-shadow: 0 16px 48px rgba(0,0,0,.40), inset 0 1px 0 rgba(255,255,255,.08);
+    --glass-popover-bg: rgba(20,20,20,.86);
+    --glass-popover-border: rgba(255,255,255,.08);
+    --glass-popover-shadow: 0 12px 32px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.08);
 
-    --surface-card-bg: rgba(18,21,26,.55);
-    --surface-card-border: rgba(255,255,255,.06);
-    --surface-tile-1-bg: linear-gradient(142deg, rgba(18,21,26,.66), rgba(8,9,13,.76));
-    --surface-tile-2-bg: linear-gradient(145deg, rgba(36,33,39,.66), rgba(10,10,14,.76));
+    /* 表面层（DS 中性灰阶：surface-1 hsla(0,0%,100%,.06) / surface-2 .04） */
+    --surface-card-bg: rgba(255,255,255,.06);
+    --surface-card-border: rgba(255,255,255,.08);
+    --surface-tile-1-bg: linear-gradient(142deg, rgba(34,34,34,.62), rgba(16,16,16,.72));
+    --surface-tile-2-bg: linear-gradient(145deg, rgba(42,42,42,.62), rgba(18,18,18,.72));
     --surface-tile-fg: #ffffff;
-    --card-utility-shadow: 0 20px 64px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06);
-    --card-utility-hover-shadow: 0 28px 84px rgba(0,0,0,.36), 0 0 34px rgba(var(--fc-accent-rgb),.10), inset 0 1px 0 rgba(255,255,255,.085);
+    /* DS 阴影哲学：暗色下「阴影」改用内高光（--ds-shadow-card 暗色值） */
+    --card-utility-shadow: 0 12px 32px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.06);
+    --card-utility-hover-shadow: 0 16px 44px rgba(0,0,0,.30), 0 0 0 1px rgba(var(--fc-accent-rgb),.14), inset 0 1px 0 rgba(255,255,255,.08);
 
     --btn-icon-color: rgba(255,255,255,.70);
     --btn-icon-hover-color: #ffffff;
-    --btn-icon-hover-bg: rgba(255,255,255,.045);
+    --btn-icon-hover-bg: rgba(255,255,255,.06);
     --btn-pearl-color: rgba(255,255,255,.86);
 
     --hero-color: rgba(255,255,255,.98);
-    --track-fill: rgba(255,255,255,.095);
-    --scrollbar-thumb: rgba(255,255,255,.18);
+    --track-fill: rgba(255,255,255,.12);
+    --scrollbar-thumb: rgba(255,255,255,.20);
     --scrollbar-thumb-hover: rgba(255,255,255,.32);
 
-    --titlebar-btn-bg: rgba(0,0,0,.10);
+    /* 标题栏按钮：DS 化——去掉多层 inset 发光，改 1px 发丝边 + 单层投影 */
+    --titlebar-btn-bg: rgba(255,255,255,.04);
     --titlebar-btn-fg: rgba(255,255,255,.72);
-    --titlebar-btn-shadow: inset 0 0 2px 1px rgba(255,255,255,.34), inset 0 0 10px 4px rgba(255,255,255,.13), 0 10px 30px rgba(0,0,0,.18);
-    --titlebar-btn-hover-bg: rgba(255,255,255,.055);
-    --titlebar-btn-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.42), inset 0 0 12px 5px rgba(255,255,255,.17), 0 12px 34px rgba(0,0,0,.22), 0 0 18px rgba(255,255,255,.06);
+    --titlebar-btn-border: rgba(255,255,255,.08);
+    --titlebar-btn-shadow: 0 2px 8px rgba(0,0,0,.20);
+    --titlebar-btn-hover-bg: rgba(255,255,255,.08);
+    --titlebar-btn-hover-border: rgba(255,255,255,.16);
+    --titlebar-btn-hover-shadow: 0 4px 12px rgba(0,0,0,.24);
     --titlebar-hover-accent: #fff1bd;
 
-    /* shadcn 兼容变量（深色） */
-    --background: 240 6% 4%;
-    --foreground: 210 20% 92%;
-    --card: 240 5% 8%;
+    /* shadcn 兼容变量（深色）· 灰阶对齐 DS */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 10%;
     --card-foreground: 0 0% 100%;
-    --popover: 240 5% 8%;
+    --popover: 0 0% 15%;
     --popover-foreground: 0 0% 100%;
     --primary: 174 100% 48%;
-    --primary-foreground: 240 6% 4%;
-    --secondary: 240 5% 12%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 100%;
-    --muted: 240 5% 12%;
-    --muted-foreground: 220 8% 58%;
-    --accent: 240 5% 12%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 12%;
     --accent-foreground: 0 0% 100%;
     --destructive: 354 100% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 4% 18%;
-    --input: 240 4% 18%;
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
     --ring: 174 100% 48%;
-    --radius: 0.5rem;
 
-    /* 字体 */
+    /* 字体：保持项目原有栈不做改动。
+     * 设计稿中不引入任何外部品牌字体（Host Grotesk / DM Sans / Fragment Mono 等
+     * 均为商业字体，存在版权风险），因此这里沿用原来的中文优先栈。 */
     --font-sans: "Noto Sans SC","PingFang SC","HarmonyOS Sans SC","Alibaba PuHuiTi","Inter",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
     --font-mono: "JetBrains Mono","Geist Mono","SF Mono",ui-monospace,monospace;
 
-    /* 间距 */
+    /* 间距：对齐 DS 的 4/8/12/16/24/32/40/56/80 阶梯
+     * （原 --space-sm=12px、--space-md=17px 不符合任何阶梯，已规范） */
     --space-xxs: 4px;
     --space-xs: 8px;
     --space-sm: 12px;
-    --space-md: 17px;
+    --space-md: 16px;
     --space-lg: 24px;
     --space-xl: 32px;
-    --space-xxl: 48px;
+    --space-xxl: 40px;
+    --space-huge: 56px;
+    --space-mega: 80px;
 
-    /* 圆角 */
-    --r-xs: 5px;
+    /* 圆角：对齐 DS 阶梯 pill100 / card24 / panel16 / media,input10 / sm8
+     * 项目既有语义键可以平移到 DS 阶梯（内容宽度、高度均不变，无布局位移风险）：
+     *   --r-sm  8px  → DS sm     8px  （不变）
+     *   --r-md  11px → DS media  10px （图标按钮 / 输入框 / 分段控件）
+     *   --r-lg  18px → DS panel  16px （卡片 / 面板，本文件三处 .card-* 的实际消费点）
+     * 另新增 DS 专名键，供新代码直接按 DS 术语取用。 */
+    --r-xs: 6px;
     --r-sm: 8px;
-    --r-md: 11px;
-    --r-lg: 18px;
-    --r-xl: 22px;
-    --r-2xl: 28px;
-    --r-3xl: 34px;
-    --r-pill: 50px;
+    --r-md: 10px;
+    --r-lg: 16px;
+    --r-xl: 20px;
+    --r-2xl: 24px;
+    --r-3xl: 32px;
+    --r-pill: 100px;
+    --r-ds-card: 24px;
+    --r-ds-panel: 16px;
+    --r-ds-media: 10px;
+    --r-ds-input: 10px;
+    --r-ds-sm: 8px;
+    --r-ds-pill: 100px;
 
-    /* Mineradio 通用玻璃变量 */
-    --glass-bg: linear-gradient(112deg, rgba(72,74,76,.62), rgba(24,27,30,.70) 48%, rgba(8,12,14,.74));
-    --glass-bg-focus: linear-gradient(112deg, rgba(88,91,92,.68), rgba(28,32,35,.76) 50%, rgba(8,13,15,.82));
-    --glass-border: rgba(0,245,212,.30);
-    --glass-border-soft: rgba(255,255,255,.095);
-    --glass-shadow: 0 22px 64px rgba(0,0,0,.30), 0 0 34px rgba(0,245,212,.052), inset 0 1px 0 rgba(255,255,255,.16), inset 0 -24px 58px rgba(0,0,0,.16);
-    --glass-shadow-focus: 0 24px 72px rgba(0,0,0,.34), 0 0 0 1px rgba(0,245,212,.13), 0 0 42px rgba(0,245,212,.075), inset 0 1px 0 rgba(255,255,255,.20);
+    /* 通用玻璃变量（Search 框：34px → 12px，发丝边 rgba 白 .06~.10） */
+    --glass-bg: linear-gradient(112deg, rgba(38,38,38,.62), rgba(20,20,20,.74) 48%, rgba(10,10,10,.80));
+    --glass-bg-focus: linear-gradient(112deg, rgba(48,48,48,.68), rgba(24,24,24,.80) 50%, rgba(12,12,12,.86));
+    --glass-border: rgba(255,255,255,.08);
+    --glass-border-soft: rgba(255,255,255,.06);
+    --glass-shadow: 0 12px 32px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.08);
+    --glass-shadow-focus: 0 14px 36px rgba(0,0,0,.32), 0 0 0 1px rgba(var(--fc-accent-rgb),.22), inset 0 1px 0 rgba(255,255,255,.10);
 
-    /* Mineradio Saved 玻璃面板/按钮系统 */
-    --saved-panel-glass-bg: rgba(0,0,0,.10);
-    --saved-panel-glass-filter: blur(12px) saturate(1.8) brightness(1.16);
+    /* Saved 玻璃面板/按钮系统（DS 化：8 层阴影 → 2 层，半径对齐 DS panel/media） */
+    --saved-panel-glass-bg: rgba(255,255,255,.04);
+    --saved-panel-glass-filter: blur(12px) saturate(1.4);
     --saved-panel-glass-svg-filter: url(#mineradio-control-glass-filter) saturate(1);
-    --saved-panel-glass-shadow: inset 0 0 2px 1px rgba(255,255,255,.35), inset 0 0 10px 4px rgba(255,255,255,.15), 0 4px 16px rgba(17,17,26,.05), 0 8px 24px rgba(17,17,26,.05), 0 16px 56px rgba(17,17,26,.05), inset 0 4px 16px rgba(17,17,26,.05), inset 0 8px 24px rgba(17,17,26,.05), inset 0 16px 56px rgba(17,17,26,.05);
-    --saved-panel-glass-radius: 50px;
-    --saved-button-glass-bg: rgba(0,0,0,.10);
-    --saved-button-glass-filter: blur(12px) saturate(1.8) brightness(1.16);
+    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.22);
+    --saved-panel-glass-radius: 100px;
+    --saved-button-glass-bg: rgba(255,255,255,.04);
+    --saved-button-glass-filter: blur(12px) saturate(1.4);
     --saved-button-glass-svg-filter: url(#mineradio-control-glass-filter) saturate(1);
-    --saved-button-glass-shadow: inset 0 0 2px 1px rgba(255,255,255,.34), inset 0 0 10px 4px rgba(255,255,255,.13), 0 10px 30px rgba(0,0,0,.18);
-    --saved-button-glass-hover-bg: rgba(255,255,255,.055);
-    --saved-button-glass-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.42), inset 0 0 12px 5px rgba(255,255,255,.17), 0 12px 34px rgba(0,0,0,.22), 0 0 18px rgba(255,255,255,.06);
+    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 14px rgba(0,0,0,.20);
+    --saved-button-glass-hover-bg: rgba(255,255,255,.08);
+    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 6px 18px rgba(0,0,0,.24);
 
-    /* 产品图阴影 */
-    --product-shadow: 0 5px 30px rgba(0, 0, 0, 0.22);
+    /* 产品图阴影（未消费，统一走 DS 克制投影） */
+    --product-shadow: 0 4px 16px rgba(0, 0, 0, 0.20);
 
     /* 缓动 */
     --ease-apple: cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -172,7 +234,8 @@
  * 深色为默认（:root 中是暗色值）；用户选择浅色/系统浅色时，
  * App.tsx 移除 .dark 类，此块翻转所有主题感知变量。
  * 关键：--tw-white 翻转为深墨色，全站 text-white/* 、bg-white/* 、
- * border-white/* 等 400+ 处硬编码"白"自动变为深色墨字/深色叠层。 */
+ * border-white/* 等 400+ 处硬编码"白"自动变为深色墨字/深色叠层。
+ * 圆角 / 间距 / 字体 / 缓动等主题无关项只在 :root 声明，此处不重复。 */
 @layer base {
   html:not(.dark) {
     color-scheme: light;
@@ -182,91 +245,100 @@
     --tw-coral: 226 59 82;
     --tw-mint-fg: 255 255 255;
 
-    --fc-bg: #ECEEF1;
-    --fc-paper: #FCFCFD;
-    --fc-ink: #16181D;
-    --fc-ink-2: #30343C;
-    --fc-muted: #565D6B;
-    --fc-hair: #D8DBE1;
-    --fc-hair-2: #C4C9D2;
+    /* DS: 页面底 #f9f8f8；表面为半透明白/黑叠加 */
+    --fc-bg: #F9F8F8;
+    --fc-paper: #FFFFFF;
+    --fc-ink: #1E232C;
+    --fc-ink-2: #3C424C;
+    --fc-muted: #5C636E;
+    --fc-hair: #E5E5E5;
+    --fc-hair-2: #D4D4D4;
+    /* 品牌主交互色：mint 浅底加深版（保留品牌识别） */
     --fc-accent: #009C88;
     --fc-accent-hov: #008574;
     --fc-accent-rgb: 0, 156, 136;
+    /* DS 品牌蓝（浅色原值；辅助可选色） */
+    --fc-ds-blue: #4d6bfe;
+    --fc-ds-blue-deep: #3a65c2;
+    --fc-ds-blue-medium: #4176e6;
+    --fc-ds-blue-light: #73a3d2;
 
-    /* shadcn 兼容变量（浅色） */
-    --background: 220 14% 96%;
-    --foreground: 222 16% 10%;
+    /* shadcn 兼容变量（浅色）· 灰阶对齐 DS */
+    --background: 0 0% 98%;
+    --foreground: 220 16% 15%;
     --card: 0 0% 100%;
-    --card-foreground: 222 16% 10%;
+    --card-foreground: 220 16% 15%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 16% 10%;
+    --popover-foreground: 220 16% 15%;
     --primary: 172 100% 30%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 12% 91%;
-    --secondary-foreground: 222 16% 12%;
-    --muted: 220 12% 92%;
-    --muted-foreground: 220 8% 38%;
-    --accent: 220 12% 91%;
-    --accent-foreground: 222 16% 12%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 220 16% 15%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 220 9% 39%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 220 16% 15%;
     --destructive: 352 76% 47%;
     --destructive-foreground: 0 0% 100%;
-    --border: 222 10% 80%;
-    --input: 222 10% 80%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
     --ring: 172 100% 30%;
 
-    /* 玻璃材质：磨砂白玻璃 */
-    --glass-regular-bg: rgba(255,255,255,.62);
-    --glass-strong-bg: rgba(255,255,255,.80);
-    --glass-subtle-bg: rgba(255,255,255,.42);
+    /* 玻璃材质：磨砂白玻璃（DS 化：收敛阴影层数 + 发丝边） */
+    --glass-regular-bg: rgba(255,255,255,.72);
+    --glass-strong-bg: rgba(255,255,255,.86);
+    --glass-subtle-bg: rgba(255,255,255,.55);
     --glass-edge-highlight: rgba(255,255,255,.92);
     --glass-edge-highlight-strong: rgba(255,255,255,.96);
-    --glass-strong-shadow: 0 8px 32px rgba(20,24,40,.14);
-    --glass-floating-bg: linear-gradient(145deg, rgba(255,255,255,.92), rgba(246,247,250,.94));
-    --glass-floating-border: rgba(15,20,30,.08);
-    --glass-floating-shadow: 0 22px 70px rgba(20,24,40,.16), inset 0 1px 0 rgba(255,255,255,.9);
-    --glass-popover-bg: rgba(255,255,255,.90);
-    --glass-popover-border: rgba(15,20,30,.08);
-    --glass-popover-shadow: 0 18px 48px rgba(20,24,40,.16), inset 0 1px 0 rgba(255,255,255,.85);
+    --glass-strong-shadow: 0 8px 24px rgba(0,0,0,.10);
+    --glass-floating-bg: linear-gradient(145deg, rgba(255,255,255,.94), rgba(249,249,249,.96));
+    --glass-floating-border: rgba(0,0,0,.08);
+    --glass-floating-shadow: 0 16px 44px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.9);
+    --glass-popover-bg: rgba(255,255,255,.94);
+    --glass-popover-border: rgba(0,0,0,.08);
+    --glass-popover-shadow: 0 12px 32px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.9);
 
-    --glass-bg: linear-gradient(112deg, rgba(255,255,255,.72), rgba(244,246,249,.78) 48%, rgba(236,239,244,.84));
-    --glass-bg-focus: linear-gradient(112deg, rgba(255,255,255,.82), rgba(246,248,251,.86) 50%, rgba(239,242,246,.9));
-    --glass-border: rgba(0,156,136,.32);
-    --glass-border-soft: rgba(15,20,30,.14);
-    --glass-shadow: 0 22px 64px rgba(20,24,40,.10), 0 0 34px rgba(0,156,136,.05), inset 0 1px 0 rgba(255,255,255,.85), inset 0 -24px 58px rgba(20,24,40,.03);
-    --glass-shadow-focus: 0 24px 72px rgba(20,24,40,.14), 0 0 0 1px rgba(0,156,136,.15), 0 0 42px rgba(0,156,136,.10), inset 0 1px 0 rgba(255,255,255,.9);
+    --glass-bg: linear-gradient(112deg, rgba(255,255,255,.74), rgba(250,250,250,.80) 48%, rgba(243,243,243,.86));
+    --glass-bg-focus: linear-gradient(112deg, rgba(255,255,255,.84), rgba(252,252,252,.88) 50%, rgba(246,246,246,.92));
+    --glass-border: rgba(0,0,0,.10);
+    --glass-border-soft: rgba(0,0,0,.06);
+    --glass-shadow: 0 12px 32px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.85);
+    --glass-shadow-focus: 0 14px 36px rgba(0,0,0,.12), 0 0 0 1px rgba(var(--fc-accent-rgb),.28), inset 0 1px 0 rgba(255,255,255,.9);
 
-    --saved-panel-glass-bg: rgba(255,255,255,.38);
-    --saved-panel-glass-shadow: inset 0 0 2px 1px rgba(255,255,255,.55), inset 0 0 10px 4px rgba(255,255,255,.25), 0 4px 16px rgba(20,24,40,.06), 0 8px 24px rgba(20,24,40,.07), 0 16px 56px rgba(20,24,40,.09);
-    --saved-button-glass-bg: rgba(255,255,255,.42);
-    --saved-button-glass-shadow: inset 0 0 2px 1px rgba(255,255,255,.6), inset 0 0 10px 4px rgba(255,255,255,.22), 0 10px 30px rgba(20,24,40,.10);
-    --saved-button-glass-hover-bg: rgba(255,255,255,.60);
-    --saved-button-glass-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.7), inset 0 0 12px 5px rgba(255,255,255,.3), 0 12px 34px rgba(20,24,40,.14), 0 0 18px rgba(255,255,255,.35);
+    --saved-panel-glass-bg: rgba(255,255,255,.45);
+    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 8px 24px rgba(0,0,0,.08);
+    --saved-button-glass-bg: rgba(255,255,255,.50);
+    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 4px 14px rgba(0,0,0,.08);
+    --saved-button-glass-hover-bg: rgba(255,255,255,.68);
+    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 6px 18px rgba(0,0,0,.10);
 
-    /* 表面分层 */
-    --surface-card-bg: rgba(255,255,255,.78);
-    --surface-card-border: rgba(15,20,30,.10);
-    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.86), rgba(244,246,249,.9));
-    --surface-tile-2-bg: linear-gradient(145deg, rgba(250,250,252,.88), rgba(241,243,247,.92));
-    --surface-tile-fg: #16181D;
-    --tile-border-rgb: 15 20 30;
-    --card-utility-shadow: 0 20px 64px rgba(20,24,40,.11), inset 0 1px 0 rgba(255,255,255,.9);
-    --card-utility-hover-shadow: 0 28px 84px rgba(20,24,40,.15), 0 0 34px rgba(var(--fc-accent-rgb),.12), inset 0 1px 0 rgba(255,255,255,.95);
+    /* 表面分层（DS 浅色：白底叠加 + 黑发丝边） */
+    --surface-card-bg: rgba(255,255,255,.80);
+    --surface-card-border: rgba(0,0,0,.06);
+    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.90), rgba(249,249,249,.94));
+    --surface-tile-2-bg: linear-gradient(145deg, rgba(253,253,253,.92), rgba(246,246,246,.95));
+    --surface-tile-fg: #1E232C;
+    --tile-border-rgb: 0 0 0;
+    --card-utility-shadow: 0 12px 32px rgba(0,0,0,.07), inset 0 1px 0 rgba(255,255,255,.9);
+    --card-utility-hover-shadow: 0 16px 44px rgba(0,0,0,.10), 0 0 0 1px rgba(var(--fc-accent-rgb),.20), inset 0 1px 0 rgba(255,255,255,.95);
 
-    --btn-icon-color: rgba(23,25,29,.75);
-    --btn-icon-hover-color: #16181D;
-    --btn-icon-hover-bg: rgba(23,25,29,.05);
-    --btn-pearl-color: rgba(23,25,29,.82);
+    --btn-icon-color: rgba(30,35,44,.75);
+    --btn-icon-hover-color: #1E232C;
+    --btn-icon-hover-bg: rgba(30,35,44,.06);
+    --btn-pearl-color: rgba(30,35,44,.82);
 
-    --hero-color: rgba(23,25,29,.98);
-    --track-fill: rgba(23,25,29,.10);
-    --scrollbar-thumb: rgba(23,25,29,.18);
-    --scrollbar-thumb-hover: rgba(23,25,29,.32);
+    --hero-color: rgba(30,35,44,.98);
+    --track-fill: rgba(0,0,0,.08);
+    --scrollbar-thumb: rgba(0,0,0,.18);
+    --scrollbar-thumb-hover: rgba(0,0,0,.32);
 
-    --titlebar-btn-bg: rgba(255,255,255,.35);
-    --titlebar-btn-fg: rgba(23,25,29,.70);
-    --titlebar-btn-shadow: inset 0 0 2px 1px rgba(255,255,255,.5), inset 0 0 10px 4px rgba(255,255,255,.2), 0 10px 30px rgba(20,24,40,.10);
-    --titlebar-btn-hover-bg: rgba(255,255,255,.55);
-    --titlebar-btn-hover-shadow: inset 0 0 2px 1px rgba(255,255,255,.6), inset 0 0 12px 5px rgba(255,255,255,.28), 0 12px 34px rgba(20,24,40,.14), 0 0 18px rgba(255,255,255,.4);
+    --titlebar-btn-bg: rgba(0,0,0,.004);
+    --titlebar-btn-fg: rgba(30,35,44,.70);
+    --titlebar-btn-border: rgba(0,0,0,.08);
+    --titlebar-btn-shadow: 0 2px 8px rgba(0,0,0,.05);
+    --titlebar-btn-hover-bg: rgba(255,255,255,.65);
+    --titlebar-btn-hover-border: rgba(0,0,0,.14);
+    --titlebar-btn-hover-shadow: 0 4px 12px rgba(0,0,0,.07);
     --titlebar-hover-accent: #8a6320;
 
     /* ambient 光晕：浅色下稍增强，让白底玻璃有内容可折射 */
@@ -416,8 +488,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .glass-search-box {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    backdrop-filter: blur(34px) saturate(1.34);
-    -webkit-backdrop-filter: blur(34px) saturate(1.34);
+    backdrop-filter: blur(12px) saturate(1.30);
+    -webkit-backdrop-filter: blur(12px) saturate(1.30);
     box-shadow: var(--glass-shadow);
     transition: border-color .28s, background .28s, box-shadow .28s, transform .28s;
   }
@@ -435,36 +507,36 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .glass-popover {
     border: 1px solid var(--glass-popover-border);
     background: var(--glass-popover-bg);
-    backdrop-filter: blur(24px) saturate(1.12);
-    -webkit-backdrop-filter: blur(24px) saturate(1.12);
+    backdrop-filter: blur(12px) saturate(1.10);
+    -webkit-backdrop-filter: blur(12px) saturate(1.10);
     box-shadow: var(--glass-popover-shadow);
   }
 
   .glass-floating {
     border: 1px solid var(--glass-floating-border);
     background: var(--glass-floating-bg);
-    backdrop-filter: blur(30px) saturate(1.08);
-    -webkit-backdrop-filter: blur(30px) saturate(1.08);
+    backdrop-filter: blur(12px) saturate(1.08);
+    -webkit-backdrop-filter: blur(12px) saturate(1.08);
     box-shadow: var(--glass-floating-shadow);
   }
 
   /* 通用玻璃面板（侧栏/标题栏/右侧 Now Playing） */
   .glass-regular {
     background: var(--glass-regular-bg);
-    backdrop-filter: blur(16px) saturate(1.4);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.25);
+    -webkit-backdrop-filter: blur(12px) saturate(1.25);
     box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
   .glass-strong {
     background: var(--glass-strong-bg);
-    backdrop-filter: blur(20px) saturate(1.5);
-    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    backdrop-filter: blur(14px) saturate(1.35);
+    -webkit-backdrop-filter: blur(14px) saturate(1.35);
     box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight-strong), var(--glass-strong-shadow);
   }
   .glass-subtle {
     background: var(--glass-subtle-bg);
-    backdrop-filter: blur(14px) saturate(1.3);
-    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(10px) saturate(1.20);
+    -webkit-backdrop-filter: blur(10px) saturate(1.20);
     box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
 }
@@ -481,8 +553,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     background: var(--surface-tile-1-bg);
     border: 1px solid var(--surface-card-border);
     border-radius: var(--r-lg);
-    backdrop-filter: blur(20px) saturate(1.1);
-    -webkit-backdrop-filter: blur(20px) saturate(1.1);
+    backdrop-filter: blur(12px) saturate(1.10);
+    -webkit-backdrop-filter: blur(12px) saturate(1.10);
     box-shadow: var(--card-utility-shadow);
     transition: transform .22s var(--ease-mineradio), border-color .22s, box-shadow .22s;
   }
@@ -508,14 +580,19 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     background: var(--surface-tile-1-bg);
     border: 1px solid var(--surface-card-border);
     border-radius: var(--r-lg);
-    backdrop-filter: blur(20px) saturate(1.1);
-    -webkit-backdrop-filter: blur(20px) saturate(1.1);
+    backdrop-filter: blur(12px) saturate(1.10);
+    -webkit-backdrop-filter: blur(12px) saturate(1.10);
     box-shadow: var(--card-utility-shadow);
   }
 
   .product-shadow { filter: drop-shadow(0 5px 30px rgba(0,0,0,0.22)); }
 
-  /* 按钮 — Mineradio 玻璃风格 */
+  /* 按钮 — Mineradio 玻璃风格
+   * ⚠️ 前景色刻意**硬编码**为深墨 #030608，不用 rgb(var(--tw-mint-fg))：
+   * DS 的 mint 两套主题都是亮色/中亮色（深色 #00F5D4、浅色 #009C88），
+   * 深墨字在两者上都达标（14.53:1 / 5.91:1）；而 --tw-mint-fg 是为
+   * **Tailwind 的 bg-mint** 设计的、浅色下会翻成白字（在白字 on #009C88
+   * 只有 3.44:1，**会退化**）。两处 mint 底色的前景需求相反，故不共用变量。 */
   .btn-primary {
     background: var(--fc-accent);
     color: #030608;
@@ -528,9 +605,9 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     border: none;
     cursor: pointer;
     transition: transform .18s var(--ease-mineradio), background .18s, box-shadow .18s;
-    box-shadow: 0 10px 30px rgba(0,245,212,.18), inset 0 1px 0 rgba(255,255,255,.20);
+    box-shadow: 0 6px 18px rgba(var(--fc-accent-rgb),.18), inset 0 1px 0 rgba(255,255,255,.20);
   }
-  .btn-primary:hover { background: var(--fc-accent-hov); transform: translateY(-1px); box-shadow: 0 14px 38px rgba(0,245,212,.26), inset 0 1px 0 rgba(255,255,255,.24); }
+  .btn-primary:hover { background: var(--fc-accent-hov); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(var(--fc-accent-rgb),.26), inset 0 1px 0 rgba(255,255,255,.24); }
   .btn-primary:active { transform: scale(.96); }
 
   .btn-secondary {
@@ -552,7 +629,7 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     -webkit-backdrop-filter: var(--saved-button-glass-filter);
     color: var(--btn-pearl-color);
     border: 0;
-    border-radius: 13px;
+    border-radius: var(--r-ds-media);
     box-shadow: var(--saved-button-glass-shadow);
     padding: 7px 14px;
     font-size: 12px;
@@ -575,7 +652,7 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     background: transparent;
     color: var(--btn-icon-color);
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--r-ds-sm);
     cursor: pointer;
     transition: color .18s, background .18s, transform .18s, text-shadow .18s, box-shadow .18s;
   }
@@ -596,8 +673,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     padding: 0 14px;
     flex-shrink: 0;
     background: rgb(var(--tw-white) / .045);
-    border: 1px solid rgb(var(--tw-white) / .08);
-    border-radius: 10px;
+    border: 1px solid rgb(var(--tw-white) / .06);
+    border-radius: var(--r-ds-input);
     color: var(--btn-icon-color);
     cursor: pointer;
     transition: color .18s, background .18s, border-color .18s, transform .18s;
@@ -628,8 +705,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     padding: 2px;
     /* flex 列容器默认 stretch 会把 inline-flex 拉满整行，锁定为内容宽度 */
     width: fit-content;
-    border-radius: 10px;
-    border: 1px solid rgb(var(--tw-white) / .05);
+    border-radius: var(--r-ds-input);
+    border: 1px solid rgb(var(--tw-white) / .06);
     background: rgb(var(--tw-white) / .04);
   }
   /* 分段项：文字项默认 px 14；图标项加 w-7 px-0 覆盖即可 */
@@ -639,7 +716,7 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     justify-content: center;
     height: 28px;
     flex-shrink: 0;
-    border-radius: 8px;
+    border-radius: var(--r-ds-sm);
     padding: 0 14px;
     font-size: 13px;
     line-height: 1;
@@ -822,7 +899,7 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
  * 全屏/大窗口下底部播放控制台（btn-icon / 进度条 / 音量条）整体放大一档，
  * 小窗口保持原紧凑尺寸。仅作用于带 -xl 修饰类的播放条控件，不影响页面其他 btn-icon。 */
 @media (min-width: 1500px) {
-  .btn-icon.btn-xl { width: 34px; height: 34px; border-radius: 10px; }
+  .btn-icon.btn-xl { width: 34px; height: 34px; border-radius: var(--r-ds-media); }
   input[type='range'].seek-bar.seek-xl { height: 28px; }
   input[type='range'].seek-bar.seek-xl::-webkit-slider-runnable-track { height: 6px; }
   input[type='range'].seek-bar.seek-xl::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -4px; }

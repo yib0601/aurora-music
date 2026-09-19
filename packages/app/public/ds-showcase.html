@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aurora · DeepSeek Harness 设计风格对照表</title>
+<!-- 直接引入项目内的 ds 风格层，作为「真实可用性」验证：不经构建，浏览器原生加载 -->
+<link rel="stylesheet" href="../src/styles/ds-tokens.css" />
+<link rel="stylesheet" href="../src/styles/ds-components.reference.css" />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  /* 仅用于对照表自身的排版外壳，不属于 ds 风格层 */
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--ds-font-body); background: var(--ds-color-bg-page); color: var(--ds-color-text-primary); }
+  .swatch { height: 56px; border-radius: var(--ds-radius-sm); border: 1px solid var(--ds-color-border-default); }
+  .grid-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--ds-color-bg-surface-1); border: 1px solid var(--ds-color-border-default); border-radius: var(--ds-radius-card); padding: 24px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .lbl { font-size: 12px; color: var(--ds-color-text-description); margin-top: 6px; word-break: break-all; }
+  .sec { padding: 40px 0; border-top: 1px solid var(--ds-color-border-subtle); }
+  .sec h2 { margin: 0 0 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--ds-color-border-subtle); }
+  code { font-family: var(--ds-font-mono); font-size: 12px; background: var(--ds-color-bg-code); padding: 2px 6px; border-radius: 4px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-ds-theme="dark">
+
+<div class="ds-grid-bg" style="position:fixed;inset:0;pointer-events:none;"></div>
+
+<header class="ds-header-wrapper">
+  <div class="ds-header-bar">
+    <span class="ds-text-title" style="padding-left:12px;">Aurora · DS 风格对照</span>
+    <div class="row" style="padding-right:12px;">
+      <a class="ds-btn-primary ds-btn-xs" href="#tokens">Tokens</a>
+      <a class="ds-btn-secondary ds-btn-xs" href="#components">Components</a>
+      <button class="ds-btn-ghost ds-btn-xs" id="themeToggle">切换主题</button>
+    </div>
+  </div>
+</header>
+
+<main class="ds-container" style="padding-top:120px;padding-bottom:120px;position:relative;z-index:10;">
+
+  <!-- HERO -->
+  <section class="ds-hero-enter" style="--enter-y:24px;--enter-blur:10px;animation-duration:.9s;">
+    <p class="ds-text-body" style="color:var(--ds-color-text-description);margin:0 0 8px;">DeepSeek Harness Design Language</p>
+    <h1 class="ds-text-hero" style="color:var(--ds-color-text-primary);margin:0 0 16px;">Everything is a plugin</h1>
+    <p class="ds-text-body" style="color:var(--ds-color-text-description);max-width:580px;">
+      本页由 <code>ds-tokens.css</code> + <code>ds-components.reference.css</code> 真实渲染，用于验证设计风格层的可用性与还原度。
+    </p>
+    <div class="row ds-hero-enter" style="--enter-y:16px;animation-duration:.7s;animation-delay:.3s;margin-top:24px;">
+      <a class="ds-btn-primary ds-btn-m" href="#tokens">Primary</a>
+      <a class="ds-btn-secondary ds-btn-m" href="#components">Secondary</a>
+      <a class="ds-btn-ghost ds-btn-m" href="#components">Ghost</a>
+      <a class="ds-btn-liquid ds-btn-m" href="#components">Liquid</a>
+      <a class="ds-btn-text ds-btn-m" href="#components">Text →</a>
+    </div>
+  </section>
+
+  <!-- TOKENS -->
+  <section class="sec" id="tokens">
+    <h2 class="ds-text-heading1">1. 设计令牌</h2>
+
+    <h3 class="ds-text-title" style="margin:0 0 12px;">品牌与文字色</h3>
+    <div class="grid-swatches">
+      <div><div class="swatch" style="background:var(--ds-color-brand)"></div><div class="lbl">--ds-color-brand</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-brand-deep)"></div><div class="lbl">--ds-color-brand-deep</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-brand-medium-reverse)"></div><div class="lbl">brand-medium-reverse</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-brand-accent)"></div><div class="lbl">brand-accent</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-text-primary)"></div><div class="lbl">text-primary</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-text-description)"></div><div class="lbl">text-description</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-text-placeholder)"></div><div class="lbl">text-placeholder</div></div>
+    </div>
+
+    <h3 class="ds-text-title" style="margin:28px 0 12px;">背景层级 surface 1–5</h3>
+    <div class="grid-swatches">
+      <div><div class="swatch" style="background:var(--ds-color-bg-page)"></div><div class="lbl">bg-page</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-bg-surface-1)"></div><div class="lbl">surface-1</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-bg-surface-2)"></div><div class="lbl">surface-2</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-bg-surface-3)"></div><div class="lbl">surface-3</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-bg-surface-4)"></div><div class="lbl">surface-4</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-bg-surface-5)"></div><div class="lbl">surface-5</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-bg-overlay)"></div><div class="lbl">bg-overlay</div></div>
+      <div><div class="swatch" style="background:var(--ds-color-bg-surface-raised)"></div><div class="lbl">surface-raised</div></div>
+    </div>
+
+    <h3 class="ds-text-title" style="margin:28px 0 12px;">描边与圆角</h3>
+    <div class="split">
+      <div>
+        <div class="swatch" style="background:transparent;border-color:var(--ds-color-border-subtle)"></div><div class="lbl">border-subtle</div>
+        <div class="swatch" style="background:transparent;border-color:var(--ds-color-border-default);margin-top:8px"></div><div class="lbl">border-default</div>
+        <div class="swatch" style="background:transparent;border-color:var(--ds-color-border-strong);margin-top:8px"></div><div class="lbl">border-strong</div>
+      </div>
+      <div>
+        <table>
+          <tr><th>圆角令牌</th><th>值</th><th>用途</th></tr>
+          <tr><td><code>--ds-radius-pill</code></td><td>100px</td><td>按钮/胶囊</td></tr>
+          <tr><td><code>--ds-radius-card</code></td><td>24px</td><td>卡片</td></tr>
+          <tr><td><code>--ds-radius-panel</code></td><td>16px</td><td>面板/浮层</td></tr>
+          <tr><td><code>--ds-radius-media</code></td><td>10px</td><td>图片/媒体</td></tr>
+          <tr><td><code>--ds-radius-input</code></td><td>10px</td><td>输入框</td></tr>
+          <tr><td><code>--ds-radius-sm</code></td><td>8px</td><td>小元素</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <h3 class="ds-text-title" style="margin:28px 0 12px;">间距节奏 --ds-space-1..13</h3>
+    <div class="row" style="gap:10px;align-items:flex-end;">
+      <div style="text-align:center;"><div style="width:var(--ds-space-1);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">1·4</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-2);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">2·8</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-3);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">3·12</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-4);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">4·16</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-5);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">5·24</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-6);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">6·32</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-7);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">7·40</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-8);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">8·56</div></div>
+      <div style="text-align:center;"><div style="width:var(--ds-space-9);height:32px;background:var(--ds-color-brand)"></div><div class="lbl">9·80</div></div>
+    </div>
+  </section>
+
+  <!-- COMPONENTS -->
+  <section class="sec" id="components">
+    <h2 class="ds-text-heading1">2. 组件</h2>
+
+    <h3 class="ds-text-title" style="margin:0 0 12px;">按钮：5 变体 × 3 尺寸（hover 观察径向扩散）</h3>
+    <div class="card">
+      <div class="row" style="margin-bottom:14px;">
+        <button class="ds-btn-primary ds-btn-m">Primary M</button>
+        <button class="ds-btn-secondary ds-btn-m">Secondary M</button>
+        <button class="ds-btn-ghost ds-btn-m">Ghost M</button>
+        <button class="ds-btn-ghost-static ds-btn-m">Ghost Static M</button>
+        <button class="ds-btn-liquid ds-btn-m">Liquid M</button>
+        <button class="ds-btn-text ds-btn-m">Text M</button>
+      </div>
+      <div class="row" style="margin-bottom:14px;">
+        <button class="ds-btn-primary ds-btn-s">Primary S</button>
+        <button class="ds-btn-secondary ds-btn-s">Secondary S</button>
+        <button class="ds-btn-ghost ds-btn-s">Ghost S</button>
+        <button class="ds-btn-liquid ds-btn-s">Liquid S</button>
+      </div>
+      <div class="row">
+        <button class="ds-btn-primary ds-btn-xs">Primary XS</button>
+        <button class="ds-btn-secondary ds-btn-xs">Secondary XS</button>
+        <button class="ds-btn-ghost ds-btn-xs">Ghost XS</button>
+        <button class="ds-btn-text ds-btn-xs">Text XS</button>
+      </div>
+    </div>
+
+    <h3 class="ds-text-title" style="margin:28px 0 12px;">文字层级</h3>
+    <div class="card">
+      <p class="ds-text-display" style="margin:0 0 8px;">display 展示级</p>
+      <p class="ds-text-hero" style="margin:0 0 8px;">hero 首屏大标题</p>
+      <p class="ds-text-heading1" style="margin:0 0 8px;">heading1 一级标题</p>
+      <p class="ds-text-heading2" style="margin:0 0 8px;">heading2 二级标题</p>
+      <p class="ds-text-heading3" style="margin:0 0 8px;">heading3 三级标题</p>
+      <p class="ds-text-subtitle" style="margin:0 0 8px;">subtitle 副标题</p>
+      <p class="ds-text-title" style="margin:0 0 8px;">title 小标题</p>
+      <p class="ds-text-body" style="margin:0 0 8px;">body 正文：克制、易读，行高 160%，text-wrap: pretty。</p>
+      <p class="ds-text-caption" style="margin:0 0 8px;color:var(--ds-color-text-description);">caption 说明文字 14px</p>
+      <p class="ds-text-xs" style="margin:0;color:var(--ds-color-text-description);">xs 最小字号 13px</p>
+    </div>
+
+    <h3 class="ds-text-title" style="margin:28px 0 12px;">Hero 卡片：conic 旋转描边 + hover 抬升</h3>
+    <div class="split">
+      <div class="ds-hero-cta-block" style="border:1px solid var(--ds-color-border-input);border-radius:var(--ds-radius-card);padding:28px;">
+        <p class="ds-hero-cta-title" style="margin:0 0 6px;">ds-hero-cta-block</p>
+        <p class="ds-text-caption" style="margin:0;color:var(--ds-color-text-description);">hover 显示 2px 旋转渐变描边</p>
+      </div>
+      <div class="ds-hero-join" style="border:1px solid var(--ds-color-border-input);border-radius:var(--ds-radius-card);padding:28px;">
+        <p class="ds-hero-join-title" style="margin:0 0 6px;">ds-hero-join</p>
+        <p class="ds-text-caption" style="margin:0;color:var(--ds-color-text-description);">hover 整卡上移 4px</p>
+      </div>
+    </div>
+
+    <h3 class="ds-text-title" style="margin:28px 0 12px;">玻璃面板 / 下拉</h3>
+    <div class="ds-glass-dropdown" style="padding:20px;max-width:360px;">
+      <p class="ds-text-title" style="margin:0 0 6px;">ds-glass-dropdown</p>
+      <p class="ds-text-caption" style="margin:0;color:var(--ds-color-text-description);">blur(12px) + hairline 描边 + 三级投影</p>
+    </div>
+
+    <h3 class="ds-text-title" style="margin:28px 0 12px;">网格背景 .ds-grid-bg</h3>
+    <div class="ds-grid-bg" style="height:180px;border:1px solid var(--ds-color-border-default);border-radius:var(--ds-radius-card);"></div>
+  </section>
+</main>
+
+<script>
+  // 顶栏滚动玻璃淡入（对应 .ds-header-bar.is-scrolled）
+  var bar = document.querySelector('.ds-header-bar');
+  var onScroll = function () { bar.classList.toggle('is-scrolled', window.scrollY > 24); };
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+  // 明暗主题对照（验证两套 token）
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var b = document.body;
+    b.setAttribute('data-ds-theme', b.getAttribute('data-ds-theme') === 'dark' ? 'light' : 'dark');
+  });
+</script>
+</body>
+</html>

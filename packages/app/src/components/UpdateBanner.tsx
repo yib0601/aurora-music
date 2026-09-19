@@ -36,7 +36,7 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 mb-3">
-      <div className="flex items-center gap-3 rounded-xl border border-mint/25 bg-mint/[0.08] px-4 py-2.5 backdrop-blur-md">
+      <div className="flex items-center gap-3 rounded-[10px] border border-mint/20 bg-mint/[0.06] px-4 py-2.5 backdrop-blur-ds">
       <ArrowDownCircle className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
       <p className="font-text text-[13px] text-white/85 tracking-[-0.15px] min-w-0 flex-1 truncate">
         发现新版本 <span className="text-mint font-semibold">v{info.version}</span>
@@ -45,7 +45,7 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
       </p>
       {/* 标出将下载的包类型：dnf 系给 RPM、apt 系给 DEB、便携版给 AppImage */}
       {info.assetLabel && (
-        <span className="flex-shrink-0 rounded-full border border-mint/30 bg-mint/10 px-2 py-0.5 font-text text-[11px] text-mint/90">
+        <span className="flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.08] px-2 py-0.5 font-text text-[11px] text-mint/90">
           {info.assetLabel}
         </span>
       )}

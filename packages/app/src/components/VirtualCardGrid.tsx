@@ -82,7 +82,7 @@ export const TrackCard = memo(function TrackCard({
               }
             }}
             title="查看歌曲详情"
-            className="aspect-square rounded-[8px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer transition-transform duration-200 ease-apple group-hover:scale-[1.02]"
+            className="aspect-square rounded-[10px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer transition-transform duration-200 ease-apple group-hover:scale-[1.02]"
           >
             <CoverImage
               track={track}
@@ -97,7 +97,7 @@ export const TrackCard = memo(function TrackCard({
               }}
               // 移动端无 hover：已收藏的红心常显，未收藏的保持隐藏避免遮挡封面
               className={cn(
-                'absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full transition-opacity duration-200 ease-apple bg-black/40 hover:scale-105',
+                'absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full transition-opacity duration-200 ease-apple bg-black/35 hover:scale-105',
                 liked ? 'opacity-100 md:opacity-0 md:group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
               )}
             >

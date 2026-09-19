@@ -1,0 +1,275 @@
+/* ============================================================================
+ * ds-tokens.css — DeepSeek Harness 设计风格 · 设计令牌层
+ * ----------------------------------------------------------------------------
+ * 来源：https://www.deepseek.com/harness/en/ 线上 CSS 的逆向精确提取
+ *       （原始素材 /tmp/ds.css 的 `:root` 与 `[data-theme=dark]` 两个 token 块）。
+ *       所有数值均为原站原值，未做臆造；仅结构与注释为本项目新增。
+ *
+ * 作用域约定（重要）：
+ *   1. token 一律定义在 `[data-ds-theme=...]` / `.ds-scope` 下，**不使用 `:root`**，
+ *      因此**绝不会覆盖**本项目已有的 Mineradio 主题（`--fc-*` 系列）与 shadcn
+ *      HSL 变量（`--background` / `--primary` 等）。
+ *   2. 分层结构（三层，缺一不可 —— 这是本文件的关键设计）：
+ *
+ *        [data-ds-theme], .ds-scope   ← ① 共享骨架：两主题都匹配的、值不随主题
+ *                                        变化的令牌（圆角 / 间距 / 字体栈 / blur /
+ *                                        static-、ghost-static、text-inverse 等）
+ *        [data-ds-theme="light"], .ds-scope  ← ② 仅浅色差异（颜色）
+ *        [data-ds-theme="dark"]              ← ③ 仅深色差异；置于最后以覆盖 ①
+ *
+ *     **为什么必须有第 ① 层**：`[data-ds-theme="light"]` 与 `[data-ds-theme="dark"]`
+ *     是**互斥**选择器 —— 挂 `data-ds-theme="dark"` 的元素不匹配 light 规则。
+ *     若把圆角/间距/字体等共享令牌只写在 light 块里，深色主题下这 34 个变量会
+ *     **全部取不到值**（`--ds-radius-pill` 为空 → 按钮圆角退化成 0px；
+ *     `--ds-font-sans` 为空 → 字体回退到默认衬线）。第 ① 层用属性存在选择器
+ *     `[data-ds-theme]` 命中两种取值，一次性修复该问题。
+ *   3. 未挂 `data-ds-theme` 时由 `.ds-scope` 兜底（等价于浅色主题）。
+ *   4. 全部变量以 `--ds-` 前缀命名，与 `--fc-*` / shadcn 命名空间天然隔离，
+ *      可以与本项目主题在同一次渲染中共存、互不影响。
+ *   5. 项目默认深色由 `.dark` class 控制；若要跟随它，接入方在容器上同时挂
+ *      `<div class="dark" data-ds-theme="dark">` 即可（由 Lead 决定接入方式）。
+ *
+ * 品牌色说明：
+ *   `--ds-color-brand` 保留 DeepSeek 原站品牌蓝（浅色 #4d6bfe / 深色 #6799fe），
+ *   不做替换。若要在项目内把品牌动作色换成 Mineradio 主色 mint #00F5D4，
+ *   请覆写 `--ds-color-brand-accent`（见文件末尾），组件层所有「强调/交互」位置
+ *   都优先读取该变量，从而实现「一套结构、两种品牌色」。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * 0. 共享骨架 —— 同时命中浅色与深色
+ *    `[data-ds-theme]` 是「属性存在」选择器，不管取值 light 还是 dark 都匹配，
+ *    因此深色主题也能拿到圆角/间距/字体栈等不随主题变化的令牌。
+ *    深色块（第 3 节）排在本块之后，特异性也更高，可安全覆写其中需要变化的项。
+ * ------------------------------------------------------------------------- */
+[data-ds-theme],
+.ds-scope {
+  /* --- 静态色（两套主题不变） --- */
+  --ds-color-static-white: #fff;
+  --ds-color-static-black: #0f0f0f;
+  --ds-color-static-black-secondary: rgba(0, 0, 0, 0.6);
+
+  /* --- 文字：不随主题变化的项 --- */
+  --ds-color-text-inverse: #fff;
+  --ds-color-text-link-blue: #234792;
+
+  /* --- 按钮：ghost-static（文字恒定深色，两主题一致） --- */
+  --ds-btn-ghost-static-bg: transparent;
+  --ds-btn-ghost-static-text: #0f0f0f;
+  --ds-btn-ghost-static-border: rgba(0, 0, 0, 0.2);
+  --ds-btn-ghost-static-hover-bg: rgba(0, 0, 0, 0.05);
+  --ds-btn-ghost-static-hover-border: rgba(9, 45, 78, 0.3);
+
+  /* --- 圆角（主题无关） --- */
+  --ds-radius-pill: 100px;
+  --ds-radius-card: 24px;
+  --ds-radius-panel: 16px;
+  --ds-radius-media: 10px;
+  --ds-radius-input: 10px;
+  --ds-radius-sm: 8px;
+
+  /* --- 间距（主题无关，8 基准 + 大跨度版式节奏） --- */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 24px;
+  --ds-space-6: 32px;
+  --ds-space-7: 40px;
+  --ds-space-8: 56px;
+  --ds-space-9: 80px;
+  --ds-space-10: 120px;
+  --ds-space-11: 160px;
+  --ds-space-12: 200px;
+  --ds-space-13: 240px;
+
+  /* --- 玻璃模糊半径（主题无关） --- */
+  --ds-blur-glass: 12px;
+
+  /* --- 字体栈（主题无关） ---
+   * ⚠️ 本项目**不使用**以下 DS 原站字体族。
+   * DeepSeek Harness 原站使用的 Host Grotesk / DM Sans / Fragment Mono 均为
+   * 商业授权字体，直接引用存在版权风险；因此本项目的字体沿用其自身既有的
+   * 中文优先栈（Noto Sans SC / PingFang SC …），不参与风格换肤。
+   * 下面三个变量仅作为设计资料的「原站事实」保留，供查阅比对，
+   * 项目中没有任何地方消费它们。
+   */
+  --ds-font-body: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC",
+    sans-serif;
+  --ds-font-display: "Host Grotesk", system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ds-font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
+  --ds-font-sans: var(--ds-font-body);
+}
+
+/* ---------------------------------------------------------------------------
+ * 1. 浅色主题差异（原站 `:root` 的颜色部分）
+ *    仅列与深色不同的「颜色」；圆角、间距、字体、static- 系列已由第 0 节提供。
+ * ------------------------------------------------------------------------- */
+[data-ds-theme="light"],
+.ds-scope {
+  /* --- 文字 --- */
+  --ds-color-text-primary: #1e232c;
+  --ds-color-text-primary-bluish: #121c31;
+  --ds-color-text-secondary: rgba(0, 0, 0, 0.7);
+  --ds-color-text-description: rgba(0, 0, 0, 0.65);
+  --ds-color-text-placeholder: #8691a1;
+
+  /* --- 品牌 --- */
+  --ds-color-brand: #4d6bfe;
+  --ds-color-brand-deep: #3a65c2;
+  --ds-color-brand-medium-reverse: #4176e6;
+  --ds-color-brand-light-reverse: #73a3d2;
+
+  /* --- 背景 --- */
+  --ds-color-bg-page: #f9f8f8;
+  --ds-color-bg-surface-1: hsla(0, 0%, 100%, 0.3);
+  --ds-color-bg-surface-2: hsla(0, 0%, 100%, 0.2);
+  --ds-color-bg-surface-3: rgba(0, 0, 0, 0.03);
+  --ds-color-bg-surface-4: rgba(0, 0, 0, 0.02);
+  --ds-color-bg-surface-5: rgba(0, 0, 0, 0.05);
+  --ds-color-bg-overlay: #fff;
+  --ds-color-bg-surface-raised: hsla(0, 0%, 100%, 0.45);
+  --ds-color-bg-hero-cta: hsla(0, 0%, 100%, 0.38);
+  --ds-color-bg-code: rgba(0, 0, 0, 0.05);
+  --ds-color-bg-hover: rgba(0, 0, 0, 0.04);
+  --ds-color-bg-input: hsla(0, 0%, 100%, 0.2);
+  --ds-color-bg-input-hover: hsla(0, 0%, 100%, 0.36);
+  --ds-color-bg-dark: #1a1615;
+
+  /* --- 描边 --- */
+  --ds-color-border-subtle: rgba(0, 0, 0, 0.06);
+  --ds-color-border-default: rgba(0, 0, 0, 0.1);
+  --ds-color-border-divider: rgba(0, 0, 0, 0.08);
+  --ds-color-border-hover: hsla(20, 1%, 45%, 0.2);
+  --ds-color-border-strong: rgba(0, 0, 0, 0.2);
+  --ds-color-border-secondary: rgba(9, 45, 78, 0.14);
+  --ds-color-border-input: hsla(0, 0%, 100%, 0.2);
+  --ds-color-border-input-focus: hsla(0, 0%, 100%, 0.25);
+
+  /* --- 滚动条 --- */
+  --ds-color-scrollbar: rgba(0, 0, 0, 0.15);
+
+  /* --- 按钮：primary --- */
+  --ds-btn-primary-bg: #1a1615;
+  --ds-btn-primary-text: #fff;
+  --ds-btn-primary-border: transparent;
+  --ds-btn-primary-hover-bg: hsla(0, 0%, 100%, 0.3);
+
+  /* --- 按钮：secondary（玻璃） --- */
+  --ds-btn-secondary-bg: hsla(0, 0%, 100%, 0.4);
+  --ds-btn-secondary-text: #1e232c;
+  --ds-btn-secondary-border: rgba(9, 45, 78, 0.18);
+  --ds-btn-secondary-hover-bg: rgba(0, 0, 0, 0.05);
+  --ds-btn-secondary-hover-border: rgba(9, 45, 78, 0.36);
+
+  /* --- 按钮：ghost（跟随主题） --- */
+  --ds-btn-ghost-bg: transparent;
+  --ds-btn-ghost-text: #121c31;
+  --ds-btn-ghost-border: transparent;
+  --ds-btn-ghost-hover-bg: rgba(0, 0, 0, 0.04);
+  --ds-btn-ghost-hover-border: hsla(20, 1%, 45%, 0.2);
+
+  /* --- 按钮：liquid（液体玻璃） --- */
+  --ds-btn-liquid-bg: hsla(0, 0%, 100%, 0.4);
+  --ds-btn-liquid-hover-bg: hsla(0, 0%, 100%, 0.6);
+
+  /* --- 阴影 --- */
+  --ds-shadow-card: 0 0 0 1px #f1f5f9, 0 2px 4px rgba(0, 0, 0, 0.05),
+    0 12px 24px rgba(0, 0, 0, 0.05);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. 深色主题差异（原站 `[data-theme=dark]`）
+ *    仅覆写与浅色不同的项。
+ *    圆角、间距、字体栈、static- 系列、ghost-static、text-inverse、text-link-blue 来自
+ *    第 0 节共享骨架（`[data-ds-theme]`），深色下同样能取到值。
+ *    本块位于第 0、1 节之后，特异性 (0,1,0) 亦高于第 0 节的 (0,1,0)+属性存在，
+ *    同权重时按「后出现者胜出」，因此这里的覆写稳定生效。
+ * ------------------------------------------------------------------------- */
+[data-ds-theme="dark"] {
+  /* --- 品牌 --- */
+  --ds-color-brand: #6799fe;
+  --ds-color-brand-deep: #fff;
+  --ds-color-brand-medium-reverse: #fff;
+  --ds-color-brand-light-reverse: #73a3d2;
+
+  /* --- 文字 --- */
+  --ds-color-text-primary: #fff;
+  --ds-color-text-primary-bluish: #fff;
+  --ds-color-text-secondary: hsla(0, 0%, 100%, 0.8);
+  --ds-color-text-description: hsla(0, 0%, 100%, 0.5);
+  --ds-color-text-placeholder: hsla(0, 0%, 100%, 0.3);
+
+  /* --- 背景 --- */
+  --ds-color-bg-page: #0a0a0a;
+  --ds-color-bg-surface-1: hsla(0, 0%, 100%, 0.06);
+  --ds-color-bg-surface-2: hsla(0, 0%, 100%, 0.04);
+  --ds-color-bg-surface-3: hsla(0, 0%, 100%, 0.02);
+  --ds-color-bg-surface-4: hsla(0, 0%, 100%, 0.015);
+  --ds-color-bg-surface-5: hsla(0, 0%, 100%, 0.12);
+  --ds-color-bg-overlay: #262626;
+  --ds-color-bg-surface-raised: hsla(0, 0%, 100%, 0.25);
+  --ds-color-bg-hero-cta: hsla(0, 0%, 100%, 0.12);
+  --ds-color-bg-code: rgba(0, 0, 0, 0.35);
+  --ds-color-bg-hover: hsla(0, 0%, 100%, 0.06);
+  --ds-color-bg-input: hsla(0, 0%, 100%, 0.08);
+  --ds-color-bg-input-hover: hsla(0, 0%, 100%, 0.12);
+  --ds-color-bg-dark: #fff;
+
+  /* --- 描边 --- */
+  --ds-color-border-subtle: hsla(0, 0%, 100%, 0.08);
+  --ds-color-border-default: hsla(0, 0%, 100%, 0.06);
+  --ds-color-border-divider: hsla(0, 0%, 100%, 0.25);
+  --ds-color-border-hover: hsla(0, 0%, 100%, 0.2);
+  --ds-color-border-strong: hsla(0, 0%, 100%, 0.24);
+  --ds-color-border-secondary: hsla(0, 0%, 100%, 0.2);
+  --ds-color-border-input: hsla(0, 0%, 100%, 0.2);
+  --ds-color-border-input-focus: hsla(0, 0%, 100%, 0.25);
+
+  /* --- 滚动条 --- */
+  --ds-color-scrollbar: hsla(0, 0%, 100%, 0.2);
+
+  /* --- 按钮：primary --- */
+  --ds-btn-primary-bg: #fff;
+  --ds-btn-primary-text: #0a0a0a;
+  --ds-btn-primary-border: transparent;
+  --ds-btn-primary-hover-bg: rgba(0, 0, 0, 0.2);
+
+  /* --- 按钮：secondary（玻璃） --- */
+  --ds-btn-secondary-bg: var(--ds-color-bg-surface-1);
+  --ds-btn-secondary-text: #fff;
+  --ds-btn-secondary-border: hsla(0, 0%, 100%, 0.15);
+  --ds-btn-secondary-hover-bg: hsla(0, 0%, 100%, 0.2);
+  --ds-btn-secondary-hover-border: hsla(0, 0%, 100%, 0.6);
+
+  /* --- 按钮：ghost --- */
+  --ds-btn-ghost-bg: transparent;
+  --ds-btn-ghost-text: #fff;
+  --ds-btn-ghost-border: transparent;
+  --ds-btn-ghost-hover-bg: hsla(0, 0%, 100%, 0.08);
+  --ds-btn-ghost-hover-border: hsla(0, 0%, 100%, 0.2);
+
+  /* --- 按钮：liquid --- */
+  --ds-btn-liquid-bg: #fff;
+  --ds-btn-liquid-hover-bg: rgba(0, 0, 0, 0.2);
+
+  /* --- 阴影 --- */
+  --ds-shadow-card: hsla(0, 0%, 100%, 0.12) 0px 1px 0px 0px inset;
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. 项目品牌色替换入口
+ *    上面两套主题里的 `--ds-color-brand` 是 DeepSeek 原站品牌蓝，保持不变。
+ *    组件层中「强调/交互」位置读取 `--ds-color-brand-accent`，其默认值即
+ *    原站品牌蓝（浅色/深色自动跟随），因此不改动时视觉与原站一致。
+ *    若要切换为 Mineradio 主色，只需在接入容器上覆写一行：
+ *        [data-ds-theme] { --ds-color-brand-accent: #00F5D4; }
+ *    定义在 `[data-ds-theme]`（属性存在选择器）上，浅色深色都命中。
+ * ------------------------------------------------------------------------- */
+[data-ds-theme],
+.ds-scope {
+  --ds-color-brand-accent: var(--ds-color-brand);
+}
