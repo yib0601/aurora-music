@@ -7,9 +7,9 @@ import { CoverImage } from '@/components/common/CoverImage'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
 
 /**
- * Mineradio 深色风格 QueueView 浮层
- * - 悬浮玻璃卡片：glass-floating + 16px 圆角
- * - 薄荷青主色高亮当前曲目
+ * 队列浮层（DS 皮肤）
+ * - 玻璃浮层：32px 圆角 + DS 的 hairline 描边与 12px 量级模糊（glass-floating）
+ * - 当前曲目用 mint 发丝描边 + 极轻底色标识，不再用大面积色块与投影
  */
 export function QueueView() {
   const navigate = useNavigate()
@@ -48,7 +48,7 @@ export function QueueView() {
 
   return (
     <div ref={panelRef} className="absolute right-0 bottom-full mb-3 w-80 max-h-[55vh] glass-floating rounded-[16px] overflow-hidden z-50 flex flex-col">
-      <div className="flex items-center justify-between px-4 h-12 border-b border-white/10 dark:border-white/5">
+      <div className="flex items-center justify-between px-4 h-12 border-b border-white/[0.06]">
         <span className="font-display text-[15px] font-semibold tracking-[-0.224px] text-foreground">
           播放队列
         </span>
@@ -71,10 +71,10 @@ export function QueueView() {
               <div
                 key={`${track.id}-${idx}`}
                 className={cn(
-                  'group w-full flex items-center gap-3 p-2 rounded-md text-left transition-all duration-200 ease-apple border',
+                  'group w-full flex items-center gap-3 p-2 rounded-[10px] text-left transition-colors duration-200 ease-apple border',
                   idx === currentIndex
-                    ? 'border-mint/36 bg-mint/[0.075] shadow-[0_10px_28px_rgba(0,245,212,.06)] text-foreground'
-                    : 'border-transparent hover:bg-white/[0.07] hover:-translate-y-px text-foreground/70'
+                    ? 'border-mint/25 bg-mint/[0.06] text-foreground'
+                    : 'border-transparent text-foreground/70 hover:bg-white/[0.05]'
                 )}
               >
                 <button
@@ -87,7 +87,7 @@ export function QueueView() {
                     }
                   }}
                   title="查看歌曲详情"
-                  className="w-10 h-10 rounded-[8px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+                  className="w-10 h-10 rounded-[10px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                 >
                   <CoverImage
                     track={track}
@@ -113,7 +113,7 @@ export function QueueView() {
                 </button>
                 <button
                   onClick={() => handleRemoveTrack(idx)}
-                  className="btn-icon text-foreground/30 opacity-0 group-hover:opacity-100 hover:bg-coral/78 hover:text-white"
+                  className="btn-icon !rounded-[10px] text-foreground/30 opacity-0 group-hover:opacity-100 hover:bg-coral/78 hover:text-white"
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </button>

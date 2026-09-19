@@ -17,10 +17,12 @@ interface Props {
 }
 
 /**
- * 移动端全屏 Now Playing 视图
+ * 移动端全屏 Now Playing 视图（DS 皮肤）
  * - 点击 PlayerBar 触发，下滑/点 ChevronDown 关闭
  * - 大封面 + 标题 + 进度条 + 大控件 + 歌词
- * - 触控目标 ≥ 48×48，主播放按钮 72×72
+ * - 触控目标 ≥ 48×48，主播放按钮 76×76
+ * - 背景用 12px 量级的克制玻璃（DS --ds-blur-glass 同量级），
+ *   不使用 --fc-* 的 34px 重模糊类，避免软件渲染下每帧重算全屏模糊
  * - 不含音量控件（移动端交由系统硬件音量键）
  */
 export function MobileNowPlaying({ open, onClose }: Props) {
@@ -70,17 +72,17 @@ export function MobileNowPlaying({ open, onClose }: Props) {
   const cyclePlayMode = () => usePlayerStore.getState().cyclePlayMode()
 
   return (
-    <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-xl">
+    <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-ds">
       {/* 顶部栏：关闭按钮 */}
       <header className="flex items-center justify-between px-4 pt-[env(safe-area-inset-top)] pb-2">
         <button
           onClick={onClose}
           aria-label="关闭"
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/[0.06] active:scale-95 transition"
         >
           <ChevronDown className="h-6 w-6" strokeWidth={1.8} />
         </button>
-        <span className="flex-1 min-w-0 px-1 text-center text-[13px] font-semibold text-white/70 truncate">
+        <span className="flex-1 min-w-0 px-1 text-center text-[13px] font-medium text-white/70 truncate">
           {currentTrack
             ? currentTrack.artist
               ? `${currentTrack.title} - ${currentTrack.artist}`
@@ -95,20 +97,20 @@ export function MobileNowPlaying({ open, onClose }: Props) {
             onClose()
           }}
           aria-label="队列"
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/[0.06] active:scale-95 transition"
         >
           <ListMusic className="h-5 w-5" strokeWidth={1.6} />
         </button>
       </header>
 
       {/* 大封面：矮屏自动缩小，给歌词留空间 */}
-      <div className="px-8 pt-2 pb-4 flex justify-center">
+      <div className="px-8 pt-2 pb-6 flex justify-center">
         <div className="relative w-full max-w-[min(320px,42vh)] aspect-square">
           <div
-            className="absolute -inset-6 rounded-[40px] blur-3xl opacity-50"
-            style={{ background: 'radial-gradient(circle at 30% 30%, rgba(var(--fc-accent-rgb),.20), transparent 70%)' }}
+            className="absolute -inset-6 rounded-[40px] blur-3xl opacity-40"
+            style={{ background: 'radial-gradient(circle at 30% 30%, rgba(var(--fc-accent-rgb),.18), transparent 70%)' }}
           />
-          <div className="relative w-full h-full rounded-[24px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center overflow-hidden product-shadow">
+          <div className="relative w-full h-full rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center overflow-hidden product-shadow">
             <CoverImage
               track={currentTrack}
               alt={currentTrack?.title || ''}
@@ -177,12 +179,12 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         >
           <SkipBack className="h-7 w-7" fill="currentColor" strokeWidth={1.5} />
         </button>
-        {/* 主播放按钮：76px 大圆形 */}
+        {/* 主播放按钮：76px 大圆形，mint 实心 + 克制投影（DS 不用大面积 glow） */}
         <button
           onClick={() => usePlayerStore.getState().togglePlay()}
           disabled={!currentTrack}
           aria-label={isPlaying ? '暂停' : '播放'}
-          className="w-[76px] h-[76px] rounded-full flex items-center justify-center bg-mint text-mint-fg disabled:opacity-40 active:scale-95 transition shadow-[0_10px_30px_rgba(0,245,212,.35),inset_0_1px_0_rgba(255,255,255,.25)]"
+          className="w-[76px] h-[76px] rounded-full flex items-center justify-center bg-mint text-mint-fg disabled:opacity-40 active:scale-95 transition-transform duration-200 ease-apple shadow-[0_4px_12px_rgba(0,0,0,.22),inset_0_1px_0_rgba(255,255,255,.18)]"
         >
           {isPlaying ? (
             <Pause className="h-8 w-8" fill="currentColor" strokeWidth={1.5} />

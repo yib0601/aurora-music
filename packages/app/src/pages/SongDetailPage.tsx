@@ -127,7 +127,7 @@ function VinylCover({ track, spinning }: { track: Track; spinning: boolean }) {
       {/* 唱片本体：旋转层 */}
       <div className={cn('vinyl-disc relative aspect-square rounded-full', spinning && 'is-playing')}>
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-[62%] aspect-square rounded-full overflow-hidden ring-1 ring-white/10 bg-[#0b0c0f]">
+          <div className="w-[62%] aspect-square rounded-full overflow-hidden ring-1 ring-white/[0.08] bg-[#0b0c0f]">
             <CoverImage
               track={track}
               alt={track.title}
@@ -278,8 +278,8 @@ export function SongDetailPage() {
       <div className="flex flex-col h-full px-8 pt-8 pb-4">
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative mb-6">
-            <div className="absolute -inset-16 bg-gradient-to-b from-mint/8 to-transparent rounded-full blur-3xl" />
-            <div className="relative w-[120px] h-[120px] rounded-[28px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+            <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
+            <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
               <Music2 className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
@@ -419,7 +419,7 @@ export function SongDetailPage() {
                 {quickFacts.map(({ icon: Icon, label, value }) => (
                   <span
                     key={label}
-                    className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-3 rounded-full bg-white/[0.045] border border-white/[0.07]"
+                    className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-3 rounded-full bg-white/[0.04] border border-white/[0.08]"
                   >
                     <Icon className="h-3.5 w-3.5 text-mint/60 flex-shrink-0" strokeWidth={1.6} />
                     <span className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</span>
@@ -461,7 +461,7 @@ export function SongDetailPage() {
             更多信息
           </button>
           {showMoreInfo && (
-            <div className="mt-4 rounded-2xl bg-white/[0.035] border border-white/[0.07] backdrop-blur-md p-5">
+            <div className="mt-4 rounded-[16px] bg-white/[0.03] border border-white/[0.08] backdrop-blur-ds p-5">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-5">
                 {statItems.map(({ icon: Icon, label, value }) => (
                   <div key={label} className="flex items-center gap-3 min-w-0">
@@ -501,8 +501,8 @@ export function SongDetailPage() {
                   <div
                     key={t.id}
                     className={cn(
-                      'row-hover group flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-white/5 last:border-0 hover:bg-mint/[0.075]',
-                      t.id === track.id && 'bg-mint/[0.06]'
+                      'row-hover group flex items-center gap-3 px-4 py-2 cursor-pointer border-b border-white/[0.05] last:border-0',
+                      t.id === track.id && 'bg-white/[0.05]'
                     )}
                     onDoubleClick={() => {
                       usePlayerStore.getState().playQueue(albumTracks, idx)
@@ -518,7 +518,7 @@ export function SongDetailPage() {
                         e.stopPropagation()
                         navigate(`/song/${t.id}`)
                       }}
-                      className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden transition-transform duration-200 ease-apple hover:scale-105"
+                      className="w-10 h-10 rounded-[10px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden transition-transform duration-200 ease-apple hover:scale-105"
                       title="查看歌曲详情"
                     >
                       <CoverImage

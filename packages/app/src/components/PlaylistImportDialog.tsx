@@ -82,7 +82,7 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
               disabled={busy}
               rows={7}
               placeholder={'粘贴歌单分享链接，或按行粘贴歌曲列表：\n七里香 - 周杰伦\n晴天 - 周杰伦'}
-              className="w-full resize-none bg-white/[0.03] border border-white/10 rounded-md px-3 py-2.5 font-text text-[13px] text-white/85 outline-none focus:border-mint/50 transition-colors duration-200 placeholder:text-white/25"
+              className="w-full resize-none bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3 py-2.5 font-text text-[13px] text-white/85 outline-none focus:border-mint/50 transition-colors duration-200 placeholder:text-white/25"
             />
             <Input
               value={playlistName}
@@ -123,12 +123,12 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
             </div>
 
             {/* 预览列表：本地匹配状态一目了然 */}
-            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin border border-white/[0.06] rounded-md">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin border border-white/[0.06] rounded-[10px]">
               {preview.songs.map((song, i) => {
                 const matched = preview.localMatches[i]
                 const isSearching = phase === 'importing' && !matched
                 return (
-                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 border-b border-white/5 last:border-0">
+                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 border-b border-white/[0.05] last:border-0">
                     {isSearching ? (
                       <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-mint/70" strokeWidth={1.6} />
                     ) : matched ? (

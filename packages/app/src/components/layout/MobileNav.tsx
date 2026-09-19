@@ -6,12 +6,16 @@ import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { useUIStore } from '@/stores/uiStore'
 
 /**
- * 移动端导航：顶部汉堡菜单 + 左侧抽屉
+ * 移动端导航：顶部汉堡菜单 + 左侧抽屉（DS 化）
  * - 左上角菜单按钮，点击滑出左侧抽屉（替代底部 BottomTabBar）
  * - 顶栏展示品牌名（页面内容区已有大标题，不重复展示页面标题）
  * - 抽屉含 5 个主导航入口，点击切换路由并关闭抽屉
  * - 遮罩点击关闭；抽屉 glass 材质 + safe-area 适配
  * - 抽屉开关全局化到 uiStore：App 层的系统返回键处理需要能收起它
+ *
+ * 视觉取 DS 语言：active 态用 surface 层级 + 1px 发丝描边标识选中，
+ * 品牌 mint 收敛为图标强调色，不再整块铺色；圆角走 DS panel 档。
+ * 抽屉开关、路由跳转与关闭逻辑一字未改。
  */
 const navItems = [
   { to: '/library', icon: Music, label: '音乐库' },
@@ -55,7 +59,7 @@ export function MobileNav() {
           <Menu className="h-5 w-5" strokeWidth={1.8} />
         </button>
         {/* 顶栏展示品牌名而非页面标题：页面内容区已有同名大标题，重复展示显得冗余 */}
-        <span className="font-display text-[15px] font-semibold text-white/90 tracking-[-0.2px]">
+        <span className="font-display text-[15px] font-semibold text-white/[0.90] tracking-[-0.2px]">
           Aurora
         </span>
       </header>
@@ -76,7 +80,7 @@ export function MobileNav() {
         )}
       >
         <div className="flex items-center justify-between pl-4 pr-2 h-[calc(3rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] shrink-0">
-          <span className="font-display font-semibold text-[16px] text-white/96 tracking-[-0.2px]">
+          <span className="font-display font-semibold text-[16px] text-white/[0.96] tracking-[-0.2px]">
             Aurora Music
           </span>
           <button
@@ -96,14 +100,14 @@ export function MobileNav() {
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] tracking-[-0.2px] transition-all duration-200',
+                  'group flex items-center gap-3 px-3 py-3 rounded-ds-panel text-[14px] tracking-[-0.2px] transition-all duration-200 border',
                   isActive
-                    ? 'bg-mint/[0.10] text-mint'
-                    : 'text-white/70 hover:text-white hover:bg-white/[0.05]',
+                    ? 'bg-white/[0.07] border-white/[0.10] text-white'
+                    : 'border-transparent text-white/70 hover:text-white hover:bg-white/[0.05]',
                 )
               }
             >
-              <Icon className="h-5 w-5" strokeWidth={1.6} />
+              <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
               {label}
             </NavLink>
           ))}
@@ -113,7 +117,7 @@ export function MobileNav() {
               setOpen(false)
               setShowImportDialog(true)
             }}
-            className="flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] tracking-[-0.2px] text-white/70 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"
+            className="flex items-center gap-3 px-3 py-3 rounded-ds-panel text-[14px] tracking-[-0.2px] text-white/70 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"
           >
             <Link2 className="h-5 w-5" strokeWidth={1.6} />
             导入歌单

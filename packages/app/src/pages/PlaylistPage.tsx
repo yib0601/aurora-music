@@ -148,7 +148,7 @@ export function PlaylistPage() {
           <SearchEntry />
         </div>
         <div className="flex items-center gap-6 max-w-4xl">
-          <div className="w-44 h-44 rounded-lg glass-regular border border-white/10 flex items-center justify-center flex-shrink-0 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
+          <div className="w-44 h-44 rounded-[24px] glass-regular border border-white/[0.08] flex items-center justify-center flex-shrink-0">
             <ListMusic className="h-20 w-20 text-mint" strokeWidth={1.3} />
           </div>
           <div className="flex-1 min-w-0">
@@ -221,7 +221,7 @@ export function PlaylistPage() {
         {playlistTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
-              <div className="w-20 h-20 rounded-lg glass-regular border border-white/10 flex items-center justify-center mb-5 shadow-[0_10px_30px_rgba(0,0,0,.18)]">
+              <div className="w-20 h-20 rounded-[16px] glass-regular border border-white/[0.08] flex items-center justify-center mb-5">
                 <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
               </div>
               <p className="text-tagline text-white mb-1">播放列表为空</p>
@@ -297,7 +297,7 @@ export function PlaylistPage() {
                       toggleLike(track.id)
                     }}
                     className={cn(
-                      'h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-mint/[0.075] transition-all duration-200 ease-apple',
+                      'h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-white/[0.06] transition-colors duration-200 ease-apple',
                       likedTracks.has(track.id) ? 'text-coral' : 'text-white/40'
                     )}
                   >
@@ -311,7 +311,7 @@ export function PlaylistPage() {
                     <DropdownMenuTrigger asChild>
                       <button
                         onClick={(e) => e.stopPropagation()}
-                        className="h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-mint/[0.075] text-white/50 transition-all duration-200 ease-apple"
+                        className="h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-white/[0.06] text-white/50 transition-colors duration-200 ease-apple"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.7} />
                       </button>

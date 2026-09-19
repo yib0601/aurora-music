@@ -67,7 +67,7 @@ export function DuplicateDetails({ groups, intro }: {
 }) {
   const sourceLabel = useSourceLabel()
   return (
-    <div className="glass-floating rounded-xl p-3">
+    <div className="glass-floating rounded-[10px] p-3">
       {intro && (
         <p className="font-text text-[12px] text-white/55 mb-2 leading-relaxed">{intro}</p>
       )}
@@ -127,7 +127,7 @@ export const DuplicateBadge = memo(function DuplicateBadge({
       onDoubleClick={(e) => e.stopPropagation()}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white/[0.08] border border-white/15 px-1.5 py-[1px] font-text text-[10px] text-white/55 cursor-help"
+      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.12] px-1.5 py-[1px] font-text text-[10px] text-white/55 cursor-help"
     >
       <Copy className="h-2.5 w-2.5" strokeWidth={1.8} />
       重复

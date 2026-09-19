@@ -117,7 +117,7 @@ export function UpdateDownloadDialog() {
               {percent !== null ? <span className="ml-auto text-mint">{percent}%</span> : null}
             </div>
             {/* 进度条：无 Content-Length 时退化为不确定动画 */}
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
               {percent !== null ? (
                 <div
                   className="h-full rounded-full bg-mint transition-[width] duration-200"
@@ -145,7 +145,7 @@ export function UpdateDownloadDialog() {
 
         {phase === 'done' && filePath && (
           <div className="space-y-3">
-            <div className="flex items-start gap-2.5 rounded-lg border border-mint/25 bg-mint/[0.08] px-3.5 py-3">
+            <div className="flex items-start gap-2.5 rounded-[10px] border border-mint/20 bg-mint/[0.06] px-3.5 py-3">
               <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint" strokeWidth={1.8} />
               <div className="min-w-0">
                 <p className="font-text text-[13px] text-white/90">下载完成</p>
@@ -182,7 +182,7 @@ export function UpdateDownloadDialog() {
 
         {phase === 'error' && (
           <div className="space-y-3">
-            <div className="flex items-start gap-2.5 rounded-lg border border-coral/25 bg-coral/[0.08] px-3.5 py-3">
+            <div className="flex items-start gap-2.5 rounded-[10px] border border-coral/25 bg-coral/[0.07] px-3.5 py-3">
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-coral" strokeWidth={1.8} />
               <p className="min-w-0 break-all font-text text-[13px] text-white/85">{error || '下载失败，请稍后重试'}</p>
             </div>

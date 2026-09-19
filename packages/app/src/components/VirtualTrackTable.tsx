@@ -133,7 +133,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
         <div
           style={style}
           className={cn(
-            'group grid items-center h-[60px] md:h-[56px] cursor-pointer border-b border-white/5 row-hover',
+            'group grid items-center h-[60px] md:h-[56px] cursor-pointer border-b border-white/[0.05] row-hover',
             GRID_TEMPLATE,
           )}
           // 移动端无 hover/double-click 概念，改用单击触发播放；
@@ -153,7 +153,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                 }
               }}
               title="查看歌曲详情"
-              className="w-11 h-11 md:w-9 md:h-9 rounded-[8px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+              className="w-11 h-11 md:w-9 md:h-9 rounded-[10px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
             >
               <CoverImage
                 track={track}
@@ -170,7 +170,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                 {sourceName && (
                   <span
                     title={`来自网络存储「${sourceName}」`}
-                    className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-mint/[0.12] border border-mint/25 px-1.5 py-[1px] font-text text-[10px] text-mint/85 tracking-[-0.1px]"
+                    className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-mint/[0.08] border border-mint/20 px-1.5 py-[1px] font-text text-[10px] text-mint/85 tracking-[-0.1px]"
                   >
                     <Cloud className="h-2.5 w-2.5" strokeWidth={1.8} />
                     {/* 窄列放不下来源名，只留图标；宽屏才展开文字 */}
@@ -276,12 +276,12 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
   return (
     <>
       {/* 表头：移动端隐藏（列表语义已由双行布局表达） */}
-      <div className={cn('hidden md:grid items-center border-b border-white/10', GRID_TEMPLATE)}>
-        <div className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">标题</div>
-        <div className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">艺术家</div>
-        <div className="text-left py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">专辑</div>
+      <div className={cn('hidden md:grid items-center border-b border-white/[0.08]', GRID_TEMPLATE)}>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">标题</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">艺术家</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">专辑</div>
         <div />
-        <div className="text-right py-2.5 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">时长</div>
+        <div className="text-right py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">时长</div>
       </div>
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((vi) => {

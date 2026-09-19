@@ -17,7 +17,7 @@ const ContextMenuSubTrigger = React.forwardRef<
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      'flex cursor-default select-none items-center rounded-xs px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground',
+      'flex cursor-default select-none items-center rounded-ds-sm px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground',
       inset && 'pl-8',
       className
     )}
@@ -40,7 +40,9 @@ const ContextMenuSubContent = React.forwardRef<
       ref={ref}
       className={cn(
         // 仅淡入淡出不带缩放：缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧
-        'z-50 min-w-[8rem] overflow-hidden rounded-md glass-floating p-1.5 text-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+        // DS 玻璃浮层（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边
+        // 模糊沿用 .glass-floating（P1 已收敛到 DS 的 12px 量级 + saturate），不叠加 utility 以免覆盖
+        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className
       )}
       {...props}
@@ -58,7 +60,8 @@ const ContextMenuContent = React.forwardRef<
       ref={ref}
       className={cn(
         // 仅淡入淡出不带缩放：缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧
-        'z-50 min-w-[8rem] overflow-hidden rounded-md glass-floating p-1.5 text-foreground animate-in fade-in-80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+        // DS 玻璃浮层（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边，模糊沿用 .glass-floating
+        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground animate-in fade-in-80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className
       )}
       {...props}
@@ -74,7 +77,7 @@ const ContextMenuItem = React.forwardRef<
   <ContextMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center rounded-xs px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-default select-none items-center rounded-ds-sm px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       inset && 'pl-8',
       className
     )}
@@ -90,7 +93,7 @@ const ContextMenuCheckboxItem = React.forwardRef<
   <ContextMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center rounded-xs py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-default select-none items-center rounded-ds-sm py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     checked={checked}
@@ -113,7 +116,7 @@ const ContextMenuRadioItem = React.forwardRef<
   <ContextMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center rounded-xs py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-default select-none items-center rounded-ds-sm py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
@@ -134,7 +137,7 @@ const ContextMenuLabel = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <ContextMenuPrimitive.Label
     ref={ref}
-    className={cn('px-2.5 py-1.5 text-[12px] font-semibold text-foreground/55', inset && 'pl-8', className)}
+    className={cn('px-2.5 py-1.5 text-[12px] font-semibold text-foreground/[0.55]', inset && 'pl-8', className)}
     {...props}
   />
 ))

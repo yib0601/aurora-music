@@ -129,7 +129,8 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
           // 空态（暂无歌词/搜索中）：去掉上下占位伪元素，提示垂直居中
           ? 'flex items-center justify-center'
           : cn(
-              large ? 'space-y-8' : 'space-y-6',
+              // DS 排版阶梯：行距按 4px 阶梯递进（紧凑 16 / 常规 24 / 大字号 32）
+              large ? 'space-y-7' : 'space-y-5',
               'before:block before:h-16 before:content-[""] after:block after:h-1/2 after:content-[""]'
             ),
         className
@@ -137,7 +138,7 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
       style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}
     >
       {lyrics.length === 0 && (
-        <p className={cn('text-white/20', large ? 'text-[17px]' : 'text-[15px]')}>
+        <p className={cn('text-white/25', large ? 'text-[16px]' : 'text-[14px]')}>
           {loading ? '搜索歌词中...' : '暂无歌词'}
         </p>
       )}
@@ -147,12 +148,12 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
           <p
             key={`${line.time}-${idx}`}
             className={cn(
-              'transition-all duration-500 ease-apple cursor-pointer leading-relaxed',
+              'transition-all duration-500 ease-apple cursor-pointer leading-[1.6]',
               idx === activeIdx
                 ? cn('lyric-active', large && 'lyric-active-lg')
                 : distance <= 2
-                ? cn('text-white/50', large ? 'text-[17px]' : 'text-[15px]')
-                : cn('text-white/28', large ? 'text-[15px]' : 'text-[13px]')
+                ? cn('text-white/55', large ? 'text-[16px]' : 'text-[14px]')
+                : cn('text-white/30', large ? 'text-[14px]' : 'text-[13px]')
             )}
             onClick={() => onLineClick?.(line.time)}
           >

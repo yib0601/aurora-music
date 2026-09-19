@@ -544,8 +544,16 @@ function AppLayout() {
     // 同步 <html> 的 dark 类与 meta theme-color（移动端状态栏颜色随主题翻转）
     const apply = (isDark: boolean) => {
       document.documentElement.classList.toggle('dark', isDark)
+      // 挂载 DS 风格层的作用域属性：`--ds-*` 系列 token 全部定义在
+      // `[data-ds-theme]` / `.ds-scope` 之下（ds-tokens.css 刻意不使用 :root，
+      // 以隔离命名空间、绝不覆盖 --fc-* 与 shadcn 变量）。
+      // 若不挂这个属性，任何取值写成 var(--ds-*) 的 Tailwind class 都会解析为
+      // 空值而**静默失效**（构建无报错、class 也在产物里，但计算值为 none/
+      // 0px）——例如 shadow-ds-card、backdrop-blur-ds。因此这里必须与 dark 类
+      // 同步挂载，且取值只能是 light/dark（ds-tokens.css 只认这两个值）。
+      document.documentElement.setAttribute('data-ds-theme', isDark ? 'dark' : 'light')
       const meta = document.querySelector('meta[name="theme-color"]')
-      if (meta) meta.setAttribute('content', isDark ? '#08090B' : '#F4F5F7')
+      if (meta) meta.setAttribute('content', isDark ? '#0A0A0A' : '#F9F8F8')
     }
     if (theme === 'dark') {
       apply(true)
@@ -892,7 +900,7 @@ function AppLayout() {
                       onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
                       title="查看歌曲详情"
                       disabled={!currentTrack}
-                      className="relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02] disabled:hover:scale-100"
+                      className="relative aspect-square rounded-ds-card bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02] disabled:hover:scale-100"
                     >
                       <CoverImage
                         track={currentTrack}
@@ -942,7 +950,7 @@ function AppLayout() {
       {/* 移动端存储权限引导：扫描需要「音乐和音频」权限（或「所有文件访问」）时显示 */}
       {mobile && needsStoragePermission && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
-          <div className="w-full max-w-[340px] rounded-[20px] bg-canvas-paper border border-white/10 p-6 flex flex-col items-center text-center shadow-[0_20px_60px_rgba(0,0,0,.5)]">
+          <div className="w-full max-w-[340px] rounded-ds-card bg-canvas-paper border border-white/10 p-6 flex flex-col items-center text-center shadow-ds-dropdown">
             <div className="w-14 h-14 rounded-full bg-mint/10 border border-mint/20 flex items-center justify-center mb-4">
               <ShieldAlert className="h-7 w-7 text-mint" strokeWidth={1.6} />
             </div>

@@ -17,7 +17,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      'flex cursor-default select-none items-center rounded-xs px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent data-[state=open]:bg-accent',
+      'flex cursor-default select-none items-center rounded-ds-sm px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent data-[state=open]:bg-accent',
       inset && 'pl-8',
       className
     )}
@@ -36,7 +36,9 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      'z-50 min-w-[8rem] overflow-hidden rounded-md glass-floating p-1.5 text-foreground',
+      // DS 玻璃浮层（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边 + 单层柔和投影
+      // 模糊沿用 .glass-floating（P1 已收敛到 DS 的 12px 量级 + saturate），不叠加 utility 以免覆盖
+      'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground',
       className
     )}
     {...props}
@@ -54,7 +56,8 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       className={cn(
         // 仅淡入不带缩放：缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧
-        'z-50 min-w-[8rem] overflow-hidden rounded-md glass-floating p-1.5 text-foreground animate-in fade-in-0',
+        // DS 玻璃浮层（对应 `.ds-glass-dropdown`），模糊沿用 .glass-floating
+        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground animate-in fade-in-0',
         className
       )}
       {...props}
@@ -70,7 +73,7 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center rounded-xs px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-default select-none items-center rounded-ds-sm px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       inset && 'pl-8',
       className
     )}
@@ -86,7 +89,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center rounded-xs py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-default select-none items-center rounded-ds-sm py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     checked={checked}
@@ -109,7 +112,7 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center rounded-xs py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-default select-none items-center rounded-ds-sm py-1.5 pl-8 pr-2 text-[13px] outline-none transition-colors duration-200 ease-apple focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
@@ -130,7 +133,7 @@ const DropdownMenuLabel = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <DropdownMenuPrimitive.Label
     ref={ref}
-    className={cn('px-2.5 py-1.5 text-[12px] font-semibold text-foreground/55', inset && 'pl-8', className)}
+    className={cn('px-2.5 py-1.5 text-[12px] font-semibold text-foreground/[0.55]', inset && 'pl-8', className)}
     {...props}
   />
 ))
