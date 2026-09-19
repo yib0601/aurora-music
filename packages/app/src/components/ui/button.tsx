@@ -28,7 +28,7 @@ const buttonVariants = cva(
         // - DS 规范：字重 500、圆角 pill、hover 位移 -1px
         // - 阴影收敛为「内高光 + 单层柔和投影」，去掉多层 glow
         primary:
-          'bg-mint text-mint-fg rounded-ds-pill text-[14px] font-medium tracking-[-0.224px] hover:bg-[var(--fc-accent-hov)] hover:-translate-y-px shadow-[inset_0_1px_0_rgba(255,255,255,.20),0_2px_8px_rgba(0,245,212,.16)]',
+          'bg-mint text-mint-fg rounded-ds-pill text-[14px] font-medium tracking-[-0.224px] hover:bg-[var(--fc-accent-hov)] hover:-translate-y-px shadow-[inset_0_1px_0_rgba(255,255,255,.20),0_2px_8px_rgb(var(--tw-mint)/.16)]',
         // secondary: 玻璃底 + 1px 发丝描边（DS 的次级按钮形态）
         // ⚠️ 两个坑叠加，必须同时规避：
         //   1) 此处写字面量 12px 而非 backdrop-blur-ds：数值等价于 DS 的
