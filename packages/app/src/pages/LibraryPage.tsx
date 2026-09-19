@@ -340,7 +340,7 @@ export function LibraryPage() {
             <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
               音乐库
             </h1>
-            <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
+            <p className="font-text text-[13px] text-white/65 mt-1 tracking-[-0.2px]">
               {tracks.length === 0 ? '导入音乐，开始构建你的专属音乐库' : `${tracks.length} 首歌曲`}
               {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
                   被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效。

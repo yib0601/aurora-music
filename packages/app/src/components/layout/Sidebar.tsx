@@ -115,7 +115,7 @@ export function Sidebar() {
                 'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
                 isActive
                   ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
-                  : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
+                  : 'border-transparent text-white/72 hover:text-white hover:bg-white/[0.05]'
               )
             }
           >
@@ -128,7 +128,7 @@ export function Sidebar() {
       {/* 播放列表 */}
       <div className="mt-5 flex-1 overflow-y-auto scrollbar-thin min-h-0 px-3">
         <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="font-text text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+          <span className="font-text text-[11px] font-semibold text-white/65 uppercase tracking-wider">
             播放列表
           </span>
           <div className="flex items-center gap-1">
@@ -185,7 +185,7 @@ export function Sidebar() {
                         'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
                         isActive
                           ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
-                          : 'border-transparent text-white/60 hover:text-white hover:bg-white/[0.05]'
+                          : 'border-transparent text-white/72 hover:text-white hover:bg-white/[0.05]'
                       )
                     }
                   >
@@ -234,7 +234,7 @@ export function Sidebar() {
 
       {/* 版本号 */}
       <div className="px-4 py-3 border-t border-white/5">
-        <p className="font-text text-[11px] text-white/50 tracking-[-0.12px]">Aurora Music v{APP_VERSION}</p>
+        <p className="font-text text-[11px] text-white/65 tracking-[-0.12px]">Aurora Music v{APP_VERSION}</p>
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
