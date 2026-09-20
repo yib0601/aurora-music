@@ -121,6 +121,20 @@
     /* 下拉/弹层阴影沿用参考站 .ds-glass-dropdown 的三层结构：
      * 1px 接触线 + 4px 环境晕 + 32px 柔和投影，全部低 alpha 纯黑。 */
     --glass-popover-shadow: 0 0 1px 0 rgba(0,0,0,.20), 0 0 4px 0 rgba(0,0,0,.04), 0 12px 32px 0 rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.14);
+    /* 液态玻璃浮层的投影：比普通 glass-floating 更深、更收，
+     * 因为折射后的玻璃「更厚」，需要更强的落地感来支撑这份厚度；
+     * inset 高光不进这里（由 .glass-liquid::before 单独画，便于做上下不对称）。 */
+    --glass-liquid-shadow: 0 18px 52px rgba(0,0,0,.36), 0 2px 8px rgba(0,0,0,.20);
+    /* 液态玻璃本体：比 glass-floating 更透 —— 液态玻璃的「透」靠让背景色场
+     * 透上来，而不是靠降低白度；只保留一层极淡白作为材质自身的散射。 */
+    --glass-liquid-bg: linear-gradient(rgba(255,255,255,.055), rgba(255,255,255,.038)), rgba(0, 8, 18, .20);
+    --glass-liquid-border: rgba(255,255,255,.18);
+    --glass-liquid-border-hover: rgba(255,255,255,.26);
+    /* 液态玻璃的厚度层（单条声明，::before 直接引用）：
+     * 上=1px 零模糊的锐亮线（掠射反射）；下=1.5px 偏移 + 1px 模糊的柔折返光。
+     * 数值经并排实测校准：alpha 过低（.20/.08）玻璃发平无厚度，
+     * 过高（.44/.22）退化成描边；.34/.18 是「有厚度但不描边」的最佳点。 */
+    --glass-liquid-edge: inset 0 1px 0 0 rgba(255,255,255,.34), inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
 
     /* 表面层（DS 中性灰阶：surface-1 hsla(0,0%,100%,.06) / surface-2 .04） */
     --surface-card-bg: rgba(255,255,255,.06);
@@ -224,7 +238,9 @@
     --saved-panel-glass-bg: rgba(255,255,255,.05);
     --saved-panel-glass-filter: blur(24px) saturate(1.6) brightness(1.05);
     --saved-panel-glass-svg-filter: url(#mineradio-control-glass-filter) saturate(1);
-    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 8px 32px rgba(0,0,0,.30);
+    /* 播放条玻璃：厚度层（上锐下柔）+ 落地投影。
+     * 它是主界面最显眼的玻璃，用完整的 --glass-liquid-edge 强度。 */
+    --saved-panel-glass-shadow: 0 8px 32px rgba(0,0,0,.30), inset 0 1px 0 0 rgba(255,255,255,.34), inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
     --saved-panel-glass-radius: 100px;
     --saved-button-glass-bg: rgba(255,255,255,.05);
     --saved-button-glass-filter: blur(20px) saturate(1.5) brightness(1.05);
@@ -331,6 +347,17 @@
     --glass-popover-bg: rgba(255,255,255,.58);
     --glass-popover-border: rgba(0,0,0,.08);
     --glass-popover-shadow: 0 0 1px 0 rgba(0,0,0,.10), 0 0 4px 0 rgba(0,0,0,.03), 0 12px 32px 0 rgba(20,40,70,.12), inset 0 1px 0 rgba(255,255,255,.9);
+    /* 浅色下投影必须更轻更散：暗投影落在亮背景上极易显脏，
+     * 且浅色玻璃本身靠「白」而非「深」建立层次。 */
+    --glass-liquid-shadow: 0 18px 48px rgba(20,40,70,.16), 0 2px 8px rgba(20,40,70,.08);
+    /* 浅色液态玻璃：白色必须保持足够高，否则黑字对比度会崩
+     * （实测浅色玻璃降到 .40 时正文仍 >7:1；再低就有风险）。 */
+    --glass-liquid-bg: linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.60));
+    --glass-liquid-border: rgba(0,0,0,.10);
+    --glass-liquid-border-hover: rgba(0,0,0,.16);
+    /* 浅色下厚度层同样收敛：亮背景上白色高光的对比差本就小，
+     * 给太强会出现明显白边。 */
+    --glass-liquid-edge: inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
 
     --glass-bg: linear-gradient(112deg, rgba(255,255,255,.74), rgba(250,250,250,.80) 48%, rgba(243,243,243,.86));
     --glass-bg-focus: linear-gradient(112deg, rgba(255,255,255,.84), rgba(252,252,252,.88) 50%, rgba(246,246,246,.92));
@@ -340,7 +367,7 @@
     --glass-shadow-focus: 0 14px 36px rgba(0,0,0,.12), 0 0 0 1px rgba(var(--fc-accent-rgb),.28), inset 0 1px 0 rgba(255,255,255,.9);
 
     --saved-panel-glass-bg: rgba(255,255,255,.42);
-    --saved-panel-glass-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 8px 24px rgba(20,40,70,.10);
+    --saved-panel-glass-shadow: 0 8px 24px rgba(20,40,70,.10), inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
     --saved-button-glass-bg: rgba(255,255,255,.44);
     --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 4px 14px rgba(20,40,70,.10);
     --saved-button-glass-hover-bg: rgba(255,255,255,.62);
@@ -560,27 +587,130 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     box-shadow: var(--glass-floating-shadow);
   }
 
-  /* 通用玻璃面板（侧栏/标题栏/右侧 Now Playing） */
+  /* 通用玻璃面板（侧栏/标题栏/右侧 Now Playing）
+   *
+   * ⚠️ 厚度层用 ::before 画，而不是写进 box-shadow —— 这是必需的，不是风格选择：
+   * 侧栏/标题栏的 class 里带 Tailwind 的 `shadow-none`（它们紧贴窗口边缘，
+   * 外投影会被裁掉显脏，故有意去掉），而 `shadow-none` 会把 box-shadow 整个覆盖掉。
+   * 若厚度写在 box-shadow 上，侧栏的厚度会被静默清零（实测 box-shadow 变成
+   * 三个透明占位值），于是「所有面板统一厚度」的约定在最重要的侧栏上失效。
+   * 用伪元素画则与 box-shadow 完全解耦。
+   *
+   * 厚度构成：上 = 1px 零模糊的锐亮线（掠射反射是锐的）；
+   *          下 = 1.5px 偏移 + 1px 模糊的柔折返光（光穿透玻璃后在底缘折回，边缘是柔的）。
+   * 这个「上锐下柔」的不对称是「有厚度的材料」与「一条描边」的分界，
+   * 也是全项目玻璃材质统一的锚点 —— 新增玻璃类请复用 --glass-liquid-edge。 */
+  .glass-regular,
+  .glass-strong,
+  .glass-subtle {
+    position: relative;
+  }
+  .glass-regular::before,
+  .glass-strong::before,
+  .glass-subtle::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: var(--glass-liquid-edge);
+  }
+  /* 弱玻璃用更轻的厚度：它本身透明度最低，边缘若与 glass-regular 一样亮，
+   * 会显得比「强玻璃」还厚，语义就反了。 */
+  .glass-subtle::before {
+    box-shadow: inset 0 1px 0 0 var(--glass-edge-highlight), inset 0 -1px 0.5px -0.5px var(--glass-edge-highlight);
+  }
+
   .glass-regular {
     background: var(--glass-regular-bg);
     backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
     -webkit-backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
-    box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
   .glass-strong {
     background: var(--glass-strong-bg);
     backdrop-filter: blur(28px) saturate(1.6) brightness(1.06);
     -webkit-backdrop-filter: blur(28px) saturate(1.6) brightness(1.06);
-    box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight-strong), var(--glass-strong-shadow);
+    box-shadow: var(--glass-strong-shadow);
   }
   .glass-subtle {
     background: var(--glass-subtle-bg);
     backdrop-filter: blur(18px) saturate(1.4) brightness(1.04);
     -webkit-backdrop-filter: blur(18px) saturate(1.4) brightness(1.04);
-    box-shadow: inset 0 0.5px 0 0 var(--glass-edge-highlight);
   }
 }
 
+/* ===== 液态玻璃（Liquid Glass）材质层 =====
+ * ---------------------------------------------------------------------------
+ * 目标：做出参考图那种「有厚度、有光泽的液态玻璃」观感。
+ *
+ * ── 关于「几何折射」：已实测不可行，勿重走（重要）──
+ * 参考图最抓眼的特征是玻璃边缘把背后画面**推挤变形**（真实折射）。
+ * 本项目尝试用 `backdrop-filter: url(#filter)` + `feDisplacementMap` 实现，
+ * 实测在 Chrome 下**不可行**。原因是 backdrop-filter 的滤镜链拿不到外部图像：
+ *   · `feImage href="data:image/svg+xml,..."`        → 位移场为空，滤镜无任何效果
+ *   · `feImage href="#内联 <image>"`（其 href 为 data:） → 同样无效果
+ *   · `feImage href="blob:..."`                      → 同样无效果
+ *   · `feTurbulence`（滤镜图元自生成，不依赖图像）      → **有效**
+ * 判定方法：把「白线网格」放在玻璃背后，若位移生效网格会弯曲。
+ * 前三种情况下网格笔直不动 → 说明位移场没被读到（不是参数调小了，
+ * 且实测 band/strength/scale 改动对渲染结果**字节级无差异**）。
+ *
+ * 为什么不用 feTurbulence 顶替：玻璃的位移场是**平滑且沿边缘单调变化**的，
+ * 而湍流是随机噪声，位移后呈现大理石/水波纹，与「通透、干净」的设计语汇冲突。
+ *
+ * 结论：纯 CSS 做不出参考图的几何折射。本层改用**不依赖折射**的手段还原
+ * 「液态」观感。若将来要真正的折射，唯一可行路径是 Canvas 实时采样背景自行渲染。
+ *
+ * ── 液态玻璃的三个可落地要素（均已实测校准）──
+ * 1. **厚度**：靠顶部细亮线 + 底部柔和折返光。这是液态玻璃最关键的一条，
+ *    实测「有边缘光带」与「无边缘光带」的观感差别远大于任何模糊参数。
+ * 2. **内部色染**：玻璃会染上背后色场的色相。靠本体足够透明 + 背景色场透出实现，
+ *    不额外上色（额外上色会与 mint + 辅助蓝的双色体系打架）。
+ * 3. **形态**：大圆角是液态感的形状语言，直角会立刻退化成「卡片」。
+ *
+ * ⚠️ 刻意**不做**「转角聚焦亮斑」（四角径向渐变）：
+ * 这是参考图的真实特征，但实测在本项目的**暗背景**下会变成「四角发白的污渍」，
+ * 因为白斑落在暗底上没有可依托的亮背景，只会显脏。
+ * 参考图的转角亮斑之所以成立，是因为它背后是明亮的彩色实景照片。
+ * 若将来背景色场显著提亮，可再考虑加回。
+ */
+@layer components {
+  /* 基础液态玻璃：比 glass-floating 更透、更有厚度。
+   * 背景只留极淡的白（材质自身的散射），主要明度来自背后色场。 */
+  .glass-liquid {
+    position: relative;
+    background: var(--glass-liquid-bg);
+    border: 1px solid var(--glass-liquid-border);
+    backdrop-filter: blur(24px) saturate(1.6) brightness(1.08);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6) brightness(1.08);
+    /* 外投影给「浮起」的落地感；inset 高光交给 ::before 单独画，
+     * 便于做上下不对称的厚度。 */
+    box-shadow: var(--glass-liquid-shadow);
+  }
+
+  /* 厚度层：顶部细亮线 + 底部柔和折返光。
+   * 顶部用 1px 零模糊（掠射反射是锐的）；底部用更大的模糊半径 + 负偏移，
+   * 因为光穿透玻璃后在底缘折回，边缘是柔的。这个「上锐下柔」的不对称
+   * 正是「有厚度的材料」与「一条描边」的区别。 */
+  .glass-liquid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: var(--glass-liquid-edge);
+  }
+
+  /* 交互态：液态玻璃被激活时边缘更亮、轻微上浮。
+   * 这是参考图 Focus 胶囊那种「灵敏反馈」的来源。 */
+  .glass-liquid.is-interactive {
+    transition: transform .22s var(--ease-mineradio), box-shadow .22s, border-color .22s;
+  }
+  .glass-liquid.is-interactive:hover {
+    transform: translateY(-1px);
+    border-color: var(--glass-liquid-border-hover);
+  }
+}
 /* ===== 表面分层（移除旧的 tile 系统，改用 Mineradio 暗色表面） ===== */
 @layer components {
   .surface-canvas { background: var(--fc-bg); color: var(--fc-ink); }
@@ -1012,38 +1142,89 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
   pointer-events: none;
   z-index: -1;
   border-radius: 50%;
-  will-change: transform;
   /* 切歌时色斑平滑过渡（依赖上方 @property 注册；未注册则此项无效但不报错） */
   transition: --ambient-from 0.9s var(--ease-mineradio),
               --ambient-to 0.9s var(--ease-mineradio),
               --ambient-glow 0.9s var(--ease-mineradio);
 }
 
+/* ⚠️ 性能铁律：**色斑上不能出现 filter，只要它同时在动。**
+ *
+ * 这是本项目最严重的一处卡顿根因。实测（1280×800）：
+ *   三个色斑 filter: blur(80~110px) + infinite transform 动画 →  4 FPS（每帧 ~240ms）
+ *   同一份视觉，改成纯 radial-gradient（无 filter）+ 保留动画 → 60 FPS
+ *   仅把动画停掉、filter 与半径原样保留                      → 60 FPS
+ *   把动画放慢到 90s（仍在跑）                              →  4 FPS（无效）
+ *   去掉 filter 但改用 opacity 动画（保留 blur）              →  4 FPS（无效）
+ *   把 blur 半径减半、或只留一层 blur                        →  7~12 FPS（治标不治本）
+ *
+ * 结论有两条，都是反直觉的：
+ *   1. 「filter + 任何动画」同元素共存即掉帧，与动画改的是 transform 还是 opacity 无关。
+ *      进行中的动画会使滤镜结果**每帧失效重算**；放慢动画只是让变化幅度变小，
+ *      不会让浏览器复用上一帧的模糊结果。
+ *   2. 分层（把动画挪到子元素）、提升合成层（will-change/translateZ）都**救不回来**——
+ *      缩放与位移会让已模糊的位图重新采样，滤镜仍逐帧执行。实测三种结构改造均无改善。
+ *
+ * 解法：**不要 filter，直接用 radial-gradient 自己做柔边。**
+ *   radial-gradient 的多色标本身就是连续渐变，`transparent 68%` 这类收尾已经足够柔和，
+ *   肉眼与 blur(90px) 几乎无差，但它是**静态背景图**：
+ *   色斑移动时只发生合成层位移，不触发任何滤镜运算。
+ * 多个色标（0% → 30% → 55% → 78%）进一步压平边缘，替代 blur 的过渡带。
+ *
+ * 因此 .ambient-blob 一族**不得**再引入 filter；若将来确需模糊，
+ * 只能加在「绝对静止、无动画」的元素上。 */
+
 /* 主色斑：跟随封面主色，承担「一条可见的光带」的角色。
- * inset:-20% 让色斑溢出容器，避免模糊后边缘露出直角。 */
+ * inset:-20% 让色斑溢出容器，避免边缘露出直角。 */
 .ambient-blob--primary {
   inset: -20%;
-  background: radial-gradient(circle at 18% 45%, var(--ambient-from) 0%, transparent 68%);
-  filter: blur(90px);
+  background: radial-gradient(circle at 18% 45%,
+    var(--ambient-from) 0%,
+    color-mix(in srgb, var(--ambient-from) 62%, transparent) 30%,
+    color-mix(in srgb, var(--ambient-from) 22%, transparent) 54%,
+    transparent 76%);
   opacity: calc(var(--ambient-strength) * 0.95);
+}
+.ambient-blob--primary > .ambient-blob__drift {
   animation: ambient-drift-a 34s ease-in-out infinite alternate;
 }
 /* 次色斑：跟随封面次色，与主色斑拉开位置形成横向色相渐变 */
 .ambient-blob--secondary {
   inset: -20%;
-  background: radial-gradient(ellipse 46% 62% at 78% 62%, var(--ambient-to) 0%, transparent 70%);
-  filter: blur(110px);
+  background: radial-gradient(ellipse 46% 62% at 78% 62%,
+    var(--ambient-to) 0%,
+    color-mix(in srgb, var(--ambient-to) 60%, transparent) 32%,
+    color-mix(in srgb, var(--ambient-to) 20%, transparent) 56%,
+    transparent 78%);
   opacity: calc(var(--ambient-strength) * 1);
+}
+.ambient-blob--secondary > .ambient-blob__drift {
   animation: ambient-drift-b 46s ease-in-out infinite alternate;
 }
 /* 高光斑：最亮的一层，位于画面中部偏下，是「通透感」的亮度来源。
  * 没有这一层时，前两层只是「有色」，透不出「有光」。 */
 .ambient-blob--glow {
   inset: -20%;
-  background: radial-gradient(ellipse 58% 40% at 50% 72%, var(--ambient-glow) 0%, transparent 66%);
-  filter: blur(80px);
+  background: radial-gradient(ellipse 58% 40% at 50% 72%,
+    var(--ambient-glow) 0%,
+    color-mix(in srgb, var(--ambient-glow) 58%, transparent) 30%,
+    color-mix(in srgb, var(--ambient-glow) 18%, transparent) 52%,
+    transparent 74%);
   opacity: calc(var(--ambient-strength) * 0.85);
+}
+.ambient-blob--glow > .ambient-blob__drift {
   animation: ambient-drift-c 40s ease-in-out infinite alternate;
+}
+
+/* 承载漂移动画的内层。**不可省略**——实测把动画直接放回外层色斑
+ * （即让动画与 radial-gradient 背景同元素）会掉到 38.7 FPS：
+ * 外层同时挂了 color-mix 推导的自定义属性与 0.9s 过渡，动画会让它每帧重新光栅化。
+ * 挪到只做 transform 的空子层后，位移由合成器处理，外层背景保持静态缓存，实测满帧。 */
+.ambient-blob__drift {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  will-change: transform;
 }
 /* 底层色阶：从顶部到底部做一个极轻的明度爬升，
  * 让画面有「纵深」而不是均匀一块；透明到色，不引入新色相。 */
@@ -1117,6 +1298,7 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 .glass-flat .glass-saved-panel,
 .glass-flat .glass-saved-button,
 .glass-flat .glass-search-box,
+.glass-flat .glass-liquid,
 .glass-flat .glass-popover {
   background: var(--fc-paper);
   /* !important 是必需的，不是偷懒：
@@ -1133,6 +1315,13 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
  * 留着能让降级态背景仍有明度纵深，不至于退回一块死黑。 */
 .glass-flat .ambient-blob { display: none; }
 .glass-flat .ambient-blob--depth { display: block; }
+/* 降级态不需要液态玻璃的厚度层：它会在一整块不透明面板上留下无意义的白描边。
+ * 覆盖 glass-liquid 与 glass-regular/strong/subtle 三类的 ::before
+ * （注意不要波及 .ambient-backdrop::before —— 那是背景静态底，必须保留）。 */
+.glass-flat .glass-liquid::before,
+.glass-flat .glass-regular::before,
+.glass-flat .glass-strong::before,
+.glass-flat .glass-subtle::before { content: none; }
 
 /* .resizing / .glass-perf-lite 性能降级
    - .resizing：窗口拖拽缩放期间
@@ -1146,6 +1335,7 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 .resizing .glass-saved-panel,
 .resizing .glass-saved-button,
 .resizing .glass-search-box,
+.resizing .glass-liquid,
 .resizing .glass-popover,
 .glass-perf-lite .glass-regular,
 .glass-perf-lite .glass-strong,
@@ -1154,6 +1344,7 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
 .glass-perf-lite .glass-saved-panel,
 .glass-perf-lite .glass-saved-button,
 .glass-perf-lite .glass-search-box,
+.glass-perf-lite .glass-liquid,
 .glass-perf-lite .glass-popover {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;

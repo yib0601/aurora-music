@@ -76,9 +76,9 @@ export function DuplicateDetails({ groups, intro }: {
           <li key={g.kept.id} className="min-w-0">
             <p className="font-text text-[13px] font-semibold text-white/90 truncate tracking-[-0.2px]">
               {g.kept.title}
-              <span className="font-normal text-white/45"> · {g.kept.artist}</span>
+              <span className="font-normal text-white/65"> · {g.kept.artist}</span>
             </p>
-            <p className="font-text text-[11px] text-white/40 mt-0.5 truncate">
+            <p className="font-text text-[11px] text-white/65 mt-0.5 truncate">
               保留 {sourceLabel(g.kept)} · 隐藏 {g.hiddenCopies.map((c) => sourceLabel(c)).join('、')}
             </p>
           </li>

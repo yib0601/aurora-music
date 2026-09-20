@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import path from 'path'
+import { encodeFilePathToUrl } from '@aurora/shared'
 
 let mprisPlayer: any = null
 let mainWindow: BrowserWindow | null = null
@@ -100,7 +101,9 @@ export function updateMprisMetadata(track: any, isPlaying: boolean) {
 
       // 如果有封面,添加封面
       if (track.coverPath) {
-        mprisPlayer.metadata['mpris:artUrl'] = `file://${track.coverPath}`
+        // 必须逐段 encode：mpris:artUrl 是标准 URL，裸拼 `file://${path}` 时
+        // 中文/空格/`#` 未转义，桌面环境的封面解析器会取到错误路径而显示不出封面
+        mprisPlayer.metadata['mpris:artUrl'] = encodeFilePathToUrl(track.coverPath)
       }
     } else {
       mprisPlayer.metadata = {}

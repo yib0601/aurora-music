@@ -33,7 +33,7 @@ const ContextMenuSubContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
 >(({ className, ...props }, ref) => (
-  // 子菜单必须走 Portal：父菜单的 glass-floating 带 backdrop-filter，会成为
+  // 子菜单必须走 Portal：父菜单的 glass-liquid 带 backdrop-filter，会成为
   // 后代定位的 containing block，配合 overflow-hidden 会把内联渲染的子菜单整个裁掉
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.SubContent
@@ -41,8 +41,8 @@ const ContextMenuSubContent = React.forwardRef<
       className={cn(
         // 仅淡入淡出不带缩放：缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧
         // DS 玻璃浮层（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边
-        // 模糊沿用 .glass-floating（P1 已收敛到 DS 的 12px 量级 + saturate），不叠加 utility 以免覆盖
-        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+        // 材质用 .glass-liquid（液态玻璃：更透 + 顶部锐亮线 + 底部柔和折返光）
+        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-liquid border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className
       )}
       {...props}
@@ -60,8 +60,8 @@ const ContextMenuContent = React.forwardRef<
       ref={ref}
       className={cn(
         // 仅淡入淡出不带缩放：缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧
-        // DS 玻璃浮层（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边，模糊沿用 .glass-floating
-        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground animate-in fade-in-80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+        // DS 玻璃浮层（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边，材质用 .glass-liquid
+        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-liquid border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground animate-in fade-in-80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className
       )}
       {...props}

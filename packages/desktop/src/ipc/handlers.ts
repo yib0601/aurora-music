@@ -68,14 +68,95 @@ function inferAudioExtension(url: string, contentType?: string): string {
   return inferAudioExtFromUrl(url)
 }
 
-/** 生成不重名的保存路径：已存在同名文件时依次追加 " (1)" " (2)"… */
+/** 去重名探测的最大尝试次数：超过则回退到时间戳后缀，避免目录内同名文件极多时死循环 */
+const UNIQUE_SAVE_MAX_PROBE = 9999
+
+/** Windows 单条路径总长上限（MAX_PATH），预留扩展名与 ` (n)` 后缀余量后取的保守阈值 */
+const MAX_PATH_SAFE_LENGTH = 240
+
+/**
+ * 探测路径是否已存在（异步版）。
+ *
+ * 用 fs.promises.access 而非同步 fs.existsSync：后者会阻塞主进程事件循环，
+ * 而下载去重是在主进程 IPC 里执行，同名文件多时连续同步 stat 会卡住 UI。
+ * 除 ENOENT 外的错误（如无权限访问该目录）也返回 false，即按「该路径可写」处理：
+ * 去重阶段只负责挑一个「看起来没被占用」的名字，真正的写入失败会由
+ * createWriteStream 阶段抛出并转成中文提示，不在此处静默吞掉真实故障。
+ */
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await fs.promises.access(target, fs.constants.F_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 大小写不敏感文件系统（Windows / macOS 默认）上的额外探测。
+ *
+ * Windows/macOS 上 `A.mp3` 与 `a.mp3` 指同一个文件，但 existsSync/access 只会
+ * 命中「同名大小写」那一个；Linux 则区分大小写。若不处理，同一份代码跨平台
+ * 行为不一致：Windows 上后下载的 `A.mp3` 会静默覆盖已有的 `a.mp3`。
+ * 逐项比对同目录文件名（仅做一次 readdir，避免逐个大小写变体去 stat）。
+ */
+async function hasCaseInsensitiveCollision(dir: string, name: string): Promise<boolean> {
+  try {
+    const entries = await fs.promises.readdir(dir)
+    const lower = name.toLowerCase()
+    return entries.some((entry) => entry.toLowerCase() === lower)
+  } catch {
+    // 目录不可读时不做额外判断，沿用精确匹配结果，避免误判导致重复去重
+    return false
+  }
+}
+
+/**
+ * 生成不重名的保存路径：已存在同名文件时依次追加 " (1)" " (2)"…
+ *
+ * 健壮性约束：
+ * - 上限定为 UNIQUE_SAVE_MAX_PROBE 次，超限不再无限循环，回退到「基名 + 时间戳」；
+ * - access/readdir 失败（含无权限、目录不存在）一律按「不存在」处理，不在去重阶段
+ *   抛错，真正的写盘错误由后续 createWriteStream 阶段报出并给出中文提示；
+ * - 大小写不敏感平台上额外比对同目录文件名，避免大小写不同的同名互相覆盖；
+ * - 对超长路径（Windows MAX_PATH 260）按需截断基名，保证加上后缀后仍可落盘。
+ */
 async function uniqueSavePath(dir: string, fileName: string): Promise<string> {
   const ext = path.extname(fileName)
   const stem = fileName.slice(0, -ext.length)
-  for (let i = 0; ; i++) {
-    const candidate = path.join(dir, i === 0 ? fileName : `${stem} (${i})${ext}`)
-    if (!fs.existsSync(candidate)) return candidate
+
+  // 组装候选名并按需截断基名，确保 `dir + 名字` 不突破 MAX_PATH 安全值。
+  // 截断按字符（非字节）进行，中文被截不会产生半个字符。
+  const buildCandidate = (suffix: string): string => {
+    const dirLen = dir.length + 1 // 分隔符
+    const maxStem = Math.max(1, MAX_PATH_SAFE_LENGTH - dirLen - ext.length - suffix.length)
+    const safeStem = stem.length > maxStem ? stem.slice(0, maxStem) : stem
+    return path.join(dir, `${safeStem}${suffix}${ext}`)
   }
+
+  const caseInsensitive = process.platform === 'win32' || process.platform === 'darwin'
+
+  for (let i = 0; i <= UNIQUE_SAVE_MAX_PROBE; i++) {
+    const suffix = i === 0 ? '' : ` (${i})`
+    const candidate = buildCandidate(suffix)
+    if (!(await pathExists(candidate))) {
+      // 精确不存在：大小写不敏感平台上再排除「大小写不同的同名文件」
+      if (!caseInsensitive || !(await hasCaseInsensitiveCollision(dir, path.basename(candidate)))) {
+        return candidate
+      }
+    }
+  }
+
+  // 超限回退：时间戳 + 随机短串，几乎不可能再冲突；仍做一次探测，冲突则直接返回
+  const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const fallback = buildCandidate(` (${stamp})`)
+  if (!(await pathExists(fallback))) return fallback
+  // 极端情况下（同一毫秒、同一随机串）再叠加一次进程内单调序号，保证不返回已存在路径
+  for (let i = 1; i <= 10; i++) {
+    const extra = buildCandidate(` (${stamp}-${i})`)
+    if (!(await pathExists(extra))) return extra
+  }
+  return buildCandidate(` (${stamp}-x)`)
 }
 
 // 扫描队列：多个目录串行执行，避免并发写数据库、进度事件互相覆盖
@@ -405,8 +486,24 @@ export function registerIpcHandlers() {
       if (typeof downloadDir === 'string' && downloadDir.trim()) {
         const dir = downloadDir.trim()
         // 渲染层下传的目录必须是绝对路径，防相对路径/盘符异常
-        if (!path.isAbsolute(dir)) throw new Error('默认下载目录无效')
-        await fs.promises.mkdir(dir, { recursive: true })
+        if (!path.isAbsolute(dir)) throw new Error('默认下载目录无效，请在设置中重新选择')
+        // 目录可能不存在（用户手动删了）或不可写（权限/只读盘/中文路径拼写错误）。
+        // 直接让 mkdir 的 errno 冒泡会给用户看到 `EACCES: permission denied, mkdir '/中文目录'`
+        // 这种英文系统报错，故这里捕获后统一转成中文可读提示。
+        try {
+          await fs.promises.mkdir(dir, { recursive: true })
+        } catch (err: any) {
+          console.error('创建下载目录失败:', dir, err)
+          throw new Error('默认下载目录不可用（无法创建或没有写入权限），请在设置中重新选择')
+        }
+        // mkdir 成功不代表可写：目录可能已存在但只读（recursive 对已存在目录是空操作）。
+        // 用 access(W_OK) 显式校验，避免下载到最后一步写盘才失败。
+        try {
+          await fs.promises.access(dir, fs.constants.W_OK)
+        } catch (err: any) {
+          console.error('下载目录不可写:', dir, err)
+          throw new Error('默认下载目录不可写，请在设置中重新选择')
+        }
         fixedDir = dir
       } else {
         const systemMusicDir = (() => {
