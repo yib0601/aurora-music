@@ -153,7 +153,7 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
                 ? cn('lyric-active', large && 'lyric-active-lg')
                 : distance <= 2
                 ? cn('text-white/55', large ? 'text-[16px]' : 'text-[14px]')
-                : cn('text-white/30', large ? 'text-[14px]' : 'text-[13px]')
+                : cn('text-white/55', large ? 'text-[14px]' : 'text-[13px]')
             )}
             onClick={() => onLineClick?.(line.time)}
           >

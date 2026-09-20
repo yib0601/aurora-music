@@ -141,7 +141,7 @@ export function PlayerBar({
             <p className="text-[13px] font-medium text-white/92 truncate tracking-[-0.224px]">
               {currentTrack?.title || '未在播放'}
             </p>
-            <p className="text-[10.5px] text-white/48 truncate tracking-[-0.12px]">
+            <p className="text-[10.5px] text-white/65 truncate tracking-[-0.12px]">
               {currentTrack?.artist || '选择一首歌曲'}
             </p>
           </div>
@@ -262,7 +262,7 @@ export function PlayerBar({
             <p className="text-[12.5px] min-[1500px]:text-[14px] font-medium text-white/92 truncate transition-colors hover:text-white">
               {currentTrack?.title || '未在播放'}
             </p>
-            <p className="text-[10.5px] min-[1500px]:text-[12px] text-white/48 truncate">
+            <p className="text-[10.5px] min-[1500px]:text-[12px] text-white/65 truncate">
               {currentTrack?.artist || '选择一首歌曲开始'}
             </p>
           </div>

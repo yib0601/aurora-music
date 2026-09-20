@@ -81,6 +81,7 @@ coverage
 test-userdata
 # 视觉验收用的临时截图（正式应用截图在 screenshots/）
 .tmp-shots/
+.tmp-verify/
 
 # 构建增量缓存
 .build-cache

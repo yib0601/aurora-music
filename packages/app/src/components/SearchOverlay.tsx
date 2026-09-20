@@ -575,7 +575,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       {/* 浮层面板：顶部对齐的 Spotlight 面板，高度随结果自适应、最高 72vh。
           入场仅保留淡入：缩放/位移动画会让玻璃模糊区域逐帧变化，
           软件渲染下每帧重算模糊（全屏时尤甚），故去掉 zoom/slide */}
-      <div className="relative mt-[7vh] w-[calc(100%-2rem)] max-w-2xl max-h-[72vh] flex flex-col glass-floating rounded-[16px] overflow-hidden animate-in fade-in-0 duration-200">
+      <div className="relative mt-[7vh] w-[calc(100%-2rem)] max-w-2xl max-h-[72vh] flex flex-col glass-liquid rounded-[16px] overflow-hidden animate-in fade-in-0 duration-200">
         {/* 搜索输入行 */}
         <div className="flex items-center gap-3 h-14 px-4 flex-shrink-0 border-b border-white/[0.08]">
           <SearchIcon className="h-[18px] w-[18px] text-mint/70 flex-shrink-0" strokeWidth={1.6} />

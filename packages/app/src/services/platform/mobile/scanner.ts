@@ -1,5 +1,6 @@
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { Capacitor } from '@capacitor/core'
+import { encodeFilePathToUrl } from '@aurora/shared'
 import * as mm from 'music-metadata-browser'
 import type { Track } from '@/types'
 import { MobileDatabase } from './database'
@@ -99,7 +100,10 @@ async function processFile(
     // 原生堆在 40MB 级 flac 上直接 OOM 崩溃；改用 fetch(convertFileSrc) 走流式
     const cap = (window as any).Capacitor
     const abs = `/storage/emulated/0/${filePath.replace(/^\/+/, '')}`
-    const src = cap ? cap.convertFileSrc(abs) : abs
+    // convertFileSrc 只做字符串拼接（拼成 http://localhost/_capacitor_file_<path>），
+    // 不做转义：中文/空格会被 WebView 规整，`#` 会被当成 fragment、`?` 会被当成
+    // query 截断，导致读取到错误路径而扫描失败。统一用 shared 的逐段编码。
+    const src = cap ? cap.convertFileSrc(encodeFilePathToUrl(abs)) : abs
     const res = await fetch(src)
     if (!res.ok) throw new Error(`读取文件失败: ${res.status}`)
     const blob = await res.blob()

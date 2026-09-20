@@ -725,15 +725,26 @@ function AppLayout() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative bg-background text-foreground ambient-backdrop">
-      {/* 色场色斑层：四个独立元素，各自 filter: blur()。
+      {/* 色场色斑层：四个独立元素，各自一段 radial-gradient。
           必须分开成独立元素——若把多段 radial-gradient 塞进同一个元素的 background，
-          它们会先叠加成一张图再整体模糊，各色相互相中和成一片灰雾；
+          它们会先叠加成一张图，各色相互相中和成一片灰雾；
           独立分层后每层各自保持色相与边缘，玻璃才折射得出「一条条光带」。
-          z-index:-1 + 根容器 isolation:isolate，保证始终沉在所有内容之下。 */}
+          z-index:-1 + 根容器 isolation:isolate，保证始终沉在所有内容之下。
+
+          ⚠️ 性能：色斑一律用 radial-gradient 做柔边，**不要加 filter: blur()**。
+          模糊 + 无限漂移动画共存时，滤镜每帧失效重算，会让整个界面掉到个位数帧率；
+          而 radial-gradient 是静态背景图，位移只走合成层，实测满帧。
+          三层各自套 .ambient-blob__drift 承载漂移动画（详见 globals.css 对应注释）。 */}
       <div aria-hidden className="ambient-blob ambient-blob--depth" />
-      <div aria-hidden className="ambient-blob ambient-blob--primary" />
-      <div aria-hidden className="ambient-blob ambient-blob--secondary" />
-      <div aria-hidden className="ambient-blob ambient-blob--glow" />
+      <div aria-hidden className="ambient-blob ambient-blob--primary">
+        <div className="ambient-blob__drift" />
+      </div>
+      <div aria-hidden className="ambient-blob ambient-blob--secondary">
+        <div className="ambient-blob__drift" />
+      </div>
+      <div aria-hidden className="ambient-blob ambient-blob--glow">
+        <div className="ambient-blob__drift" />
+      </div>
       {/* 歌曲详情页沉浸背景：封面模糊背景提升到窗口级，覆盖顶部标题栏区域，消除顶部黑边 */}
       {/* 延迟 320ms 挂载：等侧栏/瓷砖折叠动画结束再渲染背景，
           否则动画期间每帧重算模糊，展开过程严重掉帧；

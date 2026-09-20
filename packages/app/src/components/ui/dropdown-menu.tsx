@@ -36,9 +36,11 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      // DS 玻璃浮层（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边 + 单层柔和投影
-      // 模糊沿用 .glass-floating（P1 已收敛到 DS 的 12px 量级 + saturate），不叠加 utility 以免覆盖
-      'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground',
+      // DS 玻璃浮层升级为液态玻璃（对应 `.ds-glass-dropdown`）：panel 圆角 + 发丝描边
+      // 用 glass-liquid 取代 glass-floating：前者是后者的材质升级版（更透 + 顶部锐亮线
+      // + 底部柔和折返光 + 更强的饱和/亮度提升），两者不要叠加使用，避免同一属性
+      // 由两个类重复声明、生效结果依赖 CSS 顺序。
+      'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-liquid border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground',
       className
     )}
     {...props}
@@ -56,8 +58,8 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       className={cn(
         // 仅淡入不带缩放：缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧
-        // DS 玻璃浮层（对应 `.ds-glass-dropdown`），模糊沿用 .glass-floating
-        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-floating border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground animate-in fade-in-0',
+        // DS 玻璃浮层（对应 `.ds-glass-dropdown`），材质已升级为 .glass-liquid
+        'z-50 min-w-[8rem] overflow-hidden rounded-ds-panel glass-liquid border border-white/[0.08] shadow-ds-dropdown p-1.5 text-foreground animate-in fade-in-0',
         className
       )}
       {...props}

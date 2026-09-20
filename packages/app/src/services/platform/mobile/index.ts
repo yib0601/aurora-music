@@ -20,7 +20,7 @@ import {
   saveLyricsFile,
 } from './scanner'
 import { searchOnlineTracks, searchLyrics } from './online'
-import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime } from '@aurora/shared'
+import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, encodeFilePathToUrl } from '@aurora/shared'
 import {
   requestMediaPermissions,
   checkAllFilesAccess,
@@ -90,8 +90,13 @@ async function embedCoverIntoDownloaded(
   savePath: string,
   track: { title: string; artist?: string; album?: string; coverUrl?: string }
 ): Promise<void> {
-  const abs = `/storage/emulated/0/${savePath}`
-  const fileRes = await fetch(Capacitor.convertFileSrc(abs))
+  // 路径前缀不能硬编码 `/storage/emulated/0/`：多用户/工作资料（/storage/emulated/10/）
+  // 或外置 SD 卡挂载点不同，硬编码会读到不存在的路径导致封面嵌入静默失败。
+  // 统一用 Filesystem.getUri 由原生侧按实际挂载点解析。
+  const { uri: abs } = await Filesystem.getUri({ path: savePath, directory: Directory.ExternalStorage })
+  // 走 shared 的逐段 encode：文件名含中文/空格/`#` 时，裸路径拼进
+  // convertFileSrc 生成的 URL 会被 WebView 当成 fragment 截断，fetch 到错误路径
+  const fileRes = await fetch(Capacitor.convertFileSrc(encodeFilePathToUrl(abs)))
   if (!fileRes.ok) throw new Error(`读取下载文件失败: ${fileRes.status}`)
   const fileData = new Uint8Array(await fileRes.arrayBuffer())
   if (fileData.length > 100 * 1024 * 1024) return
@@ -333,7 +338,14 @@ export function createMobilePlatform(): PlatformInterface & {
       if (cap) {
         // Android 上 native URI 前缀：file:///storage/emulated/0/<path>
         const abs = `/storage/emulated/0/${path.replace(/^\/+/, '')}`
-        return cap.convertFileSrc(abs)
+        // 必须逐段 encode 后再交给 convertFileSrc：Capacitor 6 的 convertFileSrc
+        // 只是把入参字符串拼进 `http://localhost/_capacitor_file_<path>`（见
+        // @capacitor/core 实现），不做任何转义。中文/空格会被 WebView 的 URL
+        // 解析器规整，而 `#` 会被当成 fragment 截断，`?` 会被当成 query 截断，
+        // 导致 <audio> 请求到错误路径而播放失败。
+        // 传入已编码的 file:// URL 是 convertFileSrc 的受支持用法（其实现会识别
+        // 并保留该前缀），故此处直接传 encodeFilePathToUrl(abs) 的结果。
+        return cap.convertFileSrc(encodeFilePathToUrl(abs))
       }
       return path
     },
@@ -445,13 +457,36 @@ export function createMobilePlatform(): PlatformInterface & {
         throw new Error('缺少存储权限')
       }
 
-      const fileName = `${sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)}${inferAudioExtFromUrl(track.audioUrl)}`
+      const baseName = sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)
+      const ext = inferAudioExtFromUrl(track.audioUrl)
       const dir = 'Music/Aurora Music'
       try {
         await Filesystem.mkdir({ path: dir, directory: Directory.ExternalStorage, recursive: true })
       } catch (err: any) {
-        if (!err?.message || !/exist/i.test(err.message)) throw err
+        // 目录已存在不算错误；其余（无权限、存储卸载）转成中文可读提示
+        if (!err?.message || !/exist/i.test(err.message)) {
+          console.error('[Mobile] 创建下载目录失败:', err)
+          throw new Error('无法创建下载目录（存储不可用或缺少权限），请检查存储权限后重试')
+        }
       }
+
+      // 下载前探测同名文件并追加 " (1)" 后缀：downloadFile 对已存在路径会直接覆盖，
+      // 静默覆盖用户已下载的歌曲。这里最多探测 99 次，超限回退到时间戳后缀。
+      let fileName = `${baseName}${ext}`
+      for (let i = 0; i < 100; i++) {
+        const candidate = i === 0 ? `${baseName}${ext}` : `${baseName} (${i})${ext}`
+        try {
+          await Filesystem.stat({ path: `${dir}/${candidate}`, directory: Directory.ExternalStorage })
+          // 未抛错说明文件已存在，继续探测下一个后缀
+        } catch {
+          fileName = candidate
+          break
+        }
+        if (i === 99) {
+          fileName = `${baseName} (${Date.now().toString(36)})${ext}`
+        }
+      }
+
       const savePath = `${dir}/${fileName}`
       try {
         await Filesystem.downloadFile({
@@ -475,8 +510,20 @@ export function createMobilePlatform(): PlatformInterface & {
           console.warn('[Mobile] 封面嵌入失败（不影响下载）:', err)
         }
       }
-      // 返回完整路径，便于提示与后续扫描定位
-      return { savedPath: `/storage/emulated/0/${savePath}` }
+      // 返回完整路径，便于提示与后续扫描定位。
+      // 不能硬编码 `/storage/emulated/0/` 前缀：多用户/工作资料（/storage/emulated/10/）
+      // 或外置 SD 卡上真实挂载点不同，硬编码会让「下载完成」提示里的路径打不开。
+      // Filesystem.getUri 由原生侧按实际挂载点解析，返回 file:// 形式的绝对 URI，
+      // 这里转成本机路径（去掉 file:// 前缀）。
+      try {
+        const { uri } = await Filesystem.getUri({ path: savePath, directory: Directory.ExternalStorage })
+        return { savedPath: uri.replace(/^file:\/\//, '') }
+      } catch (err) {
+        // getUri 失败时不该让「已下载成功」的结论翻转成失败：退回相对路径，
+        // 提示里至少是可读的 Music/Aurora Music/xxx.mp3
+        console.warn('[Mobile] 获取保存路径失败，回退相对路径:', err)
+        return { savedPath: savePath }
+      }
     },
 
     database: db,

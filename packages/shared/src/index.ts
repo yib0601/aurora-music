@@ -18,6 +18,11 @@ export {
 } from './musicSource'
 export { searchLyrics, searchLyricsSource, BUILTIN_LYRICS_SOURCE } from './lyricsSource'
 export { sanitizeFileName, inferAudioExtFromUrl } from './downloadUtils'
+export {
+  encodeFilePathToUrl,
+  decodeFileUrlToPath,
+  encodePathSegments,
+} from './fileUrl'
 export { embedCoverIntoAudio, detectImageMime } from './embedCover'
 export type { EmbedMeta, EmbedCover } from './embedCover'
 export { fetchWithTimeout, setCustomFetch } from './fetchWithTimeout'

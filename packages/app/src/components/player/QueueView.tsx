@@ -8,7 +8,7 @@ import { cn, formatTime, isDesktop } from '@/lib/utils'
 
 /**
  * 队列浮层（DS 皮肤）
- * - 玻璃浮层：32px 圆角 + DS 的 hairline 描边与 12px 量级模糊（glass-floating）
+ * - 玻璃浮层：32px 圆角 + DS 的 hairline 描边，材质为液态玻璃（glass-liquid）
  * - 当前曲目用 mint 发丝描边 + 极轻底色标识，不再用大面积色块与投影
  */
 export function QueueView() {
@@ -47,7 +47,7 @@ export function QueueView() {
   }
 
   return (
-    <div ref={panelRef} className="absolute right-0 bottom-full mb-3 w-80 max-h-[55vh] glass-floating rounded-[16px] overflow-hidden z-50 flex flex-col">
+    <div ref={panelRef} className="absolute right-0 bottom-full mb-3 w-80 max-h-[55vh] glass-liquid rounded-[16px] overflow-hidden z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 h-12 border-b border-white/[0.06]">
         <span className="font-display text-[15px] font-semibold tracking-[-0.224px] text-foreground">
           播放队列
@@ -61,7 +61,7 @@ export function QueueView() {
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin p-1.5">
         {queue.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-foreground/40">
+          <div className="flex flex-col items-center justify-center py-10 text-foreground/65">
             <Music2 className="h-10 w-10 mb-2 opacity-30" strokeWidth={1.5} />
             <p className="font-text text-[14px] tracking-[-0.224px]">队列为空</p>
           </div>
@@ -107,7 +107,7 @@ export function QueueView() {
                       {track.artist}
                     </p>
                   </div>
-                  <span className="font-text text-[11px] text-foreground/40 tabular-nums tracking-[-0.12px]">
+                  <span className="font-text text-[11px] text-foreground/65 tabular-nums tracking-[-0.12px]">
                     {formatTime(track.duration)}
                   </span>
                 </button>

@@ -98,7 +98,7 @@ export function Sidebar() {
           <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-white/[0.96] leading-tight">
             Aurora
           </span>
-          <span className="font-text text-[11px] text-white/40 leading-tight mt-0.5">
+          <span className="font-text text-[11px] text-white/65 leading-tight mt-0.5">
             Music Player
           </span>
         </div>
@@ -161,7 +161,7 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col gap-px">
           {playlists.length === 0 ? (
-            <p className="px-3 py-2 text-[12px] text-white/30 leading-relaxed">点击 + 创建你的第一个播放列表</p>
+            <p className="px-3 py-2 text-[12px] text-white/65 leading-relaxed">点击 + 创建你的第一个播放列表</p>
           ) : (
             playlists.map((pl) => (
               <div key={pl.id} className="group flex items-center gap-0.5">
@@ -191,7 +191,7 @@ export function Sidebar() {
                   >
                     <ListMusic className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint group-aria-[current=page]:opacity-100" strokeWidth={1.5} />
                     <span className="truncate text-[13px] tracking-[-0.224px]">{pl.name}</span>
-                    <span className="text-[11px] text-white/30 ml-auto tabular-nums font-semibold">
+                    <span className="text-[11px] text-white/65 ml-auto tabular-nums font-semibold">
                       {pl.trackIds.length}
                     </span>
                   </NavLink>

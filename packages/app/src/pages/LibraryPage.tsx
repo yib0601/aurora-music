@@ -23,6 +23,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn } from '@/lib/utils'
+import { GRID_GAP, getGridColumnCount } from '@/lib/gridLayout'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { platform } from '@/services/platform'
@@ -64,6 +65,95 @@ interface TrackGroup {
 
 /** 未启用分组浏览时的空结果（保持引用稳定，避免无谓的重渲染） */
 const EMPTY_GROUPS: TrackGroup[] = []
+
+/**
+ * 读取元素的**内容盒**宽度（px）——即 grid 真正可用于分配列宽的宽度。
+ *
+ * 公式：`clientWidth − paddingLeft − paddingRight`
+ *   - `clientWidth` 已扣除**垂直滚动条**与 border，所以只需再减 padding；
+ *   - 不能用裸 `clientWidth`：它**包含 padding**，而 grid 子项的可用宽是内容盒。
+ *     本项目滚动容器带 `pr-2`（padding-right 8px），直接用 clientWidth 会系统性
+ *     高估 8px ⇒ 列宽高估 ~1.6px ⇒ 卡片被 grid 拉伸。
+ *   - 也不能用 `getBoundingClientRect().width − padding`：rect 是 border-box 宽，
+ *     **不含滚动条扣除**，一旦出现垂直滚动条就会高估一个滚动条宽（实测 10px）
+ *     ⇒ 同样导致卡片拉伸。
+ * 两种错误都会让「行盒高度」与「卡片实际宽度」不同源，从而把卡片拉伸。
+ */
+function readContentWidth(el: HTMLElement): number {
+  const cs = getComputedStyle(el)
+  const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)
+  return el.clientWidth - pad
+}
+
+/**
+ * 观测某个容器的**内容盒**宽度（px）。
+ *
+ * 必须在**组件顶层**调用：`renderGroupGrid` 是页面内的渲染函数，若把 observer
+ * 建在函数体内，每次 render 都会新建并断开一个 ResizeObserver，既造成抖动也丢事件。
+ *
+ * 用 ResizeObserver 而非视口断点的原因：专辑/艺术家网格原先用
+ * `sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5`（**视口**断点），而歌曲网格按
+ * **容器**宽度分档——右侧 Now Playing 面板展开后容器比视口窄，两者得出不同列数、
+ * 卡片尺寸随之不一致。改为容器宽度驱动后，两个网格共用同一个判据。
+ *
+ * ⚠️ 被观测的容器可能是**条件渲染**的（歌曲列表/网格、专辑、艺术家三个标签页各自
+ *    挂载不同的滚动容器），因此不能只依赖 `[ref]` 这一个稳定依赖：effect 首次执行时
+ *    `ref.current` 可能仍为 null，而 ref 对象引用不变 ⇒ effect 永不重跑 ⇒ observer
+ *    永不建立、宽度永久停在兜底值（这正是 VirtualCardGrid 旧实现的错位根因）。
+ *    这里用 `callbackRef` 模式：由 React 在节点挂载/卸载时回调，节点一出现就测量并
+ *    建立 observer，卸载即断开，天然覆盖条件渲染与容器切换。
+ */
+function useContainerWidth<T extends HTMLElement>(): [(node: T | null) => void, number] {
+  const [width, setWidth] = useState(0)
+  const [node, setNode] = useState<T | null>(null)
+
+  // 节点挂载/切换时测量并订阅；卸载时断开
+  useEffect(() => {
+    if (!node) return
+    // 先同步一次当前宽度，避免首帧用兜底值渲染出错误几何
+    setWidth(readContentWidth(node))
+    // ⚠️ 回调里必须复用 readContentWidth 而不是 entries[0].contentRect.width：
+    //    contentRect 不含 padding 但**含滚动条占位**，与首次同步的公式不同源，
+    //    一旦出现垂直滚动条就会在两次测量间跳变（实测差 10px）⇒ 卡片被拉伸。
+    const ro = new ResizeObserver(() => setWidth(readContentWidth(node)))
+    ro.observe(node)
+    return () => ro.disconnect()
+  }, [node])
+
+  return [setNode, width]
+}
+
+/**
+ * 同 `useContainerWidth`，但观测一个**已存在的 `RefObject`**（调用方需要保留
+ * `.current` 供子组件读取，例如 `VirtualTrackTable` 的 `scrollRef`）。
+ *
+ * 为什么不能只写 `useEffect(..., [ref])`：ref 对象引用稳定，若 effect 首次执行时
+ * `ref.current` 还是 null（节点尚未挂载 / 条件渲染尚未切到该分支），effect 永不重跑，
+ * observer 永不建立，宽度永久停在兜底值 —— 这正是 VirtualCardGrid 旧实现的错位根因。
+ * 这里改为在**每次 render 后**都检查一次节点是否可用（用 `nodeRef` 记录已订阅的节点，
+ * 只在节点变化时重建 observer），从而覆盖条件渲染与容器切换。
+ */
+function useContainerWidthOf<T extends HTMLElement>(ref: React.RefObject<T>): number {
+  const [width, setWidth] = useState(0)
+  const observedRef = useRef<T | null>(null)
+
+  // 无依赖数组：每次 render 后都执行，节点一旦出现即被订阅（幂等，靠 observedRef 去重）
+  useEffect(() => {
+    const el = ref.current
+    if (!el || el === observedRef.current) return
+    observedRef.current = el
+    setWidth(readContentWidth(el))
+    // 同上：与首次同步保持同一公式，避免滚动条出现时测量跳变
+    const ro = new ResizeObserver(() => setWidth(readContentWidth(el)))
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      if (observedRef.current === el) observedRef.current = null
+    }
+  })
+
+  return width
+}
 
 /**
  * 歌曲列表滚动位置缓存：滚动时随手记录，页面重挂载后恢复。
@@ -108,6 +198,18 @@ export function LibraryPage() {
   const songsScrollRef = useRef<HTMLDivElement>(null)
   const viewModeRef = useRef(viewMode)
   useEffect(() => { viewModeRef.current = viewMode }, [viewMode])
+
+  // 专辑/艺术家分组网格的滚动容器：宽度用于按容器分档算列数（与歌曲网格同源）
+  const [groupScrollRef, groupContainerWidth] = useContainerWidth<HTMLDivElement>()
+  const groupColCount = getGridColumnCount(groupContainerWidth)
+
+  // 歌曲网格（列表/网格两种视图共用同一滚动容器）的宽度：由本组件统一测量后
+  // 传给 VirtualCardGrid，避免子组件各自再建一套 observer。
+  // 关键：子组件在**挂载那一刻** `scrollRef.current` 仍为 null（滚动容器是它的父节点，
+  // 同一 commit 内 ref 尚未赋值），若把测量放在子组件里就会永久拿不到宽度。
+  // 这里同时保留 ref 对象（供 VirtualTrackTable / VirtualCardGrid 读取 .current）
+  // 与回调 ref（供测量用），两者指向同一节点。
+  const songsContainerWidth = useContainerWidthOf(songsScrollRef)
 
   const handleSongsScroll = useCallback(() => {
     const el = songsScrollRef.current
@@ -293,10 +395,25 @@ export function LibraryPage() {
     }
   }, [])
 
-  // 专辑/艺术家分组网格卡片（分组数量远小于歌曲总数，保持平铺渲染）
+  // 专辑/艺术家分组网格卡片（分组数量远小于歌曲总数，保持平铺渲染）。
+  // 几何与歌曲网格同源：列数取 getGridColumnCount(容器宽度)、间距取 GRID_GAP，
+  // 且卡片内部结构（p-2.5 / aspect-square rounded-[10px] mb-2.5 / 两行文字）
+  // 与 VirtualCardGrid.TrackCard 逐项一致，否则尺寸仍会漂移。
+  // 本网格是 CSS flow：行间距由容器 gap 生效（歌曲网格是绝对定位行，靠 translateY）。
+  //
+  // ⚠️ 宽度未知（首帧，observer 尚未回调）时**不渲染卡片**：用兜底常量算几何会得到
+  //    看似合理但整体错位的结果（列数/列宽/行高全错），比闪一帧空白糟糕得多。
+  //    容器本身照常渲染，以便 callbackRef 拿到节点并测出宽度。
   const renderGroupGrid = (groups: TrackGroup[], type: 'album' | 'artist') => (
-    <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div ref={groupScrollRef} className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
+      {groupContainerWidth > 0 && (
+        <div
+          className="grid"
+          style={{
+            gap: GRID_GAP,
+            gridTemplateColumns: `repeat(${groupColCount}, minmax(0, 1fr))`,
+          }}
+        >
         {groups.map((g) => (
           <div
             key={g.key}
@@ -325,7 +442,8 @@ export function LibraryPage() {
             </p>
           </div>
         ))}
-      </div>
+        </div>
+      )}
     </div>
   )
 
@@ -529,6 +647,7 @@ export function LibraryPage() {
           <VirtualCardGrid
             tracks={filteredTracks}
             scrollRef={songsScrollRef}
+            containerWidth={songsContainerWidth}
             onPlayRow={handlePlayRow}
             onCreatePlaylist={openCreatePlaylistDialog}
             duplicateMap={duplicateMap}

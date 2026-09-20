@@ -13,6 +13,7 @@ import type {
 } from '@/types'
 import { createMobilePlatform as createMobilePlatformImpl, setFolderPickerHandler } from './mobile'
 import { createWebPlatform, isFileSystemAccessSupported } from './web'
+import { encodeFilePathToUrl, encodePathSegments } from '@aurora/shared'
 
 // 重新导出：UI 层（SettingsPage）注册移动端文件夹选择器回调，
 // 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）
@@ -142,17 +143,22 @@ export function createDesktopPlatform(): Platform {
     getAudioSrc(path: string): string {
       // 音频用 file://（Web Audio API 的 MediaElementSource 需要 crossOrigin，
       // 自定义协议的 CORS 支持不完整，会导致 analyser 输出全零）
-      return `file://${path}`
+      // 必须逐段 encode：裸拼 `file://${path}` 时文件名里的 `#` 会被 URL 当成
+      // fragment 起点、`?` 会被当成 query 起点，`<audio>` 实际请求的路径被截断
+      // 而加载失败；中文/空格/`%` 在部分 Electron 版本下也会解析异常。
+      return encodeFilePathToUrl(path)
     },
 
     getCoverSrc(path: string): string {
       // 桌面端用自定义 cover-local 协议，绕过 webSecurity 对 file:// 的限制。
       // Windows 绝对路径（C:\...）需统一成 /C:/... 形式：直接拼接会让盘符被吞进
       // URL 的 host/port 部分，图片请求 404（Linux 路径以 / 开头不受影响）。
-      // 逐段 encode 兼容中文用户名、空格等特殊字符（主进程侧 decodeURIComponent）
+      // 逐段 encode 兼容中文用户名、空格、`#` 等特殊字符（`#` 不编码会被当成
+      // fragment，主进程拿到的 pathname 就被截断）。
+      // 编码逻辑统一收口到 shared 的 encodePathSegments，避免两处实现漂移。
       const normalized = path.replace(/\\/g, '/')
       const abs = normalized.startsWith('/') ? normalized : `/${normalized}`
-      return `cover-local://localhost${abs.split('/').map(encodeURIComponent).join('/')}`
+      return `cover-local://localhost/${encodePathSegments(abs)}`
     },
 
     async getMetadata(path: string): Promise<AudioMetadata> {
