@@ -131,8 +131,6 @@ export type SortField = 'default' | 'title' | 'artist' | 'album' | 'duration' | 
 
 export type SortOrder = 'asc' | 'desc'
 
-export type GlassMode = 'auto' | 'forced'
-
 export interface SearchResult {
   title: string
   artist: string

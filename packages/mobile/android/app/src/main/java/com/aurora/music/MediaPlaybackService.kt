@@ -11,9 +11,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Handler
@@ -26,10 +29,14 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
+import android.util.LruCache
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import org.json.JSONArray
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * 后台媒体播放 ForegroundService（原生播放引擎）
@@ -53,6 +60,16 @@ class MediaPlaybackService : Service() {
         val title: String,
         val artist: String,
         val album: String,
+        /**
+         * 封面来源，由 JS 下发。取值形态：
+         * - Capacitor convertFileSrc 生成的 `https://localhost/_capacitor_file_/...`（本地封面缓存）
+         * - 远端 `https://...` 封面直链（在线曲目）
+         * - `file://` 或绝对路径
+         * 为空时原生退化为从音频文件内嵌封面提取（MediaMetadataRetriever）。
+         */
+        val cover: String = "",
+        /** 曲目时长（毫秒），JS 侧已知时下发；锁屏进度条需要它，0 = 未知 */
+        val durationMs: Long = 0L,
     )
 
     companion object {
@@ -77,8 +94,32 @@ class MediaPlaybackService : Service() {
     private var mediaSession: MediaSessionCompat? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // ─── 锁屏封面（artwork）──────────────────────────────────────
+    // 锁屏/通知栏的封面与进度条完全由 MediaSession 的 Metadata + PlaybackState 驱动：
+    // 没有 METADATA_KEY_ALBUM_ART 就没有封面（只剩默认音符图标），
+    // 没有 METADATA_KEY_DURATION 则进度条整条不渲染（系统只画两端空槽）。
+    // 封面解码/下载属 IO，放独立线程，避免卡主线程。
+    private val artworkThread = HandlerThread("aurora-artwork").apply { start() }
+    private val artworkHandler = Handler(artworkThread.looper)
+    /** 已解码封面缓存（仅主线程访问），key 为封面来源或 `embedded:<音频路径>` */
+    private val artworkCache = LruCache<String, Bitmap>(8)
+    /** 当前曲目封面，随 metadata 一起下发给系统 */
+    private var currentArtwork: Bitmap? = null
+    /** 切歌令牌：异步解码回来时若已切歌则丢弃结果，防止封面串台 */
+    private var artworkToken = 0
+
     // ─── 播放引擎 ───────────────────────────────────────────────
     private var player: MediaPlayer? = null
+    /**
+     * 播放器是否已完成 prepare。
+     * ⚠️ MediaPlayer 在 PREPARING 状态下调用 getDuration() 会走 native 错误分支
+     * （`Attempt to call getDuration in wrong state` + error(-38, 0)），
+     * 该错误会经 onError 回调把整次播放打断；位置同理。
+     * 因此时长/位置一律经下面的 helper 读取，prepare 前不向 MediaPlayer 询问。
+     */
+    private var playerPrepared = false
+    /** 已 prepare 播放器的真实时长（毫秒），0 = 未知 */
+    private var playerDurationMs = 0L
     private val queue = mutableListOf<QueueItem>()
     private var currentIndex = -1
     private var repeatMode = "off"   // off | all | one
@@ -113,9 +154,11 @@ class MediaPlaybackService : Service() {
                         .put("title", item.title)
                         .put("artist", item.artist)
                         .put("album", item.album)
+                        .put("cover", item.cover)
+                        .put("durationMs", item.durationMs)
                 )
             }
-            val posMs = try { player?.currentPosition?.toLong() ?: 0L } catch (_: Throwable) { 0L }
+            val posMs = currentPositionMs()
             val playing = try { player?.isPlaying ?: false } catch (_: Throwable) { false }
             prefs.edit()
                 .putString("queue", arr.toString())
@@ -146,7 +189,16 @@ class MediaPlaybackService : Service() {
             val items = mutableListOf<QueueItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
-                items.add(QueueItem(o.optString("path"), o.optString("title"), o.optString("artist"), o.optString("album")))
+                items.add(
+                    QueueItem(
+                        path = o.optString("path"),
+                        title = o.optString("title"),
+                        artist = o.optString("artist"),
+                        album = o.optString("album"),
+                        cover = o.optString("cover"),
+                        durationMs = o.optLong("durationMs", 0L),
+                    )
+                )
             }
             if (items.isEmpty()) return false
             queue.clear()
@@ -191,9 +243,11 @@ class MediaPlaybackService : Service() {
                     prepareStartedAt = 0
                     mainHandler.post { if (prepareStartedAt == 0L && player != null) startCurrent(true, 0) }
                 } else {
-                    val playing = try { p.isPlaying } catch (_: Throwable) { false }
-                    val pos = try { p.currentPosition } catch (_: Throwable) { -1 }
-                    val dur = try { p.duration } catch (_: Throwable) { 0 }
+                    // 只在 prepare 完成后才读位置/时长：PREPARING 状态下询问
+                    // 会让 MediaPlayer 走 native 错误分支并回调 onError，打断正常播放
+                    val playing = playerPrepared && (try { p.isPlaying } catch (_: Throwable) { false })
+                    val pos = if (playerPrepared) (try { p.currentPosition } catch (_: Throwable) { -1 }) else -1
+                    val dur = playerDurationMs.toInt()
                     if (pos >= 0) {
                         if (playing && pos == lastWatchPositionMs) {
                             // 连续 2 次（约 20s）停滞才判定卡死，避免缓冲场景误跳
@@ -255,6 +309,12 @@ class MediaPlaybackService : Service() {
     }
 
     private fun initMediaSession() {
+        // 锁屏控件点击封面/标题回到应用：部分 ROM 缺少 sessionActivity 时不渲染锁屏媒体卡片
+        val sessionActivity = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
         mediaSession = MediaSessionCompat(this, "Aurora Music").apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() = resume()
@@ -264,6 +324,7 @@ class MediaPlaybackService : Service() {
                 override fun onStop() { stopEngine(); stopSelf() }
                 override fun onSeekTo(pos: Long) { seekTo(pos) }
             })
+            setSessionActivity(sessionActivity)
             isActive = true
         }
     }
@@ -351,6 +412,8 @@ class MediaPlaybackService : Service() {
         try {
             p.seekTo(positionMs.toInt())
             emitEvent("seeked", mapOf("position" to (positionMs / 1000.0)))
+            // 锁屏拖动进度条后必须回写 PlaybackState，否则系统仍按旧 position 渲染
+            updateSessionState(try { p.isPlaying } catch (_: Throwable) { false })
             saveState()
         } catch (_: Throwable) {}
     }
@@ -370,9 +433,8 @@ class MediaPlaybackService : Service() {
     }
 
     fun previous() {
-        val p = player
         // 播放超过 3 秒时"上一首"回到开头（与 JS 端行为一致）
-        if (p != null && (try { p.currentPosition } catch (_: Throwable) { 0 }) > 3000) {
+        if (currentPositionMs() > 3000) {
             seekTo(0)
             return
         }
@@ -404,15 +466,12 @@ class MediaPlaybackService : Service() {
     }
 
     fun getStateSnapshot(): Map<String, Any> {
-        val p = player
-        val playing = try { p != null && p.isPlaying } catch (_: Throwable) { false }
-        val pos = try { p?.currentPosition?.div(1000.0) ?: 0.0 } catch (_: Throwable) { 0.0 }
-        val dur = try { p?.duration?.div(1000.0) ?: 0.0 } catch (_: Throwable) { 0.0 }
+        val playing = try { player?.isPlaying ?: false } catch (_: Throwable) { false }
         return mapOf(
             "index" to currentIndex,
             "isPlaying" to playing,
-            "position" to pos,
-            "duration" to dur,
+            "position" to (currentPositionMs() / 1000.0),
+            "duration" to (currentDurationMs() / 1000.0),
         )
     }
 
@@ -443,6 +502,9 @@ class MediaPlaybackService : Service() {
             mp.setOnPreparedListener { prepared ->
                 Log.i(TAG, "onPrepared: index=$currentIndex duration=${prepared.duration}")
                 if (prepared !== player) return@setOnPreparedListener
+                // 时长只能在 prepared 之后取：提前问会触发 native error(-38) 中断播放
+                playerPrepared = true
+                playerDurationMs = prepared.duration.toLong().coerceAtLeast(0L)
                 if (pendingSeekMs > 0) {
                     try { prepared.seekTo(pendingSeekMs.toInt()) } catch (_: Throwable) {}
                     pendingSeekMs = 0
@@ -460,6 +522,9 @@ class MediaPlaybackService : Service() {
                     "index" to currentIndex,
                     "duration" to (prepared.duration / 1000.0),
                 ))
+                // 真实时长此时才可用（在线曲目 prepareAsync 可能较慢），
+                // 必须在 updateSessionState 之前写入 metadata，否则锁屏进度条没有总长
+                updateMetadata(queue.getOrNull(currentIndex))
                 updateSessionState(autoplay)
             }
             mp.setOnCompletionListener { completed ->
@@ -478,8 +543,9 @@ class MediaPlaybackService : Service() {
             return
         }
 
-        // 立即更新元数据/通知栏（不等 prepared）
-        updateMetadata(item)
+        // 立即更新元数据/通知栏（不等 prepared）：时长先用 JS 下发的值，
+        // prepared 后再用 MediaPlayer 的真实 duration 覆盖；封面异步加载后就绪即刷
+        refreshArtwork(item)
         updateSessionState(false)
         // 曲目切换即持久化：进程随时可能被系统杀掉，快照越新恢复越准
         saveState()
@@ -572,6 +638,8 @@ class MediaPlaybackService : Service() {
             }
         } catch (_: Throwable) {}
         player = null
+        playerPrepared = false
+        playerDurationMs = 0L
     }
 
     private fun emitEvent(type: String, extra: Map<String, Any>) {
@@ -662,17 +730,188 @@ class MediaPlaybackService : Service() {
 
     // ─── MediaSession / 通知栏 ──────────────────────────────────
 
-    private fun updateMetadata(item: QueueItem) {
-        val metadata = MediaMetadataCompat.Builder()
+    private fun isRemote(path: String): Boolean =
+        path.startsWith("http://") || path.startsWith("https://")
+
+    /** 当前播放位置（毫秒）：prepare 完成前返回 0，避免触碰 MediaPlayer 的非法状态 */
+    private fun currentPositionMs(): Long {
+        if (!playerPrepared) return 0L
+        return try { player?.currentPosition?.toLong() ?: 0L } catch (_: Throwable) { 0L }
+    }
+
+    /**
+     * 当前曲目时长（毫秒）：优先播放器 prepare 时缓存的真实值，其次 JS 下发的队列值。
+     * 锁屏进度条 = position / duration，缺 duration 时系统整条不渲染（只画两端空槽）。
+     */
+    private fun currentDurationMs(): Long {
+        if (playerDurationMs > 0) return playerDurationMs
+        return queue.getOrNull(currentIndex)?.durationMs?.takeIf { it > 0 } ?: 0L
+    }
+
+    /**
+     * 写入 MediaSession metadata。除标题/歌手/专辑外，锁屏卡片还必须拿到：
+     * - METADATA_KEY_DURATION：缺了进度条不渲染
+     * - METADATA_KEY_ALBUM_ART / METADATA_KEY_ART：缺了只显示默认音符占位图
+     */
+    private fun updateMetadata(item: QueueItem? = queue.getOrNull(currentIndex)) {
+        if (item == null) return
+        val builder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, item.title.ifEmpty { "Aurora Music" })
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, item.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, item.album)
-            .build()
-        mediaSession?.setMetadata(metadata)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs())
+        currentArtwork?.let {
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, it)
+        }
+        mediaSession?.setMetadata(builder.build())
+    }
+
+    /** 封面缓存 key：JS 下发的来源优先，否则退化为音频文件内嵌封面 */
+    private fun artworkKey(item: QueueItem): String =
+        item.cover.ifEmpty { if (isRemote(item.path)) "" else "embedded:${resolvePath(item.path)}" }
+
+    /**
+     * 刷新当前曲目封面（主线程调用）。
+     * 命中缓存则同步生效；未命中先清空旧封面（避免上一首封面残留），再异步加载回填。
+     */
+    private fun refreshArtwork(item: QueueItem) {
+        val key = artworkKey(item)
+        artworkToken++
+        val token = artworkToken
+        if (key.isEmpty()) {
+            currentArtwork = null
+            updateMetadata(item)
+            return
+        }
+        val cached = artworkCache.get(key)
+        if (cached != null) {
+            currentArtwork = cached
+            updateMetadata(item)
+            return
+        }
+        currentArtwork = null
+        updateMetadata(item)
+        artworkHandler.post {
+            val bitmap = loadArtwork(item)
+            mainHandler.post {
+                // 解码期间又切了歌：结果作废，防止封面串台
+                if (token != artworkToken) return@post
+                if (bitmap == null) {
+                    Log.w(TAG, "封面加载失败: key=$key")
+                    return@post
+                }
+                artworkCache.put(key, bitmap)
+                currentArtwork = bitmap
+                updateMetadata(item)
+                val playing = try { player?.isPlaying == true } catch (_: Throwable) { false }
+                updateSessionState(playing)
+            }
+        }
+    }
+
+    /**
+     * JS 侧封面异步就绪（CoverImage 提取/升级高清封面完成）后刷新锁屏封面。
+     * 队列下发时封面可能尚未提取，这里做二次补写。
+     */
+    fun updateCurrentCover(cover: String) {
+        mainHandler.post {
+            val index = currentIndex
+            val item = queue.getOrNull(index) ?: return@post
+            if (item.cover == cover) return@post
+            queue[index] = item.copy(cover = cover)
+            refreshArtwork(queue[index])
+        }
+    }
+
+    /** 解析封面来源（artwork 线程）：JS 下发来源优先，失败则退化为音频内嵌封面 */
+    private fun loadArtwork(item: QueueItem): Bitmap? {
+        if (item.cover.isNotEmpty()) {
+            decodeArtworkSource(item.cover)?.let { return it }
+        }
+        val audio = resolvePath(item.path)
+        if (isRemote(audio)) return null
+        return embeddedArtwork(audio)
+    }
+
+    /** 支持 Capacitor 本地 URL / 远端直链 / file:// / 绝对路径四种形态 */
+    private fun decodeArtworkSource(src: String): Bitmap? = try {
+        when {
+            // Capacitor convertFileSrc：https://localhost/_capacitor_file_/data/.../covers/x.jpg
+            // 该前缀后的路径是原样拼接（未做 URL 编码），直接截取即为真实文件路径
+            src.contains("/_capacitor_file_") -> decodeArtworkFile(src.substringAfter("/_capacitor_file_"))
+            src.startsWith("file://") -> decodeArtworkFile(src.removePrefix("file://"))
+            src.startsWith("/") -> decodeArtworkFile(src)
+            isRemote(src) -> downloadArtwork(src)
+            else -> null
+        }
+    } catch (e: Throwable) {
+        Log.w(TAG, "封面解析失败: $src", e)
+        null
+    }
+
+    private fun decodeArtworkFile(path: String): Bitmap? {
+        val file = File(path)
+        if (!file.exists() || !file.canRead()) return null
+        return BitmapFactory.decodeFile(path)?.let { limitArtwork(it) }
+    }
+
+    private fun downloadArtwork(url: String): Bitmap? {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 8000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "AuroraMusic/1.0")
+            }
+            conn.inputStream.use { BitmapFactory.decodeStream(it) }?.let { limitArtwork(it) }
+        } catch (e: Throwable) {
+            Log.w(TAG, "封面下载失败: $url", e)
+            null
+        } finally {
+            try { conn?.disconnect() } catch (_: Throwable) {}
+        }
+    }
+
+    /** 从音频文件内嵌标签提取封面（本地曲目兜底） */
+    private fun embeddedArtwork(audioPath: String): Bitmap? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(audioPath)
+            retriever.embeddedPicture?.let { bytes ->
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { limitArtwork(it) }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "内嵌封面提取失败: $audioPath", e)
+            null
+        } finally {
+            try { retriever.release() } catch (_: Throwable) {}
+        }
+    }
+
+    /**
+     * 限制封面尺寸：metadata 里的 Bitmap 经 Binder 传给系统 UI，
+     * 原图（数 MB）会触发 TransactionTooLargeException，导致整份元数据下发失败
+     * （表现就是锁屏封面和进度一起消失）。
+     */
+    private fun limitArtwork(src: Bitmap): Bitmap {
+        val max = 512
+        val longest = maxOf(src.width, src.height)
+        if (longest <= max) return src
+        val ratio = max.toFloat() / longest
+        return Bitmap.createScaledBitmap(
+            src,
+            (src.width * ratio).toInt().coerceAtLeast(1),
+            (src.height * ratio).toInt().coerceAtLeast(1),
+            true
+        )
     }
 
     private fun updateSessionState(isPlaying: Boolean) {
-        val positionMs = try { player?.currentPosition?.toLong() ?: 0L } catch (_: Throwable) { 0L }
+        val positionMs = currentPositionMs()
+        val durationMs = currentDurationMs()
+        val position = if (durationMs > 0) positionMs.coerceIn(0L, durationMs) else positionMs.coerceAtLeast(0L)
         val state = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
         val stateBuilder = PlaybackStateCompat.Builder()
             .setActions(
@@ -681,7 +920,8 @@ class MediaPlaybackService : Service() {
                 PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or PlaybackStateCompat.ACTION_STOP or
                 PlaybackStateCompat.ACTION_SEEK_TO
             )
-            .setState(state, positionMs, if (isPlaying) 1.0f else 0.0f)
+            // 显式给 updateTime：系统按 speed 自行推进进度，暂停时必须 speed=0
+            .setState(state, position, if (isPlaying) 1.0f else 0.0f, SystemClock.elapsedRealtime())
         mediaSession?.setPlaybackState(stateBuilder.build())
 
         val item = queue.getOrNull(currentIndex)
@@ -704,7 +944,7 @@ class MediaPlaybackService : Service() {
             .setShowActionsInCompactView(0, 1, 2)
             .setMediaSession(mediaSession?.sessionToken)
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title ?: "Aurora Music")
             .setContentText(artist ?: "")
             .setSmallIcon(R.drawable.ic_stat_play)
@@ -719,7 +959,20 @@ class MediaPlaybackService : Service() {
             .setStyle(style)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
-            .build()
+
+        // 封面大图 + 进度：Android 13+ 由系统读 MediaSession 渲染，
+        // 13 以下与部分国产 ROM 则依赖通知自身字段，两边都写才稳
+        currentArtwork?.let { builder.setLargeIcon(it) }
+        val durationMs = currentDurationMs()
+        if (durationMs > 0) {
+            val positionMs = currentPositionMs()
+            builder.setProgress(
+                durationMs.toInt(),
+                positionMs.coerceIn(0L, durationMs).toInt(),
+                false
+            )
+        }
+        return builder.build()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -732,6 +985,7 @@ class MediaPlaybackService : Service() {
     override fun onDestroy() {
         mainHandler.removeCallbacks(playbackWatchdog)
         try { unregisterReceiver(mediaButtonReceiver) } catch (_: Throwable) {}
+        artworkThread.quitSafely()
         releasePlayer()
         releasePlaybackResources()
         mediaSession?.isActive = false

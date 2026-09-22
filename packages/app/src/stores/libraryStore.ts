@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, GlassMode, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, PlaylistResolverConfig, LibrarySourceConfig } from '@/types'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, PlaylistResolverConfig, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
 
@@ -27,7 +27,6 @@ interface LibraryState {
   /** 音乐库歌曲排序字段与方向 */
   sortBy: SortField
   sortOrder: SortOrder
-  glassMode: GlassMode
   theme: 'light' | 'dark' | 'system'
   currentView: 'library' | 'liked' | 'recent' | 'playlists' | 'search' | 'settings'
   searchQuery: string
@@ -63,7 +62,6 @@ interface LibraryState {
   setLibraryTab: (tab: LibraryTab) => void
   setSortBy: (field: SortField) => void
   setSortOrder: (order: SortOrder) => void
-  setGlassMode: (mode: GlassMode) => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
   setCurrentView: (view: LibraryState['currentView']) => void
   setSearchQuery: (query: string) => void
@@ -111,7 +109,6 @@ export const useLibraryStore = create<LibraryState>()(
       libraryTab: 'songs',
       sortBy: 'default',
       sortOrder: 'asc',
-      glassMode: 'auto',
       theme: 'dark',
       currentView: 'library',
       searchQuery: '',
@@ -173,7 +170,6 @@ export const useLibraryStore = create<LibraryState>()(
       setLibraryTab: (tab) => set({ libraryTab: tab }),
       setSortBy: (field) => set({ sortBy: field }),
       setSortOrder: (order) => set({ sortOrder: order }),
-      setGlassMode: (mode) => set({ glassMode: mode }),
       setTheme: (theme) => set({ theme }),
       setCurrentView: (view) => set({ currentView: view }),
       setSearchQuery: (query) => set({ searchQuery: query }),
@@ -276,7 +272,6 @@ export const useLibraryStore = create<LibraryState>()(
         libraryTab: state.libraryTab,
         sortBy: state.sortBy,
         sortOrder: state.sortOrder,
-        glassMode: state.glassMode,
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
         searchHistory: state.searchHistory,
@@ -292,6 +287,7 @@ export const useLibraryStore = create<LibraryState>()(
       // v4 默认下载音质改为无损 FLAC：清除旧持久值，让新默认值生效
       // v5 新增歌单解析源配置（歌单导入功能）
       // v6 新增媒体库来源配置（WebDAV 网络存储）
+      // v7 移除扁平玻璃开关（glassMode 与 .glass-flat 规则已删除，代码里从无入口）
       migrate: (persisted: any, version: number) => {
         if (persisted) {
           if (version < 6) {
@@ -311,10 +307,13 @@ export const useLibraryStore = create<LibraryState>()(
           if (version < 2 && persisted.useBuiltinSources !== undefined) {
             delete persisted.useBuiltinSources
           }
+          if (version < 7) {
+            delete persisted.glassMode
+          }
         }
         return persisted
       },
-      version: 6,
+      version: 7,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

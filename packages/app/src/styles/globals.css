@@ -108,19 +108,9 @@
      * ⚠️ 上层浮层仍压得更暗一点点（.20 vs .16），因为浮层背后可能是
      *    任意内容（歌词、封面），需要略强的可读性兜底。 */
     --glass-regular-bg: linear-gradient(rgba(255,255,255,.055), rgba(255,255,255,.045)), rgba(0, 6, 14, .17);
-    --glass-strong-bg: linear-gradient(rgba(255,255,255,.075), rgba(255,255,255,.06)), rgba(0, 6, 14, .24);
-    --glass-subtle-bg: linear-gradient(rgba(255,255,255,.035), rgba(255,255,255,.03)), rgba(0, 6, 14, .10);
-    --glass-edge-highlight: rgba(255,255,255,.20);
-    --glass-edge-highlight-strong: rgba(255,255,255,.26);
-    --glass-strong-shadow: 0 8px 32px rgba(0,0,0,.26);
     --glass-floating-bg: linear-gradient(rgba(255,255,255,.045), rgba(255,255,255,.045)), rgba(0, 8, 18, .24);
     --glass-floating-border: rgba(255,255,255,.16);
     --glass-floating-shadow: 0 16px 48px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.20);
-    --glass-popover-bg: linear-gradient(rgba(255,255,255,.045), rgba(255,255,255,.045)), rgba(0, 8, 18, .26);
-    --glass-popover-border: rgba(255,255,255,.16);
-    /* 下拉/弹层阴影沿用参考站 .ds-glass-dropdown 的三层结构：
-     * 1px 接触线 + 4px 环境晕 + 32px 柔和投影，全部低 alpha 纯黑。 */
-    --glass-popover-shadow: 0 0 1px 0 rgba(0,0,0,.20), 0 0 4px 0 rgba(0,0,0,.04), 0 12px 32px 0 rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.14);
     /* 液态玻璃浮层的投影：比普通 glass-floating 更深、更收，
      * 因为折射后的玻璃「更厚」，需要更强的落地感来支撑这份厚度；
      * inset 高光不进这里（由 .glass-liquid::before 单独画，便于做上下不对称）。 */
@@ -226,18 +216,9 @@
     --r-ds-sm: 8px;
     --r-ds-pill: 100px;
 
-    /* 通用玻璃变量（Search 框：34px → 12px，发丝边 rgba 白 .06~.10） */
-    --glass-bg: linear-gradient(112deg, rgba(38,38,38,.62), rgba(20,20,20,.74) 48%, rgba(10,10,10,.80));
-    --glass-bg-focus: linear-gradient(112deg, rgba(48,48,48,.68), rgba(24,24,24,.80) 50%, rgba(12,12,12,.86));
-    --glass-border: rgba(255,255,255,.08);
-    --glass-border-soft: rgba(255,255,255,.06);
-    --glass-shadow: 0 12px 32px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.08);
-    --glass-shadow-focus: 0 14px 36px rgba(0,0,0,.32), 0 0 0 1px rgba(var(--fc-accent-rgb),.22), inset 0 1px 0 rgba(255,255,255,.10);
-
     /* Saved 玻璃面板/按钮系统（通透化：模糊提到 24px 量级 + 加强内高光与饱和） */
     --saved-panel-glass-bg: rgba(255,255,255,.05);
     --saved-panel-glass-filter: blur(24px) saturate(1.6) brightness(1.05);
-    --saved-panel-glass-svg-filter: url(#mineradio-control-glass-filter) saturate(1);
     /* 播放条玻璃：厚度层（上锐下柔）+ 落地投影。
      * 它是主界面最显眼的玻璃，用完整的 --glass-liquid-edge 强度。 */
     --saved-panel-glass-shadow: 0 8px 32px rgba(0,0,0,.30), inset 0 1px 0 0 rgba(255,255,255,.34), inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
@@ -336,17 +317,9 @@
      * floating/popover 原先 .68/.70 远超 regular，浮层反而最不透；
      * 现收敛到与 regular 同量级（仅高一点保证弹层可读性）。 */
     --glass-regular-bg: rgba(255,255,255,.40);
-    --glass-strong-bg: rgba(255,255,255,.56);
-    --glass-subtle-bg: rgba(255,255,255,.26);
-    --glass-edge-highlight: rgba(255,255,255,.92);
-    --glass-edge-highlight-strong: rgba(255,255,255,.96);
-    --glass-strong-shadow: 0 8px 24px rgba(20,40,70,.10);
     --glass-floating-bg: rgba(255,255,255,.56);
     --glass-floating-border: rgba(0,0,0,.08);
     --glass-floating-shadow: 0 16px 44px rgba(20,40,70,.14), inset 0 1px 0 rgba(255,255,255,.9);
-    --glass-popover-bg: rgba(255,255,255,.58);
-    --glass-popover-border: rgba(0,0,0,.08);
-    --glass-popover-shadow: 0 0 1px 0 rgba(0,0,0,.10), 0 0 4px 0 rgba(0,0,0,.03), 0 12px 32px 0 rgba(20,40,70,.12), inset 0 1px 0 rgba(255,255,255,.9);
     /* 浅色下投影必须更轻更散：暗投影落在亮背景上极易显脏，
      * 且浅色玻璃本身靠「白」而非「深」建立层次。 */
     --glass-liquid-shadow: 0 18px 48px rgba(20,40,70,.16), 0 2px 8px rgba(20,40,70,.08);
@@ -358,13 +331,6 @@
     /* 浅色下厚度层同样收敛：亮背景上白色高光的对比差本就小，
      * 给太强会出现明显白边。 */
     --glass-liquid-edge: inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
-
-    --glass-bg: linear-gradient(112deg, rgba(255,255,255,.74), rgba(250,250,250,.80) 48%, rgba(243,243,243,.86));
-    --glass-bg-focus: linear-gradient(112deg, rgba(255,255,255,.84), rgba(252,252,252,.88) 50%, rgba(246,246,246,.92));
-    --glass-border: rgba(0,0,0,.10);
-    --glass-border-soft: rgba(0,0,0,.06);
-    --glass-shadow: 0 12px 32px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.85);
-    --glass-shadow-focus: 0 14px 36px rgba(0,0,0,.12), 0 0 0 1px rgba(var(--fc-accent-rgb),.28), inset 0 1px 0 rgba(255,255,255,.9);
 
     --saved-panel-glass-bg: rgba(255,255,255,.42);
     --saved-panel-glass-shadow: 0 8px 24px rgba(20,40,70,.10), inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
@@ -511,9 +477,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   /* ===== Mineradio SVG 玻璃材质 =====
    * glass-saved-panel: 底栏/控制台玻璃面板（圆角50px + 8层阴影 + RGB色差）
    * glass-saved-button: 控制按钮玻璃（11px圆角 + 3层阴影）
-   * glass-search-box: 搜索框玻璃（22px圆角 + 34px blur 最强模糊）
-   * glass-popover: 浮层玻璃（14px圆角 + 24px blur + 远距投影）
    * glass-floating: 浮动卡片玻璃（16px圆角 + 30px blur）
+   * glass-regular（常驻面板）与 glass-liquid（浮层首选）见各自定义处的长注释
    */
   .glass-saved-panel {
     background: var(--saved-panel-glass-bg);
@@ -549,33 +514,6 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   }
   .glass-saved-button:active { transform: translateY(0) scale(.96); }
 
-  .glass-search-box {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: blur(12px) saturate(1.30);
-    -webkit-backdrop-filter: blur(12px) saturate(1.30);
-    box-shadow: var(--glass-shadow);
-    transition: border-color .28s, background .28s, box-shadow .28s, transform .28s;
-  }
-  html.control-glass-svg-ok .glass-search-box {
-    backdrop-filter: url(#mineradio-search-glass-filter) saturate(1);
-    -webkit-backdrop-filter: url(#mineradio-search-glass-filter) saturate(1);
-  }
-  .glass-search-box:focus-within {
-    border-color: rgba(var(--fc-accent-rgb), .50);
-    background: var(--glass-bg-focus);
-    box-shadow: var(--glass-shadow-focus);
-    transform: translateY(-1px);
-  }
-
-  .glass-popover {
-    border: 1px solid var(--glass-popover-border);
-    background: var(--glass-popover-bg);
-    backdrop-filter: blur(12px) saturate(1.10);
-    -webkit-backdrop-filter: blur(12px) saturate(1.10);
-    box-shadow: var(--glass-popover-shadow);
-  }
-
   .glass-floating {
     border: 1px solid var(--glass-floating-border);
     background: var(--glass-floating-bg);
@@ -600,42 +538,19 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    *          下 = 1.5px 偏移 + 1px 模糊的柔折返光（光穿透玻璃后在底缘折回，边缘是柔的）。
    * 这个「上锐下柔」的不对称是「有厚度的材料」与「一条描边」的分界，
    * 也是全项目玻璃材质统一的锚点 —— 新增玻璃类请复用 --glass-liquid-edge。 */
-  .glass-regular,
-  .glass-strong,
-  .glass-subtle {
+  .glass-regular {
     position: relative;
+    background: var(--glass-regular-bg);
+    backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
   }
-  .glass-regular::before,
-  .glass-strong::before,
-  .glass-subtle::before {
+  .glass-regular::before {
     content: '';
     position: absolute;
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
     box-shadow: var(--glass-liquid-edge);
-  }
-  /* 弱玻璃用更轻的厚度：它本身透明度最低，边缘若与 glass-regular 一样亮，
-   * 会显得比「强玻璃」还厚，语义就反了。 */
-  .glass-subtle::before {
-    box-shadow: inset 0 1px 0 0 var(--glass-edge-highlight), inset 0 -1px 0.5px -0.5px var(--glass-edge-highlight);
-  }
-
-  .glass-regular {
-    background: var(--glass-regular-bg);
-    backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
-    -webkit-backdrop-filter: blur(24px) saturate(1.5) brightness(1.05);
-  }
-  .glass-strong {
-    background: var(--glass-strong-bg);
-    backdrop-filter: blur(28px) saturate(1.6) brightness(1.06);
-    -webkit-backdrop-filter: blur(28px) saturate(1.6) brightness(1.06);
-    box-shadow: var(--glass-strong-shadow);
-  }
-  .glass-subtle {
-    background: var(--glass-subtle-bg);
-    backdrop-filter: blur(18px) saturate(1.4) brightness(1.04);
-    -webkit-backdrop-filter: blur(18px) saturate(1.4) brightness(1.04);
   }
 }
 
@@ -1263,9 +1178,11 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
   to   { transform: translate3d(1.5%, -1.5%, 0) scale(1.1); }
 }
 
-/* 尊重系统「减少动态效果」偏好 */
+/* 尊重系统「减少动态效果」偏好。
+ * ⚠️ 动画挂在**子层** .ambient-blob__drift 上（外层色斑只承载静态渐变），
+ * 而 animation 属性不继承——选择器必须命中子层本身，写在父层上会静默失效。 */
 @media (prefers-reduced-motion: reduce) {
-  .ambient-blob { animation: none; }
+  .ambient-blob__drift { animation: none; }
 }
 
 /* ===== 歌词高亮（渐变文字 + 发光） =====
@@ -1288,71 +1205,38 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
   font-size: 21px;
 }
 
-/* ===== 性能降级开关 ===== */
-
-/* .glass-flat 兼容：关闭所有玻璃 */
-.glass-flat .glass-regular,
-.glass-flat .glass-strong,
-.glass-flat .glass-subtle,
-.glass-flat .glass-floating,
-.glass-flat .glass-saved-panel,
-.glass-flat .glass-saved-button,
-.glass-flat .glass-search-box,
-.glass-flat .glass-liquid,
-.glass-flat .glass-popover {
-  background: var(--fc-paper);
-  /* !important 是必需的，不是偷懒：
-   * html.control-glass-svg-ok .glass-saved-panel（0,2,1）特异性高于
-   * .glass-flat .glass-saved-panel（0,2,0），不加 !important 时总开关会静默失效，
-   * 播放条仍按 24px 模糊重算 —— 恰好在「性能降级」模式下保留最贵的操作。
-   * 与下方 .resizing/.glass-perf-lite 的写法保持一致。 */
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  box-shadow: none;
-}
-/* 色斑是独立元素（可关），::before 是静态底（必须保留，否则背景变黑）。
- * --depth 保留：它是纯 linear-gradient、无 filter，代价近似为零，
- * 留着能让降级态背景仍有明度纵深，不至于退回一块死黑。 */
-.glass-flat .ambient-blob { display: none; }
-.glass-flat .ambient-blob--depth { display: block; }
-/* 降级态不需要液态玻璃的厚度层：它会在一整块不透明面板上留下无意义的白描边。
- * 覆盖 glass-liquid 与 glass-regular/strong/subtle 三类的 ::before
- * （注意不要波及 .ambient-backdrop::before —— 那是背景静态底，必须保留）。 */
-.glass-flat .glass-liquid::before,
-.glass-flat .glass-regular::before,
-.glass-flat .glass-strong::before,
-.glass-flat .glass-subtle::before { content: none; }
-
-/* .resizing / .glass-perf-lite 性能降级
-   - .resizing：窗口拖拽缩放期间
-   - .glass-perf-lite：进出歌曲详情页的侧栏/瓷砖宽度折叠动画期间（约 350ms），
-     模糊区域尺寸每帧变化，软件渲染下每帧重算模糊会严重掉帧（全屏尤甚），
-     过渡期间临时关闭玻璃模糊，动画结束后恢复 */
+/* ===== 性能降级开关 =====
+ *
+ * 两个开关，语义不同：
+ *   - .resizing：窗口拖拽缩放期间
+ *   - .glass-perf-lite：进出歌曲详情页的侧栏/瓷砖宽度折叠动画期间（动画 300ms，
+ *     降级窗口 400ms，另留 100ms 余量，见 App.tsx 的 setTimeout），
+ *     模糊区域尺寸每帧变化，软件渲染下每帧重算模糊会严重掉帧（全屏尤甚），
+ *     过渡期间临时关闭玻璃模糊，动画结束后恢复
+ *
+ * ⚠️ 关闭 backdrop-filter **必须带 `!important`**，这不是偷懒：
+ *    html.control-glass-svg-ok .glass-saved-panel（0,2,1）的特异性高于
+ *    .resizing .glass-saved-panel（0,2,0），不加时总开关会静默失效，
+ *    播放条仍按 24px 模糊重算 —— 恰好在「性能降级」模式下保留最贵的操作。
+ *    此坑已实际发生过一次。 */
 .resizing .glass-regular,
-.resizing .glass-strong,
-.resizing .glass-subtle,
 .resizing .glass-floating,
 .resizing .glass-saved-panel,
 .resizing .glass-saved-button,
-.resizing .glass-search-box,
 .resizing .glass-liquid,
-.resizing .glass-popover,
 .glass-perf-lite .glass-regular,
-.glass-perf-lite .glass-strong,
-.glass-perf-lite .glass-subtle,
 .glass-perf-lite .glass-floating,
 .glass-perf-lite .glass-saved-panel,
 .glass-perf-lite .glass-saved-button,
-.glass-perf-lite .glass-search-box,
-.glass-perf-lite .glass-liquid,
-.glass-perf-lite .glass-popover {
+.glass-perf-lite .glass-liquid {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-/* .resizing 期间只需停掉「带 filter 的色斑」（blur 每帧重算昂贵），
- * ::before 是静态纯色底、--depth 是无 filter 的线性渐变，都必须保留，
+/* .resizing 期间停掉色场：缩放窗口时色场跟着重排、漂移动画又与缩放叠加，两者都掉帧，
+ * 直接隐藏最省事。::before 是静态纯色底、--depth 是无动画的线性渐变，都必须保留，
  * 否则缩放时背景会闪黑。
- * 同时停掉色场漂移动画，避免与窗口缩放叠加掉帧。 */
+ * 注意色斑**已无 filter**（当前实现是纯 radial-gradient），
+ * 因此这里不再是「关掉昂贵的滤镜」，只是隐藏 + 停动画。 */
 .resizing .ambient-blob { opacity: 0; animation: none; }
 .resizing .ambient-blob--depth { opacity: var(--ambient-strength); }
 .resizing { cursor: inherit; }

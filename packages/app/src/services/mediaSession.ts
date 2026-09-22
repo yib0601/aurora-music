@@ -17,6 +17,15 @@ export interface NativeQueueItem {
   title: string
   artist: string
   album: string
+  /**
+   * 封面来源，供锁屏/通知栏 artwork 使用：
+   * - 本地封面缓存（Capacitor convertFileSrc 的 `https://localhost/_capacitor_file_/...`）
+   * - 在线曲目的远端封面直链
+   * 空串表示由原生退化为从音频文件内嵌封面提取。
+   */
+  cover: string
+  /** 曲目时长（秒），锁屏进度条需要总时长才能渲染；0 = 未知 */
+  duration: number
 }
 
 export interface NativePlaybackEvent {
@@ -49,6 +58,7 @@ interface NativePlayerPlugin {
   previous(): Promise<void>
   playAt(opts: { index: number }): Promise<void>
   stopEngine(): Promise<void>
+  updateArtwork(opts: { cover: string }): Promise<void>
   getState(): Promise<{ index: number; isPlaying: boolean; position: number; duration: number }>
   addListener(
     eventName: 'playbackevent',
@@ -104,6 +114,9 @@ export function toQueueItems(tracks: Track[]): NativeQueueItem[] {
     title: t.title,
     artist: t.artist,
     album: t.album || '',
+    // 本地封面缓存优先，其次在线封面直链；都没有时由原生提取内嵌封面
+    cover: t.coverPath || t.coverUrl || '',
+    duration: t.duration || 0,
   }))
 }
 
@@ -189,6 +202,17 @@ export async function nativeGetState(): Promise<{ index: number; isPlaying: bool
 
 export function nativeStopEngine(): void {
   getPlugin()?.stopEngine().catch(() => {})
+}
+
+/**
+ * 补写当前曲目的锁屏封面。
+ * 封面可能是在 UI 渲染时才异步提取/升级的（CoverImage → updateTrack），
+ * 队列下发时该字段可能还是空的，变化后调用本方法刷新锁屏/通知栏 artwork。
+ */
+export function nativeUpdateArtwork(cover: string | undefined): void {
+  const plugin = getPlugin()
+  if (!plugin?.updateArtwork) return
+  plugin.updateArtwork({ cover: cover || '' }).catch(() => {})
 }
 
 /**

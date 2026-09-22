@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { Music, ShieldAlert } from 'lucide-react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { App as CapApp } from '@capacitor/app'
-import { TitleBar } from '@/components/layout/TitleBar'
+import { TitleBar, hasDesktopTitleBar } from '@/components/layout/TitleBar'
 import { ResizeHandles } from '@/components/layout/ResizeHandle'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { MobileNowPlaying } from '@/components/player/MobileNowPlaying'
@@ -22,7 +22,7 @@ import { usePlayerStore, reconcileNativePlayback } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
-import { isNativePlayerAvailable } from '@/services/mediaSession'
+import { isNativePlayerAvailable, nativeUpdateArtwork } from '@/services/mediaSession'
 import {
   checkMediaPermissions,
   requestMediaPermissions,
@@ -82,6 +82,9 @@ function AppLayout() {
   const setMobileNowPlaying = usePlaylistStore((s) => s.setMobileNowPlaying)
   const mobile = isMobile()
   const desktop = isDesktop()
+  // 桌面外壳标题栏是否真的会渲染（与 TitleBar 内部判定同源）：
+  // 内容列的 pt-11 留白必须跟着它走，否则没有标题栏时会凭空多出 44px 空白
+  const hasTitleBar = hasDesktopTitleBar()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
   const isSongDetail = location.pathname.startsWith('/song/')
 
@@ -352,7 +355,14 @@ function AppLayout() {
   const repeatMode = usePlayerStore((s) => s.repeatMode)
   const shuffleMode = usePlayerStore((s) => s.shuffleMode)
   const theme = useLibraryStore((s) => s.theme)
-  const glassMode = useLibraryStore((s) => s.glassMode)
+  // 当前曲目的最新封面路径：playerStore.currentTrack 只是播放时的快照，
+  // 封面可能在 UI 渲染时才异步提取/升级（CoverImage → libraryStore.updateTrack），
+  // 取库中最新值才能把锁屏 artwork 补写给原生（见下方 mediaSession effect）
+  const currentCoverPath = useLibraryStore((s) => {
+    if (!currentTrack) return undefined
+    const record = s.tracks.find((t) => t.id === currentTrack.id)
+    return record?.coverPath || currentTrack.coverPath || currentTrack.coverUrl
+  })
 
   // 保留 themeColor hook 以维持封面色提取功能（用于 lyrics 渐变等非装饰场景）
   // 在线曲目无本地 coverPath 时回退到远端 coverUrl
@@ -569,11 +579,6 @@ function AppLayout() {
     }
   }, [theme])
 
-  // glassMode 兼容历史设置中的 'flat' 值
-  useEffect(() => {
-    document.documentElement.classList.remove('glass-flat')
-  }, [glassMode])
-
   const handleTogglePlay = useCallback(() => {
     usePlayerStore.getState().togglePlay()
   }, [])
@@ -701,9 +706,14 @@ function AppLayout() {
     }
   }, [])
 
-  // 更新 Media Session 元数据（曲目信息）；原生引擎自行维护元数据，此处跳过
+  // 更新 Media Session 元数据（曲目信息）
+  // 移动端：原生引擎自行维护 metadata/PlaybackState，但队列下发时封面可能尚未提取，
+  // 这里在封面就绪/变化时补写一次，否则锁屏长期停在默认音符占位图
   useEffect(() => {
-    if (isNativePlayerAvailable()) return
+    if (isNativePlayerAvailable()) {
+      nativeUpdateArtwork(currentCoverPath)
+      return
+    }
     if ('mediaSession' in navigator && currentTrack) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title,
@@ -712,7 +722,7 @@ function AppLayout() {
         // MediaImage 只接受 http/https/data/blob，本地文件协议不被支持，故不设 artwork
       })
     }
-  }, [currentTrack])
+  }, [currentCoverPath, currentTrack])
 
   // 更新 MPRIS 元数据（Linux 媒体键支持，桌面端专用）
   useEffect(() => {
@@ -805,7 +815,9 @@ function AppLayout() {
               isSongDetail ? 'w-0' : 'w-56',
             )}
           >
-            <div className="w-56 h-full flex flex-col">
+            {/* pt-11 补回标题栏高度：玻璃面板自身从窗口顶 y=0 起铺，其顶边高光因此
+                贴着窗口上沿；内容仍从标题栏下方开始，位置与标题栏占位时逐像素一致 */}
+            <div className={cn('w-56 h-full flex flex-col', hasTitleBar && 'pt-11')}>
               <Sidebar />
             </div>
           </aside>
@@ -824,7 +836,12 @@ function AppLayout() {
         >
           <div className={cn('flex-1 flex min-h-0', isSongDetail && !mobile ? 'overflow-visible' : 'overflow-hidden')}>
             {/* 内容列：页面路由 + 悬浮播放条（播放条相对内容列居中，避免压到右侧歌词瓷砖） */}
-            <div className={cn('relative flex-1 flex flex-col min-w-0', isSongDetail && !mobile && 'min-h-0')}>
+            {/* pt-11 补回标题栏高度：标题栏已改为绝对定位浮层（不占文档流），主区域从窗口顶
+                y=0 起算。padding 加在本列而非 main 上，才能让同处 main 内的右侧封面瓷砖
+                也跟着铺到窗口顶（玻璃顶边高光因此落在窗口上沿，不再裸露在标题栏下方）；
+                内容仍从标题栏下方 y=44 开始，与占位时逐像素一致，详情页滚动容器的
+                -top-11 也仍相对本 padding 盒定位、上延到窗口顶的行为不变 */}
+            <div className={cn('relative flex-1 flex flex-col min-w-0', hasTitleBar && 'pt-11', isSongDetail && !mobile && 'min-h-0')}>
               {/* 新版本提示横幅：启动检测到新版本时固定在内容区顶部 */}
               {updateInfo && (
                 <div className="pt-3">
@@ -913,7 +930,8 @@ function AppLayout() {
                   'hidden lg:block',
                 )}
               >
-                <div className="w-72 h-full flex flex-col">
+                {/* pt-11 与左侧栏同理：玻璃面板铺到窗口顶，内容仍从标题栏下方开始 */}
+                <div className={cn('w-72 h-full flex flex-col', hasTitleBar && 'pt-11')}>
                   <div className="p-6 flex flex-col gap-4">
                     {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
                     <button

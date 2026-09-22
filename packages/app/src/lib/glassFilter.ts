@@ -13,16 +13,6 @@ export const CONTROL_GLASS_FILTER_ID = 'mineradio-control-glass-filter'
 /** 底栏控件玻璃 displacement map（feImage）ID */
 export const CONTROL_GLASS_MAP_ID = 'control-glass-map'
 
-/** 搜索框玻璃滤镜 ID */
-export const SEARCH_GLASS_FILTER_ID = 'mineradio-search-glass-filter'
-/** 搜索框玻璃 displacement map（feImage）ID */
-export const SEARCH_GLASS_MAP_ID = 'search-glass-map'
-
-/** 搜索标签小药丸玻璃滤镜 ID */
-export const SEARCH_PILL_GLASS_FILTER_ID = 'mineradio-search-pill-glass-filter'
-/** 搜索标签小药丸玻璃 displacement map（feImage）ID */
-export const SEARCH_PILL_GLASS_MAP_ID = 'search-pill-glass-map'
-
 // ─── displacement map 生成 ────────────────────────────────────────
 
 /**
@@ -160,7 +150,7 @@ function buildGlassFilter(cfg: GlassFilterConfig): string {
   )
 }
 
-// 三组滤镜配置
+// 滤镜配置（当前只有底栏控件一组）
 const FILTER_CONFIGS: GlassFilterConfig[] = [
   // 底栏控件玻璃
   {
@@ -172,86 +162,17 @@ const FILTER_CONFIGS: GlassFilterConfig[] = [
     dx: -90,
     stdDeviation: 0.5,
   },
-  // 搜索框玻璃
-  {
-    filterId: SEARCH_GLASS_FILTER_ID,
-    mapId: SEARCH_GLASS_MAP_ID,
-    region: { x: '-24%', y: '-34%', width: '158%', height: '168%' },
-    mapAttrs: { x: '-10%', y: '-4%', width: '120%', height: '108%' },
-    scales: { red: 180, green: 170, blue: 160 },
-    dx: -90,
-    stdDeviation: 0.5,
-  },
-  // 搜索标签小药丸玻璃
-  {
-    filterId: SEARCH_PILL_GLASS_FILTER_ID,
-    mapId: SEARCH_PILL_GLASS_MAP_ID,
-    region: { x: '-48%', y: '-68%', width: '210%', height: '236%' },
-    mapAttrs: { x: '-24%', y: '-14%', width: '148%', height: '128%' },
-    scales: { red: 118, green: 108, blue: 98 },
-    dx: -34,
-    stdDeviation: 0.35,
-  },
 ]
 
 /**
  * 完整的 SVG `<filter>` 定义字符串（不含外层 `<svg>` 标签）。
  *
- * 包含三个 filter：
- *  - `mineradio-control-glass-filter`（底栏）
- *  - `mineradio-search-glass-filter`（搜索框）
- *  - `mineradio-search-pill-glass-filter`（搜索标签小药丸）
+ * 当前只有底栏控件一组 filter（`mineradio-control-glass-filter`）：
+ * 搜索框 / 搜索药丸两组已随 `.glass-search-box` 等零引用类一并删除，
+ * 浮层统一走 `.glass-liquid`。
  *
  * 供在 React 组件中通过 dangerouslySetInnerHTML 注入 `<defs>`。
  */
 export const CONTROL_GLASS_SVG_FILTER: string = FILTER_CONFIGS.map(
   buildGlassFilter,
 ).join('')
-
-// ─── 工具函数 ─────────────────────────────────────────────────────
-
-/**
- * 查找 feImage 元素。
- * 优先使用传入的 element；否则通过 filterId 在 document 中查找。
- * filterId 可以是 feImage 自身的 ID，也可以是其所属 filter 的 ID。
- */
-function resolveGlassMapElement(
-  element: SVGFEImageElement | null | undefined,
-  filterId: string,
-): SVGFEImageElement | null {
-  if (element) return element
-  const found = document.getElementById(filterId)
-  if (!found) return null
-  if (found instanceof SVGFEImageElement) return found
-  // 若找到的是 filter 或其他容器，则查找其中的 feImage
-  return found.querySelector('feImage')
-}
-
-/**
- * 给指定 filter 的 feImage 元素设置正确的 displacement map href。
- * 用于动态更新不同尺寸元素的玻璃贴图。
- *
- * @param element  feImage 元素，若为 null 则通过 filterId 查找
- * @param filterId feImage 或 filter 的 ID
- * @param width    贴图宽度
- * @param height   贴图高度
- * @param radius   圆角半径
- */
-export function applyGlassMap(
-  element: SVGFEImageElement | null | undefined,
-  filterId: string,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  const img = resolveGlassMapElement(element, filterId)
-  if (!img) return
-
-  const href = generateControlGlassDisplacementMap(width, height, radius)
-  img.setAttribute('href', href)
-  try {
-    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href)
-  } catch {
-    // 忽略 xlink 设置失败
-  }
-}
