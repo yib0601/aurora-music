@@ -23,6 +23,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
  *   - playQueue(opts): 设置队列并从指定位置播放
  *   - syncQueue(opts): 仅同步队列/循环/随机镜像（不打断播放）
  *   - pause()/resume()/seekTo()/setVolume()/next()/previous()/playAt()/stopEngine()
+ *   - updateArtwork(opts): 补写当前曲目锁屏封面（封面异步就绪后调用）
  *   - getState(): 查询播放快照
  *   - addListener("playbackevent", cb): 监听播放状态事件（同步 UI）
  */
@@ -88,10 +89,27 @@ class MediaSessionPlugin : Plugin() {
                     title = o.optString("title"),
                     artist = o.optString("artist"),
                     album = o.optString("album"),
+                    // 封面来源：convertFileSrc URL / 远端直链 / 本地路径，空则由原生提取内嵌封面
+                    cover = o.optString("cover"),
+                    // JS 传秒，原生用毫秒（锁屏进度条需要总时长）
+                    durationMs = (o.optDouble("duration", 0.0) * 1000).toLong().coerceAtLeast(0L),
                 )
             )
         }
         return items
+    }
+
+    /**
+     * 更新当前曲目的锁屏封面。
+     * JS 侧封面可能是异步提取/升级的（CoverImage 渲染时才落盘），
+     * 队列下发时封面为空，此时用本方法补写，避免锁屏长期停在默认占位图。
+     * opts: { cover: string }
+     */
+    @PluginMethod
+    fun updateArtwork(call: PluginCall) {
+        val cover = call.getString("cover", "") ?: ""
+        MediaPlaybackService.instance?.updateCurrentCover(cover)
+        call.resolve()
     }
 
     /**

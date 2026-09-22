@@ -4,6 +4,9 @@
 >
 > 数值权威来源：[ds-tokens.css](../packages/app/src/styles/ds-tokens.css)、[globals.css](../packages/app/src/styles/globals.css)。
 > 可视化对照：[ds-showcase.html](../packages/app/public/ds-showcase.html)。
+>
+> **实现层规格见 [style-sheet.md](style-sheet.md)**：本文回答「为什么这样设计、什么时候用哪一种」，
+> 那里回答「有哪些类、各是什么值、怎么叠在一起、改动时必须同步什么」。查实现请直接去那篇。
 
 ---
 
@@ -102,7 +105,7 @@
 
 | Token | 值 |
 | --- | --- |
-| 玻璃模糊 `--ds-blur-glass` | **`12px`**（浅深色同值，全项目玻璃的唯一基准半径） |
+| 玻璃模糊 `--ds-blur-glass` | **`12px`**（上游基准值；项目玻璃族实际使用 `20 / 24px` 两档，长列表卡片另有 `12px`，见 [style-sheet.md](style-sheet.md) §5.1） |
 | 卡片阴影 | `0 12px 32px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.06)`（浅色同结构、更浅） |
 | 液态玻璃厚度 `--glass-liquid-edge` | 深色 `inset 0 1px 0 0 rgba(255,255,255,.34), inset 0 -1.5px 1px -1px rgba(255,255,255,.18)`；浅色 `.90 / .55` |
 | 液态玻璃本体 `--glass-liquid-bg` | 深色 白 `.055→.038` 渐变 + `rgba(0,8,18,.20)`；浅色 `rgba(255,255,255,.72→.60)` |
@@ -127,15 +130,15 @@
 | 要素 | 要求 | 本项目取值 |
 | --- | --- | --- |
 | **背景色场** | 必须有**高不透明度、有色相**的色场；纯黑底上玻璃必然"假" | `--ambient-*` 三色斑，alpha `.34~.50`，叠在 `--ambient-base` 有色底上 |
-| **色场实现方式** | 用 `filter: blur()` 作用于**元素自身**（合成层），不要用 `backdrop-filter`；且**色斑必须分层独立成元素** | `.ambient-blob--primary/secondary/glow` 三个独立元素，各带 `filter: blur(80~110px)` |
+| **色场实现方式** | **用多色标 `radial-gradient` 自己做柔边**（静态背景图，位移只走合成层）；**禁止 `filter: blur()`**；且**色斑必须分层独立成元素** | `.ambient-blob--depth/--primary/--secondary/--glow` 四个独立元素，纯 `radial-gradient`，**全族无 `filter`** |
 | **玻璃底** | 低 alpha"压暗场/提亮场"，**不要用高不透明实心色** | 暗色 `rgba(0,6,14,.17)` + 白 `.055` 提亮；浅色 `rgba(255,255,255,.40)` |
-| **玻璃模糊** | 足够长才能把背景柔化成"色雾"而非可辨形状 | `18~28px`（`.glass-subtle` → `.glass-strong`） |
+| **玻璃模糊** | 足够长才能把背景柔化成"色雾"而非可辨形状 | 常驻与浮层玻璃一律 `24px`（`.glass-regular` / `.glass-liquid` / `.glass-floating`），控件按钮 `20px` |
 | **玻璃滤镜附加项** | `saturate` 让透出的色场更鲜活；`brightness` 微提避免压暗发灰 | `saturate(1.4~1.6) brightness(1.04~1.06)` |
 | **封面取色驱动** | 取色需**提饱和 + 设亮度下限**，否则灰封面会让背景重回死灰 | `useThemeColor.ts` 的 `toFieldColor()` |
 
 **压暗层的 alpha 是"通透度"主旋钮**（不是模糊半径）。实测标定：受光场色 L≈0.0576 上，冷黑 `.26` 合成后 L≈0.0474（ΔL=-0.010）。
 
-> **浮层不应比普通面板更不透**。改造前 `--glass-floating-bg` / `--glass-popover-bg` 用 `.48`/`.50`，是 `regular`（`.26`）的近两倍，合成后 L≈0.027（ΔL=-0.030）——**"浮起来"的层反而最不透**，与层级语义相反。现统一收敛为 `.24`/`.26`，层级改由**内高光强度 + 投影**表达（`--glass-edge-highlight` `.16`→`.20`，`--glass-floating-shadow` 的 inset 高光 `.16`→`.20`）。
+> **浮层不应比普通面板更不透**。历史上浮层玻璃底用过 `.48`/`.50`，是 `regular`（`.26`）的近两倍，合成后 L≈0.027（ΔL=-0.030）——**"浮起来"的层反而最不透**，与层级语义相反。现统一收敛为 `.24`/`.26`，层级改由**内高光强度 + 投影**表达。
 >
 > 浮层仍比普通面板多压约 `.07`（`.24` vs `.17`），因为浮层背后可能是任意内容（歌词、封面），需要略强的可读性兜底。
 
@@ -210,10 +213,10 @@
    而 `shadow-none` 会把 `box-shadow` **整个覆盖掉**。实测：厚度写在 `box-shadow` 上时，侧栏的
    `box-shadow` 被静默清零成三个透明占位值，"所有面板统一厚度"的约定在最重要的侧栏上失效。
    用伪元素画则与 `box-shadow` 完全解耦。
-2. **降级开关必须同时隐藏厚度层**。`.glass-flat` 下要 `content: none` 掉
-   `.glass-liquid / .glass-regular / .glass-strong / .glass-subtle` 的 `::before`，
-   否则降级态会在整块不透明面板上留一圈无意义的白描边。
+2. **降级开关保留厚度层**。`.resizing` / `.glass-perf-lite` 只关 `backdrop-filter`，`::before` 厚度层**保留**——
+   它是廉价的 `box-shadow`，关掉没有性能收益，保留能让动画期间视觉不突变。
    ⚠️ 注意**不要波及 `.ambient-backdrop::before`** —— 那是背景静态底，隐藏会导致背景闪黑（见 §2.5 坑 2）。
+   （历史上「扁平模式」会连厚度层一起 `content: none`，该开关因运行时无入口已删除，见 [style-sheet.md](style-sheet.md) §6。）
 
 **降级行为**（`.resizing` / `.glass-perf-lite`）：只关 `backdrop-filter`，**保留厚度层**。
 厚度是廉价的 `box-shadow`，关掉没有性能收益，保留能让动画期间的视觉不突变。
@@ -223,7 +226,7 @@
 | 类 | 用于 | 说明 |
 | --- | --- | --- |
 | `glass-liquid` | 浮层：下拉菜单、右键菜单、弹窗、搜索浮层、播放队列 | 材质升级版：更透 + 完整厚度层 |
-| `glass-regular` / `glass-strong` / `glass-subtle` | 常驻面板：侧栏、标题栏、右侧 Now Playing | 各自透明度语义不变，统一挂载厚度层 |
+| `glass-regular` | 常驻面板：侧栏、标题栏、右侧 Now Playing | 挂载厚度层（`::before`）；历史上还有 `strong` / `subtle` 两档，因零引用已删除 |
 | `glass-saved-panel` | 播放条 | 厚度写在自己的 `--saved-panel-glass-shadow` 里（不走伪元素） |
 
 > **`glass-liquid` 与 `glass-floating` 不要叠加使用**。两者都声明 `background`/`border`/`backdrop-filter`，
@@ -279,10 +282,10 @@
 - ❌ **禁止嵌套多层 backdrop-filter**（玻璃里再放玻璃），代价叠加且视觉发灰。
 - ✅ 玻璃只用在小面积浮层（下拉、弹窗、播放条、顶栏）上。
 - ✅ 需要"卡顿安全模式"时，项目已有 `.glass-perf-lite` / `.resizing` 降级规则在兜底，新增玻璃元素请沿用同一降级思路。
-- ⚠️ **注意区分 `backdrop-filter` 与 `filter`**：背景色场用 `filter: blur()`（作用于元素自身，走合成层，一次模糊可长期复用），**不要**误用 `backdrop-filter`（逐帧重采样，且需要背后有东西才有效果）。二者代价差一个量级，§2.5 的色场正是因此选用 `filter`。
-- ⚠️ **新增/改名玻璃类后，必须同步更新三处降级规则的类名清单**：`.glass-flat`、`.resizing`、`.glass-perf-lite`。漏一个就会出现"降级开关没关掉这块玻璃"的性能隐患。改完用 `getComputedStyle` 断言三处均为 **8/8 覆盖**（当前玻璃类总数 8）。
-- ⚠️ **降级开关必须写 `!important`**：`html.control-glass-svg-ok .glass-saved-panel`（特异性 0,2,1）高于 `.glass-flat .glass-saved-panel`（0,2,0），不加 `!important` 时总开关会静默失效，恰好在"性能降级"模式下保留最贵的 `blur(24px)`。此坑已实际发生过一次。
-- ⚠️ **色斑降级要保底一层**：`.glass-flat`/`.resizing` 只该藏掉**带 `filter: blur()` 的**色斑，其中 `.ambient-blob--depth` 是纯 `linear-gradient`（无 filter，代价近似为零），必须保留，否则降级态背景会退回一块死黑。
+- ⚠️ **注意区分 `backdrop-filter` 与 `filter`**：玻璃用 `backdrop-filter`（逐帧重采样，代价最高）；背景色场**两者都不用**——纯 `radial-gradient` 静态图 + 合成层位移，代价近似为零。**色斑上不得出现 `filter`**：实测「`filter: blur()` + 任何动画」同元素共存会让整个界面掉到个位数帧率（§2.5；实测数据见 [style-sheet.md](style-sheet.md) §9）。
+- ⚠️ **新增/改名玻璃类后，必须同步更新降级规则的类名清单**：`.resizing` 与 `.glass-perf-lite` 共用**一处**选择器列表。漏一个就会出现"降级开关没关掉这块玻璃"的性能隐患。改完用 `getComputedStyle` 断言覆盖数为 **5/5**（当前玻璃类总数 **5**，清单见 [style-sheet.md](style-sheet.md) §6.3）。
+- ⚠️ **降级开关必须写 `!important`**：`html.control-glass-svg-ok .glass-saved-panel`（特异性 0,2,1）高于 `.resizing .glass-saved-panel`（0,2,0），不加 `!important` 时总开关会静默失效，恰好在"性能降级"模式下保留最贵的 `blur(24px)`。此坑已实际发生过一次。
+- ⚠️ **色斑降级要保底一层**：`.resizing` 把色斑透明化，但 **`.ambient-blob--depth` 必须始终保留**（纯 `linear-gradient`，无动画，代价近似为零），否则降级态背景会退回一块死黑。`.ambient-backdrop::before`（静态色底）同理不可隐藏。
 
 ---
 
@@ -454,6 +457,9 @@
 
 ### 8.1 层级表
 
+> 下表描述**层级语义与相对关系**；项目**实际生效**的字号/字重/行高是 `globals.css` 的 `.text-*` 语义类
+> （如 `hero = clamp(34px, 4.6vw, 58px)/760/0.98`、`display = 28px/700`），完整落地值见 [style-sheet.md](style-sheet.md) §8。
+
 | 层级 | 字号 | 字重 | 行高 | 字距 | 什么时候用 |
 | --- | --- | --- | --- | --- | --- |
 | display | 40 → 64px (md) | 500 | 140% | `-0.02em` | 全屏播放页/品牌首屏的唯一主标题 |
@@ -499,7 +505,7 @@
 - [ ] **圆角**：同类元素圆角一致吗？嵌套处内层小一档吗（§6）？
 - [ ] **动效**：时长 ≤0.4s（入场除外）？只动 1–2 个属性？**写了 `prefers-reduced-motion` 降级吗**（§7.5）？
 - [ ] **性能**：`backdrop-filter` 只出现在小面积、不随滚动移动的元素上吗（§3.5）？
-- [ ] **降级**：新增玻璃类**有没有同步加进 `.glass-flat` / `.resizing` / `.glass-perf-lite` 三处降级规则**（§2.6）？
+- [ ] **降级**：新增玻璃类**有没有同步加进 `.resizing`/`.glass-perf-lite` 的降级清单**（当前 5 类，§2.6）？
 - [ ] **排版**：字号没有跳级？中文标题字重没有过粗（§8.3）？
 - [ ] **描边**：全部是 `1px` 发丝边吗？没有 `2px+` 粗边（§10）？
 
@@ -582,7 +588,7 @@
 | --- | --- |
 | 主 / 次 / 珍珠 / 图标按钮 | `.btn-primary`（mint 实心胶囊）/ `.btn-secondary`（mint 描边）/ `.btn-pearl`（玻璃）/ `.btn-icon` |
 | 卡片 | `.card-utility`（带 blur + hover 上浮）/ `.card-solid`（**无 blur**，长列表用）/ `.card-list`（同材质、hover 不上浮） |
-| 玻璃浮层 | `.glass-regular / strong / subtle / floating / popover / search-box / saved-panel / saved-button` |
+| 玻璃浮层 | `.glass-liquid`（**浮层首选**）+ `.glass-regular`（常驻面板）/ `.glass-floating`（Toast）/ `.glass-saved-panel` / `.glass-saved-button` |
 | 表面 | `.surface-canvas / paper / card / tile-1 / tile-2` |
 
 需要新写样式时**直接读 token，不要硬编码数值**：`--ds-color-*`（颜色）、`--ds-radius-*`（圆角）、`--ds-space-*`（间距）、`--ds-blur-glass`（模糊）。
