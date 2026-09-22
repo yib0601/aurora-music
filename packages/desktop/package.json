@@ -155,15 +155,15 @@
       ],
       "icon": "resources/icon.ico",
       "forceCodeSigning": false,
-      "signAndEditExecutable": false
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Aurora Music"
+      "shortcutName": "Aurora Music",
+      "include": "installer.nsh"
     }
   }
 }
