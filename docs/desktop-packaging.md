@@ -153,3 +153,13 @@ EXPECTED_ARCH=arm64 bash scripts/verify-macos-dmg.sh packages/desktop/release/*.
 `Signature=adhoc`、dmg 内 `Info.plist` 版本号与根 `package.json` 一致。
 依赖 hdiutil / lipo / codesign / PlistBuddy，Windows、Linux 上无法执行。
 
+macOS runner 用自带 bash 3.2（Linux 上是 bash 5），下面两个陷阱已真实踩过：
+
+- **变量后紧跟中文标点必须写成 `${VAR}`**：bash 3.2 解析 `$VAR（` 时会把全角字符的字节
+  并进变量名，报 `unbound variable` 并中止脚本；bash 5 不会。本地跑得好好的脚本到 mac
+  runner 上会挂。
+- **EXIT trap 必须显式 `exit "${code}"`**：bash 3.2 里 trap 内最后一条命令的退出码会覆盖
+  脚本退出码（bash 4.4+ 才改成保留原码）。不显式 exit 时，校验失败会被 cleanup 的成功
+  退出码洗成 0 —— 表现为「校验步骤全绿、包其实是坏的」。workflow 里断言输出含
+  `✅ macOS 产物校验通过` 是第二道闸门。
+
