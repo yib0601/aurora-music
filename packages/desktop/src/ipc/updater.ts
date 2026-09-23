@@ -11,7 +11,8 @@ import { pipeline } from 'stream/promises'
  * - AppImage 下载后自动注入可执行权限；
  * - 「现在安装」按包类型走各自的系统入口：
  *   exe / AppImage → 直接启动安装器（Windows NSIS 自带向导；AppImage 由用户确认后退出当前应用）；
- *   deb / rpm → 打开终端执行 sudo 覆盖安装命令（桌面端应用无法自行提权）。
+ *   deb / rpm → 打开终端执行 sudo 覆盖安装命令（桌面端应用无法自行提权）；
+ *   dmg → 挂载 dmg 并让 Finder 显示，用户把 App 拖进「应用程序」完成覆盖。
  */
 
 export interface UpdaterProgress {
@@ -25,7 +26,7 @@ export interface UpdaterDonePayload {
 }
 
 /** 支持的安装包类型白名单（渲染层传入，避免被伪造出任意文件） */
-const INSTALLER_KINDS = new Set(['apk', 'exe', 'appimage', 'deb', 'rpm'])
+const INSTALLER_KINDS = new Set(['apk', 'exe', 'appimage', 'deb', 'rpm', 'dmg'])
 
 /**
  * 下载地址白名单：GitHub 官方域名，或「公共加速前缀 + GitHub 原始链接」。
@@ -66,7 +67,7 @@ function cleanupOldArtifacts(dir: string, keepFile: string) {
   try {
     const keep = path.resolve(keepFile)
     for (const entry of fs.readdirSync(dir)) {
-      if (!/^Aurora-Music-.*\.(AppImage|appimage|deb|rpm|exe)$/i.test(entry)) continue
+      if (!/^Aurora-Music-.*\.(AppImage|appimage|deb|rpm|exe|dmg)$/i.test(entry)) continue
       const full = path.join(dir, entry)
       if (path.resolve(full) === keep) continue
       try {
@@ -88,7 +89,7 @@ function fileNameFromUrl(url: string, kind: string): string {
   } catch {
     // 落到兜底
   }
-  const ext: Record<string, string> = { apk: '.apk', exe: '.exe', appimage: '.AppImage', deb: '.deb', rpm: '.rpm' }
+  const ext: Record<string, string> = { apk: '.apk', exe: '.exe', appimage: '.AppImage', deb: '.deb', rpm: '.rpm', dmg: '.dmg' }
   return `Aurora-Music-update${ext[kind] || ''}`
 }
 
@@ -307,6 +308,17 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
         throw new Error('无法打开终端，请手动执行：' + cmd)
       }
       return { action: 'terminal' as const, command: cmd }
+    }
+
+    if (kind === 'dmg') {
+      // macOS：dmg 无法原地覆盖安装（App 在 /Applications 里运行中，替换需用户拖拽）。
+      // 挂载 dmg 并让 Finder 显示，用户把 Aurora Music 拖进「应用程序」即完成更新；
+      // 不退出当前实例——用户可能还想继续听，且退出会让拖拽替换更难操作。
+      const err = await shell.openPath(filePath)
+      if (err) {
+        throw new Error('打开安装包失败：' + err)
+      }
+      return { action: 'mounted' as const }
     }
 
     // apk 等：下载即完成，安装由系统在文件管理器中引导

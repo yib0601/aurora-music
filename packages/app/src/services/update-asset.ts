@@ -5,13 +5,16 @@
  * - 现在跑的就是 AppImage / 便携目录 → 继续给 AppImage；
  * - 系统包管理器装的（dnf/apt）→ 给对应原生包（rpm/deb），AppImage 仅作兜底；
  * - 判断不出发行版时保持历史行为（AppImage 优先）。
+ * - macOS 只有 dmg（分 arm64/x64 两份），按 process.arch 挑本机那份。
  */
 
-export type AssetKind = 'apk' | 'exe' | 'appimage' | 'deb' | 'rpm'
+export type AssetKind = 'apk' | 'exe' | 'appimage' | 'deb' | 'rpm' | 'dmg'
 
 /** 主进程 system:getInfo 返回的环境信息（Web/移动端为 null） */
 export interface SystemInfoLike {
   platform?: string | null
+  /** 进程架构（process.arch）：macOS 双架构 dmg 靠它区分 arm64 / x64 */
+  arch?: string | null
   pkgFamily?: 'rpm' | 'deb' | 'unknown' | null
   installKind?: 'appimage' | 'system-package' | 'portable' | 'unknown' | null
 }
@@ -27,6 +30,7 @@ export const ASSET_LABEL: Record<AssetKind, string> = {
   appimage: 'AppImage 便携版',
   deb: 'DEB 包',
   rpm: 'RPM 包',
+  dmg: 'DMG 安装包',
 }
 
 const ASSET_SUFFIX: Record<AssetKind, string> = {
@@ -35,6 +39,7 @@ const ASSET_SUFFIX: Record<AssetKind, string> = {
   appimage: '.appimage',
   deb: '.deb',
   rpm: '.rpm',
+  dmg: '.dmg',
 }
 
 /** 便携形态（非系统包管理器安装）：继续推荐 AppImage */
@@ -63,31 +68,38 @@ export function assetPreferenceOrder(env: {
 
   // 主进程探测到的平台最可靠；Web 环境退回 userAgent
   if (platform === 'win32' || (!platform && ua.includes('win'))) return ['exe']
-  if (platform === 'darwin') return []
+  if (platform === 'darwin') return ['dmg']
   if (platform === 'linux' || (!platform && ua.includes('linux'))) return linuxAssetOrder(env.system)
   return []
 }
 
-/** 从 release assets 里按候选顺序挑出第一个存在的包 */
+/** 从 release assets 里按候选顺序挑出第一个存在的包（同类型有多个时优先本机架构那份） */
 export function pickAsset(
   assets: Array<{ name?: string; browser_download_url?: string }>,
-  order: AssetKind[]
+  order: AssetKind[],
+  arch?: string | null
 ): AssetPick | null {
   const urls = new Map<AssetKind, string>()
+  const archMatched = new Map<AssetKind, string>()
+  const wantArch = (arch || '').toLowerCase()
+
   for (const asset of assets) {
     const name = (asset?.name || '').toLowerCase()
     const url = asset?.browser_download_url
     if (!name || !url) continue
     for (const kind of order) {
-      if (urls.has(kind)) continue
-      if (name.endsWith(ASSET_SUFFIX[kind])) {
-        urls.set(kind, url)
-        break
+      if (!name.endsWith(ASSET_SUFFIX[kind])) continue
+      if (!urls.has(kind)) urls.set(kind, url)
+      // macOS 的 dmg 分 `-arm64` / `-x64` 两份，名字里带本机架构的才是能跑的那份
+      if (wantArch && !archMatched.has(kind) && name.includes(`-${wantArch}`)) {
+        archMatched.set(kind, url)
       }
+      break
     }
   }
+
   for (const kind of order) {
-    const url = urls.get(kind)
+    const url = archMatched.get(kind) || urls.get(kind)
     if (url) return { url, kind }
   }
   return null

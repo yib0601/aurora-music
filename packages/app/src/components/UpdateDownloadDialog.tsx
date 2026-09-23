@@ -29,6 +29,7 @@ const INSTALL_HINT: Record<string, string> = {
   appimage: '启动新版本后将退出当前应用，直接运行新文件即完成更新',
   deb: '将打开系统终端执行 sudo 安装命令，输入密码确认即可',
   rpm: '将打开系统终端执行 sudo 安装命令，输入密码确认即可',
+  dmg: '将挂载 dmg 安装包，把 Aurora Music 拖入「应用程序」覆盖旧版本即完成更新',
   apk: '将调起系统安装界面，按提示确认安装；若提示未授权，请先允许本应用「安装未知应用」',
 }
 
@@ -80,6 +81,9 @@ export function UpdateDownloadDialog() {
       const result = await api.install(filePath, task.kind)
       if (result?.action === 'terminal') {
         toast('已在终端打开安装命令，请按提示输入密码', { duration: 8000 })
+      }
+      if (result?.action === 'mounted') {
+        toast('已挂载 dmg，把 Aurora Music 拖入「应用程序」覆盖旧版本即完成更新', { duration: 8000 })
       }
       // exe / appimage 会启动安装器并退出当前应用，无需后续处理
     } catch (err) {
