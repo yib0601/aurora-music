@@ -1,6 +1,7 @@
-# 桌面端打包约定（Windows）
+# 桌面端打包约定
 
-> 记录 electron-builder 的两个硬约束，改动 `packages/desktop/package.json` 的 `build.win` / `build.nsis` 前先读这份。
+> 记录 electron-builder 的硬约束，改动 `packages/desktop/package.json` 的 `build.*` 前先读这份。
+> Windows 见 §1-4，macOS 见 §5。
 
 ## 1. exe 必须嵌入图标与版本信息 —— 用 `signExecutable: false`，不要用 `signAndEditExecutable: false`
 
@@ -93,4 +94,62 @@ del /a /q "%localappdata%\IconCache.db"
 del /a /q "%localappdata%\Microsoft\Windows\Explorer\iconcache*"
 start explorer.exe
 ```
+
+## 5. macOS：ad-hoc 签名 + 双架构分 runner
+
+### 5.1 `mac.identity` 必须写 `"-"`，留空或 `null` 都会出不能运行的包
+
+无 Apple 开发者证书时，三种取值的行为完全不同（electron-builder 26 的
+`MacTargetHelper.findSigningIdentity`）：
+
+| `mac.identity` | 行为 | 后果 |
+| --- | --- | --- |
+| 不设置（默认） | 查 keychain，找不到证书就跳过签名 | arm64 产物被内核拒绝执行（表现为「双击无反应」） |
+| `null` | 显式跳过签名 | 同上 |
+| `"-"` | ad-hoc 签名（`codesign --sign -`） | bundle 签名有效、能启动；Gatekeeper 提示「无法验证开发者」 |
+
+Apple Silicon 要求所有可执行代码带有效签名，ad-hoc 也算。而 electron-builder 打包会
+重写 app bundle、破坏 Electron 官方二进制的原有签名，因此**未签名的 arm64 产物在
+M 系列机器上根本起不来**。`scripts/verify-macos-dmg.sh` 里的 `Signature=adhoc` 断言
+就是防止这一点被改回去。
+
+配套必须 `hardenedRuntime: false`：hardened runtime 的 library validation 会拒绝
+Team ID 不同的 Electron 预签名框架，ad-hoc 签名下直接导致启动失败
+（electron-builder 26 会就此打警告）。
+
+将来买了开发者证书：`identity` 换成证书名、`hardenedRuntime` 改回 `true` 并接上
+notarize，用户侧就不会再有 Gatekeeper 提示。
+
+### 5.2 双架构各跑原生 runner，不交叉编译
+
+`better-sqlite3` 是原生模块，`npmRebuild` 必须按目标架构重建。在 arm64 runner 上出
+x64 包需要 node-gyp 拉异构 headers 并让 clang 交叉链接，失败面大于收益，所以拆两个 job：
+
+| job | runner | 产物 |
+| --- | --- | --- |
+| `build-macos-arm64` | `macos-15`（arm64） | `Aurora-Music-<version>-arm64.dmg` |
+| `build-macos-x64` | `macos-15-intel`（x64） | `Aurora-Music-<version>-x64.dmg` |
+
+`macos-13` 已退役；Intel 的标准 runner 标签是 `macos-15-intel`（带 `-large` 的是付费
+larger runner，不要混用）。
+
+`artifactName` 必须带 `${arch}`：两个架构同名时后者会覆盖前者，release 里只剩一份且
+用户拿到的是错架构的包。渲染层的更新逻辑（`packages/app/src/services/update-asset.ts`）
+也依赖 `-arm64` / `-x64` 后缀挑本机那份。
+
+### 5.3 图标用单独的 `icon-mac.png`（1024x1024、8-bit）
+
+`icon.png` 是 512x512 的 **16-bit** PNG，转 icns 会被 electron-builder 的 icon-tool
+拒绝，因此 macOS 侧单出一份 `resources/icon-mac.png`（由 `scripts/generate-icons.sh`
+生成，1024x1024 且显式 `-depth 8`）。
+
+### 5.4 发布前校验（仅在 macOS 上可跑）
+
+```bash
+EXPECTED_ARCH=arm64 bash scripts/verify-macos-dmg.sh packages/desktop/release/*.dmg
+```
+
+脚本挂载 dmg 后断言四件事：主程序架构、`better-sqlite3` 原生模块架构、
+`Signature=adhoc`、dmg 内 `Info.plist` 版本号与根 `package.json` 一致。
+依赖 hdiutil / lipo / codesign / PlistBuddy，Windows、Linux 上无法执行。
 

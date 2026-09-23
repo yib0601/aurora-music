@@ -37,7 +37,10 @@ function getTrayIconPath(): string {
 function createTray(win: BrowserWindow) {
   try {
     const icon = nativeImage.createFromPath(getTrayIconPath())
-    tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
+    // macOS 菜单栏图标不随系统缩放：512px 源图直接塞进 Tray 会占满整条菜单栏，
+    // 这里显式缩到 18px（菜单栏图标的标准视觉尺寸，Retina 由 Electron 自行出 @2x）。
+    const trayIcon = process.platform === 'darwin' ? icon.resize({ width: 18, height: 18 }) : icon
+    tray = new Tray(trayIcon.isEmpty() ? nativeImage.createEmpty() : trayIcon)
   } catch (err) {
     console.error('[Tray] 创建托盘失败:', err)
     return

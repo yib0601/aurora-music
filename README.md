@@ -65,7 +65,7 @@
 
 ### 其他
 
-- ⬆️ **应用内更新** — 启动时检查新版本并展示更新横幅，按平台推荐匹配的安装包（Windows 给 EXE、Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage、Android 给 APK）。桌面端与 Android 均支持应用内下载（进度对话框，下载可收起后台继续），下载源按「GitHub 官方 → 公共加速前缀」自动降级；桌面端可一键安装，Android 下载完成后调起系统安装器
+- ⬆️ **应用内更新** — 启动时检查新版本并展示更新横幅，按平台推荐匹配的安装包（Windows 给 EXE、Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage、macOS 按芯片给 arm64/x64 的 DMG、Android 给 APK）。桌面端与 Android 均支持应用内下载（进度对话框，下载可收起后台继续），下载源按「GitHub 官方 → 公共加速前缀」自动降级；桌面端可一键安装（macOS 会挂载 dmg，拖入「应用程序」即完成覆盖），Android 下载完成后调起系统安装器
 - 📲 **Android 内置更新** — 下载在原生后台线程进行（不依赖系统 DownloadManager，定制 ROM 缺失该服务也能用），APK 落在应用私有目录无需存储权限；未授予「安装未知应用」时自动引导到系统授权页
 
 ---
@@ -239,6 +239,7 @@ cd android && ./gradlew assembleDebug
 ### 平台说明
 
 - **Linux / Wayland**：仅支持 Wayland，请勿添加 `--ozone-platform=x11`（会导致崩溃）。AMD GPU 如遇渲染黑屏，应用已内置 `--disable-gpu` 启动参数解决。
+- **macOS**：dmg 分 `-arm64`（Apple Silicon）与 `-x64`（Intel）两份，按芯片选。安装包为 ad-hoc 签名、未经 Apple 公证（公证需付费开发者账号），首次打开会被 Gatekeeper 拦下：执行 `xattr -cr /Applications/Aurora-Music.app` 去掉下载隔离标记，或在「系统设置 → 隐私与安全性」底部点「仍要打开」。
 - 原生模块（better-sqlite3）切换 Node/Electron 版本后需运行 `pnpm rebuild`。
 
 ---
@@ -250,7 +251,7 @@ cd android && ./gradlew assembleDebug
 | 工作流 | 触发条件 | 做什么 |
 | --- | --- | --- |
 | `ci.yml` | push 到任意分支、PR 到 `main`、手动 dispatch | 只校验，不发布 |
-| `release.yml` | 推送 `v*` tag、手动 dispatch | 构建全平台产物并创建 GitHub Release |
+| `release.yml` | 推送 `v*` tag、手动 dispatch | 构建全平台产物（Windows / Linux / macOS 双架构 / Android）并创建 GitHub Release |
 
 `ci.yml` 的两个任务：
 
@@ -310,7 +311,8 @@ cd ../.. && bash scripts/verify-apk-signature.sh android/app/build/outputs/apk/d
 ```
 
 > 推送 `v*` tag 会触发 GitHub Actions 自动构建全平台产物并发布 Release。
-> CI 会先用 `scripts/verify-apk-signature.sh` 校验 APK 签名与版本号，不符即中止发布。
+> CI 会先用 `scripts/verify-apk-signature.sh` 校验 APK 签名与版本号，macOS 产物则用
+> `scripts/verify-macos-dmg.sh` 校验架构、ad-hoc 签名与版本号，不符即中止发布。
 
 #### 发布签名密钥（重要）
 

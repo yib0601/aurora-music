@@ -24,6 +24,9 @@ magick -background none "$SVG_ROUND" \
   \( -clone 0 -resize 128x128 \) \
   \( -clone 0 -resize 256x256 \) \
   -delete 0 "$RES/icon.ico"
+# macOS 源图：electron-builder 用 icon-tool 转 icns，要求 1024x1024 且必须 8-bit
+# （icon.png 是 16-bit，转 icns 会被拒），故单独出一份
+magick -background none "$SVG_ROUND" -resize 1024x1024 -depth 8 PNG32:"$RES/icon-mac.png"
 
 echo "== Android mipmap =="
 declare -A DENSITIES=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )

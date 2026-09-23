@@ -164,6 +164,17 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Aurora Music",
       "include": "installer.nsh"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "resources/icon-mac.png",
+      "category": "public.app-category.music",
+      "darkModeSupport": true,
+      "artifactName": "Aurora-Music-${version}-${arch}.${ext}",
+      "identity": "-",
+      "hardenedRuntime": false
     }
   }
 }

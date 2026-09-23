@@ -88,7 +88,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
     system,
   })
-  const picked = pickAsset(Array.isArray(data.assets) ? data.assets : [], order)
+  const picked = pickAsset(Array.isArray(data.assets) ? data.assets : [], order, system?.arch)
 
   return {
     version: latest,

@@ -249,10 +249,116 @@ jobs:
           name: android-apk
           path: packages/mobile/android/app/build/outputs/apk/debug/*.apk
 
+  # ============ macOS (Apple Silicon) ============
+  # 双架构各跑原生 runner：better-sqlite3 是原生模块，交叉编译（arm64 主机出 x64 包）
+  # 需要 node-gyp 下载异构 headers 并让 clang 交叉链接，失败面大；原生 runner 直接本机编译。
+  # 无 Apple 开发者证书，采用 ad-hoc 签名（identity: "-"）：未签名的 arm64 产物在
+  # Apple Silicon 上会被内核拒绝执行，ad-hoc 签名后至少能启动，用户放行一次即可。
+  build-macos-arm64:
+    name: Build macOS (Apple Silicon)
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app (vite)
+        # @aurora/app 依赖 workspace 包 @aurora/shared（types 指向 dist/），
+        # 必须先构建 shared，否则 tsc 报 "Cannot find module '@aurora/shared'"
+        run: pnpm --filter @aurora/shared build && pnpm --filter @aurora/app build
+
+      - name: Sync app dist to desktop
+        run: |
+          rm -rf packages/desktop/app-dist
+          cp -r packages/app/dist packages/desktop/app-dist
+
+      - name: Compile Electron main (tsc)
+        run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
+
+      - name: Build DMG (arm64)
+        run: pnpm --filter @aurora/desktop exec electron-builder --mac --arm64 --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify DMG (arch / ad-hoc signature / native module)
+        # 三个硬闸门：主程序架构、better-sqlite3 原生模块架构、ad-hoc 签名。
+        # 任一不符都会在 Apple Silicon 上「双击无反应」，必须在发布前卡死。
+        env:
+          EXPECTED_ARCH: arm64
+        run: bash scripts/verify-macos-dmg.sh "packages/desktop/release/"*.dmg
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-arm64
+          path: packages/desktop/release/*.dmg
+          if-no-files-found: error
+
+  # ============ macOS (Intel) ============
+  build-macos-x64:
+    name: Build macOS (Intel)
+    runs-on: macos-15-intel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app (vite)
+        run: pnpm --filter @aurora/shared build && pnpm --filter @aurora/app build
+
+      - name: Sync app dist to desktop
+        run: |
+          rm -rf packages/desktop/app-dist
+          cp -r packages/app/dist packages/desktop/app-dist
+
+      - name: Compile Electron main (tsc)
+        run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
+
+      - name: Build DMG (x64)
+        run: pnpm --filter @aurora/desktop exec electron-builder --mac --x64 --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify DMG (arch / ad-hoc signature / native module)
+        env:
+          EXPECTED_ARCH: x86_64
+        run: bash scripts/verify-macos-dmg.sh "packages/desktop/release/"*.dmg
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-x64
+          path: packages/desktop/release/*.dmg
+          if-no-files-found: error
+
   # ============ Release ============
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-linux, build-android]
+    needs: [build-windows, build-linux, build-android, build-macos-arm64, build-macos-x64]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
@@ -306,6 +412,9 @@ jobs:
           find release-artifacts/linux-packages -name "*.AppImage" -exec cp {} release/ \; 2>/dev/null || true
           find release-artifacts/linux-packages -name "*.deb" -exec cp {} release/ \; 2>/dev/null || true
           find release-artifacts/linux-packages -name "*.rpm" -exec cp {} release/ \; 2>/dev/null || true
+          # macOS（双架构 dmg，文件名已带 -arm64 / -x64）
+          find release-artifacts/macos-arm64 -name "*.dmg" -exec cp {} release/ \; 2>/dev/null || true
+          find release-artifacts/macos-x64 -name "*.dmg" -exec cp {} release/ \; 2>/dev/null || true
           # Android — 重命名为 Aurora-Music-{version}-android.apk
           APK_SRC=$(find release-artifacts/android-apk -name "*.apk" | head -1)
           if [ -n "$APK_SRC" ]; then
@@ -334,6 +443,8 @@ jobs:
             | Linux (AppImage) | `Aurora-Music-${{ steps.ver.outputs.version }}.AppImage` | 便携版，`chmod +x` 后双击或 `./Aurora-Music-*.AppImage` 运行 |
             | Linux (deb) | `Aurora-Music-${{ steps.ver.outputs.version }}.deb` | Debian/Ubuntu 系，`sudo dpkg -i` 安装 |
             | Linux (rpm) | `Aurora-Music-${{ steps.ver.outputs.version }}.rpm` | Fedora/RHEL 系，`sudo rpm -Uvh` 安装 |
+            | macOS (Apple Silicon) | `Aurora-Music-${{ steps.ver.outputs.version }}-arm64.dmg` | M 系列芯片，打开 dmg 拖入「应用程序」 |
+            | macOS (Intel) | `Aurora-Music-${{ steps.ver.outputs.version }}-x64.dmg` | Intel 芯片，打开 dmg 拖入「应用程序」 |
             | Android | `Aurora-Music-${{ steps.ver.outputs.version }}-android.apk` | 固定签名 APK，需在「设置 → 安全」允许未知来源后安装。签名已固定，新版本可直接覆盖安装。 |
 
             ### 首次使用
@@ -341,7 +452,24 @@ jobs:
             - **Windows**: 下载 `.exe` 安装包运行。
             - **Linux AppImage**: `chmod +x Aurora-Music-*.AppImage && ./Aurora-Music-*.AppImage`。
             - **Linux deb/rpm**: 用对应包管理器安装。
+            - **macOS**: 打开 dmg，把 Aurora Music 拖入「应用程序」。本包**未经 Apple 公证**（无开发者证书），首次打开会被 Gatekeeper 拦截，按下面「macOS 首次打开被拦截」一节处理即可。
             - **Android**: 安装 APK 后，进入应用，点击「添加目录」在文件夹树中点选音乐目录。
+
+            #### macOS 首次打开被拦截
+
+            应用为 ad-hoc 签名、未做 Apple 公证（公证需要付费开发者账号），首次打开会提示
+            「无法验证开发者」或「已损坏，无法打开」。两种放行方式任选：
+
+            ```bash
+            # 方式一（推荐）：去掉下载隔离标记，之后双击即可
+            xattr -cr /Applications/Aurora-Music.app
+            ```
+
+            方式二：打开应用时若提示「无法验证开发者」，进入「系统设置 → 隐私与安全性」，
+            在底部点击「仍要打开」，再确认一次。
+
+            芯片选择：Apple Silicon（M1/M2/M3/M4…）用 `-arm64`，Intel 用 `-x64`。
+            装错架构的包会提示「应用已损坏」或双击无反应，换成对应架构的包即可。
 
             > Android 版本为固定签名 APK（签名密钥入库统一管理），安装时需手动允许「未知来源」。
 
