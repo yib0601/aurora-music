@@ -295,9 +295,18 @@ jobs:
       - name: Verify DMG (arch / ad-hoc signature / native module)
         # 三个硬闸门：主程序架构、better-sqlite3 原生模块架构、ad-hoc 签名。
         # 任一不符都会在 Apple Silicon 上「双击无反应」，必须在发布前卡死。
+        # 末尾的 ✅ 断言是第二道闸门：macOS 自带 bash 3.2 的 EXIT trap 会覆盖脚本退出码
+        # （脚本内已改为显式 exit "${code}"，这里再兜一层，避免校验失败被静默吞掉）。
         env:
           EXPECTED_ARCH: arm64
-        run: bash scripts/verify-macos-dmg.sh "packages/desktop/release/"*.dmg
+        run: |
+          set -euo pipefail
+          OUT="$(bash scripts/verify-macos-dmg.sh "packages/desktop/release/"*.dmg 2>&1)"
+          printf '%s\n' "${OUT}"
+          case "${OUT}" in
+            *"✅ macOS 产物校验通过"*) ;;
+            *) echo "::error::校验脚本未跑完（缺少通过标记）"; exit 1 ;;
+          esac
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
@@ -346,7 +355,14 @@ jobs:
       - name: Verify DMG (arch / ad-hoc signature / native module)
         env:
           EXPECTED_ARCH: x86_64
-        run: bash scripts/verify-macos-dmg.sh "packages/desktop/release/"*.dmg
+        run: |
+          set -euo pipefail
+          OUT="$(bash scripts/verify-macos-dmg.sh "packages/desktop/release/"*.dmg 2>&1)"
+          printf '%s\n' "${OUT}"
+          case "${OUT}" in
+            *"✅ macOS 产物校验通过"*) ;;
+            *) echo "::error::校验脚本未跑完（缺少通过标记）"; exit 1 ;;
+          esac
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
