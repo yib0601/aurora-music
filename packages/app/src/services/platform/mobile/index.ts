@@ -11,6 +11,7 @@ import type {
   OnlineSearchOptions,
   LyricsSearchOptions,
   LyricsSearchResult,
+  FolderPickerOptions,
   Track,
 } from '@/types'
 import { MobileDatabase } from './database'
@@ -78,6 +79,38 @@ function base64ToUint8Array(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
   return out
+}
+
+/**
+ * 移动端默认下载目录：相对外部存储根（Directory.ExternalStorage）的路径，
+ * 与扫描目录共用同一套路径语义（scanner / MobileFolderPicker 都基于该根）。
+ * 用户在「设置 → 下载 → 默认下载目录」里选择后即以此为准。
+ */
+export const DEFAULT_MOBILE_DOWNLOAD_DIR = 'Music/Aurora Music'
+
+/**
+ * 规范化下载目录，得到 Directory.ExternalStorage 下的相对路径。
+ * - 空值 → 默认目录
+ * - 相对路径（'Music'、'Music/Aurora Music'）→ 去掉尾部斜杠
+ * - 绝对路径（'/storage/emulated/0/Music'）→ 用原生侧解析的存储根剥离前缀；
+ *   不能硬编码 /storage/emulated/0：多用户/工作资料是 /storage/emulated/10，
+ *   外置 SD 卡挂载点又不同，硬编码会把文件写到不存在的位置
+ * - 剥离失败 → 回退默认目录，避免落到意料之外的位置
+ */
+async function normalizeDownloadDir(dir?: string | null): Promise<string> {
+  const raw = (dir ?? '').trim()
+  if (!raw) return DEFAULT_MOBILE_DOWNLOAD_DIR
+  if (!raw.startsWith('/')) return raw.replace(/\/+$/, '') || DEFAULT_MOBILE_DOWNLOAD_DIR
+  try {
+    const { uri } = await Filesystem.getUri({ path: '', directory: Directory.ExternalStorage })
+    const root = uri.replace(/^file:\/\//, '').replace(/\/+$/, '')
+    if (root && raw.startsWith(`${root}/`)) {
+      return raw.slice(root.length + 1).replace(/\/+$/, '') || DEFAULT_MOBILE_DOWNLOAD_DIR
+    }
+  } catch (err) {
+    console.warn('[Mobile] 解析外部存储根失败，回退默认下载目录:', err)
+  }
+  return DEFAULT_MOBILE_DOWNLOAD_DIR
 }
 
 /**
@@ -162,8 +195,9 @@ function emitFolderMissing(e: { folder: string; removed: number }) {
  * 由 UI 层（MobileFolderPicker）调用 setFolderPickerHandler 注册一个打开选择器的回调，
  * pickFolder() 调用该回调并等待用户在 UI 中选完目录后 resolve。
  * 替代旧版 window.prompt 手填路径的方案。
+ * options 用于让同一个选择器承载不同用途（扫描目录 / 下载目录）的文案。
  */
-type FolderPickerHandler = () => Promise<string | null>
+type FolderPickerHandler = (options?: FolderPickerOptions) => Promise<string | null>
 let folderPickerHandler: FolderPickerHandler | null = null
 
 export function setFolderPickerHandler(handler: FolderPickerHandler | null) {
@@ -243,13 +277,14 @@ export function createMobilePlatform(): PlatformInterface & {
   ) => Promise<LyricsSearchResult | null>
   downloadOnlineTrack: (
     track: { audioUrl: string; title: string; artist?: string; album?: string; coverUrl?: string },
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    downloadDir?: string
   ) => Promise<{ savedPath: string }>
 } {
   return {
     platform: 'mobile',
 
-    async pickFolder(): Promise<string | null> {
+    async pickFolder(options?: FolderPickerOptions): Promise<string | null> {
       // 打开选择器前先确保存储权限：未授权时 readdir 读不到任何目录，
       // 选择器目录树会是空的（用户会误以为手机里没有文件夹）
       const granted = await requestMediaPermissions()
@@ -265,7 +300,7 @@ export function createMobilePlatform(): PlatformInterface & {
       // 不再使用 window.prompt 手填路径。UI 未注册时降级为 prompt。
       if (folderPickerHandler) {
         try {
-          return await folderPickerHandler()
+          return await folderPickerHandler(options)
         } catch (err) {
           console.warn('[Mobile] pickFolder UI 选择器异常:', err)
           return null
@@ -438,20 +473,20 @@ export function createMobilePlatform(): PlatformInterface & {
     },
 
     /**
-     * 下载在线歌曲到外部存储 Music/Aurora Music/ 目录
+     * 下载在线歌曲到外部存储的下载目录（默认 Music/Aurora Music/，可在设置里改）
      * - 使用 Capacitor Filesystem.downloadFile（native HTTP 下载，
      *   不受 WebView CORS 限制，也不会像 readFile 那样把大文件转 base64 导致 OOM）
      * - 写入公共目录需要「所有文件访问」权限（Android 11+），未授权时引导用户前往设置
      */
-    async downloadOnlineTrack(track, headers) {
+    async downloadOnlineTrack(track, headers, downloadDir) {
       if (!track || typeof track.audioUrl !== 'string' || !/^https?:\/\//i.test(track.audioUrl)) {
         throw new Error('下载地址无效')
       }
-      // Android 11+ 写公共 Music 目录需 MANAGE_EXTERNAL_STORAGE
+      // Android 11+ 写公共目录需 MANAGE_EXTERNAL_STORAGE
       const hasAllFiles = await checkAllFilesAccess()
       if (!hasAllFiles) {
         alert(
-          '下载歌曲到 Music 目录需要「所有文件访问」权限。\n请在系统设置中授予该权限后重试。'
+          '下载歌曲到手机存储需要「所有文件访问」权限。\n请在系统设置中授予该权限后重试。'
         )
         await openAllFilesAccessSettings()
         throw new Error('缺少存储权限')
@@ -459,7 +494,7 @@ export function createMobilePlatform(): PlatformInterface & {
 
       const baseName = sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)
       const ext = inferAudioExtFromUrl(track.audioUrl)
-      const dir = 'Music/Aurora Music'
+      const dir = await normalizeDownloadDir(downloadDir)
       try {
         await Filesystem.mkdir({ path: dir, directory: Directory.ExternalStorage, recursive: true })
       } catch (err: any) {
@@ -520,7 +555,7 @@ export function createMobilePlatform(): PlatformInterface & {
         return { savedPath: uri.replace(/^file:\/\//, '') }
       } catch (err) {
         // getUri 失败时不该让「已下载成功」的结论翻转成失败：退回相对路径，
-        // 提示里至少是可读的 Music/Aurora Music/xxx.mp3
+        // 提示里至少是可读的「下载目录/文件名」
         console.warn('[Mobile] 获取保存路径失败，回退相对路径:', err)
         return { savedPath: savePath }
       }
