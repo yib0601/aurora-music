@@ -43,7 +43,7 @@ import {
   type UpdateInfo,
 } from '@/services/update.service'
 import { cn, isMobile, isDesktop } from '@/lib/utils'
-import type { Track } from '@/types'
+import type { Track, FolderPickerOptions } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
 let initialScanTriggered = false
@@ -134,15 +134,18 @@ function AppLayout() {
   }, [isSongDetail])
 
   // 移动端文件夹选择器：在 App 层全局注册 handler，让 LibraryPage 与 SettingsPage
-  // 的"导入音乐"按钮共用同一个 MobileFolderPicker（替代旧版每页各自注册的方案）
+  // 的"导入音乐"/"选择下载目录"共用同一个 MobileFolderPicker（替代旧版每页各自注册的方案）
   const [folderPickerOpen, setFolderPickerOpen] = useState(false)
+  // 选择器文案随用途变化（扫描目录 / 下载目录），由调用方通过 pickFolder(options) 下传
+  const [folderPickerText, setFolderPickerText] = useState<FolderPickerOptions | null>(null)
   const folderPickerResolve = React.useRef<((p: string | null) => void) | null>(null)
 
   React.useEffect(() => {
     if (!mobile) return
-    setFolderPickerHandler(async () => {
+    setFolderPickerHandler(async (options) => {
       return new Promise<string | null>((resolve) => {
         folderPickerResolve.current = resolve
+        setFolderPickerText(options ?? null)
         setFolderPickerOpen(true)
       })
     })
@@ -982,6 +985,7 @@ function AppLayout() {
           open={folderPickerOpen}
           onSelected={handleFolderSelected}
           onClose={handleFolderPickerClose}
+          {...(folderPickerText ?? {})}
         />
       )}
 

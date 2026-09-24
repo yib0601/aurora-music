@@ -168,9 +168,20 @@ export interface WindowControls {
   isMaximized(): Promise<boolean>
 }
 
+/**
+ * 目录选择器的展示文案：同一个选择器被「扫描目录」「下载目录」复用，
+ * 由调用方指定标题与说明，避免出现「选下载目录」却写着「选择扫描目录」的错位。
+ * 桌面端走系统原生对话框，忽略该参数。
+ */
+export interface FolderPickerOptions {
+  title?: string
+  description?: string
+  confirmLabel?: string
+}
+
 export interface PlatformInterface {
   platform: 'desktop' | 'mobile'
-  pickFolder(): Promise<string | null>
+  pickFolder(options?: FolderPickerOptions): Promise<string | null>
   readDir(path: string): Promise<FileInfo[]>
   readFile(path: string): Promise<ArrayBuffer>
   getAudioSrc(path: string): string

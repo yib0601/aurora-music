@@ -11,13 +11,18 @@ import type {
   Track,
   LibrarySourceConfig,
 } from '@/types'
-import { createMobilePlatform as createMobilePlatformImpl, setFolderPickerHandler } from './mobile'
+import {
+  createMobilePlatform as createMobilePlatformImpl,
+  setFolderPickerHandler,
+  DEFAULT_MOBILE_DOWNLOAD_DIR,
+} from './mobile'
 import { createWebPlatform, isFileSystemAccessSupported } from './web'
 import { encodeFilePathToUrl, encodePathSegments } from '@aurora/shared'
 
 // 重新导出：UI 层（SettingsPage）注册移动端文件夹选择器回调，
-// 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）
-export { setFolderPickerHandler }
+// 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）；
+// DEFAULT_MOBILE_DOWNLOAD_DIR 供设置页展示「未设置时的默认目录」文案
+export { setFolderPickerHandler, DEFAULT_MOBILE_DOWNLOAD_DIR }
 
 // 平台扩展能力：扫描事件订阅、媒体键、在线歌词搜索
 // 桌面端通过 electronAPI 转发；移动端用回调机制
@@ -63,7 +68,8 @@ export interface PlatformExtension {
     options?: LyricsSearchOptions
   ) => Promise<LyricsSearchResult | null>
   /** 下载在线歌曲到本地，返回保存路径；headers 为歌源配置的附加请求头；
-   *  downloadDir 为默认下载目录（桌面端传了则免保存对话框直存，移动端忽略）；
+   *  downloadDir 为默认下载目录（桌面端传了则免保存对话框直存；
+   *  移动端传的是手机存储内的相对路径，未传时用默认目录 Music/Aurora Music）；
    *  album/coverUrl 用于下载后把文本标签与封面嵌入文件（源直链的音频大多无内嵌封面） */
   downloadOnlineTrack?: (
     track: { audioUrl: string; title: string; artist?: string; album?: string; coverUrl?: string },

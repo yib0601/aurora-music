@@ -10,6 +10,10 @@ interface MobileFolderPickerProps {
   /** 用户确认选择时回调，参数为相对 ExternalStorage 的路径（如 'Music'） */
   onSelected: (path: string) => void
   onClose: () => void
+  /** 文案：同一个选择器承载「扫描目录」「下载目录」等不同用途，默认按扫描目录展示 */
+  title?: string
+  description?: string
+  confirmLabel?: string
 }
 
 /**
@@ -17,7 +21,14 @@ interface MobileFolderPickerProps {
  * 让用户像桌面端一样以目录树方式浏览并选择文件夹，替代旧版 window.prompt 手填路径。
  * 列目录调用走 platform.readDir（对应 Directory.ExternalStorage），路径形式与 scanner 完全一致。
  */
-export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPickerProps) {
+export function MobileFolderPicker({
+  open,
+  onSelected,
+  onClose,
+  title = '选择扫描目录',
+  description = '浏览并选择包含音乐文件的文件夹',
+  confirmLabel = '选择此目录',
+}: MobileFolderPickerProps) {
   const [currentPath, setCurrentPath] = useState<string>('') // 相对路径，'' 表示根
   const [entries, setEntries] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -74,9 +85,9 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="w-[92vw] max-w-md h-[75vh] max-h-[640px] flex flex-col p-0 gap-0">
         <DialogHeader className="px-5 pt-5 pb-3">
-          <DialogTitle className="text-white">选择扫描目录</DialogTitle>
+          <DialogTitle className="text-white">{title}</DialogTitle>
           <p className="font-text text-caption text-white/60 mt-1">
-            浏览并选择包含音乐文件的文件夹
+            {description}
           </p>
         </DialogHeader>
 
@@ -123,7 +134,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
             <div className="flex flex-col items-center justify-center h-full text-white/50 gap-2 px-6 text-center">
               <Folder className="h-8 w-8" strokeWidth={1.6} />
               <p className="font-text text-caption">此目录下没有子文件夹</p>
-              <p className="font-text text-caption text-white/40">可点击下方"选择此目录"直接扫描当前位置</p>
+              <p className="font-text text-caption text-white/40">可点击下方「{confirmLabel}」直接使用当前位置</p>
             </div>
           ) : (
             <ul className="space-y-1 pb-2">
@@ -173,7 +184,7 @@ export function MobileFolderPicker({ open, onSelected, onClose }: MobileFolderPi
               className="h-9 px-3.5 bg-mint text-mint-fg hover:bg-mint/90"
             >
               <Check className="h-4 w-4 mr-1.5" strokeWidth={1.8} />
-              选择此目录
+              {confirmLabel}
             </Button>
           </div>
         </DialogFooter>

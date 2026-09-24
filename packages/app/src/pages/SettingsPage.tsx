@@ -8,7 +8,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import type { LibrarySourceConfig } from '@/types'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
-import { platform } from '@/services/platform'
+import { platform, DEFAULT_MOBILE_DOWNLOAD_DIR } from '@/services/platform'
 import { isDesktop } from '@/lib/utils'
 import { toast } from '@/components/common/Toast'
 import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
@@ -704,6 +704,15 @@ export function SettingsPage() {
   const setDownloadQuality = useLibraryStore((s) => s.setDownloadQuality)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
 
+  // 平台在运行期不会变，取一次即可；下载目录的文案与路径展示两端不同
+  const desktop = isDesktop()
+  // 桌面端存绝对路径；移动端存手机存储内的相对路径（选择器返回的形态）
+  const downloadDirLabel = desktop
+    ? (downloadDir ?? '未设置（每次下载都会询问保存位置）')
+    : downloadDir
+      ? `手机存储/${downloadDir}`
+      : `未设置（默认存入 手机存储/${DEFAULT_MOBILE_DOWNLOAD_DIR}）`
+
   // 歌源配置（应用不内置任何源，音乐源/歌词源均由用户按协议配置）
   const onlineSources = useLibraryStore((s) => s.onlineSources)
   const addOnlineSource = useLibraryStore((s) => s.addOnlineSource)
@@ -800,10 +809,17 @@ export function SettingsPage() {
     }
   }
 
-  // 选择默认下载目录：设置后下载在线歌曲免对话框直存
+  // 选择默认下载目录：设置后下载在线歌曲免对话框直存。
+  // 移动端复用同一个目录树选择器，但下传下载场景的文案（默认文案是「选择扫描目录」）；
+  // 桌面端走系统原生对话框，忽略该参数。
   const handlePickDownloadDir = async () => {
-    const folder = await platform.pickFolder()
-    if (folder) setDownloadDir(folder)
+    const folder = await platform.pickFolder({
+      title: '选择下载目录',
+      description: `在线歌曲将直接保存到该目录，不再存入默认的 ${DEFAULT_MOBILE_DOWNLOAD_DIR}`,
+    })
+    // 移动端选择器返回相对手机存储根的路径；用户在目录树里选了存储根（空串）时按未设置处理，
+    // 否则下载的歌曲会散落在存储根目录下
+    setDownloadDir(folder || null)
   }
 
   /**
@@ -1074,33 +1090,32 @@ export function SettingsPage() {
                   ))}
                 </div>
               </div>
-              {/* 下载目录仅桌面端可配：移动端下载固定存入 Music/Aurora Music */}
-              {isDesktop() && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-text text-caption-strong text-white/80">默认下载目录</p>
-                      <p className="font-text text-caption text-white/60 mt-0.5">
-                        设置后在线歌曲直接存入该目录，不再弹保存对话框
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      {downloadDir && (
-                        <Button variant="ghost" size="sm" className="h-9 px-3.5" onClick={() => setDownloadDir(null)}>
-                          清除
-                        </Button>
-                      )}
-                      <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
-                        <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        {downloadDir ? '更换目录' : '选择目录'}
-                      </Button>
-                    </div>
-                  </div>
-                  <p className="font-text text-caption text-white/60 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 truncate">
-                    {downloadDir ?? '未设置（每次下载都会询问保存位置）'}
+              {/* 下载目录：桌面端设置后免保存对话框直存；移动端选的是手机存储内的相对目录，
+                  未设置时存入默认的 Music/Aurora Music */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-text text-caption-strong text-white/80">默认下载目录</p>
+                  <p className="font-text text-caption text-white/60 mt-0.5">
+                    {desktop
+                      ? '设置后在线歌曲直接存入该目录，不再弹保存对话框'
+                      : '设置后在线歌曲直接存入该目录'}
                   </p>
-                </>
-              )}
+                </div>
+                <div className="flex gap-2">
+                  {downloadDir && (
+                    <Button variant="ghost" size="sm" className="h-9 px-3.5" onClick={() => setDownloadDir(null)}>
+                      {desktop ? '清除' : '恢复默认'}
+                    </Button>
+                  )}
+                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
+                    <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                    {downloadDir ? '更换目录' : '选择目录'}
+                  </Button>
+                </div>
+              </div>
+              <p className="font-text text-caption text-white/60 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 truncate">
+                {downloadDirLabel}
+              </p>
             </div>
           </section>
 

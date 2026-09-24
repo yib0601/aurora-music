@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { toast, dismissToast } from '@/components/common/Toast'
+import { isDesktop } from '@/lib/utils'
 import type { Track, DownloadQuality } from '@/types'
 
 /** 音质回退链：设置的档位不可用时，依次尝试其余档位，最终回退到源默认地址 */
@@ -24,7 +25,9 @@ export function pickDownloadUrl(track: Track, preferred: DownloadQuality): strin
 
 /**
  * 下载在线歌曲的共享逻辑（搜索浮层 / 歌曲详情页共用）：
- * - 桌面端有默认下载目录则直存，否则弹保存对话框（可勾选后续记住）；移动端存到 Music/Aurora Music
+ * - 有默认下载目录则直存（桌面端免保存对话框；移动端存入设置里选定的相对目录）
+ * - 桌面端未设置目录时弹保存对话框，并给一个「设为默认下载目录」的快捷入口；
+ *   移动端未设置时直接存入默认的 Music/Aurora Music，配置入口在「设置 → 下载」
  * - downloadingIds 暴露下载中状态，调用方据此显示加载态、防重复触发
  */
 export function useDownloadOnlineTrack() {
@@ -53,11 +56,13 @@ export function useDownloadOnlineTrack() {
         source?.headers,
         downloadDir || undefined
       )
-      if (downloadDir) {
+      if (downloadDir || !isDesktop()) {
         dismissToast(startToastId)
         toast(`下载完成\n已保存到：${savedPath}`)
       } else {
-        // 本次走了保存对话框：提供「设为默认下载目录」操作，点击后不再每次询问
+        // 桌面端本次走了保存对话框：提供「设为默认下载目录」操作，点击后不再每次询问。
+        // 移动端没有这个快捷入口——移动端的下载目录是手机存储内的相对路径，
+        // 从绝对保存路径反推会存成绝对路径，配置统一走「设置 → 下载 → 默认下载目录」。
         const dir = savedPath.replace(/[\\/][^\\/]*$/, '')
         dismissToast(startToastId)
         toast(`下载完成\n已保存到：${savedPath}`, {
