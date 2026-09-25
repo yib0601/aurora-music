@@ -655,6 +655,51 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     box-shadow: var(--card-utility-shadow);
   }
 
+  /* ===== 卡片内嵌元素：行 / 控件 / 信息块 =====
+   * 卡片内部再给每个元素画一圈描边，等于「卡里再套一张卡」：描边比卡片底亮 8%，
+   * 一屏出现四五处就把层级拉平了，视觉上就是一堆格格不入的框。
+   * 这里的规则 —— **块感交给极弱表面叠色，可交互性交给 hover / focus 的状态变化**，
+   * 边框只在它能表达「这里能输入 / 这里被聚焦 / 这里已展开」时才出现。
+   * 颜色一律走 token：浅色主题下 --tw-white 自动翻转为深墨，两套主题共用一套值。 */
+  .inset-field {
+    background: rgb(var(--tw-white) / .04);
+    border: 1px solid transparent;
+    border-radius: var(--r-ds-input);
+    transition: background .18s var(--ease-mineradio), border-color .18s var(--ease-mineradio);
+  }
+  .inset-field:hover {
+    background: rgb(var(--tw-white) / .06);
+    border-color: rgb(var(--tw-white) / .10);
+  }
+  /* 聚焦 / 展开态：边框显形并染 mint，是这一层唯一的焦点信号 */
+  .inset-field:focus,
+  .inset-field:focus-visible,
+  .inset-field[data-state='open'] {
+    background: rgb(var(--tw-white) / .06);
+    border-color: rgb(var(--tw-mint) / .45);
+    outline: none;
+  }
+  /* 校验失败：只在出错时显形 */
+  .inset-field.is-invalid { border-color: rgb(var(--tw-coral) / .55); }
+
+  /* 内嵌行：列表项 / 带操作的行。静止时完全透明，hover 才浮出一层弱底。
+   * 行与行之间靠间隙区分，不画分隔线（间距优先于分割线）。
+   * 透明边框只为与 .inset-field 保持同等盒模型，不参与视觉。 */
+  .inset-row {
+    border: 1px solid transparent;
+    border-radius: var(--r-ds-input);
+    transition: background .18s var(--ease-mineradio);
+  }
+  .inset-row:hover { background: rgb(var(--tw-white) / .04); }
+
+  /* 内嵌信息块：只读数据（路径 / 占用 / 状态提示）。保留块感但不带交互态——
+   * 它不可点，hover 提亮会给出错误的可点暗示。 */
+  .inset-note {
+    background: rgb(var(--tw-white) / .04);
+    border: 1px solid transparent;
+    border-radius: var(--r-ds-input);
+  }
+
   .product-shadow { filter: drop-shadow(0 5px 30px rgba(0,0,0,0.22)); }
 
   /* 按钮 — Mineradio 玻璃风格
