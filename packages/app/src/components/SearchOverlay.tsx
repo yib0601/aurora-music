@@ -25,9 +25,23 @@ import type { Track, OnlineTrackSearchResult, Playlist } from '@/types'
 /** 行 DOM 注册：键盘高亮移动时把目标行滚动到可视区 */
 type RegisterRow = (id: string, el: HTMLDivElement | null) => void
 
-/** 行通用样式：content-visibility 让可视区外的行跳过渲染，百行级列表滚动不卡 */
+/** 行通用样式：content-visibility 让可视区外的行跳过渲染，百行级列表滚动不卡。
+ * 水平内边距取 8px（而非卡片时代的 16px）：行直接铺在浮层玻璃上，
+ * 8px（容器）+ 8px（行）= 16px 内容左缘，与搜索框图标严格对齐。
+ * 间距窄屏收窄（8px）：390px 的手机屏上元素排得下才不至于把标题挤成省略号 */
 const ROW_CLASS =
-  'row-hover flex items-center gap-3 px-4 py-2 cursor-pointer group border-b border-white/[0.05] last:border-0 hover:bg-white/[0.04] [content-visibility:auto] [contain-intrinsic-size:auto_56px]'
+  'row-hover flex items-center gap-2 sm:gap-3 px-2 py-2 cursor-pointer group border-b border-white/[0.05] last:border-0 hover:bg-white/[0.04] [content-visibility:auto] [contain-intrinsic-size:auto_56px]'
+
+/** 序号列：窄屏不显示（移动端惯例，给标题让出宽度），宽屏保留键盘位置感 */
+const ROW_INDEX_CLASS = 'w-6 flex-shrink-0 hidden sm:flex items-center justify-center relative'
+
+/** 来源徽章：本地与在线同栏混排，靠徽章区分来源；源名可长，内层 truncate */
+const BADGE_CLASS =
+  'flex items-center gap-1 flex-shrink-0 max-w-[140px] font-text text-[10px] border rounded-[8px] px-1.5 py-px tracking-[-0.1px]'
+/** 本地来源徽章：mint 调，一眼认出「这首在我库里」 */
+const BADGE_LOCAL_CLASS = cn(BADGE_CLASS, 'text-mint/70 border-mint/20 bg-mint/[0.05]')
+/** 在线来源徽章：中性色，只承载源名 */
+const BADGE_ONLINE_CLASS = cn(BADGE_CLASS, 'text-white/35 border-white/[0.08]')
 
 interface LocalResultRowProps {
   track: Track
@@ -76,7 +90,7 @@ const LocalResultRow = memo(function LocalResultRow({
           onDoubleClick={() => onPlay(track, idx)}
         >
           {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
-          <span className="w-6 flex-shrink-0 flex items-center justify-center relative">
+          <span className={ROW_INDEX_CLASS}>
             <span className="font-text text-[12px] text-white/35 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
               {idx + 1}
             </span>
@@ -103,15 +117,24 @@ const LocalResultRow = memo(function LocalResultRow({
           <span className="font-text text-[12px] text-white/35 truncate max-w-32 hidden md:block tracking-[-0.12px]">
             {track.album}
           </span>
+          {/* 来源徽章：与在线行同构，标出「本地」；窄屏只留图标省宽度 */}
+          <span className={BADGE_LOCAL_CLASS}>
+            <HardDrive className="h-2.5 w-2.5 flex-shrink-0" strokeWidth={1.8} />
+            <span className="hidden sm:block">本地</span>
+          </span>
           <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
             {formatTime(track.duration)}
           </span>
+          {/* 收藏按钮：与在线行的下载按钮同规则常驻显示——
+              触摸设备没有 hover，藏在 hover 里等于手机上永远点不到；
+              且同一列表里两个操作按钮不该一个常显一个隐身 */}
           <button
             onClick={(e) => {
               e.stopPropagation()
               onToggleLike(track.id)
             }}
-            className="h-7 w-7 flex items-center justify-center rounded-[10px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-apple hover:bg-mint/[0.075]"
+            title={isLiked ? '取消收藏' : '收藏'}
+            className="h-7 w-7 flex items-center justify-center rounded-[10px] transition-colors duration-200 ease-apple hover:bg-mint/[0.075]"
           >
             <Heart
               className={cn('h-3.5 w-3.5', isLiked ? 'text-coral fill-coral' : 'text-white/40')}
@@ -158,10 +181,10 @@ const LocalResultRow = memo(function LocalResultRow({
 
 interface OnlineResultRowProps {
   track: Track
-  /** 分组内下标：序号展示与播放定位 */
-  idx: number
-  /** 全局下标：与键盘高亮 activeIdx 对齐 */
+  /** 全局下标：序号展示与键盘高亮（activeIdx）对齐，与本地行共用同一编号序列 */
   flatIdx: number
+  /** 源内下标：双击播放时在 queue（同源结果）中的定位 */
+  queueIdx: number
   queue: Track[]
   isActive: boolean
   isDownloading: boolean
@@ -176,8 +199,8 @@ interface OnlineResultRowProps {
 /** 在线结果行。memo 理由同 LocalResultRow；封面 img 懒加载 + 异步解码避免首屏解码风暴 */
 const OnlineResultRow = memo(function OnlineResultRow({
   track,
-  idx,
   flatIdx,
+  queueIdx,
   queue,
   isActive,
   isDownloading,
@@ -196,12 +219,12 @@ const OnlineResultRow = memo(function OnlineResultRow({
           ref={rowRef}
           onMouseEnter={() => onHover(flatIdx)}
           className={cn(ROW_CLASS, isActive && 'bg-white/[0.06]')}
-          onDoubleClick={() => onPlay(track, idx, queue)}
+          onDoubleClick={() => onPlay(track, queueIdx, queue)}
         >
           {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
-          <span className="w-6 flex-shrink-0 flex items-center justify-center relative">
+          <span className={ROW_INDEX_CLASS}>
             <span className="font-text text-[12px] text-white/35 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
-              {idx + 1}
+              {flatIdx + 1}
             </span>
             <Play className="w-3 h-3 absolute text-mint opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
           </span>
@@ -219,6 +242,12 @@ const OnlineResultRow = memo(function OnlineResultRow({
           <span className="font-text text-[12px] text-white/35 truncate max-w-32 hidden md:block tracking-[-0.12px]">
             {track.album}
           </span>
+          {/* 来源徽章：同栏多源混排时靠它区分来源（与本地行「本地」徽章同构）；
+              窄屏只留云图标省宽度，完整源名靠 title 提示 */}
+          <span className={BADGE_ONLINE_CLASS} title={track.onlineSourceName || '在线音乐'}>
+            <Cloud className="h-2.5 w-2.5 flex-shrink-0" strokeWidth={1.8} />
+            <span className="hidden sm:block truncate">{track.onlineSourceName || '在线音乐'}</span>
+          </span>
           {/* 音频实际来源后端标识（源提供 qualitySource 时展示，便于识别跨平台拼贴数据） */}
           {track.onlineAudioSource && (
             <span className="font-text text-[10px] text-white/30 border border-white/[0.08] rounded-[8px] px-1.5 py-px hidden lg:block flex-shrink-0">
@@ -228,7 +257,8 @@ const OnlineResultRow = memo(function OnlineResultRow({
           <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
             {formatTime(track.duration)}
           </span>
-          {/* 下载按钮：下载中显示加载态 */}
+          {/* 下载按钮：常驻显示（搜索场景下下载是主要动作，不藏在 hover 里）；
+              下载中转为 mint 加载态并禁用 */}
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -237,10 +267,10 @@ const OnlineResultRow = memo(function OnlineResultRow({
             title="下载歌曲"
             disabled={isDownloading}
             className={cn(
-              'h-7 w-7 flex items-center justify-center rounded-[10px] transition-opacity duration-200 ease-apple',
+              'h-7 w-7 flex items-center justify-center rounded-[10px] transition-colors duration-200 ease-apple',
               isDownloading
-                ? 'opacity-100 text-mint'
-                : 'opacity-0 group-hover:opacity-100 hover:bg-white/[0.06] text-white/40'
+                ? 'text-mint cursor-default'
+                : 'text-white/40 hover:text-mint hover:bg-mint/[0.075]'
             )}
           >
             {isDownloading ? (
@@ -252,7 +282,7 @@ const OnlineResultRow = memo(function OnlineResultRow({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52 z-[90]">
-        <ContextMenuItem onClick={() => onPlay(track, idx, queue)}>
+        <ContextMenuItem onClick={() => onPlay(track, queueIdx, queue)}>
           <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
           立即播放
         </ContextMenuItem>
@@ -430,35 +460,36 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     }))
   }, [onlineResults])
 
-  // 按来源分组：每个源一个分组，顺序跟随结果出现顺序（即用户配置的源顺序）
-  const onlineGroups = useMemo(() => {
-    type Group = { key: string; label: string; tracks: Track[] }
-    const groupMap = new Map<string, Group>()
-    for (const t of onlineTracks) {
-      const name = t.onlineSourceName || '在线音乐'
-      if (!groupMap.has(name)) {
-        groupMap.set(name, { key: name, label: name, tracks: [] })
-      }
-      groupMap.get(name)!.tracks.push(t)
-    }
-    return Array.from(groupMap.values())
-  }, [onlineTracks])
-
   // 本地只展示前 30 条（渲染与键盘导航共用同一份切片，保持一致）
   const localSlice = useMemo(() => localResults.slice(0, 30), [localResults])
+
+  /**
+   * 在线行的渲染数据：本地与在线同栏混排（本地在前、在线在后），
+   * 行序号与键盘高亮直接用全局下标；双击播放仍以「同源结果」为队列，
+   * 所以额外切出 queue 与该行在源内的下标。
+   */
+  const onlineRows = useMemo(() => {
+    type Row = { track: Track; flatIdx: number; queue: Track[]; queueIdx: number }
+    const queueBySource = new Map<string, Track[]>()
+    const rows: Row[] = []
+    onlineTracks.forEach((t, i) => {
+      const key = t.onlineSourceName || '在线音乐'
+      let queue = queueBySource.get(key)
+      if (!queue) {
+        queue = []
+        queueBySource.set(key, queue)
+      }
+      rows.push({ track: t, flatIdx: localSlice.length + i, queue, queueIdx: queue.length })
+      queue.push(t)
+    })
+    return rows
+  }, [onlineTracks, localSlice.length])
 
   // 键盘可操作的结果列表：本地在上、在线在下，与渲染顺序一致
   const activeList = useMemo(
     () => [...localSlice, ...onlineTracks],
     [localSlice, onlineTracks]
   )
-
-  // 行 id → 全局下标：分组渲染时 O(1) 换算键盘高亮位置，避免每行 findIndex 的 O(n²)
-  const flatIdxById = useMemo(() => {
-    const map = new Map<string, number>()
-    activeList.forEach((t, i) => map.set(t.id, i))
-    return map
-  }, [activeList])
 
   // 查询变化后旧的高亮已失效，重置
   useEffect(() => {
@@ -605,8 +636,9 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
           </kbd>
         </div>
 
-        {/* 结果区：内容超出时内部滚动，不撑破面板 */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin px-3 py-3">
+        {/* 结果区：内容超出时内部滚动，不撑破面板。
+            左右 8px + 行内 8px = 16px，与搜索框图标同一左缘 */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin px-2 py-3">
           {!query.trim() ? (
             searchHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[280px]">
@@ -617,12 +649,12 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                   </div>
                 </div>
                 <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">开始搜索</p>
-                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词搜索你的音乐库</p>
+                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词，搜索本地音乐库与在线音源</p>
               </div>
             ) : (
               /* 历史搜索：有记录时空态展示，点击回搜，支持单条删除与一键清空 */
-              <section>
-                <div className="flex items-center justify-between mb-3 px-1">
+              <section className="px-2">
+                <div className="flex items-center justify-between mb-3">
                   <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/40 tracking-[-0.12px]">
                     <History className="h-3.5 w-3.5" strokeWidth={1.8} />
                     历史搜索
@@ -658,60 +690,64 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
               </section>
             )
           ) : (
-            /* 本地/在线结果同屏：本地在上、在线在下 */
-            <div className="space-y-5">
-              {/* 本地结果 */}
-              <section>
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/40 tracking-[-0.12px]">
-                    <HardDrive className="h-3 w-3" strokeWidth={1.8} />
-                    本地 ({localResults.length})
-                  </h2>
-                  {localResults.length > 30 && (
-                    <span className="font-text text-[12px] text-white/35 tracking-[-0.12px]">
-                      仅显示前 30 条
-                    </span>
-                  )}
-                </div>
-                {localResults.length === 0 ? (
-                  <p className="px-1 py-4 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
-                    没有匹配 "{query}" 的本地歌曲
-                  </p>
-                ) : (
-                  <div className="card-list overflow-hidden">
-                    {localSlice.map((track, idx) => (
-                      <LocalResultRow
-                        key={track.id}
-                        track={track}
-                        idx={idx}
-                        isActive={idx === activeIdx}
-                        isLiked={likedTracks.has(track.id)}
-                        playlists={playlists}
-                        onHover={handleHoverRow}
-                        onPlay={handlePlayLocal}
-                        onPlayNext={handlePlayNext}
-                        onAddToQueue={handleAddToQueue}
-                        onToggleLike={handleToggleLike}
-                        onAddToPlaylist={handleAddToPlaylist}
-                        onOpenDetail={handleOpenDetail}
-                        registerRow={registerRow}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
+            /* 本地与在线同栏：本地在前、在线在后，行内来源徽章区分。
+               刻意不再套 card-list —— 浮层本身已是 glass-liquid，
+               再套一层卡片就是「框里有框」，行样式也被容器内边距带偏 */
+            <div>
+              <div className="overflow-hidden">
+                {localSlice.map((track, idx) => (
+                  <LocalResultRow
+                    key={track.id}
+                    track={track}
+                    idx={idx}
+                    isActive={idx === activeIdx}
+                    isLiked={likedTracks.has(track.id)}
+                    playlists={playlists}
+                    onHover={handleHoverRow}
+                    onPlay={handlePlayLocal}
+                    onPlayNext={handlePlayNext}
+                    onAddToQueue={handleAddToQueue}
+                    onToggleLike={handleToggleLike}
+                    onAddToPlaylist={handleAddToPlaylist}
+                    onOpenDetail={handleOpenDetail}
+                    registerRow={registerRow}
+                  />
+                ))}
+                {onlineRows.map((row) => (
+                  <OnlineResultRow
+                    key={row.track.id}
+                    track={row.track}
+                    flatIdx={row.flatIdx}
+                    queueIdx={row.queueIdx}
+                    queue={row.queue}
+                    isActive={activeIdx === row.flatIdx}
+                    isDownloading={downloadingIds.has(row.track.id)}
+                    onHover={handleHoverRow}
+                    onPlay={handlePlayOnline}
+                    onPlayNext={handlePlayNext}
+                    onAddToQueue={handleAddToQueue}
+                    onDownload={handleDownload}
+                    registerRow={registerRow}
+                  />
+                ))}
+              </div>
 
-              {/* 在线结果 */}
-              <section>
-                <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/40 mb-3 px-1 tracking-[-0.12px]">
-                  <Cloud className="h-3 w-3" strokeWidth={1.8} />
-                  在线
-                  {onlineLoading && (
-                    <Loader2 className="h-3 w-3 text-mint/70 animate-spin" strokeWidth={1.8} />
-                  )}
-                </h2>
+              {/* 底部状态行：整栏零命中 / 未配置源 / 在线报错 / 搜索中。
+                  本地未命中时不渲染任何本地区块（既无标题也无空提示），
+                  只有整栏零命中才给统一空态；本地已命中时在线空结果只留一行淡提示 */}
+              <div className="px-2 pt-2 space-y-1">
+                {localResults.length > localSlice.length && (
+                  <p className="py-2 text-center font-text text-[12px] text-white/30 tracking-[-0.12px]">
+                    本地结果较多，仅显示前 30 条
+                  </p>
+                )}
+                {!onlineLoading && localResults.length === 0 && onlineTracks.length === 0 && (
+                  <p className="py-3 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
+                    没有找到匹配 "{query}" 的歌曲
+                  </p>
+                )}
                 {enabledSourceCount === 0 ? (
-                  <div className="px-1 py-4 flex flex-col items-center gap-3">
+                  <div className="py-2 flex flex-col items-center gap-3">
                     <p className="font-text text-[13px] text-white/35 tracking-[-0.15px] text-center">
                       应用不内置任何音乐源，请先在设置中配置符合协议的搜索接口
                     </p>
@@ -726,49 +762,23 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                     </button>
                   </div>
                 ) : onlineError ? (
-                  <p className="px-1 py-4 text-center font-text text-[13px] text-coral/70 tracking-[-0.15px]">
+                  <p className="py-3 text-center font-text text-[13px] text-coral/70 tracking-[-0.15px]">
                     {onlineError}
                   </p>
-                ) : onlineLoading && onlineTracks.length === 0 ? (
-                  <div className="px-1 py-4 flex items-center justify-center gap-2">
+                ) : onlineLoading ? (
+                  <div className="py-3 flex items-center justify-center gap-2">
                     <Loader2 className="h-4 w-4 text-mint/60 animate-spin" strokeWidth={1.5} />
                     <span className="font-text text-[13px] text-white/40 tracking-[-0.15px]">正在搜索在线音乐...</span>
                   </div>
                 ) : onlineTracks.length === 0 ? (
-                  <p className="px-1 py-4 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
-                    没有匹配 "{query}" 的在线歌曲
-                  </p>
-                ) : (
-                  <div className="space-y-5">
-                    {onlineGroups.map((group) => (
-                      <section key={group.key}>
-                        <h2 className="font-text text-[12px] font-semibold text-white/40 mb-3 px-1 tracking-[-0.12px]">
-                          {group.label} ({group.tracks.length})
-                        </h2>
-                        <div className="card-list overflow-hidden">
-                          {group.tracks.map((track, idx) => (
-                            <OnlineResultRow
-                              key={track.id}
-                              track={track}
-                              idx={idx}
-                              flatIdx={flatIdxById.get(track.id) ?? 0}
-                              queue={group.tracks}
-                              isActive={activeIdx >= 0 && flatIdxById.get(track.id) === activeIdx}
-                              isDownloading={downloadingIds.has(track.id)}
-                              onHover={handleHoverRow}
-                              onPlay={handlePlayOnline}
-                              onPlayNext={handlePlayNext}
-                              onAddToQueue={handleAddToQueue}
-                              onDownload={handleDownload}
-                              registerRow={registerRow}
-                            />
-                          ))}
-                        </div>
-                      </section>
-                    ))}
-                  </div>
-                )}
-              </section>
+                  /* 仅当本地已命中、只是在线没搜到时才提示，避免与上方空态重复 */
+                  localResults.length > 0 && (
+                    <p className="py-3 text-center font-text text-[12px] text-white/30 tracking-[-0.12px]">
+                      在线源未找到匹配结果
+                    </p>
+                  )
+                ) : null}
+              </div>
             </div>
           )}
         </div>
