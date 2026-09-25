@@ -13,12 +13,29 @@ import { isDesktop } from '@/lib/utils'
 import { toast } from '@/components/common/Toast'
 import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
+import { getAudioCacheUsage, clearAudioCache } from '@/services/audioCache.service'
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
   { value: 'light' as const, label: '浅色', icon: Sun },
   { value: 'system' as const, label: '跟随系统', icon: Monitor },
 ]
+
+/** 在线播放缓存容量档位：0 表示关闭缓存，其余单位为 MB */
+const cacheLimitOptions = [
+  { value: 0, label: '关闭' },
+  { value: 256, label: '256 MB' },
+  { value: 512, label: '512 MB' },
+  { value: 1024, label: '1 GB' },
+  { value: 2048, label: '2 GB' },
+  { value: 4096, label: '4 GB' },
+]
+
+function formatBytes(n: number): string {
+  if (!isFinite(n) || n <= 0) return '0 MB'
+  const mb = n / 1024 / 1024
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
+}
 
 /** 下载音质档位：值对应歌源协议的 {quality} 占位符与 qualityUrls 键 */
 const downloadQualityOptions = [
@@ -704,6 +721,35 @@ export function SettingsPage() {
   const setDownloadQuality = useLibraryStore((s) => s.setDownloadQuality)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
 
+  // 在线播放缓存：容量档位 + 当前占用；仅桌面端有实现，其余平台隐藏该分区
+  const audioCacheLimitMB = useLibraryStore((s) => s.audioCacheLimitMB)
+  const setAudioCacheLimitMB = useLibraryStore((s) => s.setAudioCacheLimitMB)
+  const [cacheUsage, setCacheUsage] = useState<{ usedBytes: number; count: number }>({ usedBytes: 0, count: 0 })
+  const supportsAudioCache = typeof platform.getAudioCacheUsage === 'function'
+  useEffect(() => {
+    if (!supportsAudioCache) return
+    let mounted = true
+    const refresh = async () => {
+      const usage = await getAudioCacheUsage()
+      if (mounted) setCacheUsage(usage)
+    }
+    refresh()
+    // 播放中缓存占用会变化，低频刷新即可
+    const timer = setInterval(refresh, 30000)
+    return () => {
+      mounted = false
+      clearInterval(timer)
+    }
+  }, [supportsAudioCache])
+
+  const handleClearCache = async () => {
+    const ok = window.confirm('清空全部在线播放缓存？已缓存的歌曲下次播放将重新下载。')
+    if (!ok) return
+    await clearAudioCache()
+    setCacheUsage({ usedBytes: 0, count: 0 })
+    toast('播放缓存已清空')
+  }
+
   // 平台在运行期不会变，取一次即可；下载目录的文案与路径展示两端不同
   const desktop = isDesktop()
   // 桌面端存绝对路径；移动端存手机存储内的相对路径（选择器返回的形态）
@@ -1118,6 +1164,56 @@ export function SettingsPage() {
               </p>
             </div>
           </section>
+
+          {/* 在线播放缓存：仅桌面端有主进程磁盘缓存实现 */}
+          {supportsAudioCache && (
+            <section className="card-utility p-5">
+              <h2 className="font-display text-tagline mb-4 text-white">播放缓存</h2>
+              <div className="space-y-4">
+                <div>
+                  <p className="font-text text-caption-strong text-white/80">缓存大小</p>
+                  <p className="font-text text-caption text-white/60 mt-0.5 mb-3">
+                    在线歌曲首次播放后自动缓存到本地，再次播放时不再走网络
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {cacheLimitOptions.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          setAudioCacheLimitMB(value)
+                          if (value === 0) setCacheUsage({ usedBytes: 0, count: 0 })
+                        }}
+                        className={`pill pill-md ${
+                          audioCacheLimitMB === value ? 'pill-mint' : 'pill-soft'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3">
+                  <div>
+                    <p className="font-text text-caption-strong text-white/80">当前占用</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">
+                      {formatBytes(cacheUsage.usedBytes)}（{cacheUsage.count} 首）
+                      {audioCacheLimitMB > 0 && ` / 上限 ${formatBytes(audioCacheLimitMB * 1024 * 1024)}`}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 px-3.5 text-white/60 hover:text-coral hover:bg-coral/10"
+                    onClick={handleClearCache}
+                    disabled={cacheUsage.count === 0}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                    清空缓存
+                  </Button>
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className="card-utility p-5">
             <h2 className="font-display text-tagline mb-4 text-white">在线源</h2>

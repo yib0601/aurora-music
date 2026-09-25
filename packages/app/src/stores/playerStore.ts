@@ -14,6 +14,7 @@ import {
   resumePlayback as audioResumePlayback,
 } from '@/services/audio.service'
 import { audioEvents } from '@/services/audioEvents'
+import { resolveCachedAudioSrc } from '@/services/audioCache.service'
 import {
   isNativePlayerAvailable,
   startNativeService,
@@ -109,9 +110,10 @@ function isNetworkBackedTrack(track: Track | null | undefined): boolean {
 }
 
 /**
- * 启动时恢复在线曲目：持久化时 onlineUrl 已被剥离（歌源直链会过期），
- * 用用户配置的歌源按元信息重新取址，成功后加载（不自动播放）并 seek 到持久化进度，
- * 同时把新地址回填到队列与 currentTrack。
+ * 启动时恢复在线曲目：持久化时 onlineUrl 已被剥离（歌源直链会过期）。
+ * 优先查本地播放缓存——命中则直接用缓存地址加载（直链过期也能续播）；
+ * 未命中才按元信息走歌源重新搜索取址，成功后加载（不自动播放）并 seek 到
+ * 持久化进度，同时把新地址回填到队列与 currentTrack。
  * 失败（未配置歌源 / 无结果 / 网络异常）时静默：曲目元信息仍保留在 UI，
  * 用户点播放会经 ensurePlayableTrack 再次取址。
  */
@@ -124,6 +126,24 @@ async function restoreOnlineTrack(): Promise<void> {
     await reconcileNativePlayback().catch(() => {})
     if (nativeBootstrapped) return
   }
+
+  const st0 = usePlayerStore.getState()
+  // 缓存命中（仅桌面端有缓存实现）：跳过搜索取址，直接用缓存协议地址加载
+  const cachedSrc = await resolveCachedAudioSrc(track).catch(() => null)
+  if (cachedSrc && usePlayerStore.getState().currentTrack?.id === track.id) {
+    const playable: Track = { ...track, onlineUrl: cachedSrc }
+    usePlayerStore.setState({
+      currentTrack: playable,
+      queue: st0.queue.map((t) => (t.id === track.id ? playable : t)),
+    })
+    audioPlayTrack(playable, st0.volume, st0.muted, false)
+    const seekPos = st0.progress
+    onCurrentTrackLoad(() => {
+      audioSeekTo(seekPos)
+    })
+    return
+  }
+
   // 动态导入：playlistIO → stores(library/playlist) 与 playerStore 静态互引会形成模块级循环依赖
   const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
   const playable = await ensurePlayableTrack(track)

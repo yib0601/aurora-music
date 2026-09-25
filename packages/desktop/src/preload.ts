@@ -102,6 +102,15 @@ const electronAPI = {
   ): Promise<{ savedPath: string }> => {
     return ipcRenderer.invoke('tracks:download', track, headers, downloadDir)
   },
+  // 在线播放缓存：命中返回 aurora-cache:// 播放地址；未命中返回 null 并由
+  // 主进程后台拉流写缓存（本次播放仍走源直链，下一首再播时命中）
+  audioCache: {
+    resolve: (req: { url: string; key: string; headers?: Record<string, string> }): Promise<{ src: string | null }> =>
+      ipcRenderer.invoke('cache:resolve', req),
+    configure: (opts: { limitMB: number }): Promise<void> => ipcRenderer.invoke('cache:configure', opts),
+    usage: (): Promise<{ usedBytes: number; count: number }> => ipcRenderer.invoke('cache:usage'),
+    clear: (): Promise<void> => ipcRenderer.invoke('cache:clear'),
+  },
   getMetadata: async (filePath: string) => {
     return ipcRenderer.invoke('fs:readFile', filePath)
   },

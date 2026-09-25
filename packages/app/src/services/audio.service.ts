@@ -2,6 +2,7 @@ import { Howl, Howler } from 'howler'
 import type { Track } from '@/types'
 import { audioEvents } from './audioEvents'
 import { platform } from '@/services/platform'
+import { resolveCachedAudioSrc } from './audioCache.service'
 import { isRemoteAudioUrl } from '@aurora/shared'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
@@ -10,6 +11,10 @@ let nextHowl: Howl | null = null
 let audioContext: AudioContext | null = null
 let analyserNode: AnalyserNode | null = null
 let currentMediaSource: MediaElementAudioSourceNode | null = null
+
+// 播放会话号：在线曲目播放前要异步查缓存，期间用户可能已切歌，
+// 回调里校验会话号，避免把旧曲目的 Howl 建出来覆盖新播放
+let playSession = 0
 
 const FADE_DURATION = 800 // ms
 
@@ -98,7 +103,27 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
   const rawPath = track.onlineUrl || track.remoteUrl || track.path
   const src = getPlatformSrc(rawPath)
   const isOnline = isStreamingSrc(rawPath)
+  const session = ++playSession
 
+  // 在线曲目先查本地播放缓存：命中则播放地址换成 aurora-cache:// 本地文件
+  // （直链过期也能播）；未命中时主进程已在后台拉流写缓存，本次仍走源直链。
+  // 非在线曲目与平台不支持缓存时同步直建，不引入额外延迟
+  if (track.onlineUrl && track.onlineSource) {
+    resolveCachedAudioSrc(track)
+      .then((cached) => {
+        if (session !== playSession) return
+        startHowl(track, cached || src, isOnline, targetVolume, autoplay)
+      })
+      .catch(() => {
+        if (session !== playSession) return
+        startHowl(track, src, isOnline, targetVolume, autoplay)
+      })
+    return
+  }
+  startHowl(track, src, isOnline, targetVolume, autoplay)
+}
+
+function startHowl(track: Track, src: string, isOnline: boolean, targetVolume: number, autoplay: boolean): void {
   if (isOnline) {
     // howler 会复用 html5 Audio 元素池：曾被 createMediaElementSource 绑定的元素
     // 输出永久走 AudioContext，在线流跨域时会被浏览器静音。播放在线流前把已包装的
