@@ -70,7 +70,7 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
           <DialogTitle>导入歌单</DialogTitle>
           <DialogDescription className="font-text text-[12px] leading-relaxed">
             粘贴歌单分享链接或纯文本（每行一首：歌名 - 歌手）。
-            应用不内置任何平台的抓取器：链接解析由你配置的音源提供（在设置里给音源填「歌单解析接口」），纯文本导入无需任何配置。
+            应用不内置任何平台的抓取器：链接解析由你配置的音源提供（设置里填好音源的服务地址与密钥即可），纯文本导入无需任何配置。
           </DialogDescription>
         </DialogHeader>
 

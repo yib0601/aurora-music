@@ -115,7 +115,7 @@ export async function parsePlaylistLink(
 ): Promise<PlaylistParseResult> {
   const enabled = (sources || []).filter((s) => s && s.enabled && playlistEndpointOf(s))
   if (enabled.length === 0) {
-    throw new Error('尚未配置可解析歌单的音源，请在设置页给音源填入「歌单解析接口」（含 {url}），或改用纯文本粘贴导入')
+    throw new Error('尚未配置可解析歌单的音源，请在设置页添加音源（填服务地址与密钥即可），或改用纯文本粘贴导入')
   }
   let lastError: unknown = null
   for (const source of enabled) {

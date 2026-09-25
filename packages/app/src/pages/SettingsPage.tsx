@@ -14,6 +14,15 @@ import { toast } from '@/components/common/Toast'
 import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 import { getAudioCacheUsage, clearAudioCache } from '@/services/audioCache.service'
+import {
+  buildAuroraEndpoints,
+  composeAuroraSource,
+  detectAuroraSource,
+  looksLikeEndpointInput,
+  parseSourceInput,
+  probeAuroraService,
+} from '@aurora/shared'
+import type { AuroraEndpoints } from '@aurora/shared'
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
@@ -54,6 +63,9 @@ function SourceEditorCard({
   placeholderUrl,
   playlistPlaceholderUrl,
   kind,
+  preset,
+  baseUrl,
+  apiKey,
   onUpdate,
   onRemove,
 }: {
@@ -66,7 +78,22 @@ function SourceEditorCard({
   placeholderUrl: string
   playlistPlaceholderUrl?: string
   kind: 'music' | 'lyrics'
-  onUpdate: (updates: { name?: string; apiUrl?: string; playlistUrl?: string; headers?: Record<string, string>; enabled?: boolean }) => void
+  /** 'aurora' = 标准音源形态，编辑时回显「服务地址 + 密钥」两栏 */
+  preset?: 'aurora'
+  /** 标准音源的服务地址（不含端点路径） */
+  baseUrl?: string
+  /** 标准音源的访问密钥 */
+  apiKey?: string
+  onUpdate: (updates: {
+    name?: string
+    apiUrl?: string
+    playlistUrl?: string
+    headers?: Record<string, string>
+    enabled?: boolean
+    preset?: 'aurora'
+    baseUrl?: string
+    apiKey?: string
+  }) => void
   onRemove: () => void
 }) {
   const hasHeaders = headers != null && Object.keys(headers).length > 0
@@ -79,6 +106,13 @@ function SourceEditorCard({
   const [headersDraft, setHeadersDraft] = useState(() => (hasHeaders ? JSON.stringify(headers, null, 2) : ''))
   const [headersInvalid, setHeadersInvalid] = useState(false)
   const [parsedHeaders, setParsedHeaders] = useState<Record<string, string> | undefined>(headers)
+  // 音源两种填法：标准音源（服务地址 + 密钥，端点由软件组装）与自定义接口（手写完整地址）
+  const [mode, setMode] = useState<'standard' | 'custom'>(preset === 'aurora' ? 'standard' : 'custom')
+  const [baseDraft, setBaseDraft] = useState(baseUrl || '')
+  const [keyDraft, setKeyDraft] = useState(apiKey || '')
+  const [probe, setProbe] = useState<{ loading: boolean; ok?: boolean; message?: string }>({ loading: false })
+  // 探测到的服务端端点自描述：保存时优先按它组装（服务端改路径，配置自动跟上）
+  const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(undefined)
 
   // 与添加弹窗一致的占位符校验：搜索地址需含 {query}（歌词源为 {track}/{artist}）；
   // 歌单解析地址可选，一旦填写必须含 {url}
@@ -87,18 +121,71 @@ function SourceEditorCard({
   // 两个地址至少填一个（只做歌单解析的音源可以没有搜索地址），填了的地址必须带对应占位符
   const hasAnyEndpoint = apiUrlDraft.trim().length > 0 || (isMusic && playlistDraft.trim().length > 0)
   const playlistInvalid = isMusic && playlistDraft.trim().length > 0 && !playlistDraft.includes('{url}')
-  const canSave = hasAnyEndpoint && missingPlaceholders.length === 0 && !playlistInvalid && !headersInvalid
+  // 标准模式只校验服务地址能否解析；自定义模式沿用占位符校验
+  const standardMode = isMusic && mode === 'standard'
+  const previewEndpoints = standardMode ? buildAuroraEndpoints(baseDraft, keyDraft) : null
+  const canSave = standardMode
+    ? previewEndpoints !== null
+    : hasAnyEndpoint && missingPlaceholders.length === 0 && !playlistInvalid && !headersInvalid
 
   // 进入编辑：从已保存值初始化草稿
   const startEditing = () => {
+    setMode(preset === 'aurora' ? 'standard' : 'custom')
     setNameDraft(name)
     setApiUrlDraft(apiUrl)
     setPlaylistDraft(playlistUrl || '')
+    setBaseDraft(baseUrl || '')
+    setKeyDraft(apiKey || '')
+    setProbe({ loading: false })
+    setProbeEndpoints(undefined)
     setHeadersDraft(hasHeaders ? JSON.stringify(headers, null, 2) : '')
     setHeadersInvalid(false)
     setParsedHeaders(headers)
     setShowHeaders(hasHeaders)
     setEditing(true)
+  }
+
+  /**
+   * 切换填法（同一份配置的两种视角）：
+   * - 切到标准：能从地址里认出 /aurora 端点就拆出服务地址与密钥预填（旧配置一键升级）
+   * - 切到自定义：把组装结果写进地址草稿，用户可继续手改
+   */
+  const switchMode = (next: 'standard' | 'custom') => {
+    if (next === mode) return
+    if (next === 'standard') {
+      const detected = detectAuroraSource(apiUrlDraft) || detectAuroraSource(playlistDraft)
+      if (detected) {
+        setBaseDraft(detected.baseUrl)
+        if (detected.apiKey) setKeyDraft(detected.apiKey)
+      }
+    } else {
+      const composed = composeAuroraSource({
+        name: nameDraft,
+        baseUrl: baseDraft,
+        apiKey: keyDraft,
+        endpoints: probeEndpoints,
+      })
+      if (composed) {
+        setApiUrlDraft(composed.apiUrl)
+        setPlaylistDraft(composed.playlistUrl)
+      }
+    }
+    setProbe({ loading: false })
+    setMode(next)
+  }
+
+  // 测试连接：GET 根路径取端点自描述 + 用 /health 验密钥，只读不写配置
+  const handleProbe = async () => {
+    setProbe({ loading: true })
+    const result = await probeAuroraService(baseDraft, keyDraft)
+    setProbe({ loading: false, ok: result.ok, message: result.message })
+    setProbeEndpoints(result.endpoints)
+  }
+
+  // 端点预览里遮蔽密钥（密钥输入框是 password，预览也不明文回显）
+  const maskPreview = (url: string) => {
+    const key = keyDraft.trim()
+    return key ? url.replace(encodeURIComponent(key), '•••') : url
   }
 
   // 请求头草稿实时解析：合法 JSON 对象才允许保存，否则标记错误
@@ -125,6 +212,26 @@ function SourceEditorCard({
 
   const handleSave = () => {
     if (!canSave) return
+    if (standardMode) {
+      const composed = composeAuroraSource({
+        name: nameDraft.trim() || name,
+        baseUrl: baseDraft,
+        apiKey: keyDraft,
+        endpoints: probeEndpoints,
+      })
+      if (!composed) return
+      // 请求头保持原样：标准形态的凭据在地址里，用户既有的自定义头不被覆盖
+      onUpdate({
+        name: composed.name,
+        apiUrl: composed.apiUrl,
+        playlistUrl: composed.playlistUrl,
+        preset: composed.preset,
+        baseUrl: composed.baseUrl,
+        apiKey: composed.apiKey,
+      })
+      setEditing(false)
+      return
+    }
     const trimmedPlaylist = playlistDraft.trim()
     const alreadyHad = (playlistUrl || '').trim()
     onUpdate({
@@ -133,15 +240,15 @@ function SourceEditorCard({
       // 只在确实有变化时带上歌单解析地址，避免把歌词源的字段写脏
       ...(isMusic && (trimmedPlaylist || alreadyHad) ? { playlistUrl: trimmedPlaylist } : {}),
       headers: parsedHeaders,
+      // 自定义形态：摘掉标准音源标记，编辑时不再回显两栏
+      ...(isMusic ? { preset: undefined, baseUrl: undefined, apiKey: undefined } : {}),
     })
     setEditing(false)
   }
 
   return (
     <div
-      className={`bg-white/[0.03] border rounded-[10px] px-3.5 py-3 transition-colors duration-200 ease-mineradio ${
-        enabled ? 'border-white/[0.08]' : 'border-white/[0.08] opacity-55'
-      }`}
+      className={`inset-row px-3.5 py-3 ${enabled ? '' : 'opacity-55'}`}
     >
       <div className={`flex items-center gap-2 ${editing ? 'mb-2' : ''}`}>
         {editing ? (
@@ -207,73 +314,173 @@ function SourceEditorCard({
       </div>
       {editing && (
         <>
-          {isMusic && <p className="font-text text-caption text-white/50 mb-1">搜索接口（需含 {'{query}'}）</p>}
-          <input
-            type="text"
-            value={apiUrlDraft}
-            placeholder={placeholderUrl}
-            onChange={(e) => setApiUrlDraft(e.target.value)}
-            className={`w-full bg-white/[0.03] border rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 ${
-              missingPlaceholders.length > 0 ? 'border-coral/60' : 'border-white/10'
-            }`}
-          />
-          {missingPlaceholders.length > 0 && (
-            <p className="font-text text-caption text-coral/70 mt-1">
-              地址需包含占位符：{missingPlaceholders.join('、')}
-            </p>
-          )}
-          {/* 歌单解析接口：与搜索同属一条音源，填写后歌单导入即可直接解析分享链接 */}
+          {/* 音源两种填法：标准音源只填「服务地址 + 密钥」，端点地址由软件组装 */}
           {isMusic && (
-            <div className="mt-2">
-              <p className="font-text text-caption text-white/50 mb-1">歌单解析接口（可选，需含 {'{url}'}）</p>
+            <div className="flex items-center gap-1.5 mb-2">
+              {[
+                { value: 'standard' as const, label: '服务地址 + 密钥' },
+                { value: 'custom' as const, label: '自定义接口' },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => switchMode(tab.value)}
+                  className={`font-text text-caption px-2.5 py-1 rounded-[8px] transition-colors duration-200 ease-mineradio ${
+                    mode === tab.value
+                      ? 'bg-mint/15 text-mint'
+                      : 'text-white/45 hover:text-white/75 hover:bg-white/[0.05]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 标准音源：两栏搞定。粘贴完整端点地址（…/aurora?…&key=…）会自动拆成两栏 */}
+          {standardMode && (
+            <div>
+              <p className="font-text text-caption text-white/50 mb-1">服务地址</p>
               <input
                 type="text"
-                value={playlistDraft}
-                placeholder={playlistPlaceholderUrl || 'https://your-api.com/resolve?url={url}'}
-                onChange={(e) => setPlaylistDraft(e.target.value)}
-                className={`w-full bg-white/[0.03] border rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 ${
-                  playlistInvalid ? 'border-coral/60' : 'border-white/10'
+                value={baseDraft}
+                placeholder="https://music.lighthouses.top"
+                onChange={(e) => {
+                  const text = e.target.value
+                  // 粘贴完整地址（带 ? 或 /aurora 端点）时就地拆成服务地址 + 密钥；
+                  // 逐字符打字不拆解，免得输入被打断
+                  const parsed = looksLikeEndpointInput(text) ? parseSourceInput(text) : null
+                  if (parsed) {
+                    setBaseDraft(parsed.baseUrl)
+                    if (parsed.apiKey) setKeyDraft(parsed.apiKey)
+                  } else {
+                    setBaseDraft(text)
+                  }
+                  setProbe({ loading: false })
+                  setProbeEndpoints(undefined)
+                }}
+                className={`inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70 ${
+                  baseDraft.trim() && !previewEndpoints ? 'is-invalid' : ''
                 }`}
               />
-              {playlistInvalid ? (
-                <p className="font-text text-caption text-coral/70 mt-1">地址需包含占位符：{'{url}'}</p>
-              ) : (
-                <p className="font-text text-caption text-white/35 mt-1">
-                  留空表示该音源不参与歌单导入
-                </p>
+              {baseDraft.trim() && !previewEndpoints && (
+                <p className="font-text text-caption text-coral/70 mt-1">地址格式不正确，示例：https://music.lighthouses.top</p>
+              )}
+              <p className="font-text text-caption text-white/50 mb-1 mt-2">密钥</p>
+              <input
+                type="password"
+                value={keyDraft}
+                placeholder="服务端 API_KEY（服务端未开鉴权可留空）"
+                onChange={(e) => {
+                  setKeyDraft(e.target.value)
+                  setProbe({ loading: false })
+                  setProbeEndpoints(undefined)
+                }}
+                className="inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 px-3 flex-shrink-0"
+                  disabled={probe.loading || !baseDraft.trim()}
+                  onClick={handleProbe}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 mr-1.5 ${probe.loading ? 'animate-spin' : ''}`}
+                    strokeWidth={1.6}
+                  />
+                  {probe.loading ? '测试中…' : '测试连接'}
+                </Button>
+                {probe.message && (
+                  <p
+                    className={`font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}
+                  >
+                    {probe.message}
+                  </p>
+                )}
+              </div>
+              {previewEndpoints && (
+                <div className="mt-2 space-y-0.5">
+                  <p className="font-text text-caption text-white/35 truncate">搜索 {maskPreview(previewEndpoints.search)}</p>
+                  <p className="font-text text-caption text-white/35 truncate">歌单 {maskPreview(previewEndpoints.playlist)}</p>
+                </div>
               )}
             </div>
           )}
-          {/* 请求头：可选，折叠编辑 */}
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setShowHeaders(!showHeaders)}
-              className="flex items-center gap-1 font-text text-caption text-white/40 hover:text-white/70 transition-colors duration-200"
-            >
-              <ChevronDown
-                className={`h-3 w-3 transition-transform duration-200 ease-mineradio ${showHeaders ? 'rotate-180' : ''}`}
-                strokeWidth={1.8}
+
+          {/* 自定义接口：手写完整地址与占位符（歌词源与第三方接口走这里） */}
+          {!standardMode && (
+            <>
+              {isMusic && <p className="font-text text-caption text-white/50 mb-1">搜索接口（需含 {'{query}'}）</p>}
+              <input
+                type="text"
+                value={apiUrlDraft}
+                placeholder={placeholderUrl}
+                onChange={(e) => setApiUrlDraft(e.target.value)}
+                className={`inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70 ${
+                  missingPlaceholders.length > 0 ? 'is-invalid' : ''
+                }`}
               />
-              请求头{hasHeaders ? '（已配置）' : '（可选）'}
-            </button>
-            {showHeaders && (
-              <>
-                <textarea
-                  value={headersDraft}
-                  placeholder={'{"Authorization": "Bearer ..."}'}
-                  onChange={(e) => handleHeadersChange(e.target.value)}
-                  rows={2}
-                  className={`mt-1.5 w-full bg-white/[0.03] border rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 resize-none ${
-                    headersInvalid ? 'border-coral/60' : 'border-white/10'
-                  }`}
-                />
-                {headersInvalid && (
-                  <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
+              {missingPlaceholders.length > 0 && (
+                <p className="font-text text-caption text-coral/70 mt-1">
+                  地址需包含占位符：{missingPlaceholders.join('、')}
+                </p>
+              )}
+              {/* 歌单解析接口：与搜索同属一条音源，填写后歌单导入即可直接解析分享链接 */}
+              {isMusic && (
+                <div className="mt-2">
+                  <p className="font-text text-caption text-white/50 mb-1">歌单解析接口（可选，需含 {'{url}'}）</p>
+                  <input
+                    type="text"
+                    value={playlistDraft}
+                    placeholder={playlistPlaceholderUrl || 'https://your-api.com/resolve?url={url}'}
+                    onChange={(e) => setPlaylistDraft(e.target.value)}
+                    className={`inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70 ${
+                      playlistInvalid ? 'is-invalid' : ''
+                    }`}
+                  />
+                  {playlistInvalid ? (
+                    <p className="font-text text-caption text-coral/70 mt-1">地址需包含占位符：{'{url}'}</p>
+                  ) : (
+                    <p className="font-text text-caption text-white/35 mt-1">
+                      留空表示该音源不参与歌单导入
+                    </p>
+                  )}
+                </div>
+              )}
+              {/* 请求头：可选，折叠编辑 */}
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowHeaders(!showHeaders)}
+                  className="flex items-center gap-1 font-text text-caption text-white/40 hover:text-white/70 transition-colors duration-200"
+                >
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform duration-200 ease-mineradio ${showHeaders ? 'rotate-180' : ''}`}
+                    strokeWidth={1.8}
+                  />
+                  请求头{hasHeaders ? '（已配置）' : '（可选）'}
+                </button>
+                {showHeaders && (
+                  <>
+                    <textarea
+                      value={headersDraft}
+                      placeholder={'{"Authorization": "Bearer ..."}'}
+                      onChange={(e) => handleHeadersChange(e.target.value)}
+                      rows={2}
+                      className={`inset-field mt-1.5 w-full px-2.5 py-1.5 font-text text-caption text-white/70 resize-none ${
+                        headersInvalid ? 'is-invalid' : ''
+                      }`}
+                    />
+                    {headersInvalid && (
+                      <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
           <div className="mt-2.5 flex items-center justify-end gap-2">
             <Button
               variant="ghost"
@@ -308,7 +515,15 @@ function SourceAddDialog({
   open: boolean
   kind: 'music' | 'lyrics'
   onOpenChange: (open: boolean) => void
-  onSave: (source: { name: string; apiUrl: string; playlistUrl?: string; headers?: Record<string, string> }) => void
+  onSave: (source: {
+    name: string
+    apiUrl: string
+    playlistUrl?: string
+    headers?: Record<string, string>
+    preset?: 'aurora'
+    baseUrl?: string
+    apiKey?: string
+  }) => void
 }) {
   const [name, setName] = useState('')
   const [apiUrl, setApiUrl] = useState('')
@@ -316,6 +531,12 @@ function SourceAddDialog({
   const [headersDraft, setHeadersDraft] = useState('')
   const [headersInvalid, setHeadersInvalid] = useState(false)
   const [headers, setHeaders] = useState<Record<string, string> | undefined>(undefined)
+  // 音源默认走「服务地址 + 密钥」，要手写完整地址时才切到自定义
+  const [mode, setMode] = useState<'standard' | 'custom'>('standard')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [keyDraft, setKeyDraft] = useState('')
+  const [probe, setProbe] = useState<{ loading: boolean; ok?: boolean; message?: string }>({ loading: false })
+  const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(undefined)
 
   // 每次打开重置表单
   useEffect(() => {
@@ -326,6 +547,11 @@ function SourceAddDialog({
       setHeadersDraft('')
       setHeadersInvalid(false)
       setHeaders(undefined)
+      setMode('standard')
+      setBaseUrl('')
+      setKeyDraft('')
+      setProbe({ loading: false })
+      setProbeEndpoints(undefined)
     }
   }, [open])
 
@@ -334,7 +560,23 @@ function SourceAddDialog({
   const missingPlaceholders = apiUrl.trim() ? requiredPlaceholders.filter((p) => !apiUrl.includes(p)) : []
   const playlistInvalid = !isLyrics && playlistUrl.trim().length > 0 && !playlistUrl.includes('{url}')
   const hasAnyEndpoint = apiUrl.trim().length > 0 || (!isLyrics && playlistUrl.trim().length > 0)
-  const canSave = hasAnyEndpoint && missingPlaceholders.length === 0 && !playlistInvalid && !headersInvalid
+  // 音源默认标准形态：只校验服务地址；歌词源与自定义形态沿用占位符校验
+  const standardMode = !isLyrics && mode === 'standard'
+  const previewEndpoints = standardMode ? buildAuroraEndpoints(baseUrl, keyDraft) : null
+  const canSave = standardMode
+    ? previewEndpoints !== null
+    : hasAnyEndpoint && missingPlaceholders.length === 0 && !playlistInvalid && !headersInvalid
+
+  const handleProbe = async () => {
+    setProbe({ loading: true })
+    const result = await probeAuroraService(baseUrl, keyDraft)
+    setProbe({ loading: false, ok: result.ok, message: result.message })
+    setProbeEndpoints(result.endpoints)
+  }
+
+  // 端点预览里遮蔽密钥
+  const maskKey = (url: string) =>
+    keyDraft.trim() ? url.replace(encodeURIComponent(keyDraft.trim()), '•••') : url
 
   const handleHeadersChange = (text: string) => {
     setHeadersDraft(text)
@@ -359,6 +601,25 @@ function SourceAddDialog({
 
   const handleSave = () => {
     if (!canSave) return
+    if (standardMode) {
+      const composed = composeAuroraSource({
+        name: name.trim(),
+        baseUrl,
+        apiKey: keyDraft,
+        endpoints: probeEndpoints,
+      })
+      if (!composed) return
+      onSave({
+        name: composed.name,
+        apiUrl: composed.apiUrl,
+        playlistUrl: composed.playlistUrl,
+        preset: composed.preset,
+        baseUrl: composed.baseUrl,
+        apiKey: composed.apiKey,
+      })
+      onOpenChange(false)
+      return
+    }
     const trimmedPlaylist = playlistUrl.trim()
     onSave({
       name: name.trim() || (isLyrics ? '新歌词源' : '新音源'),
@@ -370,7 +631,7 @@ function SourceAddDialog({
   }
 
   const inputCls =
-    'w-full bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+    'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -382,7 +643,9 @@ function SourceAddDialog({
           <DialogDescription className="font-text text-caption text-white/60">
             {isLyrics
               ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
-              : '搜索接口需包含 {query}、歌单解析接口需包含 {url}；音源两个接口都填，搜索与歌单导入一次配好'}
+              : standardMode
+                ? '填服务地址与密钥即可：搜索与歌单解析接口由软件自动生成，保存后立即生效'
+                : '搜索接口需包含 {query}、歌单解析接口需包含 {url}；音源两个接口都填，搜索与歌单导入一次配好'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -396,57 +659,159 @@ function SourceAddDialog({
               className={inputCls}
             />
           </div>
-          <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{isLyrics ? '接口地址' : '搜索接口地址'}</p>
-            <input
-              type="text"
-              value={apiUrl}
-              placeholder={
-                isLyrics
-                  ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
-                  : 'https://your-api.com/search?q={query}'
-              }
-              onChange={(e) => setApiUrl(e.target.value)}
-              className={`${inputCls} ${missingPlaceholders.length > 0 ? 'border-coral/60' : ''}`}
-            />
-            {missingPlaceholders.length > 0 && (
-              <p className="font-text text-caption text-coral/70 mt-1">
-                地址需包含占位符：{missingPlaceholders.join('、')}
-              </p>
-            )}
-          </div>
+          {/* 音源两种填法：默认「服务地址 + 密钥」，需要手写接口地址时切到自定义 */}
           {!isLyrics && (
-            <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">歌单解析接口（可选）</p>
-              <input
-                type="text"
-                value={playlistUrl}
-                placeholder="https://your-api.com/resolve?url={url}"
-                onChange={(e) => setPlaylistUrl(e.target.value)}
-                className={`${inputCls} ${playlistInvalid ? 'border-coral/60' : ''}`}
-              />
-              {playlistInvalid ? (
-                <p className="font-text text-caption text-coral/70 mt-1">地址需包含占位符：{'{url}'}</p>
-              ) : (
-                <p className="font-text text-caption text-white/35 mt-1">
-                  填入后，导入歌单时可直接解析 QQ / 网易云等平台的歌单分享链接
-                </p>
-              )}
+            <div className="flex items-center gap-1.5">
+              {[
+                { value: 'standard' as const, label: '服务地址 + 密钥' },
+                { value: 'custom' as const, label: '自定义接口' },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => {
+                    setProbe({ loading: false })
+                    setMode(tab.value)
+                  }}
+                  className={`font-text text-caption px-2.5 py-1 rounded-[8px] transition-colors duration-200 ease-mineradio ${
+                    mode === tab.value
+                      ? 'bg-mint/15 text-mint'
+                      : 'text-white/45 hover:text-white/75 hover:bg-white/[0.05]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           )}
-          <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">请求头（可选，JSON 对象）</p>
-            <textarea
-              value={headersDraft}
-              placeholder={'{"Authorization": "Bearer ..."}'}
-              onChange={(e) => handleHeadersChange(e.target.value)}
-              rows={2}
-              className={`${inputCls} resize-none ${headersInvalid ? 'border-coral/60' : ''}`}
-            />
-            {headersInvalid && (
-              <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
-            )}
-          </div>
+          {standardMode ? (
+            <>
+              <div>
+                <p className="font-text text-caption text-white/60 mb-1.5">服务地址</p>
+                <input
+                  type="text"
+                  value={baseUrl}
+                  placeholder="https://music.lighthouses.top"
+                  onChange={(e) => {
+                    const text = e.target.value
+                    // 粘贴完整地址（带 ? 或 /aurora 端点）时就地拆成服务地址 + 密钥；
+                    // 逐字符打字不拆解，免得输入被打断
+                    const parsed = looksLikeEndpointInput(text) ? parseSourceInput(text) : null
+                    if (parsed) {
+                      setBaseUrl(parsed.baseUrl)
+                      if (parsed.apiKey) setKeyDraft(parsed.apiKey)
+                    } else {
+                      setBaseUrl(text)
+                    }
+                    setProbe({ loading: false })
+                    setProbeEndpoints(undefined)
+                  }}
+                  className={`${inputCls} ${baseUrl.trim() && !previewEndpoints ? 'is-invalid' : ''}`}
+                />
+                <p className="font-text text-caption text-white/35 mt-1">
+                  直接粘贴完整接口地址也可以，软件会自动拆出服务地址与密钥
+                </p>
+              </div>
+              <div>
+                <p className="font-text text-caption text-white/60 mb-1.5">密钥</p>
+                <input
+                  type="password"
+                  value={keyDraft}
+                  placeholder="服务端 API_KEY（服务端未开鉴权可留空）"
+                  onChange={(e) => {
+                    setKeyDraft(e.target.value)
+                    setProbe({ loading: false })
+                    setProbeEndpoints(undefined)
+                  }}
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 px-3 flex-shrink-0"
+                  disabled={probe.loading || !baseUrl.trim()}
+                  onClick={handleProbe}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 mr-1.5 ${probe.loading ? 'animate-spin' : ''}`}
+                    strokeWidth={1.6}
+                  />
+                  {probe.loading ? '测试中…' : '测试连接'}
+                </Button>
+                {probe.message && (
+                  <p className={`font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}>
+                    {probe.message}
+                  </p>
+                )}
+              </div>
+              {previewEndpoints && (
+                <div className="space-y-0.5">
+                  <p className="font-text text-caption text-white/35 truncate">
+                    搜索 {maskKey(previewEndpoints.search)}
+                  </p>
+                  <p className="font-text text-caption text-white/35 truncate">
+                    歌单 {maskKey(previewEndpoints.playlist)}
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <p className="font-text text-caption text-white/60 mb-1.5">{isLyrics ? '接口地址' : '搜索接口地址'}</p>
+                <input
+                  type="text"
+                  value={apiUrl}
+                  placeholder={
+                    isLyrics
+                      ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
+                      : 'https://your-api.com/search?q={query}'
+                  }
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  className={`${inputCls} ${missingPlaceholders.length > 0 ? 'is-invalid' : ''}`}
+                />
+                {missingPlaceholders.length > 0 && (
+                  <p className="font-text text-caption text-coral/70 mt-1">
+                    地址需包含占位符：{missingPlaceholders.join('、')}
+                  </p>
+                )}
+              </div>
+              {!isLyrics && (
+                <div>
+                  <p className="font-text text-caption text-white/60 mb-1.5">歌单解析接口（可选）</p>
+                  <input
+                    type="text"
+                    value={playlistUrl}
+                    placeholder="https://your-api.com/resolve?url={url}"
+                    onChange={(e) => setPlaylistUrl(e.target.value)}
+                    className={`${inputCls} ${playlistInvalid ? 'is-invalid' : ''}`}
+                  />
+                  {playlistInvalid ? (
+                    <p className="font-text text-caption text-coral/70 mt-1">地址需包含占位符：{'{url}'}</p>
+                  ) : (
+                    <p className="font-text text-caption text-white/35 mt-1">
+                      填入后，导入歌单时可直接解析 QQ / 网易云等平台的歌单分享链接
+                    </p>
+                  )}
+                </div>
+              )}
+              <div>
+                <p className="font-text text-caption text-white/60 mb-1.5">请求头（可选，JSON 对象）</p>
+                <textarea
+                  value={headersDraft}
+                  placeholder={'{"Authorization": "Bearer ..."}'}
+                  onChange={(e) => handleHeadersChange(e.target.value)}
+                  rows={2}
+                  className={`${inputCls} resize-none ${headersInvalid ? 'is-invalid' : ''}`}
+                />
+                {headersInvalid && (
+                  <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
         <DialogFooter className="sm:space-x-2">
           <Button variant="ghost" size="sm" className="h-9 px-3.5 text-white/70" onClick={() => onOpenChange(false)}>
@@ -512,7 +877,7 @@ function LibrarySourceAddDialog({
   }
 
   const inputCls =
-    'w-full bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+    'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -541,7 +906,7 @@ function LibrarySourceAddDialog({
               value={baseUrl}
               placeholder="如：https://nas.example.com:5006/dav"
               onChange={(e) => setBaseUrl(e.target.value)}
-              className={`${inputCls} ${baseUrl.trim() && !urlOk ? 'border-coral/60' : ''}`}
+              className={`${inputCls} ${baseUrl.trim() && !urlOk ? 'is-invalid' : ''}`}
             />
             <p className="font-text text-caption text-white/40 mt-1">
               群晖为 http(s)://主机:5006/共享文件夹名；Nextcloud 为 https://主机/remote.php/dav/files/用户名
@@ -649,10 +1014,10 @@ function LibrarySourceCard({
   }
 
   const inputCls =
-    'w-full bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200'
+    'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
 
   return (
-    <div className="bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 hover:border-white/[0.14] transition-colors duration-200 ease-mineradio">
+    <div className="inset-row px-3.5 py-3">
       <div className="flex items-center gap-2">
         <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
         <div className="min-w-0 flex-1">
@@ -714,7 +1079,7 @@ function LibrarySourceCard({
             value={baseUrlDraft}
             placeholder="服务地址，如 https://nas.example.com:5006/dav"
             onChange={(e) => setBaseUrlDraft(e.target.value)}
-            className={`${inputCls} ${baseUrlDraft.trim() && !urlOk ? 'border-coral/60' : ''}`}
+            className={`${inputCls} ${baseUrlDraft.trim() && !urlOk ? 'is-invalid' : ''}`}
           />
           <input
             type="text"
@@ -1088,7 +1453,7 @@ export function SettingsPage() {
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        className="group w-full flex items-center justify-between gap-2 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-2.5 font-text text-caption text-white/80 outline-none hover:bg-white/[0.05] hover:border-white/[0.14] focus:border-mint/50 transition-colors duration-200 ease-mineradio"
+                        className="inset-field group w-full flex items-center justify-between gap-2 px-3.5 py-2.5 font-text text-caption text-white/80"
                       >
                         <span className="truncate text-left">
                           {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '选择输出设备'}
@@ -1134,7 +1499,7 @@ export function SettingsPage() {
               ) : (
                 <div className="space-y-2">
                   {scanFolders.map((folder) => (
-                    <div key={folder} className="flex items-center justify-between bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 hover:bg-white/[0.05] hover:border-white/[0.14] transition-colors duration-200 ease-mineradio">
+                    <div key={folder} className="inset-row flex items-center justify-between px-3.5 py-3">
                       <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
                       <Button
                         variant="ghost"
@@ -1232,7 +1597,7 @@ export function SettingsPage() {
                   </Button>
                 </div>
               </div>
-              <p className="font-text text-caption text-white/60 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3 truncate">
+              <p className="inset-note font-text text-caption text-white/60 px-3.5 py-3 truncate font-mono">
                 {downloadDirLabel}
               </p>
             </div>
@@ -1265,7 +1630,7 @@ export function SettingsPage() {
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center justify-between bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3">
+                <div className="inset-note flex items-center justify-between px-3.5 py-3">
                   <div>
                     <p className="font-text text-caption-strong text-white/80">当前占用</p>
                     <p className="font-text text-caption text-white/60 mt-0.5">
@@ -1292,13 +1657,13 @@ export function SettingsPage() {
             <h2 className="font-display text-tagline mb-4 text-white">在线源</h2>
             <div className="space-y-5">
               {/* 音源：应用不内置任何源，全部由用户按协议配置。
-                  一条音源可同时给出搜索接口与歌单解析接口，歌单导入直接复用 */}
+                  一条音源可同时给出搜索接口与歌单解析接口（标准音源形态下由服务地址自动生成），歌单导入直接复用 */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="font-text text-caption-strong text-white/80">音源</p>
                     <p className="font-text text-caption text-white/60 mt-0.5">
-                      一条音源可同时用于在线搜索与歌单导入，可添加多个
+                      填服务地址与密钥即可，在线搜索与歌单导入共用这一条音源
                     </p>
                   </div>
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddMusicOpen(true)}>
@@ -1324,6 +1689,9 @@ export function SettingsPage() {
                         placeholderUrl="https://your-api.com/search?q={query}"
                         playlistPlaceholderUrl="https://your-api.com/resolve?url={url}"
                         kind="music"
+                        preset={src.preset}
+                        baseUrl={src.baseUrl}
+                        apiKey={src.apiKey}
                         onUpdate={(updates) => updateOnlineSource(src.id, updates)}
                         onRemove={() => removeOnlineSource(src.id)}
                       />
@@ -1425,14 +1793,14 @@ export function SettingsPage() {
               )}
 
               {updateState === 'latest' && (
-                <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3">
+                <div className="inset-note flex items-center gap-2 px-3.5 py-3">
                   <CheckCircle2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
                   <p className="font-text text-caption text-white/70">当前已是最新版本</p>
                 </div>
               )}
 
               {updateState === 'error' && (
-                <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3.5 py-3">
+                <div className="inset-note flex items-center gap-2 px-3.5 py-3">
                   <AlertCircle className="h-4 w-4 text-coral flex-shrink-0" strokeWidth={1.6} />
                   <p className="font-text text-caption text-white/70">检查失败，请确认网络后重试</p>
                 </div>

@@ -6,6 +6,8 @@
  * **一条音源可同时提供两种能力**——在线搜索（apiUrl，含 {query}）与歌单解析
  * （playlistUrl，含 {url}）；音源服务用同一套地址同时给出两种接口时，填在同一张卡片里，
  * 歌单导入即可直接使用，无需另配「歌单解析源」。
+ * **标准音源**（preset='aurora'）：服务地址 + 密钥两栏即可，端点由 auroraPreset.ts 组装，
+ * 支持服务端自描述（GET / 的 endpoints），用户不必手写占位符。
  * 歌词源：协议同上，但额外内置一个兜底歌词源（LRCLIB），外部不可调整；
  * 用户配置的歌词源优先生效，全部未命中时才回退到内置源。
  * 协议同时适用于桌面端（Electron 主进程）与移动端（WebView），实现仅有此一份。
@@ -43,6 +45,16 @@ export interface OnlineSourceConfig {
    * 每项字段（宽松兼容）：title / name / songName；artist / singer / artists
    */
   playlistUrl?: string
+  /**
+   * 「标准音源」形态标记：'aurora' 表示端点由「服务地址 + 密钥」自动组装
+   * （见 auroraPreset.ts）。apiUrl / playlistUrl 始终是执行时唯一读取的字段，
+   * 本字段与下面的 baseUrl / apiKey 只供设置页回显两栏表单。
+   */
+  preset?: 'aurora'
+  /** preset='aurora' 时的服务地址，如 https://music.lighthouses.top（不含端点路径） */
+  baseUrl?: string
+  /** preset='aurora' 时的访问密钥，组装进端点地址的 key 参数 */
+  apiKey?: string
   /** 附加请求头（如鉴权 Token、Referer、User-Agent），同名头覆盖默认值 */
   headers?: Record<string, string>
   enabled: boolean
