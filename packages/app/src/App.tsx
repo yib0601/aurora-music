@@ -962,7 +962,9 @@ function AppLayout() {
 
                   </div>
 
-                  <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-4 pt-0 pb-6">
+                  {/* 不再叠加 px-4：LyricsView 自带 px-4，两层缩进会让 288px 的瓷砖
+                      净宽只剩 224px，中文歌词每行被压到 16 字、几乎句句折行 */}
+                  <div className="flex-1 overflow-hidden flex flex-col min-h-0 pt-0 pb-6">
                     <div className="flex-1 min-h-0">
                       <LyricsView onLineClick={(time) => usePlayerStore.getState().seekTo(time)} />
                     </div>

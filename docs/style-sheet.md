@@ -46,9 +46,9 @@
 | `@layer components` — 表面与组件类 | 630–860 | 卡片、按钮、胶囊、分段、滚动条、表面 |
 | Range / seek / volume | 861–982 | 滑杆三件套（`seek-bar` 897、`volume-bar` 947） |
 | 大屏与黑胶 | 983–1026 | ≥1500px 控件放大、详情页旋转封面（`vinyl-disc` 1005）、`backdrop-fade-in`（1022） |
-| **背景色场体系** | **1027–1187** | `.ambient-backdrop`（1032）一族与降级（§4） |
-| 歌词高亮 | 1188–1207 | `.lyric-active`（1192）/ `.lyric-active-lg`（1204） |
-| **性能降级开关** | **1208–1242** | `.resizing` / `.glass-perf-lite`（§6） |
+| **背景色场体系** | **1027–1168** | `.ambient-backdrop`（1032）一族与降级（§4） |
+| 歌词排版与高亮 | 1171–1218 | `.lyric-line`（1194）/ `.lyric-active`（1198）/ `.lyric-active-lg`（1215） |
+| **性能降级开关** | **1220–1261** | `.resizing` / `.glass-perf-lite`（§6） |
 
 ---
 
@@ -412,7 +412,7 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 ## 7. 组件语义类索引
 
 **大部分**定义在 `globals.css` 的 `@layer components` 内；`.row-hover` / `.apple-press` / `.vinyl-disc`（1005）/
-`.lyric-active`（1192）等则在 layer 之外。**新增界面优先复用，不要新造并行词汇**（如 `.ds-btn-*`）。
+`.lyric-line`（1194）/ `.lyric-active`（1198）等则在 layer 之外。**新增界面优先复用，不要新造并行词汇**（如 `.ds-btn-*`）。
 
 | 族 | 类（行号） | 关键规格 |
 | --- | --- | --- |
@@ -431,7 +431,7 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | **行交互** | `.row-hover` | 只改背景（`rgba(0,245,212,.075)`），**不做位移**——避免鼠标扫过时整列表跳动 |
 | | `.apple-press` | 只做 `:active` 的 `scale(.96)` 按压反馈，**不碰背景与描边** |
 | **分隔与滚动** | `.hairline`（847）/ `.scrollbar-thin`（854）/ `.scrollbar-hide`（852） | 发丝边走 `--surface-card-border`；细滚动条 3px |
-| **歌词** | `.lyric-active`（1192）/ `.lyric-active-lg`（1204） | 渐变文字 + 双层发光；浅色主题整体翻转为深墨→青 |
+| **歌词** | `.lyric-line`（1194）/ `.lyric-active`（1198）/ `.lyric-active-lg`（1215） | `.lyric-line` 给出 `text-wrap: balance` 均衡折行断点；高亮为渐变文字 + **`drop-shadow` 双层发光**（不可改回 `text-shadow`，会从透明笔画内部透出来把字糊掉）；浅色主题整体翻转为深墨→青 |
 | **黑胶** | `.vinyl-disc`（1005） | 详情页旋转封面 |
 | **窗口** | `.titlebar-drag` / `.titlebar-no-drag` | Electron 拖拽区控制 |
 
@@ -505,6 +505,8 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | **代码修复**：`.glass-perf-lite` 时长口径 | ✅ 统一为「动画 300ms、降级窗口 400ms」 |
 | **代码清理**：四个零引用玻璃类 | ✅ 删除 `glass-strong` / `glass-subtle` / `glass-popover` / `glass-search-box` 及其独有变量（`--glass-strong-*`、`--glass-subtle-*`、`--glass-popover-*`、`--glass-bg*`、`--glass-border*`、`--glass-shadow*`、`--glass-edge-highlight*`、`--saved-panel-glass-svg-filter`） |
 | **代码清理**：SVG 滤镜链 | ✅ `glassFilter.ts` 与 `GlassSvgFilter.tsx` 收敛为单组 control 滤镜：删除 SEARCH/PILL 常量与配置、`applyGlassMap`、`updateGlassMap`、无消费者的 re-export |
+| **歌词排版重做** | ✅ 新增 `.lyric-line`（`text-wrap: balance` 均衡折行断点）；行距 `1.6 → 1.5`、段间距窄栏 `20 → 28px` / 宽栏 `28 → 36px`（段间距必须大于行内行距，否则折行后语义分组消失）；非当前行改三级透明度 `/70 /50 /35`；窄栏字号 `14 → 13px`；`.lyric-active` `17px/scale(1.05)/36px 光晕 → 16px/scale(1.02)/28px`；渐隐带由 `12%/88%` 百分比改为按行高固定像素（窄栏 40 / 宽栏 52）；`App.tsx` 右栏去掉与 `LyricsView` 重复的 `px-4`（净宽 224 → 256px） |
+| **歌词高亮去糊** | ✅ `.lyric-active` 的 `text-shadow` → `filter: drop-shadow`（`-webkit-text-fill-color:transparent` 之后 `text-shadow` 会从透明笔画内部透出，实测放大后笔画边缘全糊）；去掉 `transform: scale()`（非整数缩放重新采样字形，同样发虚）；行过渡由 `transition-all duration-500` 改为 `transition-[color,filter] duration-300`——`all` 会把 `font-size` 纳入过渡，切行时字号在 13 ↔ 16px 之间插值数百毫秒，全程非整数 px 渲染（实测 14.5px 字形边缘发毛）且逐帧重排；浅色覆盖同步改 `drop-shadow`；新增 `.resizing` / `.glass-perf-lite` 下的 `filter: none` 降级 |
 | **验证** | ✅ `pnpm --filter @aurora/app build`（`tsc` + `vite build`）通过，exit 0；全仓 grep 无残留引用 |
 
 ---
