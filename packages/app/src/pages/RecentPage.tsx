@@ -52,7 +52,7 @@ export function RecentPage() {
     // 在线曲目播放地址会过期（落盘时已剥离），播放前按需重新取址
     const playable = await ensurePlayableTrack(track)
     if (!playable) {
-      toast('无法播放该在线歌曲：未配置音乐源或搜索无结果', { type: 'error' })
+      toast('无法播放该在线歌曲：未配置音源或搜索无结果', { type: 'error' })
       return
     }
     const queue = tracks.map((t) => (t.id === playable.id ? playable : t))

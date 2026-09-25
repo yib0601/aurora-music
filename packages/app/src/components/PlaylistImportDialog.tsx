@@ -14,10 +14,10 @@ interface PlaylistImportDialogProps {
 
 /**
  * 歌单导入对话框：粘贴其他平台的歌单（分享链接或纯文本）。
- * 本地曲库有就用本地，没有的用已配置音乐源的搜索结果直接展示（不下载）。
+ * 本地曲库有就用本地，没有的用已配置音源的搜索结果直接展示（不下载）。
  *
  * 合规说明：应用不内置任何平台的歌单抓取器——链接解析依赖用户
- * 自行配置的解析源，纯文本导入完全在本地处理、零网络请求。
+ * 自行配置的音源（其中的歌单解析接口），纯文本导入完全在本地处理、零网络请求。
  */
 export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialogProps) {
   const navigate = useNavigate()
@@ -70,7 +70,7 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
           <DialogTitle>导入歌单</DialogTitle>
           <DialogDescription className="font-text text-[12px] leading-relaxed">
             粘贴歌单分享链接或纯文本（每行一首：歌名 - 歌手）。
-            应用不内置任何平台的抓取器：链接解析需先在设置中配置解析源，纯文本导入无需任何配置。
+            应用不内置任何平台的抓取器：链接解析由你配置的音源提供（在设置里给音源填「歌单解析接口」），纯文本导入无需任何配置。
           </DialogDescription>
         </DialogHeader>
 

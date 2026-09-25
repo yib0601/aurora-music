@@ -38,7 +38,14 @@ export {
   MAX_IMPORT_SONGS,
   TITLE_THRESHOLD,
 } from './importMatch'
-export { extractShareUrl, resolvePlaylistUrl, parsePlaylistLink } from './playlistResolver'
+export {
+  extractShareUrl,
+  resolvePlaylistUrl,
+  parsePlaylistLink,
+  playlistEndpointOf,
+} from './playlistResolver'
+export type { PlaylistCapableSource } from './playlistResolver'
+export { mergeLegacyPlaylistSources } from './sourceMigration'
 export type { TrackIdentityFields, DuplicateGroup } from './trackIdentity'
 export {
   DURATION_MATCH_TOLERANCE,
