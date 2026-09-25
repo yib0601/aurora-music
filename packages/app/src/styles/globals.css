@@ -391,26 +391,10 @@ html:not(.dark) .lyric-active {
   -webkit-text-fill-color: transparent;
 }
 
-/* 滑块在浅底上翻转为深色 */
+/* 通用滑块在浅底上翻转为深色（seek/volume 播放条已无可见滑块，不受影响） */
 html:not(.dark) input[type='range']::-webkit-slider-thumb {
   background: radial-gradient(circle at 34% 28%, #2A2E35 0, #16181D 28%, rgba(22,24,29,.86) 74%);
   box-shadow: 0 0 0 1px rgba(23,25,29,.30), 0 0 12px rgba(0,156,136,.25);
-}
-html:not(.dark) input[type='range'].seek-bar::-webkit-slider-thumb {
-  background: rgb(var(--tw-mint));
-  box-shadow: 0 0 0 3px rgb(var(--tw-mint) / .16), 0 0 12px rgb(var(--tw-mint) / .45), 0 2px 8px rgba(20,24,40,.25);
-}
-html:not(.dark) input[type='range'].seek-bar:hover::-webkit-slider-thumb,
-html:not(.dark) input[type='range'].seek-bar:active::-webkit-slider-thumb {
-  box-shadow: 0 0 0 5px rgb(var(--tw-mint) / .22), 0 0 16px rgb(var(--tw-mint) / .55), 0 2px 8px rgba(20,24,40,.25);
-}
-html:not(.dark) input[type='range'].volume-bar::-webkit-slider-thumb {
-  background: rgb(var(--tw-mint));
-  box-shadow: 0 0 0 3px rgb(var(--tw-mint) / .16), 0 0 12px rgb(var(--tw-mint) / .45), 0 2px 8px rgba(20,24,40,.25);
-}
-html:not(.dark) input[type='range'].volume-bar:hover::-webkit-slider-thumb,
-html:not(.dark) input[type='range'].volume-bar:active::-webkit-slider-thumb {
-  box-shadow: 0 0 0 5px rgb(var(--tw-mint) / .22), 0 0 16px rgb(var(--tw-mint) / .55), 0 2px 8px rgba(20,24,40,.25);
 }
 
 /* 浅色主题的色场由 --ambient-* token 驱动（见 html:not(.dark) 变量块），
@@ -891,93 +875,93 @@ input[type='range']:active::-webkit-slider-thumb {
   transform: scale(1);
 }
 
-/* ===== 进度条 seek-bar：薄荷渐变填充 + 发光常显滑块 =====
+/* ===== 进度条 seek-bar：薄荷渐变填充 + 播放头渐变高光 =====
  * 桌面 PlayerBar 与移动端全屏播放页共用；--seek 变量传入已播放百分比。
+ * 无独立圆点滑块：播放位置由填充末端的一抹柔白高光（radial 被 5px 轨道
+ * 裁成横向光斑）表达，静止淡、hover/拖拽亮；--tip 经 @property 注册为
+ * 可动画数值，亮度过渡平滑。
  * 选择器需带上 input[type='range'] 前缀，特异性高于上方全局 range 规则 */
+@property --tip {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0.35;
+}
 input[type='range'].seek-bar {
   height: 24px;
   background: transparent;
+  transition: --tip 0.18s var(--ease-mineradio);
+}
+input[type='range'].seek-bar:hover,
+input[type='range'].seek-bar:active {
+  --tip: 0.8;
 }
 input[type='range'].seek-bar::-webkit-slider-runnable-track {
   height: 5px;
   border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    rgb(var(--tw-mint) / 0.30) 0%,
-    rgb(var(--tw-mint) / 0.95) var(--seek, 0%),
-    var(--track-fill) var(--seek, 0%)
-  );
+  background:
+    radial-gradient(
+      circle 12px at var(--seek, 0%) 50%,
+      rgba(255, 255, 255, var(--tip)) 0%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to right,
+      rgb(var(--tw-mint) / 0.30) 0%,
+      rgb(var(--tw-mint) / 0.95) var(--seek, 0%),
+      var(--track-fill) var(--seek, 0%)
+    );
 }
+/* 滑块仅作拖拽命中区，视觉完全透明 */
 input[type='range'].seek-bar::-webkit-slider-thumb {
   width: 12px;
   height: 12px;
   margin-top: -3.5px;
-  opacity: 1;
-  transform: scale(1);
-  background: #fff;
-  box-shadow:
-    0 0 0 3px rgba(0, 245, 212, 0.16),
-    0 0 12px rgba(0, 245, 212, 0.55),
-    0 2px 8px rgba(0, 0, 0, 0.45);
-  transition: transform 0.16s var(--ease-mineradio), box-shadow 0.16s var(--ease-mineradio);
+  opacity: 0;
+  background: transparent;
+  box-shadow: none;
 }
-input[type='range'].seek-bar:hover::-webkit-slider-thumb,
-input[type='range'].seek-bar:active::-webkit-slider-thumb {
-  transform: scale(1.2);
-  box-shadow:
-    0 0 0 5px rgba(0, 245, 212, 0.22),
-    0 0 16px rgba(0, 245, 212, 0.65),
-    0 2px 8px rgba(0, 0, 0, 0.45);
-}
-/* 移动端加大版：更粗轨道 + 更大滑块，方便触控 */
+/* 移动端加大版：更粗轨道，方便触控 */
 input[type='range'].seek-bar.seek-lg::-webkit-slider-runnable-track {
   height: 6px;
-}
-input[type='range'].seek-bar.seek-lg::-webkit-slider-thumb {
-  width: 16px;
-  height: 16px;
-  margin-top: -5px;
 }
 
 /* ===== 音量条 volume-bar：与 seek-bar 同一套视觉语言 =====
  * 之前用原生 range + 内联 linear-gradient：填充是实心硬边、无滑块，
  * 和进度条并列时显得粗糙（胶囊长度有限，内联渐变两端还容易切不住）。
- * 这里复用 seek-bar 的「薄荷渐变填充 + 发光常显滑块」，--volume 传入音量百分比。
+ * 这里复用 seek-bar 的「薄荷渐变填充 + 播放头渐变高光」，--volume 传入音量百分比。
  * 轨道/高度与 seek-bar 对齐，但热区收窄到 16px，避免在小胶囊里抢走播放按钮的点击区 */
 input[type='range'].volume-bar {
   height: 16px;
   background: transparent;
+  transition: --tip 0.18s var(--ease-mineradio);
+}
+input[type='range'].volume-bar:hover,
+input[type='range'].volume-bar:active {
+  --tip: 0.8;
 }
 input[type='range'].volume-bar::-webkit-slider-runnable-track {
   height: 5px;
   border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    rgb(var(--tw-mint) / 0.30) 0%,
-    rgb(var(--tw-mint) / 0.95) var(--volume, 0%),
-    var(--track-fill) var(--volume, 0%)
-  );
+  background:
+    radial-gradient(
+      circle 10px at var(--volume, 0%) 50%,
+      rgba(255, 255, 255, var(--tip)) 0%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to right,
+      rgb(var(--tw-mint) / 0.30) 0%,
+      rgb(var(--tw-mint) / 0.95) var(--volume, 0%),
+      var(--track-fill) var(--volume, 0%)
+    );
 }
 input[type='range'].volume-bar::-webkit-slider-thumb {
-  width: 11px;
-  height: 11px;
-  margin-top: -3px;
-  opacity: 1;
-  transform: scale(1);
-  background: #fff;
-  box-shadow:
-    0 0 0 3px rgba(0, 245, 212, 0.16),
-    0 0 12px rgba(0, 245, 212, 0.55),
-    0 2px 8px rgba(0, 0, 0, 0.45);
-  transition: transform 0.16s var(--ease-mineradio), box-shadow 0.16s var(--ease-mineradio);
-}
-input[type='range'].volume-bar:hover::-webkit-slider-thumb,
-input[type='range'].volume-bar:active::-webkit-slider-thumb {
-  transform: scale(1.2);
-  box-shadow:
-    0 0 0 5px rgba(0, 245, 212, 0.22),
-    0 0 16px rgba(0, 245, 212, 0.65),
-    0 2px 8px rgba(0, 0, 0, 0.45);
+  width: 12px;
+  height: 12px;
+  margin-top: -3.5px;
+  opacity: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 /* ===== 大屏（≥1500px）播放控件放大 =====
@@ -987,10 +971,8 @@ input[type='range'].volume-bar:active::-webkit-slider-thumb {
   .btn-icon.btn-xl { width: 34px; height: 34px; border-radius: var(--r-ds-media); }
   input[type='range'].seek-bar.seek-xl { height: 28px; }
   input[type='range'].seek-bar.seek-xl::-webkit-slider-runnable-track { height: 6px; }
-  input[type='range'].seek-bar.seek-xl::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -4px; }
   input[type='range'].volume-bar.volume-xl { height: 20px; }
   input[type='range'].volume-bar.volume-xl::-webkit-slider-runnable-track { height: 6px; }
-  input[type='range'].volume-bar.volume-xl::-webkit-slider-thumb { width: 13px; height: 13px; margin-top: -3.5px; }
 }
 
 .row-hover { transition: background 0.18s var(--ease-mineradio); }
