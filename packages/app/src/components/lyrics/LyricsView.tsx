@@ -114,6 +114,10 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
     }
   }, [])
 
+  // 上下渐隐带宽度：按行高给固定像素而非百分比——百分比在矮容器里会偏大，
+  // 把刚滚进来的整行一起吃掉，再叠加非当前行自身的不透明度，顶部歌词会淡成读不出的残影
+  const fade = large ? 52 : 40
+
   return (
     <div
       ref={containerRef}
@@ -129,13 +133,17 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
           // 空态（暂无歌词/搜索中）：去掉上下占位伪元素，提示垂直居中
           ? 'flex items-center justify-center'
           : cn(
-              // DS 排版阶梯：行距按 4px 阶梯递进（紧凑 16 / 常规 24 / 大字号 32）
-              large ? 'space-y-7' : 'space-y-5',
+              // ⚠️ 段间距必须大于行内行距（leading-[1.5]）：窄栏 28px vs 19.5px、
+              // 宽栏 36px vs 24px。否则折行后「同一句的两半」和「相邻两句」间距接近，
+              // 语义分组消失、整块糊成文字墙（详见 globals.css 的歌词段注释）
+              large ? 'space-y-9' : 'space-y-7',
               'before:block before:h-16 before:content-[""] after:block after:h-1/2 after:content-[""]'
             ),
         className
       )}
-      style={{ maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)' }}
+      style={{
+        maskImage: `linear-gradient(to bottom, transparent 0, black ${fade}px, black calc(100% - ${fade}px), transparent 100%)`,
+      }}
     >
       {lyrics.length === 0 && (
         <p className={cn('text-white/25', large ? 'text-[16px]' : 'text-[14px]')}>
@@ -144,16 +152,33 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
       )}
       {lyrics.map((line, idx) => {
         const distance = Math.abs(idx - activeIdx)
+        // 非当前行按与当前行的距离分三级透明度。原先近行 14px / 远行 13px 只差 1px
+        // 且颜色完全相同，肉眼分不出，却让每行宽度不一致、破坏左右边缘的节奏感。
+        // activeIdx < 0（前奏，还没进入第一句）时没有聚焦行，统一走中档——
+        // 否则整块歌词会一起落到最远档，看上去像没有歌词。
+        // ⚠️ 透明度取值必须落在 globals.css 浅色主题可读性分档里（/30 /35 /40 /45 /50 /55
+        // /60 /70），否则浅底上会退化成对比度不足的浅灰墨
+        const idleTone =
+          activeIdx < 0
+            ? 'text-white/50'
+            : distance === 1
+            ? 'text-white/70'
+            : distance === 2
+            ? 'text-white/50'
+            : 'text-white/40'
         return (
           <p
             key={`${line.time}-${idx}`}
             className={cn(
-              'transition-all duration-500 ease-apple cursor-pointer leading-[1.6]',
+              // lyric-line 提供 text-wrap:balance，把折行断点摊平，避免把词劈成两半
+              // ⚠️ 不能写 transition-all：它会把 font-size 也纳入过渡，切行时字号在
+              // 13 ↔ 16px 之间插值数百毫秒，全程按非整数 px 渲染（实测 14.5px 字形边缘
+              // 明显发毛），且逐帧触发布局重排——「跟着歌词变糊」就是这么来的。
+              // 只过渡颜色与发光滤镜，字号瞬时切换，文字始终按整数 px 光栅化。
+              'lyric-line transition-[color,filter] duration-300 ease-apple cursor-pointer leading-[1.5]',
               idx === activeIdx
                 ? cn('lyric-active', large && 'lyric-active-lg')
-                : distance <= 2
-                ? cn('text-white/55', large ? 'text-[16px]' : 'text-[14px]')
-                : cn('text-white/55', large ? 'text-[14px]' : 'text-[13px]')
+                : cn(idleTone, large ? 'text-[16px]' : 'text-[13px]')
             )}
             onClick={() => onLineClick?.(line.time)}
           >

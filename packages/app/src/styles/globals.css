@@ -382,9 +382,10 @@
 }
 
 /* ===== 浅色主题组件级覆盖（无法通过变量翻转的细节） ===== */
-/* 歌词高亮：白→蓝渐变在浅底不可见，翻转为深墨→青渐变 */
+/* 歌词高亮：白→蓝渐变在浅底不可见，翻转为深墨→青渐变。
+ * 发光同样走 drop-shadow（理由见下方 .lyric-active 处），浅底上改用同色相的弱光。 */
 html:not(.dark) .lyric-active {
-  text-shadow: 0 0 14px rgba(0,156,136,.18), 0 0 36px rgba(0,132,155,.12);
+  filter: drop-shadow(0 0 10px rgba(0, 156, 136, 0.22)) drop-shadow(0 0 24px rgba(0, 132, 155, 0.14));
   background: linear-gradient(180deg, #14161A 0%, #0E7A6E 55%, #0A6B80 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -1167,24 +1168,53 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
   .ambient-blob__drift { animation: none; }
 }
 
-/* ===== 歌词高亮（渐变文字 + 发光） =====
+/* ===== 歌词排版与高亮（渐变文字 + 发光） =====
+ *
+ * 两条排版铁律，都由这里与 LyricsView 的类共同保证：
+ *
+ * 1. `.lyric-line` 负责折行均衡。中文歌词在右栏（净宽仅 256px）里必然折行，
+ *    默认断行会留下极不平衡的两行——实测「當時無法為你寫的那首歌 卻是我永遠的遺憾當愛逝去」
+ *    在 256px / 16px 下是 244px + 128px，而 `text-wrap: balance` 给出 196px + 176px。
+ *    同一段文本上 `text-wrap: pretty` 与 `word-break: auto-phrase` 实测**均无效果**
+ *    （前者同默认，后者 CSS.supports 为 true 但断行结果不变），故只用 balance。
+ *    Chromium 对 ≤6 行生效，歌词行 2~3 行，正好在这一档内。
+ *
+ * 2. 段间距必须显著大于行内行距。折行后「同一句的两半」和「相邻两句」若间距接近，
+ *    语义分组会彻底消失、整块糊成文字墙。行距固定 1.5（LyricsView 的 leading-[1.5]），
+ *    段间距由那里的 space-y-* 给出：窄栏 28px（÷ 13px×1.5 ≈ 1.44 倍），
+ *    宽栏 36px（÷ 16px×1.5 = 1.5 倍）。
+ *
+ * 高亮：非当前行按与当前行的距离分三级透明度（LyricsView 内联类），当前行靠
+ * 字号 13 → 16px（+23%）、渐变字与双层发光跳出。窄栏不放大到 21px——右栏横向空间紧张，
+ * 字号越大折行越多、块高在滚动中跳动越明显。
+ *
  * 不用 Tailwind 任意属性写 [-webkit-background-clip:text]，
  * 在某些构建/运行时环境下会被忽略，导致渐变背景变成实心白块。
  */
+.lyric-line {
+  text-wrap: balance;
+}
+
 .lyric-active {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
-  transform: scale(1.05);
-  text-shadow: 0 0 14px rgba(168,246,255,.38), 0 0 36px rgba(143,233,255,.30);
+  /* ⚠️ 发光必须用 drop-shadow，不能用 text-shadow。
+   * 字形填充被设成 transparent 之后（见下方 -webkit-text-fill-color），
+   * text-shadow 会从透明笔画**内部**透出来，把字照成一团光——放大实测笔画边缘全糊。
+   * drop-shadow 作用在合成后的字形轮廓上，光晕只落在字外，笔画保持锐利。
+   * 同理不加 transform: scale()：非整数缩放会让字形重新采样、边缘同样发虚，
+   * 而字号从 13 → 16 的跃升已经足够把当前行拉出来。 */
+  filter: drop-shadow(0 0 10px rgba(168, 246, 255, 0.34)) drop-shadow(0 0 26px rgba(143, 233, 255, 0.22));
   background: linear-gradient(180deg, rgba(246,253,255,1) 0%, rgba(168,246,255,1) 55%, rgba(126,205,255,1) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* 大字号模式（详情页全屏）：放大当前行字号，填充宽屏空间 */
+/* 大字号模式（歌曲详情页宽栏）：放大当前行并加强发光，填充宽屏空间 */
 .lyric-active-lg {
   font-size: 21px;
+  filter: drop-shadow(0 0 14px rgba(168, 246, 255, 0.36)) drop-shadow(0 0 32px rgba(143, 233, 255, 0.26));
 }
 
 /* ===== 性能降级开关 =====
@@ -1213,6 +1243,13 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
 .glass-perf-lite .glass-liquid {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+/* 同上两个窗口内，歌词高亮的 drop-shadow 也一并让位：此时瓷砖宽度在逐帧变化，
+   带滤镜的字形离屏纹理每帧都要重栅格化 + 模糊。降级后当前行只靠字号与渐变
+   仍然跳得出来，肉眼看不出差别。 */
+.resizing .lyric-active,
+.glass-perf-lite .lyric-active {
+  filter: none;
 }
 /* .resizing 期间停掉色场：缩放窗口时色场跟着重排、漂移动画又与缩放叠加，两者都掉帧，
  * 直接隐藏最省事。::before 是静态纯色底、--depth 是无动画的线性渐变，都必须保留，
