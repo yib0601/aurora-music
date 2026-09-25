@@ -46,6 +46,25 @@ export {
 } from './playlistResolver'
 export type { PlaylistCapableSource } from './playlistResolver'
 export { mergeLegacyPlaylistSources } from './sourceMigration'
+export {
+  AURORA_PRESET,
+  AURORA_ENDPOINT_FALLBACK,
+  normalizeSourceBase,
+  apiKeyFromUrl,
+  detectAuroraSource,
+  parseSourceInput,
+  looksLikeEndpointInput,
+  buildAuroraEndpoints,
+  composeAuroraSource,
+  parseAuroraEndpoints,
+  probeAuroraService,
+} from './auroraPreset'
+export type {
+  AuroraEndpoints,
+  AuroraSourceForm,
+  ComposedAuroraSource,
+  AuroraProbeResult,
+} from './auroraPreset'
 export type { TrackIdentityFields, DuplicateGroup } from './trackIdentity'
 export {
   DURATION_MATCH_TOLERANCE,
