@@ -92,6 +92,22 @@ export interface PlatformExtension {
   ) => Promise<{ ok: boolean; message: string; sample?: string[] }>
   /** 移除来源及其全部曲目，返回移除后的全库 */
   removeLibrarySource?: (sourceId: string) => Promise<Track[]>
+
+  // ─── 在线播放缓存（目前仅桌面端主进程实现）─────────────────────
+  // 命中返回缓存播放地址（aurora-cache://），未命中返回 null 并由平台层
+  // 后台拉流写入；本次播放仍走源直链，下次再播同一首即命中。
+  /** 解析缓存播放地址；未命中返回 { src: null } */
+  resolveCachedAudio?: (req: {
+    url: string
+    key: string
+    headers?: Record<string, string>
+  }) => Promise<{ src: string | null }>
+  /** 下发缓存容量配置（0 = 关闭并清空） */
+  configureAudioCache?: (opts: { limitMB: number }) => Promise<void>
+  /** 当前缓存占用 */
+  getAudioCacheUsage?: () => Promise<{ usedBytes: number; count: number }>
+  /** 清空全部缓存 */
+  clearAudioCache?: () => Promise<void>
 }
 
 class NoopDatabase implements DatabaseAdapter {
@@ -270,6 +286,24 @@ export function createDesktopPlatform(): Platform {
     async removeLibrarySource(sourceId: string) {
       if (!api?.removeLibrarySource) return []
       return api.removeLibrarySource(sourceId)
+    },
+
+    // ─── 在线播放缓存：转发到主进程 ───
+    async resolveCachedAudio(req) {
+      if (!api?.audioCache?.resolve) return { src: null }
+      return api.audioCache.resolve(req)
+    },
+    async configureAudioCache(opts) {
+      if (!api?.audioCache?.configure) return
+      return api.audioCache.configure(opts)
+    },
+    async getAudioCacheUsage() {
+      if (!api?.audioCache?.usage) return { usedBytes: 0, count: 0 }
+      return api.audioCache.usage()
+    },
+    async clearAudioCache() {
+      if (!api?.audioCache?.clear) return
+      return api.audioCache.clear()
     },
   }
 }

@@ -5,6 +5,12 @@ import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
 import { closeDatabase } from './ipc/database'
 import { getLibrarySource } from './ipc/librarySource'
 import {
+  CACHE_SCHEME,
+  initAudioCache,
+  registerAudioCacheIpc,
+  serveCachedAudio,
+} from './ipc/audioCache'
+import {
   REMOTE_SCHEME,
   parseRemoteAudioUrl,
   resolveRemoteUrl,
@@ -103,6 +109,18 @@ protocol.registerSchemesAsPrivileged([
   },
   {
     scheme: REMOTE_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: true,
+      corsEnabled: true,
+    },
+  },
+  {
+    // 在线播放缓存：与 aurora-remote 同样的流式 + Range 语义，命中后播放走本地文件
+    scheme: CACHE_SCHEME,
     privileges: {
       standard: true,
       secure: true,
@@ -342,6 +360,11 @@ if (!gotTheLock) {
       }
     })
 
+    // 在线播放缓存协议：aurora-cache://localhost/<hash>.<ext> → 读本地缓存文件
+    protocol.handle(CACHE_SCHEME, (request) => serveCachedAudio(request))
+
+    initAudioCache()
+    registerAudioCacheIpc()
     registerIpcHandlers()
     const win = createWindow()
     createTray(win)

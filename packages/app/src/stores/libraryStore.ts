@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, PlaylistResolverConfig, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
+import { configureAudioCache } from '@/services/audioCache.service'
 
 /** 历史搜索记录最大保留条数 */
 const MAX_SEARCH_HISTORY = 20
@@ -92,6 +93,12 @@ interface LibraryState {
   removeLibrarySource: (id: string) => void
   setDownloadDir: (dir: string | null) => void
   setDownloadQuality: (quality: DownloadQuality) => void
+  /**
+   * 在线播放缓存容量上限（MB）：0 表示关闭缓存。
+   * 仅桌面端有缓存实现；移动端与 Web 上此设置不生效（设置页已做平台标注）
+   */
+  audioCacheLimitMB: number
+  setAudioCacheLimitMB: (mb: number) => void
 }
 
 /** 递增版本号：防止 getAllTracks 的延迟响应用旧数据覆盖 scan:complete 的新数据 */
@@ -262,6 +269,8 @@ export const useLibraryStore = create<LibraryState>()(
       },
       setDownloadDir: (dir) => set({ downloadDir: dir || null }),
       setDownloadQuality: (quality) => set({ downloadQuality: quality }),
+      audioCacheLimitMB: 1024,
+      setAudioCacheLimitMB: (mb) => set({ audioCacheLimitMB: Math.max(0, Math.floor(mb)) }),
     }),
     {
       name: 'aurora-library-state',
@@ -281,6 +290,7 @@ export const useLibraryStore = create<LibraryState>()(
         librarySources: state.librarySources,
         downloadDir: state.downloadDir,
         downloadQuality: state.downloadQuality,
+        audioCacheLimitMB: state.audioCacheLimitMB,
       }),
       // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
@@ -288,8 +298,12 @@ export const useLibraryStore = create<LibraryState>()(
       // v5 新增歌单解析源配置（歌单导入功能）
       // v6 新增媒体库来源配置（WebDAV 网络存储）
       // v7 移除扁平玻璃开关（glassMode 与 .glass-flat 规则已删除，代码里从无入口）
+      // v8 新增在线播放缓存容量配置（audioCacheLimitMB，默认 1024MB）
       migrate: (persisted: any, version: number) => {
         if (persisted) {
+          if (version < 8) {
+            if (typeof persisted.audioCacheLimitMB !== 'number') persisted.audioCacheLimitMB = 1024
+          }
           if (version < 6) {
             if (!Array.isArray(persisted.librarySources)) persisted.librarySources = []
           }
@@ -313,7 +327,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 7,
+      version: 8,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)
@@ -348,4 +362,14 @@ function pushLibrarySources(sources: LibrarySourceConfig[]): void {
 pushLibrarySources(useLibraryStore.getState().librarySources)
 useLibraryStore.subscribe((state, prev) => {
   if (state.librarySources !== prev.librarySources) pushLibrarySources(state.librarySources)
+})
+
+// ─── 在线播放缓存容量 → 主进程 ──────────────────────────────────
+// 缓存实体在主进程磁盘，容量变更后必须下发，否则驱逐仍按旧限额执行。
+// 与媒体库来源同步同理：persist 异步 hydrate，先推一次快照再订阅变更。
+configureAudioCache(useLibraryStore.getState().audioCacheLimitMB)
+useLibraryStore.subscribe((state, prev) => {
+  if (state.audioCacheLimitMB !== prev.audioCacheLimitMB) {
+    configureAudioCache(state.audioCacheLimitMB)
+  }
 })
