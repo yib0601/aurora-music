@@ -59,8 +59,9 @@ function toImportedTrack(r: OnlineTrackSearchResult): Track {
 
 /**
  * 歌单导入编排（两步）：
- * 1. parse：含链接先走用户配置的歌单解析源（失败回退纯文本解析），否则纯文本本地解析
- * 2. confirm：本地曲库有就用本地；没有的搜用户配置的音乐源取最佳结果直接进歌单（不下载）
+ * 1. parse：含链接先走用户配置的音源（音源里填了歌单解析接口的才会命中，失败回退纯文本解析），
+ *    否则纯文本本地解析
+ * 2. confirm：本地曲库有就用本地；没有的搜同一批音源的搜索接口取最佳结果直接进歌单（不下载）
  */
 export function usePlaylistImport() {
   const [phase, setPhase] = useState<'idle' | 'parsing' | 'importing'>('idle')
@@ -79,9 +80,9 @@ export function usePlaylistImport() {
 
     const shareUrl = extractShareUrl(text)
     if (shareUrl) {
-      // 链接路径：走用户配置的歌单解析源；失败回退纯文本解析（链接行会被跳过）
+      // 链接路径：走用户配置的音源（其中的歌单解析接口）；失败回退纯文本解析（链接行会被跳过）
       try {
-        const sources = useLibraryStore.getState().playlistResolverSources
+        const sources = useLibraryStore.getState().onlineSources
         const result = await parsePlaylistLink(sources, shareUrl)
         songs = result.songs
         if (result.name) suggestedName = result.name
@@ -115,7 +116,7 @@ export function usePlaylistImport() {
       setPhase('importing')
       cancelRef.current = false
 
-      // ── 本地没有的歌曲走音乐源在线补齐（并发 4） ──
+      // ── 本地没有的歌曲走音源在线补齐（并发 4） ──
       const pending: Array<{ song: ParsedSong; index: number }> = []
       localMatches.forEach((m, i) => {
         if (!m) pending.push({ song: songs[i], index: i })

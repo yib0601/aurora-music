@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, PlaylistResolverConfig, LibrarySourceConfig } from '@/types'
+import { mergeLegacyPlaylistSources } from '@aurora/shared'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
 import { configureAudioCache } from '@/services/audioCache.service'
@@ -34,11 +35,10 @@ interface LibraryState {
   searchResults: Track[]
   /** 历史搜索记录（最新在前，最多保留 MAX_SEARCH_HISTORY 条） */
   searchHistory: string[]
-  // 歌源配置（应用不内置任何源，全部由用户按协议配置）
+  // 音源与歌词源配置（应用不内置任何源，全部由用户按协议配置）
+  // 音源一条可同时承载两种能力：apiUrl 搜索（{query}）+ playlistUrl 歌单解析（{url}）
   onlineSources: OnlineSourceConfig[]
   lyricsSources: LyricsSourceConfig[]
-  /** 歌单解析源配置（应用不内置任何平台抓取器，全部由用户按协议配置） */
-  playlistResolverSources: PlaylistResolverConfig[]
   /**
    * 媒体库来源（本机目录之外的持久曲库，目前支持 WebDAV 网络存储）。
    * 与 onlineSources（在线搜索歌源，地址易失、不入库）是两类东西：
@@ -75,7 +75,7 @@ interface LibraryState {
   toggleLike: (trackId: string) => void
   likedTracks: Set<string>
   likedTrackIds?: string[]
-  // 音乐源配置操作
+  // 音源配置操作（一条音源可同时含搜索接口与歌单解析接口）
   addOnlineSource: (source: Omit<OnlineSourceConfig, 'id'>) => void
   updateOnlineSource: (id: string, updates: Partial<OnlineSourceConfig>) => void
   removeOnlineSource: (id: string) => void
@@ -83,10 +83,6 @@ interface LibraryState {
   addLyricsSource: (source: Omit<LyricsSourceConfig, 'id'>) => void
   updateLyricsSource: (id: string, updates: Partial<LyricsSourceConfig>) => void
   removeLyricsSource: (id: string) => void
-  // 歌单解析源配置操作
-  addPlaylistResolverSource: (source: Omit<PlaylistResolverConfig, 'id'>) => void
-  updatePlaylistResolverSource: (id: string, updates: Partial<PlaylistResolverConfig>) => void
-  removePlaylistResolverSource: (id: string) => void
   // 媒体库来源操作（WebDAV 网络存储等持久曲库来源）
   addLibrarySource: (source: Omit<LibrarySourceConfig, 'id'>) => string
   updateLibrarySource: (id: string, updates: Partial<LibrarySourceConfig>) => void
@@ -124,7 +120,6 @@ export const useLibraryStore = create<LibraryState>()(
       likedTracks: new Set<string>(),
       onlineSources: [],
       lyricsSources: [],
-      playlistResolverSources: [],
       librarySources: [],
       downloadDir: null,
       downloadQuality: 'flac',
@@ -238,20 +233,6 @@ export const useLibraryStore = create<LibraryState>()(
       removeLyricsSource: (id) => {
         set({ lyricsSources: get().lyricsSources.filter((s) => s.id !== id) })
       },
-      addPlaylistResolverSource: (source) => {
-        const id = `plr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        set({ playlistResolverSources: [...get().playlistResolverSources, { ...source, id }] })
-      },
-      updatePlaylistResolverSource: (id, updates) => {
-        set({
-          playlistResolverSources: get().playlistResolverSources.map((s) =>
-            s.id === id ? { ...s, ...updates } : s
-          ),
-        })
-      },
-      removePlaylistResolverSource: (id) => {
-        set({ playlistResolverSources: get().playlistResolverSources.filter((s) => s.id !== id) })
-      },
 
       addLibrarySource: (source) => {
         // id 用作 aurora-remote:// 的 host，必须是小写字母/数字/连字符
@@ -286,7 +267,6 @@ export const useLibraryStore = create<LibraryState>()(
         searchHistory: state.searchHistory,
         onlineSources: state.onlineSources,
         lyricsSources: state.lyricsSources,
-        playlistResolverSources: state.playlistResolverSources,
         librarySources: state.librarySources,
         downloadDir: state.downloadDir,
         downloadQuality: state.downloadQuality,
@@ -299,8 +279,18 @@ export const useLibraryStore = create<LibraryState>()(
       // v6 新增媒体库来源配置（WebDAV 网络存储）
       // v7 移除扁平玻璃开关（glassMode 与 .glass-flat 规则已删除，代码里从无入口）
       // v8 新增在线播放缓存容量配置（audioCacheLimitMB，默认 1024MB）
+      // v9 音源合并：独立的「歌单解析源」并入音源（OnlineSourceConfig.playlistUrl），
+      //    同一服务的搜索与歌单解析落回同一条配置，删除 playlistResolverSources
       migrate: (persisted: any, version: number) => {
         if (persisted) {
+          if (version < 9) {
+            // 独立的「歌单解析源」并入音源（同主机合并成一条，其余转为只做歌单解析的条目）
+            persisted.onlineSources = mergeLegacyPlaylistSources(
+              persisted.onlineSources,
+              persisted.playlistResolverSources
+            )
+            delete persisted.playlistResolverSources
+          }
           if (version < 8) {
             if (typeof persisted.audioCacheLimitMB !== 'number') persisted.audioCacheLimitMB = 1024
           }
@@ -327,7 +317,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 8,
+      version: 9,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

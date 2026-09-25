@@ -44,44 +44,56 @@ const downloadQualityOptions = [
   { value: 'flac' as const, label: '无损 FLAC' },
 ]
 
-/** 单个歌源卡片：默认仅展示名称 + 启用开关；点击编辑展开草稿表单，校验通过后点保存才写入 */
+/** 单个音源卡片：默认仅展示名称 + 能力标签 + 启用开关；点击编辑展开草稿表单，校验通过后点保存才写入 */
 function SourceEditorCard({
   name,
   apiUrl,
+  playlistUrl,
   headers,
   enabled,
   placeholderUrl,
+  playlistPlaceholderUrl,
   kind,
   onUpdate,
   onRemove,
 }: {
   name: string
   apiUrl: string
+  /** 歌单解析接口（仅音源有该能力；留空表示该源不参与歌单导入） */
+  playlistUrl?: string
   headers?: Record<string, string>
   enabled: boolean
   placeholderUrl: string
-  kind: 'music' | 'lyrics' | 'playlist'
-  onUpdate: (updates: { name?: string; apiUrl?: string; headers?: Record<string, string>; enabled?: boolean }) => void
+  playlistPlaceholderUrl?: string
+  kind: 'music' | 'lyrics'
+  onUpdate: (updates: { name?: string; apiUrl?: string; playlistUrl?: string; headers?: Record<string, string>; enabled?: boolean }) => void
   onRemove: () => void
 }) {
   const hasHeaders = headers != null && Object.keys(headers).length > 0
+  const isMusic = kind === 'music'
   const [editing, setEditing] = useState(false)
   const [showHeaders, setShowHeaders] = useState(hasHeaders)
   const [nameDraft, setNameDraft] = useState(name)
   const [apiUrlDraft, setApiUrlDraft] = useState(apiUrl)
+  const [playlistDraft, setPlaylistDraft] = useState(playlistUrl || '')
   const [headersDraft, setHeadersDraft] = useState(() => (hasHeaders ? JSON.stringify(headers, null, 2) : ''))
   const [headersInvalid, setHeadersInvalid] = useState(false)
   const [parsedHeaders, setParsedHeaders] = useState<Record<string, string> | undefined>(headers)
 
-  // 与添加弹窗一致的占位符校验
-  const requiredPlaceholders = kind === 'playlist' ? ['{url}'] : kind === 'lyrics' ? ['{track}', '{artist}'] : ['{query}']
+  // 与添加弹窗一致的占位符校验：搜索地址需含 {query}（歌词源为 {track}/{artist}）；
+  // 歌单解析地址可选，一旦填写必须含 {url}
+  const requiredPlaceholders = kind === 'lyrics' ? ['{track}', '{artist}'] : ['{query}']
   const missingPlaceholders = apiUrlDraft.trim() ? requiredPlaceholders.filter((p) => !apiUrlDraft.includes(p)) : []
-  const canSave = apiUrlDraft.trim().length > 0 && missingPlaceholders.length === 0 && !headersInvalid
+  // 两个地址至少填一个（只做歌单解析的音源可以没有搜索地址），填了的地址必须带对应占位符
+  const hasAnyEndpoint = apiUrlDraft.trim().length > 0 || (isMusic && playlistDraft.trim().length > 0)
+  const playlistInvalid = isMusic && playlistDraft.trim().length > 0 && !playlistDraft.includes('{url}')
+  const canSave = hasAnyEndpoint && missingPlaceholders.length === 0 && !playlistInvalid && !headersInvalid
 
   // 进入编辑：从已保存值初始化草稿
   const startEditing = () => {
     setNameDraft(name)
     setApiUrlDraft(apiUrl)
+    setPlaylistDraft(playlistUrl || '')
     setHeadersDraft(hasHeaders ? JSON.stringify(headers, null, 2) : '')
     setHeadersInvalid(false)
     setParsedHeaders(headers)
@@ -113,7 +125,15 @@ function SourceEditorCard({
 
   const handleSave = () => {
     if (!canSave) return
-    onUpdate({ name: nameDraft.trim() || name, apiUrl: apiUrlDraft.trim(), headers: parsedHeaders })
+    const trimmedPlaylist = playlistDraft.trim()
+    const alreadyHad = (playlistUrl || '').trim()
+    onUpdate({
+      name: nameDraft.trim() || name,
+      apiUrl: apiUrlDraft.trim(),
+      // 只在确实有变化时带上歌单解析地址，避免把歌词源的字段写脏
+      ...(isMusic && (trimmedPlaylist || alreadyHad) ? { playlistUrl: trimmedPlaylist } : {}),
+      headers: parsedHeaders,
+    })
     setEditing(false)
   }
 
@@ -133,7 +153,22 @@ function SourceEditorCard({
             className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-mint/50 transition-colors duration-200 py-1"
           />
         ) : (
-          <span className="flex-1 font-text text-caption-strong text-white/90 truncate py-1">{name || '未命名源'}</span>
+          <>
+            <span className="flex-1 font-text text-caption-strong text-white/90 truncate py-1">{name || '未命名源'}</span>
+            {/* 能力标签：一眼看出这条音源能搜索、还是也能解析歌单 */}
+            <span className="flex items-center gap-1 flex-shrink-0">
+              {apiUrl.trim() && (
+                <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
+                  {isMusic ? '搜索' : '歌词'}
+                </span>
+              )}
+              {isMusic && (playlistUrl || '').trim() && (
+                <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/55">
+                  歌单
+                </span>
+              )}
+            </span>
+          </>
         )}
         <button
           type="button"
@@ -172,6 +207,7 @@ function SourceEditorCard({
       </div>
       {editing && (
         <>
+          {isMusic && <p className="font-text text-caption text-white/50 mb-1">搜索接口（需含 {'{query}'}）</p>}
           <input
             type="text"
             value={apiUrlDraft}
@@ -185,6 +221,28 @@ function SourceEditorCard({
             <p className="font-text text-caption text-coral/70 mt-1">
               地址需包含占位符：{missingPlaceholders.join('、')}
             </p>
+          )}
+          {/* 歌单解析接口：与搜索同属一条音源，填写后歌单导入即可直接解析分享链接 */}
+          {isMusic && (
+            <div className="mt-2">
+              <p className="font-text text-caption text-white/50 mb-1">歌单解析接口（可选，需含 {'{url}'}）</p>
+              <input
+                type="text"
+                value={playlistDraft}
+                placeholder={playlistPlaceholderUrl || 'https://your-api.com/resolve?url={url}'}
+                onChange={(e) => setPlaylistDraft(e.target.value)}
+                className={`w-full bg-white/[0.03] border rounded-[10px] px-2.5 py-1.5 font-text text-caption text-white/70 outline-none focus:border-mint/50 transition-colors duration-200 ${
+                  playlistInvalid ? 'border-coral/60' : 'border-white/10'
+                }`}
+              />
+              {playlistInvalid ? (
+                <p className="font-text text-caption text-coral/70 mt-1">地址需包含占位符：{'{url}'}</p>
+              ) : (
+                <p className="font-text text-caption text-white/35 mt-1">
+                  留空表示该音源不参与歌单导入
+                </p>
+              )}
+            </div>
           )}
           {/* 请求头：可选，折叠编辑 */}
           <div className="mt-2">
@@ -240,7 +298,7 @@ function SourceEditorCard({
   )
 }
 
-/** 添加源弹窗：填写名称 / 接口地址 / 请求头，校验通过后才保存进列表 */
+/** 添加源弹窗：填写名称 / 接口地址（音源可另填歌单解析接口）/ 请求头，校验通过后才保存进列表 */
 function SourceAddDialog({
   open,
   kind,
@@ -248,12 +306,13 @@ function SourceAddDialog({
   onSave,
 }: {
   open: boolean
-  kind: 'music' | 'lyrics' | 'playlist'
+  kind: 'music' | 'lyrics'
   onOpenChange: (open: boolean) => void
-  onSave: (source: { name: string; apiUrl: string; headers?: Record<string, string> }) => void
+  onSave: (source: { name: string; apiUrl: string; playlistUrl?: string; headers?: Record<string, string> }) => void
 }) {
   const [name, setName] = useState('')
   const [apiUrl, setApiUrl] = useState('')
+  const [playlistUrl, setPlaylistUrl] = useState('')
   const [headersDraft, setHeadersDraft] = useState('')
   const [headersInvalid, setHeadersInvalid] = useState(false)
   const [headers, setHeaders] = useState<Record<string, string> | undefined>(undefined)
@@ -263,6 +322,7 @@ function SourceAddDialog({
     if (open) {
       setName('')
       setApiUrl('')
+      setPlaylistUrl('')
       setHeadersDraft('')
       setHeadersInvalid(false)
       setHeaders(undefined)
@@ -270,10 +330,11 @@ function SourceAddDialog({
   }, [open])
 
   const isLyrics = kind === 'lyrics'
-  const isPlaylist = kind === 'playlist'
-  const requiredPlaceholders = isPlaylist ? ['{url}'] : isLyrics ? ['{track}', '{artist}'] : ['{query}']
+  const requiredPlaceholders = isLyrics ? ['{track}', '{artist}'] : ['{query}']
   const missingPlaceholders = apiUrl.trim() ? requiredPlaceholders.filter((p) => !apiUrl.includes(p)) : []
-  const canSave = apiUrl.trim().length > 0 && missingPlaceholders.length === 0 && !headersInvalid
+  const playlistInvalid = !isLyrics && playlistUrl.trim().length > 0 && !playlistUrl.includes('{url}')
+  const hasAnyEndpoint = apiUrl.trim().length > 0 || (!isLyrics && playlistUrl.trim().length > 0)
+  const canSave = hasAnyEndpoint && missingPlaceholders.length === 0 && !playlistInvalid && !headersInvalid
 
   const handleHeadersChange = (text: string) => {
     setHeadersDraft(text)
@@ -298,9 +359,11 @@ function SourceAddDialog({
 
   const handleSave = () => {
     if (!canSave) return
+    const trimmedPlaylist = playlistUrl.trim()
     onSave({
-      name: name.trim() || (isPlaylist ? '新歌单解析源' : isLyrics ? '新歌词源' : '新音乐源'),
+      name: name.trim() || (isLyrics ? '新歌词源' : '新音源'),
       apiUrl: apiUrl.trim(),
+      ...(!isLyrics && trimmedPlaylist ? { playlistUrl: trimmedPlaylist } : {}),
       headers,
     })
     onOpenChange(false)
@@ -314,14 +377,12 @@ function SourceAddDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">
-            {isPlaylist ? '添加歌单解析源' : isLyrics ? '添加歌词源' : '添加音乐源'}
+            {isLyrics ? '添加歌词源' : '添加音源'}
           </DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
-            {isPlaylist
-              ? '接口地址需包含 {url} 占位符（替换为歌单分享链接），保存后立即生效'
-              : isLyrics
-                ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
-                : '接口地址需包含 {query} 占位符，保存后立即生效'}
+            {isLyrics
+              ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
+              : '搜索接口需包含 {query}、歌单解析接口需包含 {url}；音源两个接口都填，搜索与歌单导入一次配好'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -330,22 +391,20 @@ function SourceAddDialog({
             <input
               type="text"
               value={name}
-              placeholder={isPlaylist ? '如：我的歌单解析接口' : isLyrics ? '如：LRCLIB' : '如：我的音乐接口'}
+              placeholder={isLyrics ? '如：LRCLIB' : '如：我的音源'}
               onChange={(e) => setName(e.target.value)}
               className={inputCls}
             />
           </div>
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">接口地址</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">{isLyrics ? '接口地址' : '搜索接口地址'}</p>
             <input
               type="text"
               value={apiUrl}
               placeholder={
-                isPlaylist
-                  ? 'https://your-api.com/resolve?url={url}'
-                  : isLyrics
-                    ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
-                    : 'https://your-api.com/search?q={query}'
+                isLyrics
+                  ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
+                  : 'https://your-api.com/search?q={query}'
               }
               onChange={(e) => setApiUrl(e.target.value)}
               className={`${inputCls} ${missingPlaceholders.length > 0 ? 'border-coral/60' : ''}`}
@@ -356,6 +415,25 @@ function SourceAddDialog({
               </p>
             )}
           </div>
+          {!isLyrics && (
+            <div>
+              <p className="font-text text-caption text-white/60 mb-1.5">歌单解析接口（可选）</p>
+              <input
+                type="text"
+                value={playlistUrl}
+                placeholder="https://your-api.com/resolve?url={url}"
+                onChange={(e) => setPlaylistUrl(e.target.value)}
+                className={`${inputCls} ${playlistInvalid ? 'border-coral/60' : ''}`}
+              />
+              {playlistInvalid ? (
+                <p className="font-text text-caption text-coral/70 mt-1">地址需包含占位符：{'{url}'}</p>
+              ) : (
+                <p className="font-text text-caption text-white/35 mt-1">
+                  填入后，导入歌单时可直接解析 QQ / 网易云等平台的歌单分享链接
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <p className="font-text text-caption text-white/60 mb-1.5">请求头（可选，JSON 对象）</p>
             <textarea
@@ -759,7 +837,8 @@ export function SettingsPage() {
       ? `手机存储/${downloadDir}`
       : `未设置（默认存入 手机存储/${DEFAULT_MOBILE_DOWNLOAD_DIR}）`
 
-  // 歌源配置（应用不内置任何源，音乐源/歌词源均由用户按协议配置）
+  // 音源与歌词源配置（应用不内置任何源，均由用户按协议配置）
+  // 一条音源可同时给出搜索（{query}）与歌单解析（{url}）两个接口
   const onlineSources = useLibraryStore((s) => s.onlineSources)
   const addOnlineSource = useLibraryStore((s) => s.addOnlineSource)
   const updateOnlineSource = useLibraryStore((s) => s.updateOnlineSource)
@@ -768,13 +847,8 @@ export function SettingsPage() {
   const addLyricsSource = useLibraryStore((s) => s.addLyricsSource)
   const updateLyricsSource = useLibraryStore((s) => s.updateLyricsSource)
   const removeLyricsSource = useLibraryStore((s) => s.removeLyricsSource)
-  // 歌单解析源（歌单导入：应用不内置任何平台抓取器，解析接口由用户按协议配置）
-  const playlistResolverSources = useLibraryStore((s) => s.playlistResolverSources)
-  const addPlaylistResolverSource = useLibraryStore((s) => s.addPlaylistResolverSource)
-  const updatePlaylistResolverSource = useLibraryStore((s) => s.updatePlaylistResolverSource)
-  const removePlaylistResolverSource = useLibraryStore((s) => s.removePlaylistResolverSource)
 
-  // 网络存储（WebDAV）来源：与上面三类「歌源」不同，这是会入库的持久曲库来源
+  // 网络存储（WebDAV）来源：与上面的在线音源不同，这是会入库的持久曲库来源
   const librarySources = useLibraryStore((s) => s.librarySources)
   const addLibrarySource = useLibraryStore((s) => s.addLibrarySource)
   const updateLibrarySource = useLibraryStore((s) => s.updateLibrarySource)
@@ -803,7 +877,6 @@ export function SettingsPage() {
   // 添加源弹窗开关：弹窗内校验通过后才写入 store，避免假地址被持久化
   const [addMusicOpen, setAddMusicOpen] = useState(false)
   const [addLyricsOpen, setAddLyricsOpen] = useState(false)
-  const [addPlaylistOpen, setAddPlaylistOpen] = useState(false)
 
   const handleCheckUpdate = async () => {
     if (checking) return
@@ -1218,12 +1291,15 @@ export function SettingsPage() {
           <section className="card-utility p-5">
             <h2 className="font-display text-tagline mb-4 text-white">在线源</h2>
             <div className="space-y-5">
-              {/* 音乐源：应用不内置任何源，全部由用户按协议配置 */}
+              {/* 音源：应用不内置任何源，全部由用户按协议配置。
+                  一条音源可同时给出搜索接口与歌单解析接口，歌单导入直接复用 */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <p className="font-text text-caption-strong text-white/80">音乐源</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">配置搜索接口，可添加多个</p>
+                    <p className="font-text text-caption-strong text-white/80">音源</p>
+                    <p className="font-text text-caption text-white/60 mt-0.5">
+                      一条音源可同时用于在线搜索与歌单导入，可添加多个
+                    </p>
                   </div>
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddMusicOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
@@ -1232,7 +1308,9 @@ export function SettingsPage() {
                 </div>
 
                 {onlineSources.length === 0 ? (
-                  <p className="font-text text-caption text-white/50 px-1 py-1">尚未配置，在线搜索暂不可用</p>
+                  <p className="font-text text-caption text-white/50 px-1 py-1">
+                    尚未配置，在线搜索与歌单链接导入暂不可用（纯文本导入不受影响）
+                  </p>
                 ) : (
                   <div className="space-y-2.5">
                     {onlineSources.map((src) => (
@@ -1240,9 +1318,11 @@ export function SettingsPage() {
                         key={src.id}
                         name={src.name}
                         apiUrl={src.apiUrl}
+                        playlistUrl={src.playlistUrl}
                         headers={src.headers}
                         enabled={src.enabled}
                         placeholderUrl="https://your-api.com/search?q={query}"
+                        playlistPlaceholderUrl="https://your-api.com/resolve?url={url}"
                         kind="music"
                         onUpdate={(updates) => updateOnlineSource(src.id, updates)}
                         onRemove={() => removeOnlineSource(src.id)}
@@ -1285,43 +1365,6 @@ export function SettingsPage() {
                   </div>
                 )}
               </div>
-
-              {/* 歌单解析源：歌单导入时解析分享链接；应用不内置任何平台抓取器 */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="font-text text-caption-strong text-white/80">歌单解析源</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">
-                      导入歌单时把分享链接解析为歌曲列表；不配置也可用纯文本粘贴导入
-                    </p>
-                  </div>
-                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddPlaylistOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    添加
-                  </Button>
-                </div>
-
-                {playlistResolverSources.length === 0 ? (
-                  <p className="font-text text-caption text-white/50 px-1 py-1">尚未配置，分享链接导入不可用（纯文本导入不受影响）</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {playlistResolverSources.map((src) => (
-                      <SourceEditorCard
-                        key={src.id}
-                        name={src.name}
-                        apiUrl={src.apiUrl}
-                        headers={src.headers}
-                        enabled={src.enabled}
-                        placeholderUrl="https://your-api.com/resolve?url={url}"
-                        kind="playlist"
-                        onUpdate={(updates) => updatePlaylistResolverSource(src.id, updates)}
-                        onRemove={() => removePlaylistResolverSource(src.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
             </div>
           </section>
 
@@ -1410,12 +1453,6 @@ export function SettingsPage() {
         kind="lyrics"
         onOpenChange={setAddLyricsOpen}
         onSave={(source) => addLyricsSource({ ...source, enabled: true })}
-      />
-      <SourceAddDialog
-        open={addPlaylistOpen}
-        kind="playlist"
-        onOpenChange={setAddPlaylistOpen}
-        onSave={(source) => addPlaylistResolverSource({ ...source, enabled: true })}
       />
       <LibrarySourceAddDialog
         open={addLibraryOpen}

@@ -100,7 +100,7 @@ export function PlaylistPage() {
     }
     const playable = await ensurePlayableTrack(track)
     if (!playable) {
-      toast('无法播放该在线歌曲：未配置音乐源或搜索无结果', { type: 'error' })
+      toast('无法播放该在线歌曲：未配置音源或搜索无结果', { type: 'error' })
       return
     }
     const queue = playlistTracks.map((t) => (t.id === playable.id ? playable : t))
