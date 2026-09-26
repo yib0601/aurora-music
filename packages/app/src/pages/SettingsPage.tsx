@@ -1229,7 +1229,7 @@ export function SettingsPage() {
     }>
       <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
         <div className="w-full max-w-[720px] mx-auto space-y-5 pb-8">
-          <section className="card-utility p-5">
+          <section className="card-list p-5">
             <h2 className="font-display text-tagline mb-4 text-white">通用</h2>
             <div className="space-y-6">
               <div>
@@ -1295,7 +1295,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          <section className="card-utility p-5">
+          <section className="card-list p-5">
             <h2 className="font-display text-tagline mb-4 text-white">音乐库</h2>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1366,7 +1366,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          <section className="card-utility p-5">
+          <section className="card-list p-5">
             <h2 className="font-display text-tagline mb-4 text-white">下载</h2>
             <div className="space-y-4">
               <div>
@@ -1419,7 +1419,7 @@ export function SettingsPage() {
 
           {/* 在线播放缓存：仅桌面端有主进程磁盘缓存实现 */}
           {supportsAudioCache && (
-            <section className="card-utility p-5">
+            <section className="card-list p-5">
               <h2 className="font-display text-tagline mb-4 text-white">播放缓存</h2>
               <div className="space-y-4">
                 <div>
@@ -1467,7 +1467,7 @@ export function SettingsPage() {
             </section>
           )}
 
-          <section className="card-utility p-5">
+          <section className="card-list p-5">
             <h2 className="font-display text-tagline mb-4 text-white">在线源</h2>
             <div className="space-y-5">
               {/* 音源：应用不内置任何源，全部由用户按协议配置。
@@ -1548,7 +1548,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          <section className="card-utility p-5">
+          <section className="card-list p-5">
             <h2 className="font-display text-tagline mb-4 text-white">软件更新</h2>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
