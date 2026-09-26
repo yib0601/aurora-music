@@ -75,7 +75,7 @@ export function MobileNav() {
       {/* 左侧抽屉菜单 */}
       <aside
         className={cn(
-          'md:hidden fixed top-0 left-0 bottom-0 z-[70] w-[280px] glass-regular flex flex-col transition-transform duration-300 ease-apple border-r border-white/5',
+          'md:hidden fixed top-0 left-0 bottom-0 z-[70] w-[280px] glass-regular glass-flush-top flex flex-col transition-transform duration-300 ease-apple border-r border-white/5',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
