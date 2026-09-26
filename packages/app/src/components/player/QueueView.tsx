@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { X, Music2, Trash2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
+import { useOpenSongDetail } from '@/lib/navigation'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { CoverImage } from '@/components/common/CoverImage'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
@@ -12,7 +12,8 @@ import { cn, formatTime, isDesktop } from '@/lib/utils'
  * - 当前曲目用 mint 发丝描边 + 极轻底色标识，不再用大面积色块与投影
  */
 export function QueueView() {
-  const navigate = useNavigate()
+  // 已在详情页时不重复 push 同路径，避免返回按钮「退回」同一页
+  const openSongDetail = useOpenSongDetail()
   const queue = usePlayerStore((s) => s.queue)
   const currentIndex = usePlayerStore((s) => s.currentIndex)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -80,7 +81,7 @@ export function QueueView() {
                 <button
                   onClick={() => {
                     // 桌面端进详情；移动端与点击播放条一致：播放该曲并打开全屏 Now Playing 浮层（不推进路由）
-                    if (isDesktop()) navigate(`/song/${track.id}`)
+                    if (isDesktop()) openSongDetail(track.id)
                     else {
                       handlePlayTrack(idx)
                       usePlaylistStore.getState().setMobileNowPlaying(true)

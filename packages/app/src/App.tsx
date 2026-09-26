@@ -43,6 +43,7 @@ import {
   type UpdateInfo,
 } from '@/services/update.service'
 import { cn, isMobile, isDesktop } from '@/lib/utils'
+import { useOpenSongDetail } from '@/lib/navigation'
 import type { Track, FolderPickerOptions } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
@@ -77,6 +78,8 @@ function flushScannedTracks() {
 function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  // 右瓷砖封面入口：已在详情页时不重复 push 同路径
+  const openSongDetail = useOpenSongDetail()
   // 移动端全屏 Now Playing 视图：开关放全局 store，播放条与歌曲封面点击共用同一入口
   const nowPlayingOpen = usePlaylistStore((s) => s.mobileNowPlayingOpen)
   const setMobileNowPlaying = usePlaylistStore((s) => s.setMobileNowPlaying)
@@ -939,7 +942,7 @@ function AppLayout() {
                   <div className="p-6 flex flex-col gap-4">
                     {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
                     <button
-                      onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
+                      onClick={() => currentTrack && openSongDetail(currentTrack.id)}
                       title="查看歌曲详情"
                       disabled={!currentTrack}
                       className="relative aspect-square rounded-ds-card bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02] disabled:hover:scale-100"

@@ -17,6 +17,7 @@ import { loadLyricsForTrack } from '@/services/lyrics.service'
 import { ensurePlayableTrack } from '@/services/playlistIO.service'
 import { toast } from '@/components/common/Toast'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
+import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
 import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -154,6 +155,10 @@ function VinylCover({ track, spinning }: { track: Track; spinning: boolean }) {
 export function SongDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // 返回兜底：历史栈底（冷启动直达详情等）时 navigate(-1) 是 no-op，回主屏
+  const goBack = useGoBack()
+  // 专辑列表点当前曲不重复 push 同路径，避免返回时「退回」同一页
+  const openSongDetail = useOpenSongDetail()
   // 同专辑曲目列表用去重后的曲库：同一首歌在多来源都有时只列一份，
   // 否则详情页的「来自专辑」会重复出现同一首
   const { tracks } = useDisplayTracks()
@@ -290,7 +295,7 @@ export function SongDetailPage() {
             {tracks.length === 0 ? '请稍候，音乐库正在加载' : '歌曲可能已被移除'}
           </p>
           <button
-            onClick={() => navigate(-1)}
+            onClick={goBack}
             className="pill pill-lg pill-mint"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
@@ -309,7 +314,7 @@ export function SongDetailPage() {
       <div className="relative mx-auto w-full max-w-[1160px] 2xl:max-w-[1400px] px-4 md:px-8 pt-4 md:pt-[76px] pb-32">
         {/* 返回：圆形玻璃按钮，绝对定位悬浮左上角，与 Hero 同行，不独占一行以压缩纵向空间 */}
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           aria-label="返回"
           title="返回"
           className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-[60px] z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
@@ -516,7 +521,7 @@ export function SongDetailPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        navigate(`/song/${t.id}`)
+                        openSongDetail(t.id)
                       }}
                       className="w-10 h-10 rounded-[10px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden transition-transform duration-200 ease-apple hover:scale-105"
                       title="查看歌曲详情"
@@ -528,7 +533,7 @@ export function SongDetailPage() {
                       />
                     </button>
                     <button
-                      onClick={() => navigate(`/song/${t.id}`)}
+                      onClick={() => openSongDetail(t.id)}
                       className="flex-1 min-w-0 text-left"
                     >
                       <p

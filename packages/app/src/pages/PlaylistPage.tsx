@@ -29,6 +29,7 @@ import {
   resolvePlayableTracks,
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
+import { useGoBack } from '@/lib/navigation'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
@@ -41,6 +42,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 export function PlaylistPage() {
+  // 返回兜底：历史栈底时 navigate(-1) 是 no-op，回主屏
+  const goBack = useGoBack()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const playlists = usePlaylistStore((s) => s.playlists)
@@ -141,7 +144,7 @@ export function PlaylistPage() {
         <div className="flex items-center justify-between mb-4">
           <button
             className="btn-icon"
-            onClick={() => navigate(-1)}
+            onClick={goBack}
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.7} />
           </button>

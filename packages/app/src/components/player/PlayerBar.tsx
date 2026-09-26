@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import { cn, formatTime, isMobile } from '@/lib/utils'
+import { useOpenSongDetail } from '@/lib/navigation'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
@@ -55,7 +55,8 @@ export function PlayerBar({
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
-  const navigate = useNavigate()
+  // 已在详情页时不重复 push 同路径，避免返回按钮「退回」同一页
+  const openSongDetail = useOpenSongDetail()
   const [seeking, setSeeking] = useState(false)
   const [seekValue, setSeekValue] = useState(0)
   const [seekingVolume, setSeekingVolume] = useState(false)
@@ -107,7 +108,7 @@ export function PlayerBar({
       // 空态（无当前歌曲）也允许展开全屏播放器，由它展示空态引导，
       // 避免「点哪都没反应」；有歌曲时展开全屏 Now Playing
       if (onOpenNowPlaying) onOpenNowPlaying()
-      else if (currentTrack) navigate(`/song/${currentTrack.id}`)
+      else if (currentTrack) openSongDetail(currentTrack.id)
     }
     return (
       <div
@@ -243,7 +244,7 @@ export function PlayerBar({
         {/* 左列：曲目信息（封面 + 标题 + 艺术家） */}
         <div className="flex items-center gap-3 min-w-0 justify-start">
           <button
-            onClick={() => currentTrack && navigate(`/song/${currentTrack.id}`)}
+            onClick={() => currentTrack && openSongDetail(currentTrack.id)}
             title="查看歌曲详情"
             className="w-[40px] h-[40px] min-[1500px]:w-12 min-[1500px]:h-12 rounded-[10px] flex-shrink-0 overflow-hidden bg-white/[0.04] flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
             style={{
