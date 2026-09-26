@@ -42,27 +42,27 @@ export {
   extractShareUrl,
   resolvePlaylistUrl,
   parsePlaylistLink,
-  playlistEndpointOf,
 } from './playlistResolver'
 export type { PlaylistCapableSource } from './playlistResolver'
-export { mergeLegacyPlaylistSources } from './sourceMigration'
+export { mergeLegacyPlaylistSources, migrateOnlineSources, migrateLyricsSources } from './sourceMigration'
 export {
-  AURORA_PRESET,
   AURORA_ENDPOINT_FALLBACK,
   normalizeSourceBase,
   apiKeyFromUrl,
-  detectAuroraSource,
   parseSourceInput,
-  looksLikeEndpointInput,
+  checkSourceForm,
+  searchEndpointOf,
+  playlistEndpointOf,
   buildAuroraEndpoints,
-  composeAuroraSource,
   parseAuroraEndpoints,
   probeAuroraService,
 } from './auroraPreset'
 export type {
   AuroraEndpoints,
-  AuroraSourceForm,
-  ComposedAuroraSource,
+  AuroraSourceKind,
+  ParsedSourceInput,
+  AuroraFormCheck,
+  SourceEndpointInput,
   AuroraProbeResult,
 } from './auroraPreset'
 export type { TrackIdentityFields, DuplicateGroup } from './trackIdentity'

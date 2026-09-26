@@ -2,7 +2,7 @@ import type { Track, Playlist } from '@/types'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { scoreOnlineResult, matchTracksByPaths } from '@aurora/shared'
+import { scoreOnlineResult, matchTracksByPaths, searchEndpointOf } from '@aurora/shared'
 import type { OnlineTrackSearchResult } from '@/types'
 
 // 路径匹配（含「不得跨来源串味」的规则）实现在 @aurora/shared/src/importMatch.ts，
@@ -102,7 +102,7 @@ const PLAY_RESOLVE_CONCURRENCY = 4
 export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
   if (track.path || track.onlineUrl) return track
   const { onlineSources, downloadQuality } = useLibraryStore.getState()
-  if (!onlineSources.some((s) => s.enabled && s.apiUrl)) return null
+  if (!onlineSources.some((s) => s.enabled && searchEndpointOf(s))) return null
   try {
     const results = await platform.searchOnlineTracks(
       `${track.title} ${track.artist}`.trim(),

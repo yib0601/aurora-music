@@ -15,7 +15,7 @@ const DEFAULT_HEADERS: Record<string, string> = {
 export const BUILTIN_LYRICS_SOURCE: LyricsSourceConfig = {
   id: 'builtin-lrclib',
   name: '内置歌词源',
-  apiUrl: 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}',
+  sourceUrl: 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}',
   enabled: true,
 }
 
@@ -58,7 +58,7 @@ function toCandidate(item: any, fallbackName: string, fallbackArtist: string): L
 
 /**
  * 单个歌词源搜索（协议执行器核心）
- * - apiUrl 占位符替换：{track}/{query} 歌曲名、{artist} 艺术家、{album} 专辑、{duration} 时长（秒）
+ * - sourceUrl 占位符替换：{track}/{query} 歌曲名、{artist} 艺术家、{album} 专辑、{duration} 时长（秒）
  * - 多条候选时优先带时间标签的歌词，同优先级中选时长最接近的
  */
 export async function searchLyricsSource(
@@ -68,11 +68,11 @@ export async function searchLyricsSource(
   album?: string,
   duration?: number
 ): Promise<LyricsSearchResult | null> {
-  if (!source.apiUrl || !/\{(track|query)\}/.test(source.apiUrl)) {
+  if (!source.sourceUrl || !/\{(track|query)\}/.test(source.sourceUrl)) {
     throw new Error(`歌词源「${source.name}」的接口地址无效，必须包含 {track} 或 {query} 占位符`)
   }
 
-  const url = source.apiUrl
+  const url = source.sourceUrl
     .replace(/\{track\}/g, encodeURIComponent(query))
     .replace(/\{query\}/g, encodeURIComponent(query))
     .replace(/\{artist\}/g, encodeURIComponent(artist || ''))
@@ -126,7 +126,7 @@ export async function searchLyrics(
   const trimmed = (query || '').trim()
   if (!trimmed) return null
   const userSources = (options?.sources || []).filter(
-    (s) => s && s.enabled && s.apiUrl && s.id !== BUILTIN_LYRICS_SOURCE.id
+    (s) => s && s.enabled && s.sourceUrl && s.id !== BUILTIN_LYRICS_SOURCE.id
   )
   // 用户源优先，末尾追加内置源兜底
   const sources: LyricsSourceConfig[] = [...userSources, BUILTIN_LYRICS_SOURCE]
