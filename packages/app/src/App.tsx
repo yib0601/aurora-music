@@ -814,7 +814,8 @@ function AppLayout() {
               'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
               // 弱化分割线：去掉右侧 hairline 与玻璃顶边高亮，
               // 侧栏靠玻璃底色与内容区自然区分，不再用线条切割
-              'glass-regular shadow-none',
+              // （顶边高亮由 glass-flush-top 移除，否则裸露成窗口上沿白线）
+              'glass-regular glass-flush-top shadow-none',
               isSongDetail ? 'w-0' : 'w-56',
             )}
           >
@@ -928,7 +929,7 @@ function AppLayout() {
                 className={cn(
                   'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
                   // 与左侧栏一致：弱化分割线，靠玻璃底色区分区域
-                  'glass-regular shadow-none',
+                  'glass-regular glass-flush-top shadow-none',
                   currentTrack && !isSongDetail ? 'w-72' : 'w-0',
                   'hidden lg:block',
                 )}
