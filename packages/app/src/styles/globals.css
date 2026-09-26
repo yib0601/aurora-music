@@ -125,6 +125,9 @@
      * 数值经并排实测校准：alpha 过低（.20/.08）玻璃发平无厚度，
      * 过高（.44/.22）退化成描边；.34/.18 是「有厚度但不描边」的最佳点。 */
     --glass-liquid-edge: inset 0 1px 0 0 rgba(255,255,255,.34), inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
+    /* 贴窗口顶沿的玻璃（侧栏/右栏/移动抽屉）：顶边锐亮线会裸露成
+     * 窗口上沿的白线，只保留底部柔折返光。见 .glass-flush-top。 */
+    --glass-liquid-edge-flush-top: inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
 
     /* 表面层（DS 中性灰阶：surface-1 hsla(0,0%,100%,.06) / surface-2 .04）
      * ⚠️ 卡片的底色必须与玻璃族同源（低 alpha 冷黑压暗 + 白提亮），不能是「半透明中性灰」：
@@ -336,6 +339,7 @@
     /* 浅色下厚度层同样收敛：亮背景上白色高光的对比差本就小，
      * 给太强会出现明显白边。 */
     --glass-liquid-edge: inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
+    --glass-liquid-edge-flush-top: inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
 
     --saved-panel-glass-bg: rgba(255,255,255,.42);
     --saved-panel-glass-shadow: 0 8px 24px rgba(20,40,70,.10), inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
@@ -543,6 +547,12 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     border-radius: inherit;
     pointer-events: none;
     box-shadow: var(--glass-liquid-edge);
+  }
+
+  /* 贴窗口顶沿的玻璃修饰类：顶部 1px 锐亮线在窗口上沿裸露成白线
+   * （侧栏/右栏/移动抽屉从 y=0 铺满），换用只含底部折返光的厚度层。 */
+  .glass-flush-top::before {
+    box-shadow: var(--glass-liquid-edge-flush-top);
   }
 }
 
