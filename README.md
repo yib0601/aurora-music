@@ -1,11 +1,12 @@
-# Aurora Music ⛅
+# Aurora Music
 
 <p align="center">
   <img src="./packages/desktop/resources/icon.svg" alt="Aurora Music 图标" width="128">
 </p>
 
 <p align="center">
-  <strong>Aurora Music</strong> — 一款跨平台的音乐播放器，基于 Electron + React + Vite 构建，移动端通过 Capacitor 打包为 Android 应用。
+  <strong>Aurora Music</strong> — 跨平台音乐播放器，覆盖 <strong>桌面（Linux / Windows / macOS）与 Android</strong>。<br/>
+  桌面端基于 Electron + React + Vite，移动端由 Capacitor 打包、原生播放引擎接管播放，一套 UI 代码多端一致。
 </p>
 
 <p align="center">
@@ -16,359 +17,112 @@
 
 ## 截图
 
-**音乐库** — 本地歌曲列表、专辑封面与右侧 Now Playing 面板
+**桌面端** — 音乐库 / 播放详情 / 设置（在线音源）
 
-![音乐库](./screenshots/library.png)
+<p align="center">
+  <img src="./screenshots/library.jpg" width="760" alt="音乐库">
+</p>
 
-**播放详情** — 黑胶唱片视觉、动态歌词与沉浸背景
+<table align="center"><tr>
+  <td><img src="./screenshots/detail.jpg" width="520" alt="播放详情"></td>
+  <td><img src="./screenshots/settings.jpg" width="520" alt="设置"></td>
+</tr></table>
 
-![播放详情](./screenshots/detail.png)
+**Android** — 原生播放引擎，锁屏与通知栏媒体控制
 
-**设置 · 在线搜索** — 自定义音源（搜索 + 歌单解析）与歌词源（协议见[歌源协议规范](#歌源协议规范)）
-
-![设置](./screenshots/settings.png)
+<p align="center">
+  <img src="./screenshots/android-playing.jpg" width="280" alt="Android 锁屏播放">
+</p>
 
 ---
 
 ## 特性
 
-### 播放与音乐库
+跨平台能力对照：
 
-- 🎵 **本地音乐播放** — 扫描本地文件夹，渐进式入库（边扫描边显示，无需等待全部解析完成）
-- 🗄️ **远端媒体库（WebDAV）** — 挂载群晖 / 威联通 / Nextcloud / rclone 等标准 WebDAV 服务，浏览并播放远端曲目，扫描入库后长期保留（桌面端）
-- 📥 **歌单导入** — 粘贴其他平台的歌单分享链接（经自配音源的歌单解析接口解析）或纯文本（本地处理、零网络请求），自动匹配本地曲库，跨来源防串味
-- 🔀 **智能播放控制** — 顺序/随机/单曲循环，播放队列管理与去重
-- 📜 **歌词滚动** — 同步显示歌词（LRC 格式，含逐字尖括号时间戳），支持配置多个在线歌词源自动匹配
-- 📊 **音频可视化** — 内置频谱可视化器，动态主题色提取
-- 🔍 **快速搜索** — 按标题、艺术家、专辑搜索，附带历史搜索记录
-- ❤️ **收藏与最近播放** — 标记喜爱的歌曲，追踪播放历史与播放次数
-- 🌐 **在线搜索与下载** — 按歌源协议配置音源后，可在线搜索、试听并下载歌曲到本地音乐库（启动时可自动恢复在线歌曲播放）
+| 能力 | 桌面（Linux / Windows / macOS） | Android |
+|---|---|---|
+| 本地播放 | 扫描文件夹、渐进式入库 | 系统文件夹导入、存储权限引导 |
+| 后台播放 | 关闭窗口最小化到托盘继续播放 | MediaSession 前台服务，锁屏/后台稳定播放、深度灭屏恢复进度 |
+| 在线搜索 | 搜索 / 试听 / 下载 / 播放缓存（容量可调、一键清空） | 搜索 / 试听 / 下载，下载目录可配置 |
+| 应用内更新 | 按平台推荐安装包（EXE / RPM / DEB / AppImage / DMG），下载可收起、一键安装 | 原生后台线程下载（不依赖 DownloadManager），调起系统安装器 |
 
-### 外观
+各平台通用：
 
-- 🎨 **毛玻璃美学** — 沉浸式 Liquid Glass UI，动态封面柔光背景
-- 🌗 **主题系统** — 深色 / 浅色 / 跟随系统三档切换，状态栏颜色自动同步
-
-### 桌面端
-
-- 🪟 **无边框窗口** — 自定义标题栏与边缘缩放，原生级窗口体验
-- 📍 **系统托盘** — 关闭窗口最小化到托盘继续播放
-- 🖥️ **跨平台** — Linux / Windows / macOS
-
-### 移动端（Android）
-
-- 📱 **原生播放引擎** — MediaSession 前台服务，锁屏/后台稳定播放不中断
-- 🔒 **锁屏控件** — 系统锁屏界面与通知栏媒体控制，深度灭屏后自动恢复播放进度
-- 📂 **文件夹导入** — 系统文件夹选择器导入音乐，未授权存储权限时自动引导
-- ⬅️ **返回键分层处理** — 先关浮层再退路由，主屏二次确认退出
-- 🎛️ **移动端适配 UI** — 汉堡导航、全屏 Now Playing 页面
-
-### 其他
-
-- ⬆️ **应用内更新** — 启动时检查新版本并展示更新横幅，按平台推荐匹配的安装包（Windows 给 EXE、Fedora/RHEL 系给 RPM、Debian/Ubuntu 系给 DEB、便携运行给 AppImage、macOS 按芯片给 arm64/x64 的 DMG、Android 给 APK）。桌面端与 Android 均支持应用内下载（进度对话框，下载可收起后台继续），下载源按「GitHub 官方 → 公共加速前缀」自动降级；桌面端可一键安装（macOS 会挂载 dmg，拖入「应用程序」即完成覆盖），Android 下载完成后调起系统安装器
-- 📲 **Android 内置更新** — 下载在原生后台线程进行（不依赖系统 DownloadManager，定制 ROM 缺失该服务也能用），APK 落在应用私有目录无需存储权限；未授予「安装未知应用」时自动引导到系统授权页
+- **音乐库** — 收藏、最近播放、播放次数、快速搜索、队列管理与顺序/随机/单曲循环
+- **歌词** — LRC 同步歌词（含逐字时间戳），多个在线歌词源自动匹配
+- **歌单导入** — 分享链接（经音源解析）或纯文本（本地处理、零网络请求），自动匹配本地曲库
+- **WebDAV 远端媒体库** — 挂载群晖 / 威联通 / Nextcloud / rclone，扫描入库长期保留（桌面端）
+- **外观** — Liquid Glass 毛玻璃美学、动态封面柔光背景、深色 / 浅色 / 跟随系统主题
+- **更新下载多源降级** — GitHub 官方直连失败时自动切换公共加速前缀
 
 ---
 
-## 歌源协议规范
+## 歌源协议
 
-应用不内置任何音源 / 歌词源 / 歌单抓取器，在线搜索、歌词匹配与歌单分享链接解析均依赖用户自行配置的 HTTP 接口（设置 → 在线搜索）。
+应用不内置任何音源 / 歌词源，在线搜索、歌词匹配与歌单解析均依赖用户自行配置的 HTTP 接口（设置 → 在线搜索）。
 
 ### 音源
 
-一条音源可同时提供两种能力，搜索与歌单解析共用同一条配置、同一个启用开关。**只需填一条链接**，形态由链接自身判定：
+只填一条链接，形态由链接自身判定：
 
-**服务地址**（推荐）：填服务地址，搜索与歌单解析接口由应用自动生成：
+- **服务地址**（推荐）：端点自动生成——搜索 `{服务地址}/aurora?query={query}&quality={quality}&key={密钥}`，歌单 `{服务地址}/aurora/playlist?url={url}&key={密钥}`。应用优先读服务端的端点自描述（`GET {服务地址}/` 响应里的 `endpoints` 字段），读不到按默认约定组装；「测试连接」会校验连通性与密钥。密钥直接写在链接里即可（如 `https://host?key=xxx`）。
+- **接口模板**：链接含 `{query}` 占位符时原样使用，适配第三方接口。响应为 JSON（数组或 `{results:[]}` / `{data:[]}` / `{songs:[]}` / `{list:[]}` 包裹）；每项 `audioUrl` 必填，`title` / `artist` / `album` / `duration`（秒）/ `coverUrl` 可选；多音质用 `qualityUrls` 或 `url_128` / `url_320` / `url_flac`。
+- **歌单解析接口**（可选）：含 `{url}` 占位符才参与歌单导入；每项 `title` / `artist`（兼容 `name` / `songName` / `singer`），可选 `name` 提供歌单标题。
+- 请求头为可选 JSON 对象，用于鉴权或特定 Referer / User-Agent。
 
-```
-搜索  {服务地址}/aurora?query={query}&quality={quality}&key={密钥}
-歌单  {服务地址}/aurora/playlist?url={url}&key={密钥}
-```
-
-- 密钥写在链接里即可，如 `https://music.lighthouses.top?key=xxx`；服务端未开鉴权则不必带。配置里只留这条链接，两个端点地址在搜索 / 歌单导入时才解析组装，不预先固化。
-- 迁移前的老配置（含 `{query}` 与 `key=` 的完整接口地址）直接粘进来即可，应用会剥出服务地址与密钥。
-- 应用先读服务端的**端点自描述**（`GET {服务地址}/` 的 `endpoints.search` / `endpoints.playlist`）再组装；读到就缓存进配置，服务端改路径或参数名时客户端无需改配置，读不到则用上面的默认约定。
-- 「测试连接」会请求根路径与 `/health`，确认服务在线、密钥有效，并展示组装出的两个地址。
-
-**接口模板**：链接含 `{query}` 占位符、且不是本协议端点路径时按模板原样使用，适用于第三方接口或子路径部署：
-
-- **搜索接口**：地址需包含 `{query}` 占位符（搜索时替换为 URL 编码后的关键词）；可选 `{quality}` 占位符（替换为下载音质设置：128 / 320 / flac）。
-  - 响应为 JSON，支持数组或 `{results:[]}` / `{data:[]}` / `{songs:[]}` / `{list:[]}` 包裹。
-  - 每项字段：`audioUrl`（必填）、`title` / `artist` / `album` / `duration`（秒）/ `coverUrl`。
-  - 可选多音质地址 `qualityUrls: { "128": url, "320": url, "flac": url }` 或扁平字段 `url_128` / `url_320` / `url_flac`，下载时按音质设置挑选。
-- **歌单解析接口**（可选）：地址需包含 `{url}` 占位符（导入歌单时替换为 URL 编码后的分享链接）。
-  - 响应为 JSON，支持数组或 `{results:[]}` / `{data:[]}` / `{songs:[]}` / `{list:[]}` 包裹；可选 `name` 字段提供歌单标题。
-  - 每项字段：`title` / `artist`（兼容 `name` / `songName` / `singer`）。
-  - 填了才参与歌单导入；只做歌单解析的音源可以把搜索接口留空。
-
-> 搜索与歌单解析合并前是两份独立配置（v0.4.x 的「歌单解析源」）；升级后自动迁移——同一服务的解析地址会并入对应音源，其余转为只做歌单解析的音源条目。
+> v0.4.x 的独立「歌单解析源」配置在升级后自动迁移为新形态。
 
 ### 歌词源
 
-- 接口地址占位符 `{track}`（歌曲名）/ `{artist}` / `{album}` / `{duration}`（秒）。
-- 响应支持单对象或数组，歌词字段兼容 `syncedLyrics` / `lrc` / `plainLyrics`。
+占位符 `{track}`（歌曲名）/ `{artist}` / `{album}` / `{duration}`（秒）；歌词字段兼容 `syncedLyrics` / `lrc` / `plainLyrics`。
 
-### 请求头
+### WebDAV 媒体库（桌面端）
 
-请求头为可选 JSON 对象，用于需要鉴权或特定 Referer / User-Agent 的接口。
-
-### 网络存储（WebDAV）来源
-
-与上述在线音源不同，这是会入库的持久曲库来源（设置 → 媒体库，仅桌面端）：
-
-- 支持标准 WebDAV 服务：群晖、威联通、Nextcloud、`rclone serve webdav` 等。
-- 配置项：服务器地址、用户名、口令与自定义请求头；添加后可先「测试连接」，再扫描入库。
-- 口令仅保存在本机配置中，不会写入曲库、也不会出现在播放地址里（远端请求由主进程代理）。
-- 移除来源时会连同该来源的曲目一起从音乐库删除（远端文件不受影响）。
+与在线音源不同，这是入库的持久曲库来源：配置服务器地址、账号与口令，测试连接后扫描入库。口令仅存本机；移除来源会连同其曲目一起从音乐库删除（远端文件不受影响）。
 
 ---
 
 ## 快速开始
 
 ```bash
-# 克隆
-git clone https://github.com/yib0601/aurora-music.git
-cd aurora-music
-
-# 安装依赖（推荐 pnpm）
+git clone https://github.com/yib0601/aurora-music.git && cd aurora-music
 pnpm install
-
-# 重建原生模块（better-sqlite3）
-pnpm rebuild
-
-# 运行桌面应用（开发模式）
-pnpm dev
-
-# 或仅运行 Web UI
-pnpm dev:app
+pnpm rebuild          # 重建 better-sqlite3 原生模块
+pnpm dev              # 桌面端（Electron + Vite 热重载）
+pnpm dev:app          # 仅 Web UI
 ```
 
-### 环境要求
+代码为 pnpm monorepo：`packages/{app, desktop, mobile, shared}`。
 
-- **Node.js** >= 20.0.0
-- **pnpm** >= 9.15.0（npm 可用但不推荐）
-- Android 构建额外需要：JDK 17+、Android SDK（AGP 9.x）
+环境要求：Node.js ≥ 20、pnpm ≥ 9.15；Android 构建另需 JDK 17+ 与 Android SDK。
 
----
-
-## 项目结构
-
-```
-aurora-music/
-├── packages/
-│   ├── app/              # React Web UI（Vite + TailwindCSS + Zustand）
-│   │   ├── src/
-│   │   │   ├── components/   # UI 组件
-│   │   │   │   ├── layout/      # Sidebar / TitleBar / ResizeHandle
-│   │   │   │   ├── player/      # PlayerBar / QueueView
-│   │   │   │   ├── lyrics/      # 歌词滚动
-│   │   │   │   ├── visualizer/  # 音频可视化
-│   │   │   │   ├── mobile/      # 移动端组件（MobileFolderPicker 等）
-│   │   │   │   └── ui/          # Radix UI 基础组件
-│   │   │   ├── pages/        # 页面（Library, Search, Settings...）
-│   │   │   ├── stores/       # 状态管理（Zustand + useShallow）
-│   │   │   ├── hooks/        # useAudioVisualizer / useThemeColor
-│   │   │   ├── lib/          # colorExtractor / utils
-│   │   │   └── services/     # audio / lyrics / platform / update
-│   │   └── dist/             # 构建输出
-│   ├── desktop/          # Electron 桌面应用
-│   │   ├── src/
-│   │   │   ├── ipc/         # IPC 处理器（扫描、数据库、在线搜索、远端库、窗口控制）
-│   │   │   ├── main.ts      # Electron 主进程（无边框窗口 + 托盘）
-│   │   │   ├── preload.ts   # 上下文隔离 API 桥
-│   │   │   └── types.ts
-│   │   ├── resources/       # 图标 / .desktop 文件
-│   │   └── dist-electron/   # 编译输出
-│   ├── mobile/           # Capacitor 移动端（Android）
-│   │   ├── android/         # Android 原生工程
-│   │   │   └── app/src/main/java/com/aurora/music/
-│   │   │       ├── MainActivity.java
-│   │   │       ├── MediaPlaybackService.kt   # 前台服务 + 原生 MediaSession
-│   │   │       ├── MediaSessionPlugin.kt     # WebView ↔ 原生播放桥
-│   │   │       └── PermissionPlugin.kt       # 存储权限桥
-│   │   └── capacitor.config.ts
-│   └── shared/           # @aurora/shared：歌源协议规范与执行器、WebDAV 客户端、曲目身份识别
-├── scripts/              # 打包辅助脚本（postinst / postremove / build / APK 签名校验）
-├── build-rpm.sh          # RPM 打包脚本（基于 fpm）
-├── build-deb.sh          # DEB 打包脚本
-├── .github/workflows/    # CI：tag 触发 Release（Windows/Linux/Android）
-├── pnpm-workspace.yaml
-├── tsconfig.base.json
-└── package.json
-```
-
----
-
-## 技术栈
-
-| 层 | 技术 |
-|------|--------|
-| 前端框架 | React 18 + TypeScript |
-| 构建工具 | Vite 5 |
-| 样式 | TailwindCSS 3 + 毛玻璃效果 |
-| 状态管理 | Zustand 5（`useShallow` 订阅优化）|
-| 路由 | React Router 6（HashRouter 适配桌面端）|
-| UI 基础组件 | Radix UI + CVA + tailwindcss-animate |
-| 动画 | Framer Motion |
-| 音频引擎 | Howler.js + Web Audio API |
-| 桌面壳 | Electron 43（无边框 + 自定义缩放 + 托盘）|
-| 移动端 | Capacitor 6（Android 原生播放引擎 + MediaSession）|
-| 本地数据库 | better-sqlite3 / @capacitor-community/sqlite + music-metadata |
-| 歌源协议 | @aurora/shared（音源/歌词源协议规范与执行器、WebDAV 客户端）|
-| 包管理 | pnpm workspace monorepo |
-
----
-
-## 开发
+Android 构建：
 
 ```bash
-# Web UI 单独开发（浏览器）
-pnpm dev:app
-
-# Electron 桌面开发（热重载）
-pnpm dev:desktop
-
-# 构建
-pnpm build
-
-# 类型检查
-pnpm --filter @aurora/desktop typecheck
-```
-
-### Android 开发
-
-```bash
-# 1. 构建 Web 资源
 pnpm build:app
-
-# 2. 同步到 Android 工程（在 packages/mobile 目录执行）
 cd packages/mobile && npx cap sync android
-
-# 3. 编译 APK（debug）
-cd android && ./gradlew assembleDebug
-
-# 产物位于 packages/mobile/android/app/build/outputs/apk/debug/
+cd android && ./gradlew assembleDebug   # 产物在 app/build/outputs/apk/
 ```
 
-> 原生代码改动（MediaPlaybackService 等）只需重新执行 gradlew；Web 层改动需先 `build:app` 再 `cap sync`，否则会打包旧资源。
+> Web 层改动需先 `build:app` 再 `cap sync`，否则打包旧资源；原生代码改动只需重跑 gradlew。
 
-### 平台说明
+平台说明：
 
-- **Linux / Wayland**：仅支持 Wayland，请勿添加 `--ozone-platform=x11`（会导致崩溃）。AMD GPU 如遇渲染黑屏，应用已内置 `--disable-gpu` 启动参数解决。
-- **macOS**：dmg 分 `-arm64`（Apple Silicon）与 `-x64`（Intel）两份，按芯片选。安装包为 ad-hoc 签名、未经 Apple 公证（公证需付费开发者账号），首次打开会被 Gatekeeper 拦下：执行 `xattr -cr /Applications/Aurora-Music.app` 去掉下载隔离标记，或在「系统设置 → 隐私与安全性」底部点「仍要打开」。
-- 原生模块（better-sqlite3）切换 Node/Electron 版本后需运行 `pnpm rebuild`。
-
----
-
-## CI / CD
-
-仓库有两个 GitHub Actions 工作流，职责严格分开：
-
-| 工作流 | 触发条件 | 做什么 |
-| --- | --- | --- |
-| `ci.yml` | push 到任意分支、PR 到 `main`、手动 dispatch | 只校验，不发布 |
-| `release.yml` | 推送 `v*` tag、手动 dispatch | 构建全平台产物（Windows / Linux / macOS 双架构 / Android）并创建 GitHub Release |
-
-`ci.yml` 的两个任务：
-
-- **Typecheck & Build (app/desktop)** — `shared` 构建 + 三端类型检查（`shared` / `app` / `desktop` electron），再跑 `vite build` 与 electron 主进程编译，确认「类型对得上、包能构建出来」。
-- **Verify Android build & signing** — `cap sync` 后编译 debug APK，并用 `scripts/verify-apk-signature.sh` 校验签名指纹与版本号。签名密钥被换掉、版本号没跟着涨这类问题，历史上多次出现「CI 全绿、用户装不上」，现在会在 PR 阶段直接失败。
-
-tag 推送由 `ci.yml` 的 `tags-ignore` 让路给 `release.yml`，同一提交不会重复跑。
+- **Linux** 仅支持 Wayland；AMD GPU 渲染黑屏已内置 `--disable-gpu` 解决。
+- **macOS** dmg 按芯片分 `-arm64` / `-x64`；ad-hoc 签名、未经公证，首启被 Gatekeeper 拦截时执行 `xattr -cr /Applications/Aurora-Music.app`。
+- 切换 Node / Electron 版本后需重新 `pnpm rebuild`。
 
 ---
 
 ## 构建分发
 
-### Linux（RPM）
-
-项目自带 `build-rpm.sh` 打包脚本（基于 [fpm](https://github.com/jordansissel/fpm)），绕开 electron-builder 内置 fpm 在 Ubuntu 上的 rpmdb 写入问题。
-
-```bash
-# 1. 构建桌面应用（解包目录）
-pnpm --filter @aurora/desktop run build:dir
-
-# 2. 打包 RPM
-./build-rpm.sh
-
-# 3. 安装
-sudo rpm -Uvh --nodeps packages/desktop/release/Aurora-Music-<version>-1.x86_64.rpm
-
-# 启动
-Aurora-Music      # 终端
-# 或在应用菜单中查找 "Aurora Music"
-```
-
-安装后入口：`/opt/Aurora-Music/`，桌面项：`/usr/share/applications/Aurora-Music.desktop`。
-
-### Linux（其他格式）/ Windows
-
-```bash
-# electron-builder 默认产物
-pnpm build:desktop
-
-# 产物位于 packages/desktop/release/
-# - Linux: AppImage / deb（electron-builder）
-# - Windows: NSIS / portable
-```
-
-> ⚠️ Ubuntu 上 electron-builder 内置的 RPM 打包可能因 rpmdb.sqlite 写权限失败，建议使用上述 `build-rpm.sh` 脚本。
-
-### Android（APK）
-
-```bash
-# 完整流程（也可参考上节「Android 开发」）
-pnpm build:app
-cd packages/mobile && npx cap sync android
-cd android && ./gradlew assembleRelease   # 或 assembleDebug
-
-# 校验产物签名（发布前必做，CI 已自动执行）
-cd ../.. && bash scripts/verify-apk-signature.sh android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-> 推送 `v*` tag 会触发 GitHub Actions 自动构建全平台产物并发布 Release。
-> CI 会先用 `scripts/verify-apk-signature.sh` 校验 APK 签名与版本号，macOS 产物则用
-> `scripts/verify-macos-dmg.sh` 校验架构、ad-hoc 签名与版本号，不符即中止发布。
-
-#### 发布签名密钥（重要）
-
-所有版本的 APK 统一由仓库内的 `packages/mobile/android/app/aurora-music.keystore` 签名，
-证书 SHA-256 指纹固定为：
-
-```
-eb4e48a95587ed954789b81b20fc23689cc702e602ebac08050d308eabdb435b
-```
-
-> ⚠️ **该密钥文件必须永久保持不变。** 一旦缺失或被重新生成（哪怕别名、密码相同），
-> 所有已安装用户都会因签名不一致而无法覆盖升级，只能卸载重装。
-> `app/build.gradle` 在密钥缺失时会直接让构建失败，CI 也会校验指纹，以此杜绝静默换钥。
-
-版本号由发布流程注入：`versionCode = major*10000 + minor*100 + patch`（如 `0.1.8` → `108`），
-`versionName` 取自 tag。本地不带参数构建时回退为 `1` / `1.0`。
-
-#### 从 v0.1.4 及更早版本升级
-
-v0.1.4 及更早的 APK 由 CI 每次构建随机生成的调试密钥签名（**每个版本都不同**），因此无法覆盖安装。
-v0.1.5 起已改为固定发布密钥。从 v0.1.4 或更早版本升级时，需**先卸载旧版本再安装**（仅需一次）：
-
-```bash
-adb uninstall com.aurora.music   # 或在手机上长按图标 → 卸载
-```
-
-卸载会清除应用数据（音乐库索引、收藏、播放记录；本地音乐文件不受影响），
-重装后再点「添加目录」导入一次即可。
+- **桌面**：`pnpm build:desktop`，产物在 `packages/desktop/release/`（Linux AppImage / deb、Windows NSIS）；RPM 用自带的 `./build-rpm.sh`（绕开 electron-builder 内置 fpm 在 Ubuntu 上的 rpmdb 问题）。
+- **发布**：推送 `v*` tag 触发 GitHub Actions 自动构建全平台产物（Windows / Linux / macOS 双架构 / Android）并发布 Release，发布前自动校验 APK 签名与 macOS 产物。
+- **签名密钥**：APK 统一由仓库内固定的 `packages/mobile/android/app/aurora-music.keystore` 签名（SHA-256 `eb4e48a95587ed954789b81b20fc23689cc702e602ebac08050d308eabdb435b`），CI 每次校验指纹。该文件绝不可更换，否则存量用户无法覆盖升级；v0.1.4 及更早版本使用随机调试签名，升级到新版需卸载重装一次。
 
 ---
 
 ## 许可
 
-本项目采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)（**非商用协议**）。
-
-**中文摘要**（非法律意见，以协议原文为准）：
-
-- ✅ 允许：个人使用、学习、研究、二次修改与分发（须附带协议条款与版权声明）
-- ❌ 禁止：任何以商业为目的的使用、分发或衍生（包括但不限于商业运营、打包进商业产品、提供付费服务）
-- 公益、教育、公共研究等非营利组织的使用不受限制
-- 如需商业授权，请联系仓库作者
-
-> 注意：v0.4.2 及更早版本发布时采用 MIT 协议，那些已发布版本的授权不受本次变更影响；本协议自其后的版本起生效。
+[PolyForm Noncommercial License 1.0.0](./LICENSE)：允许个人使用、学习、二次修改与非商业分发；任何商业目的的使用需联系作者授权。v0.4.2 及更早的已发布版本仍按 MIT 授权。
