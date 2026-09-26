@@ -1,6 +1,6 @@
 {
   "name": "@aurora/mobile",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "license": "PolyForm-Noncommercial-1.0.0",
   "private": true,
   "dependencies": {
