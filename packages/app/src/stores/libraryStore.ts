@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { mergeLegacyPlaylistSources } from '@aurora/shared'
+import { mergeLegacyPlaylistSources, migrateLyricsSources, migrateOnlineSources } from '@aurora/shared'
 import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
@@ -36,7 +36,8 @@ interface LibraryState {
   /** 历史搜索记录（最新在前，最多保留 MAX_SEARCH_HISTORY 条） */
   searchHistory: string[]
   // 音源与歌词源配置（应用不内置任何源，全部由用户按协议配置）
-  // 音源一条可同时承载两种能力：apiUrl 搜索（{query}）+ playlistUrl 歌单解析（{url}）
+  // 音源一条可同时承载两种能力：搜索（{query}）与歌单解析（{url}），端点地址在执行时由
+  // sourceUrl 解析组装（服务地址由协议派生，第三方接口模板原样使用）
   onlineSources: OnlineSourceConfig[]
   lyricsSources: LyricsSourceConfig[]
   /**
@@ -281,6 +282,9 @@ export const useLibraryStore = create<LibraryState>()(
       // v8 新增在线播放缓存容量配置（audioCacheLimitMB，默认 1024MB）
       // v9 音源合并：独立的「歌单解析源」并入音源（OnlineSourceConfig.playlistUrl），
       //    同一服务的搜索与歌单解析落回同一条配置，删除 playlistResolverSources
+      // v10 音源地址归一：端点不再在保存时拼好，配置只留一条 sourceUrl（+ 可选歌单地址与
+      //     服务端端点缓存），端点改由执行时解析（auroraPreset 的 searchEndpointOf /
+      //     playlistEndpointOf）；preset / baseUrl / apiKey 三个回显字段随之消失
       migrate: (persisted: any, version: number) => {
         if (persisted) {
           if (version < 9) {
@@ -290,6 +294,10 @@ export const useLibraryStore = create<LibraryState>()(
               persisted.playlistResolverSources
             )
             delete persisted.playlistResolverSources
+          }
+          if (version < 10) {
+            persisted.onlineSources = migrateOnlineSources(persisted.onlineSources)
+            persisted.lyricsSources = migrateLyricsSources(persisted.lyricsSources)
           }
           if (version < 8) {
             if (typeof persisted.audioCacheLimitMB !== 'number') persisted.audioCacheLimitMB = 1024
@@ -317,7 +325,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 9,
+      version: 10,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

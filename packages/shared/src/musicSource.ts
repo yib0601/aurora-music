@@ -1,4 +1,5 @@
 import type { DownloadQuality, OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
+import { searchEndpointOf } from './auroraPreset'
 import { fetchWithTimeout } from './fetchWithTimeout'
 
 // 统一默认请求头（部分接口对 UA 敏感），可被源配置的 headers 覆盖
@@ -59,7 +60,8 @@ function extractQualityUrls(item: any): Partial<Record<DownloadQuality, string>>
 
 /**
  * 单个音乐源搜索（协议执行器核心）
- * - apiUrl 中 {query} 替换为 URL 编码后的搜索词；可选 {quality} 替换为音质档位（128/320/flac）
+ * - 端点由音源地址在执行时解析（searchEndpointOf），其中 {query} 替换为 URL 编码后的搜索词；
+ *   可选 {quality} 替换为音质档位（128/320/flac）
  * - 响应宽松解析：无播放地址的条目跳过，字段名多种命名兼容
  */
 export async function searchMusicSource(
@@ -67,11 +69,12 @@ export async function searchMusicSource(
   query: string,
   quality?: DownloadQuality
 ): Promise<OnlineTrackSearchResult[]> {
-  if (!source.apiUrl || !source.apiUrl.includes('{query}')) {
+  const endpoint = searchEndpointOf(source)
+  if (!endpoint.includes('{query}')) {
     throw new Error(`源「${source.name}」的接口地址无效，必须包含 {query} 占位符`)
   }
 
-  const url = source.apiUrl
+  const url = endpoint
     .replace('{query}', encodeURIComponent(query))
     .replace('{quality}', quality || '128')
   const resp = await fetchWithTimeout(
@@ -156,7 +159,7 @@ export async function searchOnlineTracks(
   options?: OnlineSearchOptions
 ): Promise<OnlineTrackSearchResult[]> {
   const trimmed = (query || '').trim()
-  const sources = (options?.sources || []).filter((s) => s && s.enabled && s.apiUrl)
+  const sources = (options?.sources || []).filter((s) => s && s.enabled && searchEndpointOf(s))
   if (!trimmed || sources.length === 0) return []
 
   const quality = options?.quality

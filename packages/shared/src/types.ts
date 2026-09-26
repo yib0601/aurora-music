@@ -2,11 +2,12 @@
  * Aurora Music 歌源协议规范 v1
  *
  * 音源：本应用不内置任何音源，只定义并执行以下声明式 HTTP 协议：
- * 用户在设置页配置源（HTTP 接口地址 + 可选请求头），应用按协议调用并解析响应。
- * **一条音源可同时提供两种能力**——在线搜索（apiUrl，含 {query}）与歌单解析
- * （playlistUrl，含 {url}）；音源服务用同一套地址同时给出两种接口时，填在同一张卡片里，
+ * 用户在设置页配置源（每个源一条地址 + 可选请求头），应用按协议调用并解析响应。
+ * **一条音源可同时提供两种能力**——在线搜索（含 {query}）与歌单解析（含 {url}）；
+ * 音源服务用同一套地址同时给出两种接口时，填在同一张卡片里，
  * 歌单导入即可直接使用，无需另配「歌单解析源」。
- * **标准音源**（preset='aurora'）：服务地址 + 密钥两栏即可，端点由 auroraPreset.ts 组装，
+ * **标准音源**：只填一条链接（服务地址，密钥可写在链接里），端点由 auroraPreset.ts
+ * 在执行时解析组装（searchEndpointOf / playlistEndpointOf），不预先固化到配置里；
  * 支持服务端自描述（GET / 的 endpoints），用户不必手写占位符。
  * 歌词源：协议同上，但额外内置一个兜底歌词源（LRCLIB），外部不可调整；
  * 用户配置的歌词源优先生效，全部未命中时才回退到内置源。
@@ -21,9 +22,12 @@ export interface OnlineSourceConfig {
   id: string
   name: string
   /**
-   * 搜索接口地址，需包含 {query} 占位符（调用时替换为 URL 编码后的搜索词）；
-   * 可选 {quality} 占位符（替换为用户设置的下载音质：128 / 320 / flac，
-   * 源不支持该占位符时音质设置对此源无效）。
+   * 音源地址：用户填的那条链接，也是本配置唯一的事实源。
+   * 端点地址在执行时才解析组装（见 auroraPreset.ts 的 searchEndpointOf / playlistEndpointOf）：
+   *   - 服务地址（裸域名 / …/aurora 端点 / 带 ?key= 密钥）→ 由软件按协议组装端点；
+   *   - 含 {query} 等占位符的接口模板 → 原样使用。
+   * 调用时 {query} 替换为 URL 编码后的搜索词；可选 {quality} 占位符
+   * （替换为用户设置的下载音质：128 / 320 / flac，源不支持该占位符时音质设置对此源无效）。
    * 留空表示该源只用于歌单解析、不参与在线搜索。
    * 响应需为 JSON，支持以下任一结构（容错解析）：
    *   1) 数组：[{...}]
@@ -36,25 +40,21 @@ export interface OnlineSourceConfig {
    * 可选 quality（该条音频实际音质声明）/ qualitySource（音频实际来源后端标识），
    * 用于可疑音源校正与行内展示
    */
-  apiUrl: string
+  sourceUrl: string
   /**
-   * 歌单解析接口地址，可选，需包含 {url} 占位符（调用时替换为 URL 编码后的歌单分享链接）。
-   * 与 apiUrl 同属一条音源：音源服务一个地址既给搜索又给歌单解析时，两者配在一起，
-   * 歌单导入直接可用。响应需为 JSON，支持数组或 { results:[] } / { data:[] } / { songs:[] }
-   * / { list:[] } 包裹；可选 name 字段提供歌单标题；
+   * 歌单解析接口地址（可选，需含 {url} 占位符）。
+   * 服务地址形态的该端点由软件派生，无需填写；只有接口模板形态（第三方解析服务）才手填。
+   * 与 sourceUrl 同属一条音源：音源服务一个地址既给搜索又给歌单解析时，歌单导入直接可用。
+   * 响应需为 JSON，支持数组或 { results:[] } / { data:[] } / { songs:[] } / { list:[] } 包裹；
+   * 可选 name 字段提供歌单标题；
    * 每项字段（宽松兼容）：title / name / songName；artist / singer / artists
    */
   playlistUrl?: string
   /**
-   * 「标准音源」形态标记：'aurora' 表示端点由「服务地址 + 密钥」自动组装
-   * （见 auroraPreset.ts）。apiUrl / playlistUrl 始终是执行时唯一读取的字段，
-   * 本字段与下面的 baseUrl / apiKey 只供设置页回显两栏表单。
+   * 服务端自描述的端点模板缓存（设置页「测试连接」读到才有）：
+   * 服务端改路径或参数名时客户端无需改配置；读到之前按默认约定组装。
    */
-  preset?: 'aurora'
-  /** preset='aurora' 时的服务地址，如 https://music.lighthouses.top（不含端点路径） */
-  baseUrl?: string
-  /** preset='aurora' 时的访问密钥，组装进端点地址的 key 参数 */
-  apiKey?: string
+  endpoints?: { search?: string; playlist?: string }
   /** 附加请求头（如鉴权 Token、Referer、User-Agent），同名头覆盖默认值 */
   headers?: Record<string, string>
   enabled: boolean
@@ -99,7 +99,7 @@ export interface LyricsSourceConfig {
    * 名称 = trackName || name || title；艺术家 = artistName || artist || singer；duration（秒）
    * 多条结果时优先带时间标签的歌词，其次时长最接近的
    */
-  apiUrl: string
+  sourceUrl: string
   /** 附加请求头（同名头覆盖默认值） */
   headers?: Record<string, string>
   enabled: boolean
