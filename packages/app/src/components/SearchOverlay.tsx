@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/context-menu'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { useDisplayTracks } from '@/hooks/useDisplayTracks'
+import { searchEndpointOf } from '@aurora/shared'
 import type { Track, OnlineTrackSearchResult, Playlist } from '@/types'
 
 /** 行 DOM 注册：键盘高亮移动时把目标行滚动到可视区 */
@@ -353,7 +354,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const downloadQuality = useLibraryStore((s) => s.downloadQuality)
   // 已启用的源（空数组 = 用户尚未配置任何源，搜索页需给出引导）
   const enabledSourceCount = useMemo(
-    () => onlineSources.filter((s) => s.enabled && s.apiUrl).length,
+    () => onlineSources.filter((s) => s.enabled && searchEndpointOf(s)).length,
     [onlineSources]
   )
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>()

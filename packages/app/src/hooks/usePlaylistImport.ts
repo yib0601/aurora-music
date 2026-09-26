@@ -10,6 +10,7 @@ import {
   matchTracksByNames,
   dedupeTracksForDisplay,
   scoreOnlineResult,
+  searchEndpointOf,
 } from '@aurora/shared'
 import type { Track, ParsedSong, OnlineTrackSearchResult } from '@/types'
 
@@ -127,7 +128,7 @@ export function usePlaylistImport() {
       setProgress([0, pending.length])
 
       const lib = useLibraryStore.getState()
-      const hasSource = lib.onlineSources.some((s) => s.enabled && s.apiUrl)
+      const hasSource = lib.onlineSources.some((s) => s.enabled && searchEndpointOf(s))
       let cursor = 0
 
       const worker = async () => {

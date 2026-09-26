@@ -1,17 +1,17 @@
 import {
   extractShareUrl,
-  playlistEndpointOf,
   parsePlaylistLink,
   resolvePlaylistUrl,
 } from '../playlistResolver'
+import { playlistEndpointOf } from '../auroraPreset'
 import { setCustomFetch } from '../fetchWithTimeout'
-import type { OnlineSourceConfig, PlaylistResolverConfig } from '../types'
+import type { OnlineSourceConfig } from '../types'
 
 const SHARE_URL = 'https://y.qq.com/n/ryqq/playlist/7344515327'
 
-/** 造一条音源（默认无搜索地址，只有歌单解析能力） */
+/** 造一条音源（默认无音源地址，只有歌单解析能力） */
 function makeSource(partial: Partial<OnlineSourceConfig>): OnlineSourceConfig {
-  return { id: 'src-1', name: '我的音源', apiUrl: '', enabled: true, ...partial }
+  return { id: 'src-1', name: '我的音源', sourceUrl: '', enabled: true, ...partial }
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -36,28 +36,46 @@ describe('extractShareUrl', () => {
   })
 })
 
-describe('playlistEndpointOf', () => {
-  it('音源填了歌单解析接口时取 playlistUrl', () => {
+describe('playlistEndpointOf（执行时解析）', () => {
+  it('接口模板形态：取手填的歌单解析地址', () => {
     const s = makeSource({
-      apiUrl: 'https://api.example/search?q={query}',
+      sourceUrl: 'https://api.example/search?q={query}',
       playlistUrl: 'https://api.example/playlist?url={url}',
     })
     expect(playlistEndpointOf(s)).toBe('https://api.example/playlist?url={url}')
   })
+
   it('只有搜索接口的音源不具备歌单解析能力', () => {
-    expect(playlistEndpointOf(makeSource({ apiUrl: 'https://api.example/search?q={query}' }))).toBe('')
+    expect(playlistEndpointOf(makeSource({ sourceUrl: 'https://api.example/search?q={query}' }))).toBe('')
   })
-  it('历史「歌单解析源」的地址放在 apiUrl，仍可识别', () => {
-    const legacy: PlaylistResolverConfig = {
-      id: 'plr-1',
-      name: '旧解析源',
-      apiUrl: 'https://api.example/resolve?url={url}',
-      enabled: true,
-    }
-    expect(playlistEndpointOf(legacy)).toBe('https://api.example/resolve?url={url}')
+
+  it('服务地址形态：歌单端点由协议派生，不必手填', () => {
+    const s = makeSource({ sourceUrl: 'https://music.example.com?key=K1' })
+    expect(playlistEndpointOf(s)).toBe(
+      'https://music.example.com/aurora/playlist?url={url}&key=K1'
+    )
   })
+
+  it('服务端自描述的端点模板优先于默认约定', () => {
+    const s = makeSource({
+      sourceUrl: 'https://music.example.com',
+      endpoints: { playlist: '/v2/playlist?u={url}' },
+    })
+    expect(playlistEndpointOf(s)).toBe('https://music.example.com/v2/playlist?u={url}')
+  })
+
+  it('只做歌单解析的音源：音源地址留空，取手填地址', () => {
+    const s = makeSource({ sourceUrl: '', playlistUrl: 'https://api.example/resolve?url={url}' })
+    expect(playlistEndpointOf(s)).toBe('https://api.example/resolve?url={url}')
+  })
+
   it('playlistUrl 不含 {url} 时不当作有效解析地址', () => {
     expect(playlistEndpointOf(makeSource({ playlistUrl: 'https://api.example/playlist' }))).toBe('')
+  })
+
+  it('未配置任何源时安全返回空串', () => {
+    expect(playlistEndpointOf(null)).toBe('')
+    expect(playlistEndpointOf(undefined)).toBe('')
   })
 })
 
@@ -71,12 +89,24 @@ describe('parsePlaylistLink（音源合并后）', () => {
       return jsonResponse({ name: '华语精选', songs: [{ title: '七里香', artist: '周杰伦' }] })
     })
     const source = makeSource({
-      apiUrl: 'https://api.example/search?q={query}',
+      sourceUrl: 'https://api.example/search?q={query}',
       playlistUrl: 'https://api.example/playlist?url={url}',
     })
     const out = await parsePlaylistLink([source], SHARE_URL)
     expect(seen).toEqual(['https://api.example/playlist?url=' + encodeURIComponent(SHARE_URL)])
     expect(out).toEqual({ name: '华语精选', songs: [{ title: '七里香', artist: '周杰伦' }] })
+  })
+
+  it('服务地址形态：解析直接打到派生的歌单端点', async () => {
+    let called = ''
+    setCustomFetch(async (input) => {
+      called = String(input)
+      return jsonResponse({ songs: [{ title: '七里香', artist: '周杰伦' }] })
+    })
+    await parsePlaylistLink([makeSource({ sourceUrl: 'https://music.example.com?key=K1' })], SHARE_URL)
+    expect(called).toBe(
+      `https://music.example.com/aurora/playlist?url=${encodeURIComponent(SHARE_URL)}&key=K1`
+    )
   })
 
   it('解析接口地址里的 {url} 会被 URL 编码后的分享链接替换', async () => {
@@ -97,7 +127,7 @@ describe('parsePlaylistLink（音源合并后）', () => {
 
   it('只有搜索接口的音源不参与解析，给出可读提示', async () => {
     await expect(
-      parsePlaylistLink([makeSource({ apiUrl: 'https://api.example/search?q={query}' })], SHARE_URL)
+      parsePlaylistLink([makeSource({ sourceUrl: 'https://api.example/search?q={query}' })], SHARE_URL)
     ).rejects.toThrow(/尚未配置可解析歌单的音源/)
   })
 
@@ -110,15 +140,15 @@ describe('parsePlaylistLink（音源合并后）', () => {
     ).rejects.toThrow(/尚未配置可解析歌单的音源/)
   })
 
-  it('历史「歌单解析源」列表（apiUrl 承载 {url}）仍可解析', async () => {
-    const legacy: PlaylistResolverConfig = {
-      id: 'plr-1',
-      name: '旧解析源',
-      apiUrl: 'https://old.example/resolve?url={url}',
-      enabled: true,
-    }
-    setCustomFetch(async () => jsonResponse({ data: { name: '旧歌单', songs: [{ name: '夜曲', singer: '周杰伦' }] } }))
-    const out = await parsePlaylistLink([legacy], SHARE_URL)
+  it('只做歌单解析的音源（音源地址留空）仍可解析', async () => {
+    const onlyPlaylist = makeSource({
+      sourceUrl: '',
+      playlistUrl: 'https://old.example/resolve?url={url}',
+    })
+    setCustomFetch(async () =>
+      jsonResponse({ data: { name: '旧歌单', songs: [{ name: '夜曲', singer: '周杰伦' }] } })
+    )
+    const out = await parsePlaylistLink([onlyPlaylist], SHARE_URL)
     expect(out.name).toBe('旧歌单')
     expect(out.songs[0]).toEqual({ title: '夜曲', artist: '周杰伦' })
   })
