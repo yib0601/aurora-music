@@ -424,6 +424,7 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | | `.card-solid`（655） | **无 blur**，长列表卡片（背景已近不透明，省下逐帧重采样） |
 | | `.card-list`（664） | 同材质但 **hover 不上浮**，包裹多行列表 |
 | **表面** | `.surface-canvas/paper/card/tile-1/tile-2`（631–635） | 平铺叠色，无浮起关系 |
+| **卡内元素** | `.inset-field`（664）/ `.inset-row`（699）/ `.inset-note`（708） | 卡片内部不再给每个元素画描边（否则是「卡里再套一张卡」）。控件：`white/.05` 填充 + **透明边**，hover 显 `.10` 弱边、focus / `[data-state=open]` 染 mint、校验失败用 `.is-invalid`；行：静止完全透明、hover 浮出 `white/.04`；信息块：只留 `.04` 填充、不带交互态（不可点就不该有 hover 反馈）。浮层（`.glass-liquid` 内）填充提至 `.07`，浅色下 focus 描边 alpha 提至 `.70` |
 | **胶囊** | `.pill`（815）+ `.pill-sm/md/lg`（826–828） | `9999px` 全圆角；高度 28 / 36 / 44px |
 | | `.pill-mint`（829）/ `.pill-soft`（836） | mint 实心 + 上浮；浅灰描边款 |
 | **分段控件** | `.segmented`（786）/ `.segmented-item`（798）/ `.is-on`（812） | 28px 高，`--r-ds-input` 外圆角 + `--r-ds-sm` 内圆角；选中项 mint 填充 |
@@ -507,7 +508,10 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | **代码清理**：SVG 滤镜链 | ✅ `glassFilter.ts` 与 `GlassSvgFilter.tsx` 收敛为单组 control 滤镜：删除 SEARCH/PILL 常量与配置、`applyGlassMap`、`updateGlassMap`、无消费者的 re-export |
 | **歌词排版重做** | ✅ 新增 `.lyric-line`（`text-wrap: balance` 均衡折行断点）；行距 `1.6 → 1.5`、段间距窄栏 `20 → 28px` / 宽栏 `28 → 36px`（段间距必须大于行内行距，否则折行后语义分组消失）；非当前行改三级透明度 `/70 /50 /35`；窄栏字号 `14 → 13px`；`.lyric-active` `17px/scale(1.05)/36px 光晕 → 16px/scale(1.02)/28px`；渐隐带由 `12%/88%` 百分比改为按行高固定像素（窄栏 40 / 宽栏 52）；`App.tsx` 右栏去掉与 `LyricsView` 重复的 `px-4`（净宽 224 → 256px） |
 | **歌词高亮去糊** | ✅ `.lyric-active` 的 `text-shadow` → `filter: drop-shadow`（`-webkit-text-fill-color:transparent` 之后 `text-shadow` 会从透明笔画内部透出，实测放大后笔画边缘全糊）；去掉 `transform: scale()`（非整数缩放重新采样字形，同样发虚）；行过渡由 `transition-all duration-500` 改为 `transition-[color,filter] duration-300`——`all` 会把 `font-size` 纳入过渡，切行时字号在 13 ↔ 16px 之间插值数百毫秒，全程非整数 px 渲染（实测 14.5px 字形边缘发毛）且逐帧重排；浅色覆盖同步改 `drop-shadow`；新增 `.resizing` / `.glass-perf-lite` 下的 `filter: none` 降级 |
+| **设置页去框（卡内元素语言）** | ✅ 新增 `.inset-field` / `.inset-row` / `.inset-note`（`globals.css:664 / 699 / 708`），替换 `SettingsPage.tsx` 里 16 处 `bg-white/[0.03] + 1px border-white/[0.08] + rounded-[10px]` 的内嵌块：列表行（扫描目录、音源、网络存储）与只读信息（下载路径、缓存占用、更新状态）去框——行静止透明、hover 浮出 `.04`，信息块只留 `.04` 填充；输入框与下拉触发器改为「透明边 + hover/focus 显形」，校验态由 `border-coral/60` 改为 `.is-invalid`；下载目录路径同时改用等宽字体。浮层（`.glass-liquid`）内填充提至 `.07`（卡片内可以极轻，弹窗内必须辨得出可输入区）。`border-white/[0.08]` 有意保留两处：页头图标容器与「发现新版本」CTA |
 | **验证** | ✅ `pnpm --filter @aurora/app build`（`tsc` + `vite build`）通过，exit 0；全仓 grep 无残留引用 |
+| **本次去框验证** | ✅ `npx tsc --noEmit -p packages/app/tsconfig.json` exit 0、无输出；`grep -c "bg-white/\[0\.03\]"` 在 `SettingsPage.tsx` 为 0；双主题截图复核（顶部 / 在线源 / 下载卡 / 弹窗 / 行 hover 态） |
+| **卡片表面归入玻璃族**：`--surface-tile-1/2-bg` | ✅ 旧值为不透明中性灰（深色 `rgba(34,34,34,.62)→rgba(16,16,16,.72)`、浅色近白 `.90→.94`），与同页玻璃家族（低 alpha 冷黑 + 白色提亮）形成突兀色差。改为 §3.3/§2.5 口径：深色 `白色 .075→.05 渐变 + rgba(0,8,18,.26/.30)` 底、浅色 `白色 .74→.64 / .80→.70`（环境色透出）。影响面为全部 `card-utility` / `card-solid` 消费点（设置页 6 卡、音乐库网格卡、歌单空态、歌曲详情卡）；深色正文对比 ≈11.8:1、浅色 ≈14.6:1，双主题截图验证设置页与歌单空态均无突变 |
 
 ---
 

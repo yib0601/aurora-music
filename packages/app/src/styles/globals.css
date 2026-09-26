@@ -126,11 +126,16 @@
      * 过高（.44/.22）退化成描边；.34/.18 是「有厚度但不描边」的最佳点。 */
     --glass-liquid-edge: inset 0 1px 0 0 rgba(255,255,255,.34), inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
 
-    /* 表面层（DS 中性灰阶：surface-1 hsla(0,0%,100%,.06) / surface-2 .04） */
+    /* 表面层（DS 中性灰阶：surface-1 hsla(0,0%,100%,.06) / surface-2 .04）
+     * ⚠️ 卡片的底色必须与玻璃族同源（低 alpha 冷黑压暗 + 白提亮），不能是「半透明中性灰」：
+     * 旧值 rgba(34,34,34,.62)→rgba(16,16,16,.72) 以 62~72% 的权重把背后色场换成灰色，
+     * 卡片于是呈现自己的深灰而不是背景的色相 —— 落在青蓝色场上就是一块「颜色突变」的黑板
+     * （设计系统 §3.3：表面一律用半透明白/黑叠加，写死灰会露出色块边界）。
+     * 现对齐 --glass-regular-bg（rgba(0,6,14,.17)）的哲学，压暗略强一档（卡片承载文字更多）。 */
     --surface-card-bg: rgba(255,255,255,.06);
     --surface-card-border: rgba(255,255,255,.08);
-    --surface-tile-1-bg: linear-gradient(142deg, rgba(34,34,34,.62), rgba(16,16,16,.72));
-    --surface-tile-2-bg: linear-gradient(145deg, rgba(42,42,42,.62), rgba(18,18,18,.72));
+    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.075), rgba(255,255,255,.05)), rgba(0, 8, 18, .26);
+    --surface-tile-2-bg: linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.06)), rgba(0, 8, 18, .30);
     --surface-tile-fg: #ffffff;
     /* DS 阴影哲学：暗色下「阴影」改用内高光（--ds-shadow-card 暗色值） */
     --card-utility-shadow: 0 12px 32px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.06);
@@ -339,11 +344,13 @@
     --saved-button-glass-hover-bg: rgba(255,255,255,.62);
     --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.92), 0 6px 18px rgba(20,40,70,.12);
 
-    /* 表面分层（DS 浅色：白底叠加 + 黑发丝边） */
+    /* 表面分层（DS 浅色：白底叠加 + 黑发丝边）
+     * 同样不能盖死色场：旧值 .90/.94 白比浮层（--glass-liquid-bg .72/.60）还实，
+     * 层级倒挂且把青蓝背景换成纯白板。现对齐玻璃族的提亮量级。 */
     --surface-card-bg: rgba(255,255,255,.80);
     --surface-card-border: rgba(0,0,0,.06);
-    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.90), rgba(249,249,249,.94));
-    --surface-tile-2-bg: linear-gradient(145deg, rgba(253,253,253,.92), rgba(246,246,246,.95));
+    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.74), rgba(255,255,255,.64));
+    --surface-tile-2-bg: linear-gradient(145deg, rgba(255,255,255,.80), rgba(255,255,255,.70));
     --surface-tile-fg: #1E232C;
     --tile-border-rgb: 0 0 0;
     --card-utility-shadow: 0 12px 32px rgba(0,0,0,.07), inset 0 1px 0 rgba(255,255,255,.9);
@@ -662,25 +669,36 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    * 边框只在它能表达「这里能输入 / 这里被聚焦 / 这里已展开」时才出现。
    * 颜色一律走 token：浅色主题下 --tw-white 自动翻转为深墨，两套主题共用一套值。 */
   .inset-field {
-    background: rgb(var(--tw-white) / .04);
+    background: rgb(var(--tw-white) / .05);
     border: 1px solid transparent;
     border-radius: var(--r-ds-input);
     transition: background .18s var(--ease-mineradio), border-color .18s var(--ease-mineradio);
   }
   .inset-field:hover {
-    background: rgb(var(--tw-white) / .06);
+    background: rgb(var(--tw-white) / .07);
     border-color: rgb(var(--tw-white) / .10);
   }
   /* 聚焦 / 展开态：边框显形并染 mint，是这一层唯一的焦点信号 */
   .inset-field:focus,
   .inset-field:focus-visible,
   .inset-field[data-state='open'] {
-    background: rgb(var(--tw-white) / .06);
+    background: rgb(var(--tw-white) / .07);
     border-color: rgb(var(--tw-mint) / .45);
     outline: none;
   }
   /* 校验失败：只在出错时显形 */
   .inset-field.is-invalid { border-color: rgb(var(--tw-coral) / .55); }
+
+  /* 浅色主题下 mint 本身已加深，但浅底上仍需更高 alpha 才显形（对比度红线见设计系统 §4.4） */
+  html:not(.dark) .inset-field:focus,
+  html:not(.dark) .inset-field:focus-visible,
+  html:not(.dark) .inset-field[data-state='open'] { border-color: rgb(var(--tw-mint) / .70); }
+
+  /* 浮层（弹窗 / 下拉）里的控件再厚一档：卡片内可以极轻，
+   * 但浮层自带多层玻璃与高光，控件的填充不够就辨不出「这里能输入」。 */
+  .glass-liquid .inset-field { background: rgb(var(--tw-white) / .07); }
+  .glass-liquid .inset-field:hover,
+  .glass-liquid .inset-field:focus { background: rgb(var(--tw-white) / .09); }
 
   /* 内嵌行：列表项 / 带操作的行。静止时完全透明，hover 才浮出一层弱底。
    * 行与行之间靠间隙区分，不画分隔线（间距优先于分割线）。

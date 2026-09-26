@@ -590,6 +590,7 @@
 | 卡片 | `.card-utility`（带 blur + hover 上浮）/ `.card-solid`（**无 blur**，长列表用）/ `.card-list`（同材质、hover 不上浮） |
 | 玻璃浮层 | `.glass-liquid`（**浮层首选**）+ `.glass-regular`（常驻面板）/ `.glass-floating`（Toast）/ `.glass-saved-panel` / `.glass-saved-button` |
 | 表面 | `.surface-canvas / paper / card / tile-1 / tile-2` |
+| 卡片内元素 | `.inset-row`（可交互行）/ `.inset-field`（输入框、下拉触发器）/ `.inset-note`（只读数据块）——静止时无描边，靠叠色与 hover/focus 表达层级（§3.1「通常连描边都不要」） |
 
 需要新写样式时**直接读 token，不要硬编码数值**：`--ds-color-*`（颜色）、`--ds-radius-*`（圆角）、`--ds-space-*`（间距）、`--ds-blur-glass`（模糊）。
 
