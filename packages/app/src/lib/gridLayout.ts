@@ -119,34 +119,32 @@ const SUBTITLE_LINE_HEIGHT = SUBTITLE_FONT_SIZE * INHERITED_LINE_HEIGHT_RATIO
 export const CARD_EXTRA_HEIGHT =
   COVER_MARGIN_BOTTOM + TITLE_LINE_HEIGHT + SUBTITLE_MARGIN_TOP + SUBTITLE_LINE_HEIGHT
 
-/** 列宽下限（px），避免极端窄容器下列宽为负 */
-export const MIN_COLUMN_WIDTH = 80
+/**
+ * 单列宽度下限（px）：auto-fill 语义下卡片列宽的下限，再窄封面就小到难以辨认。
+ * 140 是「正方形封面 + 两行文字」卡片的经验下限（封面内缩 22 后仍有 118px）。
+ */
+export const MIN_COLUMN_WIDTH = 140
+/** 列数上限：超宽屏也封顶 8 列，防止卡片过小不可读 */
+export const MAX_COLUMN_COUNT = 8
 
 /**
- * 列数分档（**容器宽度驱动**，与视口断点无关——这正是原 bug 的根因之一）。
+ * 列数（**容器宽度驱动**，等价于 CSS `repeat(auto-fill, minmax(140px, 1fr))`）：
  *
- * 分档表（containerWidth 为滚动容器 content-box 宽度，单位 px）：
- *   width < 640        → 2 列
- *   640 ≤ width < 768  → 3 列
- *   768 ≤ width < 1024 → 4 列
- *   width ≥ 1024       → 5 列
+ *   cols = clamp(floor((w + GAP) / (MIN_COLUMN_WIDTH + GAP)), 1, MAX_COLUMN_COUNT)
  *
- * 阈值取自原 `VirtualCardGrid.getColumnCount`（设计上已验证过的分档），
- * 只把**判据**从视口换成容器宽度；刻意不改列数本身：
- *   - 容器 861px  → 4 列（与当前歌曲网格现状一致，不引入视觉回归）
- *   - 容器 1134px → 5 列（现状，与 Lead 实测一致）
- * 修复的本质是「两个视图共用同一判据 + 同一间距 + 同一行高」，而不是顺手改列数。
+ * 公式与 auto-fill 语义一致：放下 n 列需要 n×最小列宽 + (n−1)×间距，反解最大 n；
+ * 列宽仍由 getGridColumnWidth 均分（即 1fr），容器比整档略宽时列宽略大于下限，无跳变。
  *
- * ⚠️ 曾短暂采用「按同列宽对齐 Tailwind 断点」推出的 640/900/1160 阈值，
- * 那会让 861px 变 3 列、1134px 变 4 列（卡片明显变大、每屏更少），是用户可见的
- * 回归；且 1160 处出现「容器变宽、卡片反而变小」的跳变（4 列列宽 271.5 →
- * 5 列列宽 227.2）。已废弃，勿再改回。
+ * 旧实现是固定分档（640/768/1024 → 2..5 列），右侧 Now Playing 面板展开后
+ * 容器只剩 ~600px 会掉进 2 列档：卡片巨大、一屏仅 4 首（用户实测截图）。
+ * auto-fill 后同场景得 4 列，宽容器（≥1100px）得 7~8 列，密度始终跟满宽度。
+ *
+ * ⚠️ 歌曲虚拟网格与专辑/艺术家平铺网格必须共用本判据——改回视口断点或固定
+ *    分档会让两个网格的卡片尺寸再次分叉（原 bug 根因）。
  */
 export function getGridColumnCount(containerWidth: number): number {
-  if (containerWidth >= 1024) return 5
-  if (containerWidth >= 768) return 4
-  if (containerWidth >= 640) return 3
-  return 2
+  const cols = Math.floor((containerWidth + GRID_GAP) / (MIN_COLUMN_WIDTH + GRID_GAP))
+  return Math.min(MAX_COLUMN_COUNT, Math.max(1, cols))
 }
 
 /**
@@ -163,7 +161,10 @@ export function getGridColumnCount(containerWidth: number): number {
 export function getGridColumnWidth(containerWidth: number, colCount: number): number {
   const cols = Math.max(1, Math.floor(colCount))
   const usable = containerWidth - GRID_GAP * (cols - 1)
-  return Math.max(MIN_COLUMN_WIDTH, usable / cols)
+  // 多列时列数公式已保证列宽 ≥ MIN_COLUMN_WIDTH，这里**不能**再 clamp：
+  //  clamp 会在分档边界造出「列宽贴底平区」，破坏列宽随列数递减的单调性。
+  //  仅单列（极窄容器）时按 minmax(140px, 1fr) 语义保底 140。
+  return cols === 1 ? Math.max(MIN_COLUMN_WIDTH, usable) : usable / cols
 }
 
 /**
@@ -233,8 +234,8 @@ export function assertGridLayoutInvariants(): string[] {
 
   for (let w = 320; w <= 4096; w += 1) {
     const cols = getGridColumnCount(w)
-    if (cols < 2 || cols > 5) problems.push(`列数越界: ${w}px -> ${cols}`)
-    if (cols > 2 && getGridColumnCount(w - 1) > cols) {
+    if (cols < 1 || cols > MAX_COLUMN_COUNT) problems.push(`列数越界: ${w}px -> ${cols}`)
+    if (cols > 1 && getGridColumnCount(w - 1) > cols) {
       problems.push(`列数分档不单调: ${w}px`)
     }
     const cardHeight = getCardHeight(w, cols)
@@ -244,7 +245,7 @@ export function assertGridLayoutInvariants(): string[] {
     if (getVirtualRowHeight(w, cols) !== cardHeight + GRID_GAP) {
       problems.push(`虚拟行高与卡高+GRID_GAP 不一致: ${w}px`)
     }
-    if (cols < 5 && getGridColumnWidth(w, cols + 1) >= getGridColumnWidth(w, cols)) {
+    if (cols < MAX_COLUMN_COUNT && getGridColumnWidth(w, cols + 1) >= getGridColumnWidth(w, cols)) {
       problems.push(`列宽未随列数递减: ${w}px ${cols}->${cols + 1} 列`)
     }
     // 卡片高恒等式等价于「卡高 = 列宽 + 额外高度」，其中额外高度只有 CARD_EXTRA_HEIGHT
