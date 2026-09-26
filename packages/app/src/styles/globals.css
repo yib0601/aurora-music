@@ -451,6 +451,16 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     user-select: none;
   }
 
+  /* 应用内导航项由 NavLink 渲染成真实 <a href="#/liked">，封面等图片则是原生可拖拽元素。
+   * Chromium 默认把两者都当拖拽源：长按（触屏）或按住拖动（鼠标）会弹出原生的
+   * 「链接 / 图片拖拽预览」气泡，内容是解析后的绝对 URL —— 生产环境即
+   * file:///C:/Users/<用户名>/.../app-dist/index.html#/liked 或本地封面路径，
+   * 视觉突兀且泄露本机路径。应用内没有把链接/图片拖出窗口的用法，统一关闭拖拽源。 */
+  a[href],
+  img {
+    -webkit-user-drag: none;
+  }
+
   #root {
     @apply h-screen w-screen;
   }
