@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
-import { cn, formatTime, isMobile } from '@/lib/utils'
+import { cn, formatTime, isMobileUI } from '@/lib/utils'
 import { useOpenSongDetail } from '@/lib/navigation'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -64,10 +64,12 @@ export function PlayerBar({
   const showQueuePanel = usePlaylistStore((s) => s.showQueuePanel)
   const toggleQueuePanel = usePlaylistStore((s) => s.toggleQueuePanel)
 
-  const mobile = isMobile()
+  const mobile = isMobileUI()
   const displayedProgress = seeking ? seekValue : progress
   const displayedVolume = seekingVolume ? volumeValue : (muted ? 0 : volume)
-  const progressPercent = duration > 0 ? (displayedProgress / duration) * 100 : 0
+  // ⚠️ 必须同时判 currentTrack：playerStore 会把 progress/duration 一起持久化，
+  // 上次会话残留的进度会在「当前没有曲目」时仍画出一条进度线
+  const progressPercent = currentTrack && duration > 0 ? (displayedProgress / duration) * 100 : 0
   const volumePercent = displayedVolume * 100
 
   const handleSeekStart = () => {
@@ -102,7 +104,16 @@ export function PlayerBar({
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
 
   // ───────────────────────── 移动端紧凑布局 ─────────────────────────
-  // 去掉桌面 grid + 音量控件；触控目标 ≥ 44×44；整条点击进全屏 Now Playing
+  // 单行结构：封面 / 标题 / 上一首 / 播放 / 下一首 / 队列，触控目标 ≥ 44×44，
+  // 整条点击进全屏 Now Playing。
+  // 三处取舍：
+  // 1. 播放键 46px、其余 44px：四个按钮 + 封面 + 文本在 390px 下刚好排得下，
+  //    文本区仍有 ~128px（放得下 6~8 个中文字），比原先 44/48 那套宽 20 多像素；
+  //    上一首/下一首/队列保留（全屏页之外仍有单手切歌需求），只压视觉权重。
+  // 2. 进度线左右各内缩 16px：原来 inset-x-0 让线头切在 16px 圆角弧线上，
+  //    看起来像卡片边缘崩了一角。
+  // 3. 空态下三个播放控制按钮统一切到 35% 透明；队列按钮不跟着禁用——
+  //    队列浮层在空态下也要能打开（那里有「队列为空」的引导）。
   if (mobile) {
     const openNowPlaying = () => {
       // 空态（无当前歌曲）也允许展开全屏播放器，由它展示空态引导，
@@ -115,22 +126,23 @@ export function PlayerBar({
         onClick={openNowPlaying}
         role="button"
         aria-label="展开播放器"
-        className="glass-saved-panel rounded-[16px] border border-white/[0.06] px-3 py-2 flex items-center gap-1.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
+        className="glass-saved-panel rounded-[16px] border border-white/[0.07] pl-2 pr-1.5 py-1.5 flex items-center gap-0.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
       >
-        {/* 顶部进度细线：迷你条上一眼可见播放进度 */}
-        <div className="absolute inset-x-0 top-0 h-[2px] bg-white/[0.06]">
+        {/* 顶部进度细线：左右各内缩 16px，避开 16px 圆角弧线——原先 inset-x-0
+            让线头正好切在弧线上，像卡片边缘崩了一角 */}
+        <div className="absolute top-[3px] left-4 right-4 h-[2px] rounded-full bg-white/[0.08] overflow-hidden">
           <div
-            className="h-full rounded-r-full transition-[width] duration-300 ease-linear"
+            className="h-full rounded-full transition-[width] duration-300 ease-linear"
             style={{
               width: `${progressPercent}%`,
-              background: 'linear-gradient(to right, rgba(var(--fc-accent-rgb),.35), rgba(var(--fc-accent-rgb),.95))',
-              boxShadow: progressPercent > 0 ? '0 0 6px rgba(var(--fc-accent-rgb),.32)' : 'none',
+              background:
+                'linear-gradient(to right, rgba(var(--fc-accent-rgb),.55), rgba(var(--fc-accent-rgb),1))',
             }}
           />
         </div>
         {/* 封面 + 标题：整条热区的一部分，点击事件由外层容器统一处理 */}
-        <div className="flex items-center gap-2.5 min-w-0 flex-1 py-1">
-          <div className="w-10 h-10 rounded-[10px] flex-shrink-0 overflow-hidden bg-white/[0.04] flex items-center justify-center">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1 pl-0.5 py-1">
+          <div className="w-9 h-9 rounded-[9px] flex-shrink-0 overflow-hidden bg-white/[0.05] flex items-center justify-center">
             <CoverImage
               track={currentTrack}
               alt={currentTrack?.title}
@@ -138,11 +150,11 @@ export function PlayerBar({
               fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
             />
           </div>
-          <div className="min-w-0 flex flex-col">
-            <p className="text-[13px] font-medium text-white/92 truncate tracking-[-0.224px]">
+          <div className="min-w-0 flex flex-col gap-px">
+            <p className="text-[13px] font-medium text-white/[0.94] truncate tracking-[-0.224px]">
               {currentTrack?.title || '未在播放'}
             </p>
-            <p className="text-[10.5px] text-white/65 truncate tracking-[-0.12px]">
+            <p className="text-[10.5px] text-white/60 truncate tracking-[-0.12px]">
               {currentTrack?.artist || '选择一首歌曲'}
             </p>
           </div>
@@ -152,7 +164,7 @@ export function PlayerBar({
             随之失效）且真实点击不派发事件，会让热区出现「死区」；穿透到外层容器后，
             空态下点任意位置都统一展开全屏播放器 */}
         <button
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40 disabled:pointer-events-none"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/80 active:scale-90 transition disabled:opacity-35 disabled:pointer-events-none"
           onClick={(e) => {
             e.stopPropagation()
             onPrevious()
@@ -160,11 +172,11 @@ export function PlayerBar({
           disabled={!currentTrack}
           aria-label="上一首"
         >
-          <SkipBack className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
+          <SkipBack className="h-[18px] w-[18px]" fill="currentColor" strokeWidth={1.2} />
         </button>
         {/* 主播放按钮与全屏播放页保持一致：mint 实心圆 + 深色图标 */}
         <button
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_2px_4px_rgba(0,0,0,.16),inset_0_1px_0_rgba(255,255,255,.18)] active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none"
+          className="w-[46px] h-[46px] flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_4px_12px_-6px_rgba(var(--fc-accent-rgb),.18),0_1px_4px_rgba(15,23,42,.10),inset_0_1px_0_rgba(255,255,255,.26)] dark:shadow-[0_4px_12px_-4px_rgba(var(--fc-accent-rgb),.38),0_2px_4px_rgba(0,0,0,.2),inset_0_1px_0_rgba(255,255,255,.2)] active:scale-95 transition disabled:opacity-35 disabled:pointer-events-none"
           onClick={(e) => {
             e.stopPropagation()
             onTogglePlay()
@@ -173,13 +185,13 @@ export function PlayerBar({
           aria-label={isPlaying ? '暂停' : '播放'}
         >
           {isPlaying ? (
-            <Pause className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
+            <Pause className="h-5 w-5" fill="currentColor" strokeWidth={1.2} />
           ) : (
-            <Play className="h-5 w-5 ml-0.5" fill="currentColor" strokeWidth={1.5} />
+            <Play className="h-5 w-5 ml-[2px]" fill="currentColor" strokeWidth={1.2} />
           )}
         </button>
         <button
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-40 disabled:pointer-events-none"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/80 active:scale-90 transition disabled:opacity-35 disabled:pointer-events-none"
           onClick={(e) => {
             e.stopPropagation()
             onNext()
@@ -187,12 +199,13 @@ export function PlayerBar({
           disabled={!currentTrack}
           aria-label="下一首"
         >
-          <SkipForward className="h-5 w-5" fill="currentColor" strokeWidth={1.5} />
+          <SkipForward className="h-[18px] w-[18px]" fill="currentColor" strokeWidth={1.2} />
         </button>
+        {/* 队列：次级权重的功能图标（描边族），激活时只染 mint 不给底色块 */}
         <button
           className={cn(
             'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
-            showQueuePanel ? 'text-mint bg-mint/[0.10]' : 'text-white/60',
+            showQueuePanel ? 'text-mint' : 'text-white/55',
           )}
           onClick={(e) => {
             // 同桌面端：阻止冒泡，避免刚打开的浮层被 document 外部点击监听立刻关掉
@@ -201,7 +214,7 @@ export function PlayerBar({
           }}
           aria-label="队列"
         >
-          <ListMusic className="h-5 w-5" strokeWidth={1.5} />
+          <ListMusic className="h-[19px] w-[19px]" strokeWidth={1.7} />
         </button>
       </div>
     )

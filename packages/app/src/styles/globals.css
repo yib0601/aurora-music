@@ -1006,9 +1006,58 @@ input[type='range'].seek-bar::-webkit-slider-thumb {
   background: transparent;
   box-shadow: none;
 }
-/* 移动端加大版：更粗轨道，方便触控 */
+/* 移动端加大版：32px 触控高度 + 更粗轨道 + **常显实心滑块**
+ * 桌面那档是「无圆点，靠填充末端的柔白光斑示意位置」——鼠标下有 hover 提示、
+ * 光斑够用；但手指拖拽时缺一个明确的抓取点（光斑 12px 且静止时只有 .35 亮度）。
+ * 所以 .seek-lg 这一档恢复白色圆点滑块，拖动瞬间再放大一档给反馈。 */
+input[type='range'].seek-bar.seek-lg {
+  height: 32px;
+}
 input[type='range'].seek-bar.seek-lg::-webkit-slider-runnable-track {
   height: 6px;
+}
+input[type='range'].seek-bar.seek-lg::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  /* (6px 轨道 - 14px 滑块) / 2，保证圆点与轨道中线对齐 */
+  margin-top: -4px;
+  opacity: 1;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .05);
+  transition: transform .16s var(--ease-mineradio);
+}
+input[type='range'].seek-bar.seek-lg:active::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
+/* 浅色主题：轨道是浅灰，纯白滑块会糊进轨道里，补一圈描边拉出轮廓 */
+html:not(.dark) input[type='range'].seek-bar.seek-lg::-webkit-slider-thumb {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .28), 0 0 0 1px rgba(0, 0, 0, .20);
+}
+
+/* ===== 全屏 Now Playing 进入动画 =====
+ * 做成「纯色幕布淡出」，而不是给整屏容器挂 transform/opacity 动画，两个原因：
+ *   1. 容器动画会把整棵子树（两层 inset-0 色斑 + 当前歌词行的 drop-shadow）提升为
+ *      合成层，首帧需重新栅格化整屏纹理，低端机上有一次肉眼可见的卡顿；幕布是
+ *      独立的一层纯色，只合成它自己，子树照常绘制。
+ *   2. 容器一旦带 transform，就会成为后代的 containing-block，内部绝对定位元素的
+ *      基准会被悄悄改写（本文件顶部多处依赖绝对定位铺满）。
+ * 幕布取 --fc-bg（随深浅主题），结束后停在 opacity:0，不参与命中测试。 */
+@keyframes now-playing-veil {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.now-playing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  background: var(--fc-bg);
+  animation: now-playing-veil .24s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .now-playing::after { animation: none; opacity: 0; }
 }
 
 /* ===== 音量条 volume-bar：与 seek-bar 同一套视觉语言 =====
