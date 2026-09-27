@@ -42,7 +42,7 @@ import {
   markStartupBannerShown,
   type UpdateInfo,
 } from '@/services/update.service'
-import { cn, isMobile, isDesktop } from '@/lib/utils'
+import { cn, isMobile, isDesktop, isMobileUI } from '@/lib/utils'
 import { useOpenSongDetail } from '@/lib/navigation'
 import type { Track, FolderPickerOptions } from '@/types'
 
@@ -83,7 +83,12 @@ function AppLayout() {
   // 移动端全屏 Now Playing 视图：开关放全局 store，播放条与歌曲封面点击共用同一入口
   const nowPlayingOpen = usePlaylistStore((s) => s.mobileNowPlayingOpen)
   const setMobileNowPlaying = usePlaylistStore((s) => s.setMobileNowPlaying)
-  const mobile = isMobile()
+  // 移动端外壳布局：支持 ?ui=mobile|desktop 强制预览（见 lib/utils 的 isMobileUI）
+  const mobile = isMobileUI()
+  // 平台能力判定必须走真实平台：`?ui=` 只是排版预览开关，若拿它当门，
+  // 真机带 `?ui=desktop` 会让文件夹选择器、resume 权限对账、Android 返回键
+  // 三处监听全部不注册（pickFolder 退化成 window.prompt，返回键直接退出应用）
+  const nativeMobile = isMobile()
   const desktop = isDesktop()
   // 桌面外壳标题栏是否真的会渲染（与 TitleBar 内部判定同源）：
   // 内容列的 pt-11 留白必须跟着它走，否则没有标题栏时会凭空多出 44px 空白
@@ -144,7 +149,7 @@ function AppLayout() {
   const folderPickerResolve = React.useRef<((p: string | null) => void) | null>(null)
 
   React.useEffect(() => {
-    if (!mobile) return
+    if (!nativeMobile) return
     setFolderPickerHandler(async (options) => {
       return new Promise<string | null>((resolve) => {
         folderPickerResolve.current = resolve
@@ -156,7 +161,7 @@ function AppLayout() {
       setFolderPickerHandler(null)
       folderPickerResolve.current = null
     }
-  }, [mobile])
+  }, [nativeMobile])
 
   // 移动端存储权限引导：扫描本地音乐需要存储权限（运行时「音乐和音频」权限
   // 或「所有文件访问」特殊权限）。未授权时弹引导卡片，授权回 App 后自动重扫。
@@ -174,7 +179,7 @@ function AppLayout() {
   }, [])
 
   useEffect(() => {
-    if (!mobile) return
+    if (!nativeMobile) return
     // 监听 app resume：用户从系统设置授权后回到 App，重新检测；
     // 已授权则关闭引导卡片并触发扫描（让用户立即看到歌曲）
     let listener: { remove: () => void } | undefined
@@ -196,7 +201,7 @@ function AppLayout() {
       cancelled = true
       listener?.remove()
     }
-  }, [mobile, triggerScanForConfiguredFolders])
+  }, [nativeMobile, triggerScanForConfiguredFolders])
 
   // 系统返回键：分层消费——先关已打开的浮层（Now Playing / 文件夹选择器 /
   // 权限弹窗 / 导航抽屉 / 搜索浮层），再退回上一屏路由；已在主屏（音乐库）时
@@ -215,7 +220,7 @@ function AppLayout() {
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!mobile) return
+    if (!nativeMobile) return
     let listener: { remove: () => void } | undefined
     let cancelled = false
     CapApp.addListener('backButton', () => {
@@ -307,7 +312,7 @@ function AppLayout() {
         exitConfirmToastRef.current = null
       }
     }
-  }, [mobile, navigate, setSearchOpen])
+  }, [nativeMobile, navigate, setSearchOpen])
 
   // 授予权限：先尝试系统弹窗申请「音乐和音频」权限（一键）；
   // 若系统不再弹窗（永久拒绝）则跳转应用设置页，由用户手动开启

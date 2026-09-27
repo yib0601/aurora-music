@@ -31,3 +31,25 @@ export function isMobile(): boolean {
   // 纯浏览器环境（vite dev 预览）getPlatform() === 'web'，应使用桌面端布局
   return cap.getPlatform?.() !== 'web'
 }
+
+/**
+ * 移动端 UI 布局判定：与 isMobile() 同源，另支持 URL 强制切换 ——
+ * 桌面浏览器加 `?ui=mobile` / `?ui=desktop` 即可预览对应布局，便于在没有
+ * 真机/模拟器时调移动端排版（配合 packages/app/mobile-lab.html）。
+ *
+ * ⚠️ 只用于「排版分支」，不可拿它做平台能力判断：它不改变 platform 实现的选择，
+ * 数据层仍按 Capacitor 真实平台走。更新器 / 文件夹选择 / 权限等功能判定
+ * 一律继续用 isMobile()。
+ */
+export function isMobileUI(): boolean {
+  if (typeof window !== 'undefined') {
+    try {
+      const forced = new URLSearchParams(window.location.search).get('ui')
+      if (forced === 'mobile') return true
+      if (forced === 'desktop') return false
+    } catch {
+      // URL 解析异常时回落到真实平台判定
+    }
+  }
+  return isMobile()
+}
