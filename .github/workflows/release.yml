@@ -380,6 +380,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # changelog 需要完整历史与全部 tag。默认浅克隆（fetch-depth: 1）既没有 HEAD^
+          # 也拿不到历史 tag，会让 release notes 退化成只剩一条 bump 提交。
+          fetch-depth: 0
 
       - name: Determine version
         id: ver
@@ -397,16 +401,25 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          # 获取上一个 tag（排除当前 tag）
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          set -uo pipefail
+          RELEASE_VERSION="${{ steps.ver.outputs.version }}"
+          # 上一个 tag：HEAD 是 bump 提交，HEAD^ 的最近 tag 即上一版；
+          # 拿不到时按创建时间回退（两种情况都依赖上游 fetch-depth: 0）。
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "v$RELEASE_VERSION" ]; then
+            PREV_TAG=$(git tag --sort=-creatordate --list 'v*' | grep -vx "v$RELEASE_VERSION" | head -1 || true)
+          fi
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
           if [ -n "$PREV_TAG" ]; then
-            echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
-            # 提取两个 tag 之间的提交记录，格式化为 changelog
-            CHANGELOG=$(git log --pretty=format:"- %s" "$PREV_TAG"..HEAD | head -50)
+            RANGE="$PREV_TAG..HEAD"
           else
-            echo "prev_tag=" >> $GITHUB_OUTPUT
-            # 首次发布，列出最近 20 条提交
-            CHANGELOG=$(git log --pretty=format:"- %s" -20)
+            # 首次发布：列出最近 20 条提交
+            RANGE="-20"
+          fi
+          # 过滤掉版本号提交本身，让「更新内容」只留真实改动
+          CHANGELOG=$(git log --pretty=format:"- %s" $RANGE | grep -v '^- chore: bump version' | head -50 || true)
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- 本次发布仅包含版本号变更"
           fi
           # 转义换行符为 GitHub Actions 输出格式（多行变量需用 delimiter）
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
