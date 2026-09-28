@@ -30,6 +30,10 @@ interface PlayerBarProps {
  *   详情页折叠动画与窗口拖拽缩放期间 blur 会被强制关闭，不会逐帧重算模糊。
  *   ⚠️ 不要新增未登记的自定义玻璃类——换掉类名的同时也就脱离了降级管辖。
  * - 发丝描边 + DS 的 16/24px 圆角阶梯，去掉多层大投影
+ * - 桌面端圆角 `rounded-[24px]`（DS 卡片档），**必须在使用处显式写**：
+ *   `.glass-saved-panel` 类内自带 `--saved-panel-glass-radius: 100px`，
+ *   漏写就会退化成两端半圆的胶囊。水平内边距 24px（大屏 32px）与圆角同量级，
+ *   内容不会贴到弧线区
  * - 顶部进度条 + 三列控制网格（曲目信息 / 播放控制 / 音量）
  * - 主播放按钮为圆形实心 mint 块（DS 的 pill 语义 + 项目品牌色）
  * - 普通控制按钮使用 btn-icon（28×28，8px 圆角）
@@ -223,7 +227,7 @@ export function PlayerBar({
   // ───────────────────────── 桌面端三列网格（原布局） ─────────────────────────
   // 大屏（≥1500px，如 1080p@125% 全屏）整体放大一档，避免全屏下控件显得过小
   return (
-    <div className="glass-saved-panel border border-white/[0.06] rounded-[24px] px-[18px] min-[1500px]:px-6 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
+    <div className="glass-saved-panel border border-white/[0.06] rounded-[24px] px-6 min-[1500px]:px-8 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
       {/* 进度条 - 居中 */}
       <div className="flex items-center gap-3">
         <span className="text-[12px] min-[1500px]:text-[13px] text-white/50 w-12 text-right tabular-nums">

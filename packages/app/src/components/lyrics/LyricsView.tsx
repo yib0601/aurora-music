@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
+import { AudioLines } from 'lucide-react'
 import type { LyricLine } from '@/types'
 import { parseLRC, findActiveLine, loadLyricsForTrack } from '@/services/lyrics.service'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -182,6 +183,15 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
             )}
             onClick={() => onLineClick?.(line.time)}
           >
+            {/* 当前行前置声波标记：高亮行只靠颜色/字号区分，在中长歌词块里仍要扫读才找得到；
+                左侧常驻一枚小图标给出「就是这一行」的瞬时锚点（装饰性，不进无障碍树） */}
+            {idx === activeIdx && (
+              <AudioLines
+                aria-hidden
+                className="inline-block h-[13px] w-[13px] mr-1.5 -mt-px align-middle text-mint"
+                strokeWidth={2.2}
+              />
+            )}
             {line.text}
           </p>
         )
