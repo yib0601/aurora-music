@@ -112,7 +112,7 @@ export function LikedPage() {
                       className="row-hover cursor-pointer group border-b border-white/[0.05] last:border-0"
                       onClick={() => handlePlay(track, idx)}
                     >
-                      <td className="py-2 px-1.5 md:py-2.5 md:px-3 max-w-xs">
+                      <td className="py-3.5 px-1.5 md:py-3.5 md:px-3 max-w-xs">
                         <div className="flex items-center gap-3 min-w-0">
                           <button
                             onClick={(e) => {
@@ -125,7 +125,7 @@ export function LikedPage() {
                               }
                             }}
                             title="查看歌曲详情"
-                            className="w-11 h-11 md:w-9 md:h-9 rounded-[10px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+                            className="w-11 h-11 rounded-[12px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
                           >
                             <CoverImage
                               track={track}
