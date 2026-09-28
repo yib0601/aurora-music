@@ -1,6 +1,7 @@
 import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from 'react'
 import type { Track } from '@/types'
 import { platform } from '@/services/platform'
+import { resolveCachedCoverSrc } from '@/services/audioCache.service'
 import { useLibraryStore } from '@/stores/libraryStore'
 
 /**
@@ -25,6 +26,10 @@ import { useLibraryStore } from '@/stores/libraryStore'
  * 在线兜底：确认无内嵌封面后（含内嵌提取终态为 null 的曲目），
  * 按标题/艺术家搜索用户配置的在线歌源下载封面。在线结果同样只缓存
  * 「成功」与「确认无匹配」；在线没找到时本次会话不再重复请求，避免刷歌源。
+ *
+ * 远端封面缓存：在线曲目的封面本身就是远端地址，逐次渲染都要重新下载，
+ * 交给主进程按曲目身份缓存到本地（音频、封面、歌词共用一份容量配额），
+ * 命中后直接读本地文件；缓存被清掉时退回远端地址重试。
  */
 
 /** 已完成提取的曲目：值为封面路径，null 表示确认该曲目无内嵌封面 */
@@ -112,7 +117,46 @@ function requestOnlineCover(trackId: string): Promise<string | null> {
 }
 
 /** 仅取封面相关字段，便于传入 playerStore 队列项等 Track 副本 */
-type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'coverUrl' | 'onlineUrl'>
+type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'coverUrl' | 'onlineUrl' | 'onlineId' | 'onlineSource'>
+
+/**
+ * 远端封面（在线曲目的 coverUrl）的本地缓存地址。
+ * 命中即记下来，同一地址在会话内不再重复问主进程；未命中不记，
+ * 等主进程后台写完下次挂载再问一次。
+ */
+const cachedRemoteCovers = new Map<string, string>()
+const inflightRemoteCovers = new Map<string, Promise<string | null>>()
+
+function requestRemoteCoverCache(track: CoverTrack): Promise<string | null> {
+  const url = track.coverUrl
+  if (!url) return Promise.resolve(null)
+  const cached = cachedRemoteCovers.get(url)
+  if (cached) return Promise.resolve(cached)
+  const running = inflightRemoteCovers.get(url)
+  if (running) return running
+  const task = resolveCachedCoverSrc(track)
+    .then((src) => {
+      if (src) cachedRemoteCovers.set(url, src)
+      return src
+    })
+    .catch(() => null)
+    .finally(() => {
+      inflightRemoteCovers.delete(url)
+    })
+  inflightRemoteCovers.set(url, task)
+  return task
+}
+
+/**
+ * 丢弃会话内的封面解析结果：清空缓存后调用。
+ * 解析结果（内嵌提取与在线获取的终态）此前会整会话复用，不清就会一直指向
+ * 已被删掉的文件。
+ */
+export function resetCoverCache(): void {
+  resolvedCovers.clear()
+  resolvedOnlineCovers.clear()
+  cachedRemoteCovers.clear()
+}
 
 export interface CoverImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   track?: CoverTrack | null
@@ -127,10 +171,12 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
   const updateTrack = useLibraryStore((s) => s.updateTrack)
   const [resolved, setResolved] = useState<string | null>(null)
   const [upgraded, setUpgraded] = useState<string | null>(null)
+  const [cachedRemote, setCachedRemote] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
   const trackId = track?.id
   const coverPath = track?.coverPath
+  const coverUrl = track?.coverUrl
   // 在线曲目的封面是远端 https 地址，只有本地文件才需要按需提取
   const needsExtraction = !!trackId && !coverPath && !track?.onlineUrl
 
@@ -139,7 +185,21 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
     setResolved(null)
     setFailed(false)
     setUpgraded(null)
-  }, [trackId, coverPath, track?.coverUrl])
+    setCachedRemote(null)
+  }, [trackId, coverPath, coverUrl])
+
+  // 远端封面：先问主进程本地缓存有没有，命中就直接读本地文件，不再走网络；
+  // 未命中时主进程已在后台拉取，本次仍显示远端地址（见下面的 src 计算）
+  useEffect(() => {
+    if (!trackId || !coverUrl || !/^https?:\/\//i.test(coverUrl)) return
+    let cancelled = false
+    requestRemoteCoverCache(track!).then((src) => {
+      if (!cancelled && src) setCachedRemote(src)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [trackId, coverUrl, track?.onlineSource, track?.onlineId])
 
   useEffect(() => {
     if (!needsExtraction || !platform.ensureCover) return
@@ -200,19 +260,34 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
   }, [trackId, coverPath, track?.onlineUrl, updateTrack])
 
   const src = upgraded || coverPath || resolved
-  // 在线曲目无本地封面时直接用源提供的远端 coverUrl（本地路径才走 cover-local 协议）
+  // 在线曲目无本地封面时用源提供的远端 coverUrl（本地路径才走 cover-local 协议）
   const remoteSrc = !src && track?.coverUrl && /^https?:\/\//i.test(track.coverUrl) ? track.coverUrl : null
+  // 远端封面命中本地缓存后用缓存地址；否则本次仍读远端地址
+  const finalSrc = src ? platform.getCoverSrc(src) : cachedRemote || remoteSrc
   // 封面文件缺失/损坏时回退到占位图，而不是留一个碎图或空框
-  if ((!src && !remoteSrc) || failed) return <>{fallback}</>
+  if (!finalSrc || failed) return <>{fallback}</>
 
   return (
     <img
       {...imgProps}
-      src={src ? platform.getCoverSrc(src) : remoteSrc!}
+      src={finalSrc}
       alt={alt}
-      // 远端封面常有防盗链，不发送 Referer（与搜索列表一致）
-      referrerPolicy={remoteSrc ? 'no-referrer' : imgProps.referrerPolicy}
+      // 远端封面常有防盗链，不发送 Referer（读本地缓存文件时无需该策略，与搜索列表一致）
+      referrerPolicy={!src && !cachedRemote && remoteSrc ? 'no-referrer' : imgProps.referrerPolicy}
       onError={(e) => {
+        // 远端封面的本地缓存文件可能刚被清掉（缓存驱逐/清空）：丢掉这个缓存地址，
+        // 退回原始远端地址重试；不重试的话列表里这一格会一直停在碎图上
+        if (!src && cachedRemote && coverUrl) {
+          cachedRemoteCovers.delete(coverUrl)
+          setCachedRemote(null)
+          setFailed(false)
+          imgProps.onError?.(e)
+          return
+        }
+        // 本地封面文件同样可能是刚被驱逐掉的：清掉记录让组件重新提取，
+        // 否则 store 里 coverPath 还在、needsExtraction 不触发，封面就永久空了
+        // （重新提取有「确认无封面」终态兜底，不会反复重试）
+        if (src && trackId) updateTrack(trackId, { coverPath: undefined })
         setFailed(true)
         imgProps.onError?.(e)
       }}

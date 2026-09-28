@@ -6,10 +6,10 @@ import { closeDatabase } from './ipc/database'
 import { getLibrarySource } from './ipc/librarySource'
 import {
   CACHE_SCHEME,
-  initAudioCache,
-  registerAudioCacheIpc,
-  serveCachedAudio,
-} from './ipc/audioCache'
+  initMediaCache,
+  registerMediaCacheIpc,
+  serveCachedMedia,
+} from './ipc/mediaCache'
 import {
   REMOTE_SCHEME,
   parseRemoteAudioUrl,
@@ -360,12 +360,14 @@ if (!gotTheLock) {
       }
     })
 
-    // 在线播放缓存协议：aurora-cache://localhost/<hash>.<ext> → 读本地缓存文件
-    protocol.handle(CACHE_SCHEME, (request) => serveCachedAudio(request))
+    // 媒体缓存协议：aurora-cache://<pool>/<file> → 读本地缓存文件
+    protocol.handle(CACHE_SCHEME, (request) => serveCachedMedia(request))
 
-    initAudioCache()
-    registerAudioCacheIpc()
+    // 顺序有讲究：缓存索引要落在曲库之上——启动收敛（超限驱逐）会把被清掉的
+    // 封面路径回填进曲库，所以先起 IPC（内部初始化数据库并注册缓存回调）再初始化缓存
     registerIpcHandlers()
+    registerMediaCacheIpc()
+    initMediaCache()
     const win = createWindow()
     createTray(win)
 

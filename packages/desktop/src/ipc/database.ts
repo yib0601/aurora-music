@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { app } from 'electron'
 import { buildRemoteAudioUrl } from '@aurora/shared'
+import { forgetCachedFile, forgetCachedFiles } from './mediaCache'
 import type { Track, Album } from '../types'
 
 let db: Database.Database | null = null
@@ -245,15 +246,28 @@ export function deleteTrack(id: string): void {
 
 function removeCoverFile(coverPath?: string | null): void {
   if (!coverPath) return
-  // 只清理本应用封面缓存目录内的文件，避免误删用户文件
-  try {
-    const coverDir = path.join(app.getPath('userData'), 'aurora-music', 'covers')
-    if (path.dirname(coverPath) === coverDir && fs.existsSync(coverPath)) {
-      fs.unlinkSync(coverPath)
-    }
-  } catch (err) {
-    console.warn('清理封面文件失败:', coverPath, err)
-  }
+  removeCoverFileBody(coverPath)
+  // 无论文件是否删成功都要销索引条目：留着就是一个永远命不中、却一直占额度的僵尸
+  forgetCachedFile(coverPath)
+}
+
+/**
+ * 把封面路径正好等于给定文件的曲目记录清空（媒体缓存驱逐/清空封面时调用）。
+ *
+ * 曲库里残留的 cover_path 是悬空的，渲染层会据此认为「已有封面」而不再提取，
+ * 封面就永久空着了。共享一个事务：启动收敛一次可能淘汰几百上千张封面，
+ * 逐条提交会把启动拖慢。
+ */
+export function clearCoverPaths(files: readonly string[]): number {
+  if (files.length === 0) return 0
+  const d = getDb()
+  const stmt = d.prepare('UPDATE tracks SET cover_path = NULL WHERE cover_path = ?')
+  const run = d.transaction((list: readonly string[]) => {
+    let n = 0
+    for (const f of list) n += stmt.run(f).changes
+    return n
+  })
+  return run(files)
 }
 
 /**
@@ -340,8 +354,25 @@ function deleteTrackRows(rows: Array<{ id: string; path: string; cover_path?: st
   })
   delMany(rows.map((t) => t.id))
   // 同步清理被删曲目的封面缓存文件，避免磁盘泄漏
-  for (const t of rows) removeCoverFile(t.cover_path)
+  const coverPaths: string[] = []
+  for (const t of rows) {
+    if (t.cover_path) coverPaths.push(t.cover_path)
+    removeCoverFileBody(t.cover_path)
+  }
+  // 索引写入只做一次：一次移除可能涉及几千首，逐条落盘会写出几百 MB 无效 IO
+  forgetCachedFiles(coverPaths)
   return rows.length
+}
+
+/** removeCoverFile 的删文件部分：批量路径下索引由调用方统一次写入 */
+function removeCoverFileBody(coverPath?: string | null): void {
+  if (!coverPath) return
+  try {
+    const coverDir = path.join(app.getPath('userData'), 'aurora-music', 'covers')
+    if (path.dirname(coverPath) === coverDir) fs.unlinkSync(coverPath)
+  } catch (err) {
+    console.warn('清理封面文件失败:', coverPath, err)
+  }
 }
 
 export function insertAlbum(album: Album): void {

@@ -14,6 +14,7 @@ import { toast } from '@/components/common/Toast'
 import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 import { getAudioCacheUsage, clearAudioCache } from '@/services/audioCache.service'
+import { resetCoverCache } from '@/components/common/CoverImage'
 import {
   buildAuroraEndpoints,
   checkSourceForm,
@@ -27,7 +28,7 @@ const themeOptions = [
   { value: 'system' as const, label: '跟随系统', icon: Monitor },
 ]
 
-/** 在线播放缓存容量档位：0 表示关闭缓存，其余单位为 MB */
+/** 缓存容量档位：0 表示关闭缓存，其余单位为 MB */
 const cacheLimitOptions = [
   { value: 0, label: '关闭' },
   { value: 256, label: '256 MB' },
@@ -978,7 +979,7 @@ export function SettingsPage() {
   const setDownloadQuality = useLibraryStore((s) => s.setDownloadQuality)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
 
-  // 在线播放缓存：容量档位 + 当前占用；仅桌面端有实现，其余平台隐藏该分区
+  // 媒体缓存：容量档位 + 当前占用；仅桌面端有实现，其余平台隐藏该分区
   const audioCacheLimitMB = useLibraryStore((s) => s.audioCacheLimitMB)
   const setAudioCacheLimitMB = useLibraryStore((s) => s.setAudioCacheLimitMB)
   const [cacheUsage, setCacheUsage] = useState<{ usedBytes: number; count: number }>({ usedBytes: 0, count: 0 })
@@ -1000,11 +1001,16 @@ export function SettingsPage() {
   }, [supportsAudioCache])
 
   const handleClearCache = async () => {
-    const ok = window.confirm('清空全部在线播放缓存？已缓存的歌曲下次播放将重新下载。')
+    const ok = window.confirm('清空全部缓存？')
     if (!ok) return
     await clearAudioCache()
+    // 封面文件被删除后主进程已把曲库里的 coverPath 置空，这里丢弃会话内缓存的
+    // 解析结果并重拉曲库，让封面按需重新提取，而不是一直指向已删文件
+    resetCoverCache()
+    const tracks = await platform.getAllTracks?.()
+    if (tracks) useLibraryStore.getState().setTracks(tracks)
     setCacheUsage({ usedBytes: 0, count: 0 })
-    toast('播放缓存已清空')
+    toast('缓存已清空')
   }
 
   // 平台在运行期不会变，取一次即可；下载目录的文案与路径展示两端不同
@@ -1419,23 +1425,22 @@ export function SettingsPage() {
             </div>
           </section>
 
-          {/* 在线播放缓存：仅桌面端有主进程磁盘缓存实现 */}
+          {/* 媒体缓存：仅桌面端有主进程实现 */}
           {supportsAudioCache && (
             <section className="card-list p-5">
-              <h2 className="font-display text-tagline mb-4 text-white">播放缓存</h2>
+              <h2 className="font-display text-tagline mb-4 text-white">缓存</h2>
               <div className="space-y-4">
                 <div>
                   <p className="font-text text-caption-strong text-white/80">缓存大小</p>
-                  <p className="font-text text-caption text-white/60 mt-0.5 mb-3">
-                    在线歌曲首次播放后自动缓存到本地，再次播放时不再走网络
-                  </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mt-3">
                     {cacheLimitOptions.map(({ value, label }) => (
                       <button
                         key={value}
                         onClick={() => {
                           setAudioCacheLimitMB(value)
-                          if (value === 0) setCacheUsage({ usedBytes: 0, count: 0 })
+                          // 关闭档位只停止新增缓存，磁盘上已有的内容不会消失：
+                          // 这里重新读一次真实占用，而不是按档位猜测
+                          void getAudioCacheUsage().then(setCacheUsage)
                         }}
                         className={`pill pill-md ${
                           audioCacheLimitMB === value ? 'pill-mint' : 'pill-soft'
@@ -1450,7 +1455,7 @@ export function SettingsPage() {
                   <div>
                     <p className="font-text text-caption-strong text-white/80">当前占用</p>
                     <p className="font-text text-caption text-white/60 mt-0.5">
-                      {formatBytes(cacheUsage.usedBytes)}（{cacheUsage.count} 首）
+                      {formatBytes(cacheUsage.usedBytes)}
                       {audioCacheLimitMB > 0 && ` / 上限 ${formatBytes(audioCacheLimitMB * 1024 * 1024)}`}
                     </p>
                   </div>

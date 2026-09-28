@@ -5,6 +5,7 @@ import iconv from 'iconv-lite'
 import { v4 as uuidv4 } from 'uuid'
 import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
+import { registerCoverFile } from './mediaCache'
 import { searchOnlineTracks, fetchWithTimeout } from '@aurora/shared'
 import type { OnlineSearchOptions, OnlineTrackSearchResult } from '@aurora/shared'
 
@@ -261,6 +262,8 @@ export async function ensureCover(track: Track, userData: string): Promise<strin
     const data = pic.data instanceof Uint8Array ? pic.data : new Uint8Array(pic.data)
     const coverDest = getCoverCachePath(userData, track.id, coverExtensionFor(data, pic.format))
     await fs.promises.writeFile(coverDest, data)
+    // 登记进媒体缓存配额：封面与音频、歌词共用一份总容量
+    registerCoverFile(track.id, coverDest)
     updateTrack(track.id, { coverPath: coverDest })
     return coverDest
   } catch (err) {
@@ -422,6 +425,7 @@ export async function fetchOnlineCover(
 
   const coverDest = getCoverCachePath(userData, track.id, coverExtensionFor(buf))
   await fs.promises.writeFile(coverDest, buf)
+  registerCoverFile(track.id, coverDest)
   updateTrack(track.id, { coverPath: coverDest })
   return coverDest
 }

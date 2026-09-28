@@ -4,7 +4,7 @@ import path from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import { app } from 'electron'
-import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder } from './database'
+import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder, clearCoverPaths } from './database'
 import { scanFolder, ensureCover, fetchOnlineCover } from './scanner'
 import {
   syncLibrarySources,
@@ -13,6 +13,13 @@ import {
   removeLibrarySourceTracks,
   ensureRemoteCover,
 } from './librarySource'
+import {
+  readCachedLyrics,
+  writeCachedLyrics,
+  resolveCachedCover,
+  setCacheClearListener,
+  setCacheEvictListener,
+} from './mediaCache'
 import { watchFolder, unwatchFolder } from './watcher'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
@@ -241,6 +248,30 @@ export function registerIpcHandlers() {
   // 内置更新：安装包下载（进度事件）与安装（启动安装器 / 打开终端执行命令）
   registerUpdaterIpc(sendToRenderer)
 
+  // 媒体缓存清出封面时回填曲库：被删掉的封面文件不能留在 cover_path 里，
+  // 否则渲染层认为「已有封面」而不再提取，封面对用户就永久消失了。
+  // 驱逐会成批发生（启动收敛一次可能淘汰几百张），这里攒到本轮事件循环末尾
+  // 再一次性写库，避免上千次单条提交把启动拖慢。
+  const pendingCoverEvictions = new Set<string>()
+  let flushHandle: ReturnType<typeof setImmediate> | null = null
+  const flushCoverEvictions = () => {
+    flushHandle = null
+    const files = [...pendingCoverEvictions]
+    pendingCoverEvictions.clear()
+    const cleared = clearCoverPaths(files)
+    if (cleared > 0) console.log('[MediaCache] 已清理悬空封面路径:', cleared)
+  }
+  setCacheEvictListener(({ pool, trackId, filePath }) => {
+    if (pool !== 'cover' || !trackId) return
+    pendingCoverEvictions.add(filePath)
+    if (!flushHandle) flushHandle = setImmediate(flushCoverEvictions)
+  })
+  // 整池清空同样走批量：只清被删文件对应的记录，同目录里未纳入缓存的曲库封面不受影响
+  setCacheClearListener((removedCoverFiles) => {
+    const cleared = clearCoverPaths(removedCoverFiles)
+    if (cleared > 0) console.log('[MediaCache] 已清理悬空封面路径:', cleared)
+  })
+
   ipcMain.handle('dialog:openFolder', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return null
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -407,30 +438,33 @@ export function registerIpcHandlers() {
     }
   )
 
-  // 读取本地歌词文件：路径 ${userData}/aurora-music/lyrics/${trackId}.lrc，不存在返回 null
-  ipcMain.handle('lyrics:read', async (_event, trackId: string): Promise<string | null> => {
-    try {
-      // trackId 白名单校验，防止路径穿越（在线曲目的 id 来自远端服务器）
-      if (typeof trackId !== 'string' || !isValidTrackId(trackId)) return null
-      const filePath = path.join(app.getPath('userData'), 'aurora-music', 'lyrics', `${trackId}.lrc`)
-      const content = await fs.promises.readFile(filePath, 'utf-8')
-      return content
-    } catch {
-      return null
+  // 远端封面（在线曲目的 coverUrl）缓存解析：命中返回 aurora-cache:// 地址，
+  // 未命中返回 null 并由主进程后台拉取——本次渲染仍用远端地址，下次即命中。
+  ipcMain.handle(
+    'covers:resolveRemote',
+    (_event, req: { url: string; key: string; headers?: Record<string, string> }) => {
+      if (!req || typeof req.url !== 'string' || !/^https?:\/\//i.test(req.url) || !req.key) {
+        return { src: null }
+      }
+      return resolveCachedCover(req.key, req.url, req.headers)
     }
+  )
+
+  // 读取本地歌词文件：路径 ${userData}/aurora-music/lyrics/${trackId}.lrc，不存在返回 null。
+  // 歌词与音频、封面共用一份缓存配额，命中时由缓存层刷新最近使用时间
+  ipcMain.handle('lyrics:read', async (_event, trackId: string): Promise<string | null> => {
+    // trackId 白名单校验，防止路径穿越（在线曲目的 id 来自远端服务器）
+    if (typeof trackId !== 'string' || !isValidTrackId(trackId)) return null
+    return readCachedLyrics(trackId)
   })
 
-  // 保存歌词到本地，返回保存的文件路径
+  // 保存歌词到本地并登记进缓存配额，返回保存的文件路径
   ipcMain.handle('lyrics:save', async (_event, lyrics: string, trackId: string): Promise<string> => {
     if (typeof trackId !== 'string' || !isValidTrackId(trackId)) {
       throw new Error('invalid track id')
     }
     if (typeof lyrics !== 'string') lyrics = ''
-    const dir = path.join(app.getPath('userData'), 'aurora-music', 'lyrics')
-    await fs.promises.mkdir(dir, { recursive: true })
-    const filePath = path.join(dir, `${trackId}.lrc`)
-    await fs.promises.writeFile(filePath, lyrics, 'utf-8')
-    return filePath
+    return writeCachedLyrics(trackId, lyrics)
   })
 
   // 在线搜索歌词：调用共享执行器，按用户配置的歌词源依次尝试
