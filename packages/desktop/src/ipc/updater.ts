@@ -1,8 +1,8 @@
-import { app, ipcMain, shell } from 'electron'
+import { app, ipcMain, net, session, shell } from 'electron'
+import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { Readable } from 'stream'
-import { pipeline } from 'stream/promises'
 
 /**
  * 内置更新下载与安装：
@@ -13,16 +13,33 @@ import { pipeline } from 'stream/promises'
  *   exe / AppImage → 直接启动安装器（Windows NSIS 自带向导；AppImage 由用户确认后退出当前应用）；
  *   deb / rpm → 打开终端执行 sudo 覆盖安装命令（桌面端应用无法自行提权）；
  *   dmg → 挂载 dmg 并让 Finder 显示，用户把 App 拖进「应用程序」完成覆盖。
+ *
+ * 下载线路的两条硬规则（都源于实测，改动前请先复测）：
+ * 1. 走 Electron 的 net.fetch（Chromium 网络服务），不能用 Node 全局 fetch。
+ *    Node 的 fetch 是 undici 直连，既不读系统代理也不认 gsettings：系统里明摆着
+ *    配了 127.0.0.1:7897 的代理，它照样绕过去直连 GitHub。实测 GitHub release
+ *    资产（8MB 采样）：Node fetch 直连 0.27MB/s，Chromium 栈经系统代理 1.1~1.6MB/s，
+ *    78MB 的安装包从「五分钟起步」变成「一分钟左右」。
+ * 2. 公共加速前缀（gh-proxy / ghfast）实测只有 35KB/s，比直连还慢，只能当最后兜底。
+ *    所以不能「先官方直连、拿到响应头就一直忍着」，必须靠低速看门狗主动换源。
  */
 
 export interface UpdaterProgress {
   received: number
   total: number | null
+  /** 实时速度（字节/秒）；无法估算时为 null */
+  speed: number | null
 }
 
 export interface UpdaterDonePayload {
   filePath: string
   kind: string
+}
+
+/** 下载线路描述，用于在下载对话框里告诉用户「正在经系统代理下载」还是「直连」 */
+export interface UpdaterRoute {
+  label: string
+  proxy: string | null
 }
 
 /** 支持的安装包类型白名单（渲染层传入，避免被伪造出任意文件） */
@@ -84,8 +101,11 @@ function cleanupOldArtifacts(dir: string, keepFile: string) {
 /** 主进程把 URL 的文件名取出来（兜底按包类型生成） */
 function fileNameFromUrl(url: string, kind: string): string {
   try {
-    const name = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() || '')
-    if (name && /[\w.-]+\.[A-Za-z0-9]{2,8}$/.test(name)) return name
+    const tail = new URL(url).pathname.split('/').filter(Boolean).pop() || ''
+    // 取 basename：pathname 里被编码的 %2F 解码后会带出路径分隔符，
+    // 直接拼进下载目录就能写到任意位置，这里必须先削掉目录部分
+    const name = path.basename(decodeURIComponent(tail))
+    if (name && /^[\w.-]+\.[A-Za-z0-9]{2,8}$/.test(name)) return name
   } catch {
     // 落到兜底
   }
@@ -102,13 +122,6 @@ function uniquePath(dir: string, fileName: string): string {
     if (!fs.existsSync(candidate)) return candidate
   }
 }
-
-/**
- * 单个下载源的「建连超时」：大陆网络下直连 GitHub 失败时 TCP 建连会挂起
- * 10~40s（不是立刻报错），必须先超时放弃再换下一个源，否则降级兜底形同虚设。
- * 只约束「拿到响应头」这一步；开始写盘后不再限时，避免大包被误杀。
- */
-const CONNECT_TIMEOUT_MS = 8000
 
 /**
  * 组装下载候选地址列表（GitHub 官方直链 + 加速前缀）。
@@ -129,27 +142,595 @@ function normalizeDownloadUrls(url: unknown, altUrls: unknown): string[] {
   return result
 }
 
-/** 带建连超时的 fetch：signal 由外部传入，超时只中断本次请求 */
-async function fetchWithConnectTimeout(url: string, signal: AbortSignal): Promise<Response> {
-  const timer = new AbortController()
-  const timeoutId = setTimeout(() => timer.abort(), CONNECT_TIMEOUT_MS)
-  const onAbort = () => timer.abort()
-  signal.addEventListener('abort', onAbort)
+// ───────────────────────── 下载网络层 ─────────────────────────
+
+const UPSTREAM_USER_AGENT = 'Aurora-Music-Updater'
+
+/** 建连超时：大陆网络直连 GitHub 失败时 TCP 建连会挂起 10~40s，必须先放弃再换源 */
+const CONNECT_TIMEOUT_MS = 8000
+
+/** 看门狗采样节拍：每 1s 评估一次速度与存活 */
+const WATCH_TICK_MS = 1000
+
+/** 低速阈值：低于它基本可断定这条源走不通（实测代理链路 1.1~1.6MB/s、直连 0.27MB/s、前缀 0.035MB/s） */
+const SLOW_BPS = 384 * 1024
+
+/** 判定「持续低速」所需的最小观察窗口，短于此不下结论，避免起步抖动误判 */
+const SLOW_WINDOW_MS = 8000
+
+/** 已下载比例超过它就不再换源：快到终点了，重连不值 */
+const SWITCH_TAIL_RATIO = 0.85
+
+/** 硬卡死：多久完全没有数据就判定这条连接废了（关掉低速中止后仍有这层保护） */
+const HARD_STALL_MS = 30000
+
+/** 竞速探测：每个候选源最多读多少字节来估速 */
+const PROBE_BYTES = 512 * 1024
+/** 竞速探测的总时限（含建连） */
+const PROBE_TIMEOUT_MS = 6000
+/** 单次下载最多触发几次竞速换源 */
+const MAX_RACES = 2
+
+/** 竞速探测的候选上限：并发探测太多源会互相抢带宽，还把失败路径拉长 */
+const MAX_PROBE_SOURCES = 4
+
+/** 速度采样窗口不足这个时长就不报速度（避免起步/换源瞬间用毫秒级间隔算出假高速） */
+const MIN_SPEED_WINDOW_MS = 500
+
+const TIMEOUT = Symbol('watchdog-timeout')
+
+/** 读取超时竞速：超时返回 TIMEOUT，底层 promise 保持 pending 交给下一轮复用，不会丢数据 */
+function raceWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIMEOUT> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<typeof TIMEOUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMEOUT), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer)
+  }) as Promise<T | typeof TIMEOUT>
+}
+
+/** 从父信号派生一个可单独中止的信号（当前请求超时/看门狗中止时不牵连整个任务） */
+function deriveAbort(parent: AbortSignal): { ctrl: AbortController; dispose: () => void } {
+  const ctrl = new AbortController()
+  const onAbort = () => ctrl.abort()
+  if (parent.aborted) ctrl.abort()
+  else parent.addEventListener('abort', onAbort)
+  return { ctrl, dispose: () => parent.removeEventListener('abort', onAbort) }
+}
+
+type NetFetchInit = Parameters<typeof net.fetch>[1]
+
+/**
+ * 说明当前线路：Chromium 会把系统代理设置解析成 "PROXY host:port; DIRECT" 这样的规则串。
+ * 结果只用于展示与诊断——真正的代理生效由 Chromium 网络栈自动完成。
+ */
+async function describeRoute(url: string): Promise<UpdaterRoute> {
   try {
-    return await fetch(url, {
+    const raw = await session.defaultSession.resolveProxy(url)
+    const first = raw.split(';').map((part) => part.trim()).find(Boolean) || 'DIRECT'
+    const matched = /^(PROXY|HTTPS|SOCKS5?|SOCKS4?)\s+(\S+)/i.exec(first)
+    if (matched) return { label: `系统代理 ${matched[2]}`, proxy: matched[2] }
+  } catch {
+    // resolveProxy 不可用时按直连展示
+  }
+  return { label: '直连（未走系统代理）', proxy: null }
+}
+
+/** Content-Range 里的起点与总长：只认「bytes 起-止/总长」这一种写法，其余形式一律视为不可信 */
+function contentRangeInfo(res: Response): { start: number; total: number | null } | null {
+  const raw = res.headers.get('content-range')
+  if (!raw) return null
+  const matched = /^bytes\s+(\d+)-(\d+)\/(\d+|\*)\s*$/i.exec(raw.trim())
+  if (!matched) return null
+  const start = Number(matched[1])
+  const total = matched[3] === '*' ? null : Number(matched[3])
+  if (!Number.isFinite(start) || start < 0) return null
+  return { start, total: total !== null && Number.isFinite(total) && total > 0 ? total : null }
+}
+
+function contentLengthOf(res: Response): number | null {
+  const raw = res.headers.get('content-length')
+  if (!raw) return null
+  const size = Number(raw)
+  return Number.isFinite(size) && size > 0 ? size : null
+}
+
+interface OpenedResponse {
+  res: Response
+  /** 服务端确实从 offset 处接着给数据 */
+  resumed: boolean
+  /** 完整包长度；这条响应没给出可信长度时为 null */
+  total: number | null
+  /** 无法确认这条 206 到底从哪开始发数据时为 false：这种情况必须弃用该源 */
+  trusted: boolean
+}
+
+/**
+ * 判断这次响应到底有没有「从 offset 接着给数据」，以及它是否可以采信。
+ *
+ * 依据（拿不准一律不采信，代价是换个源，换不来坏包）：
+ * 1. 有 Content-Range：起点等于 offset 才算续传；起点为 0 说明服务端把整包重发（可截断重下）；
+ *    起点是别的值则完全没法用。
+ * 2. 没有 Content-Range（加速层常把它剥掉）：只能靠长度反推 —— body 长度等于
+ *    「已知总长 - offset」是剩余部分（续传），等于「已知总长」是整包重发；
+ *    已知总长未知时无从判断，弃用该响应（否则可能把「后半段」当整包写进文件开头）。
+ */
+function classifyResponse(
+  res: Response,
+  offset: number,
+  info: { start: number } | null,
+  knownTotal: number | null
+): { resumed: boolean; trusted: boolean } {
+  if (res.status !== 206 || offset <= 0) return { resumed: false, trusted: true }
+  if (info) return { resumed: info.start === offset, trusted: info.start === offset || info.start === 0 }
+  const length = contentLengthOf(res)
+  if (knownTotal === null || length === null) return { resumed: false, trusted: false }
+  const resumed = length === knownTotal - offset
+  return { resumed, trusted: resumed || length === knownTotal }
+}
+
+/**
+ * 发起一次下载请求，只约束「拿到响应头」这一段：建连超时后立刻中止，交给外层换源。
+ * 拿到响应头之后计时器解除，读取阶段由看门狗（低速/卡死）负责中止。
+ */
+async function openResponse(
+  url: string,
+  offset: number,
+  ctrl: AbortController,
+  knownTotal: number | null
+): Promise<OpenedResponse> {
+  const timeoutId = setTimeout(() => ctrl.abort(), CONNECT_TIMEOUT_MS)
+  try {
+    const res = await net.fetch(url, {
       headers: {
-        // GitHub release 资源的下载会 302 到 objects.githubusercontent.com，fetch 自动跟随
-        'User-Agent': 'Aurora-Music-Updater',
+        'User-Agent': UPSTREAM_USER_AGENT,
         Accept: '*/*',
+        ...(offset > 0 ? { Range: `bytes=${offset}-` } : {}),
       },
       redirect: 'follow',
-      signal: timer.signal,
-    })
+      // Chromium 默认把这类请求当低优先级；实测 high 能把吞吐拉高约 50%
+      priority: 'high',
+      signal: ctrl.signal,
+    } as NetFetchInit)
+    if (!res.ok || !res.body) throw new Error(`服务器返回 HTTP ${res.status}`)
+    clearTimeout(timeoutId)
+    const info = contentRangeInfo(res)
+    const { resumed, trusted } = classifyResponse(res, offset, info, knownTotal)
+    // 长度来源优先级：本次响应的 Content-Range 总长 → 续传时沿用已知总长 → 整包响应自己的 Content-Length
+    const total = info?.total ?? (resumed ? knownTotal : contentLengthOf(res))
+    return { res, resumed, trusted, total }
   } finally {
     clearTimeout(timeoutId)
-    signal.removeEventListener('abort', onAbort)
   }
 }
+
+/**
+ * 源既不给 Content-Length 也不给 Content-Range 时的兜底：用 `Range: bytes=0-0`
+ * 问一次总长（响应里的 `Content-Range: bytes 0-0/N` 就是包体大小）。
+ * 拿不到长度就无法判断「流干净结束」是下完了还是被截断，这一步是那种情况下唯一的对账依据。
+ * 探测只信 Content-Range：`Content-Length: 1` 是这一个字节的长度，不是包体大小。
+ */
+async function probeTotalSize(url: string, ctrl: AbortController): Promise<number | null> {
+  // 自带超时且只中止探测自己：源挂着不回响应头时，不能把整次下载一起拖死
+  const attempt = deriveAbort(ctrl.signal)
+  const timeoutId = setTimeout(() => attempt.ctrl.abort(), CONNECT_TIMEOUT_MS)
+  try {
+    const res = await net.fetch(url, {
+      headers: { 'User-Agent': UPSTREAM_USER_AGENT, Accept: '*/*', Range: 'bytes=0-0' },
+      redirect: 'follow',
+      priority: 'high',
+      signal: attempt.ctrl.signal,
+    } as NetFetchInit)
+    const info = contentRangeInfo(res)
+    try {
+      await res.body?.cancel()
+    } catch {
+      // 探测响应体直接丢弃
+    }
+    return info?.total ?? null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+    attempt.dispose()
+  }
+}
+
+/** 读一小段估算某条源的实速（字节/秒）；失败或不可用返回 0 */
+async function probeSpeed(url: string, signal: AbortSignal): Promise<number> {
+  const attempt = deriveAbort(signal)
+  const startedAt = Date.now()
+  const deadline = setTimeout(() => attempt.ctrl.abort(), PROBE_TIMEOUT_MS)
+  let bytes = 0
+  try {
+    const res = await net.fetch(url, {
+      headers: {
+        'User-Agent': UPSTREAM_USER_AGENT,
+        Accept: '*/*',
+        Range: `bytes=0-${PROBE_BYTES - 1}`,
+      },
+      redirect: 'follow',
+      priority: 'high',
+      signal: attempt.ctrl.signal,
+    } as NetFetchInit)
+    if (res.ok && res.body) {
+      const body = Readable.fromWeb(res.body as any)[Symbol.asyncIterator]() as AsyncIterator<Uint8Array>
+      let pending = body.next() as Promise<IteratorResult<Uint8Array>>
+      for (;;) {
+        const chunk = await raceWithTimeout(pending, PROBE_TIMEOUT_MS)
+        if (chunk === TIMEOUT || chunk.done) break
+        bytes += chunk.value.length
+        if (bytes >= PROBE_BYTES) break
+        pending = body.next() as Promise<IteratorResult<Uint8Array>>
+      }
+      attempt.ctrl.abort() // 主动断开，别继续占对端带宽
+    }
+  } catch {
+    // 探测失败按 0 处理：探测只是择优，失败不该影响主流程
+  } finally {
+    clearTimeout(deadline)
+    attempt.dispose()
+  }
+  const seconds = Math.max(0.2, (Date.now() - startedAt) / 1000)
+  return bytes / seconds
+}
+
+interface PumpTask {
+  res: Response
+  savePath: string
+  offset: number
+  total: number | null
+  /** release API 给出的安装包字节数：源不给 Content-Length 时用它兜底校验完整性 */
+  expectedSize: number | null
+  /** 是否允许「持续低速即中止换源」；竞速已证明当前源最快时关掉，只保留硬卡死保护 */
+  watchdog: boolean
+  ctrl: AbortController
+  external: AbortSignal
+  onProgress: (payload: UpdaterProgress) => void
+}
+
+interface PumpResult {
+  status: 'completed' | 'stalled' | 'failed' | 'aborted'
+  received: number
+  speed: number
+  error?: unknown
+}
+
+/**
+ * 把响应体写进文件，并在过程中做进度上报与看门狗判定。
+ * 失败/中止时不删除文件：已写入的字节是有效的，换源后按 Range 续传。
+ */
+async function pumpToFile(task: PumpTask): Promise<PumpResult> {
+  let received = task.offset
+  const startedAt = Date.now()
+  let lastDataAt = startedAt
+  let lastCheckAt = startedAt
+  let lastEmit = 0
+  let stalled = false
+  let starved = false
+  const samples: Array<{ t: number; n: number }> = [{ t: startedAt, n: received }]
+
+  const speedOver = (windowMs: number): number => {
+    const now = Date.now()
+    const cutoff = now - windowMs
+    let base = samples[0]
+    for (const sample of samples) {
+      if (sample.t <= cutoff) base = sample
+      else break
+    }
+    const elapsed = now - base.t
+    // 窗口还没铺满（刚起步、刚换源）时不做除法：极短时间里的第一块数据
+    // 会被放大成一个假的高速度，界面上看着像突然起飞
+    if (elapsed < MIN_SPEED_WINDOW_MS) return 0
+    return ((received - base.n) / elapsed) * 1000
+  }
+
+  const sample = (now: number) => {
+    samples.push({ t: now, n: received })
+    if (samples.length > 64) samples.shift()
+  }
+
+  /**
+   * 看门狗评估，每秒一次：
+   * - 硬卡死（长时间零数据）任何情况下都中止，即使已经关掉低速中止；
+   * - 持续低速只在 watchdog 打开时中止换源。
+   * 注意「有数据但很慢」是最常见的情形（大陆直连 GitHub 约 270KB/s），
+   * 所以这个评估必须在数据到达的路径上跑，不能只挂在读超时分支里。
+   */
+  const evaluate = (now: number) => {
+    lastCheckAt = now
+    sample(now)
+    if (now - lastDataAt >= HARD_STALL_MS) {
+      starved = true
+      task.ctrl.abort()
+      return
+    }
+    if (
+      task.watchdog &&
+      now - startedAt >= SLOW_WINDOW_MS &&
+      speedOver(SLOW_WINDOW_MS) < SLOW_BPS &&
+      (task.total === null || received < task.total * SWITCH_TAIL_RATIO)
+    ) {
+      stalled = true
+      task.ctrl.abort()
+    }
+  }
+
+  let handle: fs.promises.FileHandle | null = null
+  let iterator: AsyncIterator<Uint8Array> | null = null
+
+  try {
+    handle = await fs.promises.open(task.savePath, task.offset > 0 ? 'a' : 'w')
+    iterator = Readable.fromWeb(task.res.body as any)[Symbol.asyncIterator]() as AsyncIterator<Uint8Array>
+    let pending = iterator.next() as Promise<IteratorResult<Uint8Array>>
+
+    for (;;) {
+      const chunk = await raceWithTimeout(pending, WATCH_TICK_MS)
+      const now = Date.now()
+
+      if (chunk === TIMEOUT) {
+        // 这一拍没有数据（pending 保持，数据到了立刻续上）
+        evaluate(now)
+        continue
+      }
+
+      if (chunk.done) {
+        // 流「干净结束」也要对账：源不给 Content-Length 时，被截断的连接同样会正常 end，
+        // 不比对长度就会把半截安装包当成功（后面 chmod、发 done、清理旧包一路照做）
+        const expected = task.total ?? task.expectedSize ?? null
+        if (expected === null) {
+          // 一点长度依据都没有（源不给、release API 没给、Range 探测也失败）：
+          // 无法判断完整性，只能如实失败——「下到一半」绝不能当成功
+          return {
+            status: 'failed',
+            received,
+            speed: speedOver(SLOW_WINDOW_MS),
+            error: new Error('无法确认安装包完整性（服务端未提供长度，也不清楚官方包体大小）'),
+          }
+        }
+        if (received !== expected) {
+          return {
+            status: 'failed',
+            received,
+            speed: speedOver(SLOW_WINDOW_MS),
+            error: new Error(`安装包不完整（已下载 ${received} / 应为 ${expected} 字节）`),
+          }
+        }
+        break
+      }
+
+      const buffer = chunk.value
+      lastDataAt = now
+      const { bytesWritten } = await handle.write(buffer)
+      received += bytesWritten
+      if (bytesWritten !== buffer.length) {
+        // 短写会让内存计数超出文件实际长度，下次换源的 Range 起点就会错位
+        throw new Error('写入磁盘失败')
+      }
+
+      if (now - lastEmit >= 200) {
+        lastEmit = now
+        sample(now)
+        const speed = speedOver(2000)
+        task.onProgress({ received, total: task.total, speed: speed > 0 ? speed : null })
+      }
+      if (now - lastCheckAt >= WATCH_TICK_MS) evaluate(now)
+
+      pending = iterator.next() as Promise<IteratorResult<Uint8Array>>
+    }
+
+    task.onProgress({ received, total: task.total, speed: null })
+    return { status: 'completed', received, speed: 0 }
+  } catch (err) {
+    const speed = speedOver(SLOW_WINDOW_MS)
+    if (starved) return { status: 'failed', received, speed, error: new Error('连接长时间无数据') }
+    if (stalled) return { status: 'stalled', received, speed }
+    if (task.external.aborted) return { status: 'aborted', received, speed }
+    return { status: 'failed', received, speed, error: err }
+  } finally {
+    // 每条退出路径都要放掉句柄与读取端：否则换源重试会持续泄漏 fd 与半开的流
+    if (handle) {
+      try {
+        await handle.close()
+      } catch {
+        // 关闭失败不影响结果判定
+      }
+    }
+    if (iterator && typeof iterator.return === 'function') {
+      try {
+        await iterator.return()
+      } catch {
+        // 已经结束的流会直接返回
+      }
+    }
+  }
+}
+
+/** 并发探测候选源，挑出明显快于当前速度的那个；没有值得换的就返回 null */
+async function pickFasterSource(urls: string[], currentSpeed: number, signal: AbortSignal): Promise<string | null> {
+  const probed = await Promise.all(urls.map(async (url) => ({ url, speed: await probeSpeed(url, signal) })))
+  probed.sort((a, b) => b.speed - a.speed)
+  const best = probed[0]
+  // 只有「明显更快」才值得中途换源：重连并重新协商 Range 本身有成本
+  const floor = Math.max(currentSpeed * 1.5, SLOW_BPS)
+  return best && best.speed > floor ? best.url : null
+}
+
+interface InstallerDownloadTask {
+  candidates: string[]
+  savePath: string
+  signal: AbortSignal
+  onProgress: (payload: UpdaterProgress) => void
+  onRoute: (route: UpdaterRoute) => void
+  /** release API 给出的安装包字节数，用于最终完整性校验（源不给长度头时是唯一依据） */
+  expectedSize?: number | null
+  /** release API 给出的 sha256 摘要（小写 hex），下载完成后端到端校验内容 */
+  expectedDigest?: string | null
+}
+
+/** 文件当前实际字节数：换源续传以它为准，内存计数只作参考 */
+function fileSizeOf(file: string): number {
+  try {
+    return fs.statSync(file).size
+  } catch {
+    return 0
+  }
+}
+
+/** 复用同一把续传/校验逻辑的摘要计算：端到端比对，能发现「长度对但内容错」的坏包 */
+async function sha256Of(file: string): Promise<string> {
+  const hash = crypto.createHash('sha256')
+  for await (const chunk of fs.createReadStream(file)) {
+    hash.update(chunk as Buffer)
+  }
+  return hash.digest('hex')
+}
+
+/** 归一化 sha256 摘要：接受 `sha256:<64 位十六进制>` 或裸 hex，其它一律丢弃 */
+function normalizeDigest(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const raw = value.trim().toLowerCase()
+  const prefixed = /^sha256:([0-9a-f]{64})$/.exec(raw)
+  if (prefixed) return prefixed[1]
+  return /^[0-9a-f]{64}$/.test(raw) ? raw : null
+}
+
+/**
+ * 多源下载主循环：按序尝试候选源，遇到低速/卡死时主动换源并用 Range 续传。
+ * 返回最终写入的字节数。
+ */
+export async function downloadInstaller(task: InstallerDownloadTask): Promise<number> {
+  const route = await describeRoute(task.candidates[0])
+  task.onRoute(route)
+  console.log(`[Updater] 下载线路：${route.label}，候选源 ${task.candidates.length} 个`)
+
+  const expectedSize = typeof task.expectedSize === 'number' && task.expectedSize > 0 ? task.expectedSize : null
+  const expectedDigest = normalizeDigest(task.expectedDigest)
+  const queue = [...task.candidates]
+  // 竞速证明「已经是最快」的源：放回队列重试时关掉低速中止，避免来回横跳
+  const settled = new Set<string>()
+  let received = 0
+  // 已知的完整包长度：先信 release API，任何一条响应给出可信长度就覆盖它
+  let knownTotal: number | null = expectedSize
+  let probedTotal = false
+  let racesLeft = MAX_RACES
+  let lastError: unknown = null
+
+  while (queue.length) {
+    const url = queue.shift() as string
+    const attempt = deriveAbort(task.signal)
+    try {
+      // 以磁盘上的实际字节数为权威偏移：写失败/短写会让内存计数与文件脱节，
+      // 拿它当 Range 起点就会出现「中间缺一段、总长看着刚好」的坏包
+      received = fileSizeOf(task.savePath)
+      const opened = await openResponse(url, received, attempt.ctrl, knownTotal)
+      if (!opened.trusted) {
+        // 206 却说不清从哪开始发：宁可换源，也不拿「可能是后半段」的数据去拼文件
+        try {
+          await opened.res.body?.cancel()
+        } catch {
+          // 直接丢弃这条响应
+        }
+        console.log('[Updater] 源返回 206 但无法确认数据起点，改用下一个源')
+        lastError = new Error('响应无法确认数据起点')
+        continue
+      }
+      let offset = received
+      if (!opened.resumed && offset > 0) {
+        // 这条源没按 offset 续传（不支持 Range，或回了 206 却从头发数据）：
+        // 只能从头下，先丢掉已写入的部分
+        offset = 0
+        try {
+          fs.truncateSync(task.savePath, 0)
+        } catch {
+          // 截断失败会在写入时暴露，交给外层报错
+        }
+      }
+      if (opened.total !== null) knownTotal = opened.total
+      // 响应与 release 都没给出长度时，用一次 Range 探测问出总长：没有长度就没法
+      // 区分「流干净结束」和「被截断」，最终对账会失效
+      if (knownTotal === null && !probedTotal) {
+        probedTotal = true
+        const probed = await probeTotalSize(url, attempt.ctrl)
+        if (probed !== null) {
+          knownTotal = probed
+          console.log(`[Updater] 源未提供长度，Range 探测得到总长 ${probed} 字节`)
+        }
+      }
+
+      const outcome = await pumpToFile({
+        res: opened.res,
+        savePath: task.savePath,
+        offset,
+        total: knownTotal,
+        expectedSize,
+        watchdog: !settled.has(url),
+        ctrl: attempt.ctrl,
+        external: task.signal,
+        onProgress: task.onProgress,
+      })
+      received = outcome.received
+
+      if (outcome.status === 'completed') {
+        if (expectedDigest) {
+          const actual = await sha256Of(task.savePath)
+          if (actual !== expectedDigest) {
+            // 长度对得上但内容不是官方那份：多半是中转源改写/损坏，丢弃后换个源重下
+            console.error(`[Updater] 摘要不匹配：期望 ${expectedDigest.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…`)
+            try {
+              fs.rmSync(task.savePath, { force: true })
+            } catch {
+              // 删不掉会在下一次写入时被截断覆盖
+            }
+            lastError = new Error('安装包校验失败（内容与官方摘要不一致）')
+            continue
+          }
+          console.log('[Updater] 安装包摘要校验通过')
+        }
+        return received
+      }
+      if (outcome.status === 'aborted') throw new Error('已取消下载')
+
+      if (outcome.status === 'stalled' && racesLeft > 0 && queue.length) {
+        console.log(
+          `[Updater] 当前源过慢（${(outcome.speed / 1024).toFixed(0)} KB/s，已下 ${(received / 1048576).toFixed(2)} MB），竞速探测 ${Math.min(queue.length, MAX_PROBE_SOURCES)} 个候选源`
+        )
+        const faster = await pickFasterSource(queue.slice(0, MAX_PROBE_SOURCES), outcome.speed, task.signal)
+        if (faster) {
+          racesLeft--
+          // 把选中的源提到队首：它在队列里的原位置要一并摘掉，避免同一源被排两次
+          const at = queue.indexOf(faster)
+          if (at >= 0) queue.splice(at, 1)
+          queue.unshift(faster)
+          console.log(`[Updater] 换到更快的源继续下载：${faster.slice(0, 80)}`)
+          continue
+        }
+        console.log('[Updater] 没有更快的源，继续用当前源下载（关闭低速中止，仅保留卡死保护）')
+      }
+
+      if (outcome.status === 'stalled') {
+        // 没有更快的源：退回当前源接着下，关掉低速中止（硬卡死保护仍在）
+        settled.add(url)
+        queue.unshift(url)
+        continue
+      }
+
+      lastError = outcome.error ?? new Error('下载中断')
+    } catch (err) {
+      lastError = err
+      if (task.signal.aborted) throw new Error('已取消下载')
+      // 建连失败/HTTP 错误：换下一个候选源
+    } finally {
+      attempt.dispose()
+    }
+  }
+
+  const detail = lastError instanceof Error && lastError.message ? lastError.message : ''
+  throw new Error(detail ? `下载失败：${detail}` : '下载失败：网络连接异常（已尝试所有下载源）')
+}
+
+// ───────────────────────── IPC ─────────────────────────
 
 /**
  * 向窗口发送事件的安全封装：handlers.ts 里的 sendToRenderer 是模块私有，
@@ -160,7 +741,7 @@ let send: (channel: string, ...args: unknown[]) => void = () => {}
 export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[]) => void) {
   send = sender
 
-  ipcMain.handle('updater:download', async (_event, url: unknown, kind: unknown, altUrls: unknown) => {
+  ipcMain.handle('updater:download', async (_event, url: unknown, kind: unknown, altUrls: unknown, expectedSize: unknown, expectedDigest: unknown) => {
     const candidates = normalizeDownloadUrls(url, altUrls)
     if (!candidates.length) throw new Error('下载地址无效')
     if (typeof kind !== 'string' || !INSTALLER_KINDS.has(kind)) {
@@ -174,52 +755,15 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
     const savePath = uniquePath(downloadDir(), fileNameFromUrl(candidates[0], kind))
 
     try {
-      // 多源依次尝试：直连 GitHub 失败（大陆网络常见）时自动换加速前缀。
-      // 只在「拿响应头」阶段失败时换源；已开始写盘后中断属于传输失败，
-      // 不重试以免把半截文件当成功（失败时下方会清理残留）。
-      let resp: Response | null = null
-      let connectError: unknown = null
-      for (const candidate of candidates) {
-        if (abort.signal.aborted) break
-        try {
-          const res = await fetchWithConnectTimeout(candidate, abort.signal)
-          if (!res.ok || !res.body) {
-            connectError = new Error(`服务器返回 HTTP ${res.status}`)
-            continue
-          }
-          resp = res
-          break
-        } catch (err) {
-          // 取消是用户意图，立刻退出，不再换源
-          if (abort.signal.aborted) break
-          connectError = err
-        }
-      }
-
-      if (!resp || !resp.body) {
-        if (abort.signal.aborted) throw new Error('已取消下载')
-        const detail = connectError instanceof Error ? connectError.message : ''
-        throw new Error(
-          /HTTP \d+/.test(detail) ? `下载失败：${detail}` : '下载失败：网络连接异常（已尝试所有下载源）'
-        )
-      }
-
-      const lengthHeader = resp.headers.get('content-length')
-      const total = lengthHeader ? Number(lengthHeader) : NaN
-      let received = 0
-      let lastEmit = 0
-
-      const nodeStream = Readable.fromWeb(resp.body as any)
-      nodeStream.on('data', (chunk: Buffer) => {
-        received += chunk.length
-        const now = Date.now()
-        if (now - lastEmit >= 200) {
-          lastEmit = now
-          send('updater:progress', { received, total: Number.isFinite(total) ? total : null })
-        }
+      await downloadInstaller({
+        candidates,
+        savePath,
+        signal: abort.signal,
+        expectedSize: typeof expectedSize === 'number' && expectedSize > 0 ? expectedSize : null,
+        expectedDigest: normalizeDigest(expectedDigest),
+        onProgress: (payload) => send('updater:progress', payload),
+        onRoute: (route) => send('updater:route', route),
       })
-
-      await pipeline(nodeStream, fs.createWriteStream(savePath))
 
       // AppImage 需要可执行权限才能运行
       if (kind === 'appimage') {
@@ -231,7 +775,6 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
       }
 
       cleanupOldArtifacts(downloadDir(), savePath)
-      send('updater:progress', { received, total: Number.isFinite(total) ? total : null })
       send('updater:done', { filePath: savePath, kind })
       return { filePath: savePath }
     } catch (err) {
@@ -249,12 +792,16 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
       send('updater:error', message)
       throw new Error(message)
     } finally {
-      activeAbort = null
+      // 只回收自己这个任务：取消后立刻重下时，不能把新任务的锁清掉
+      if (activeAbort === abort) activeAbort = null
     }
   })
 
   ipcMain.handle('updater:cancel', () => {
-    activeAbort?.abort()
+    const abort = activeAbort
+    // 先摘锁再中止：否则取消后马上点重试会撞上「已有更新下载在进行中」，被渲染层显示成一次报错
+    activeAbort = null
+    abort?.abort()
   })
 
   // 在文件管理器中定位已下载的安装包

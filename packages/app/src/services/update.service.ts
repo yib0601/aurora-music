@@ -38,6 +38,10 @@ export interface UpdateInfo {
   assetUrls: string[]
   /** 匹配到的安装包类型，无匹配包时为 null */
   assetKind: AssetKind | null
+  /** 安装包字节数（release API 的 assets[].size），下载完成后用于校验完整性 */
+  assetSize: number | null
+  /** 安装包 sha256 摘要（release API 的 assets[].digest），下载完成后端到端校验内容 */
+  assetDigest: string | null
   /** 安装包类型展示名（如「RPM 包」），无匹配包时为 null */
   assetLabel: string | null
   /** 覆盖安装命令提示（仅当前是系统包管理器安装时给出），否则 null */
@@ -97,6 +101,8 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     assetUrl: picked?.url ?? null,
     assetUrls: picked?.url ? withGithubProxies(picked.url) : [],
     assetKind: picked?.kind ?? null,
+    assetSize: picked?.size ?? null,
+    assetDigest: picked?.digest ?? null,
     assetLabel: picked ? ASSET_LABEL[picked.kind] : null,
     installHint: picked ? assetInstallHint(picked.kind, system) : null,
   }
