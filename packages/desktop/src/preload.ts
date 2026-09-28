@@ -20,19 +20,38 @@ const electronAPI = {
   // 内置软件更新：主进程流式下载安装包到「下载」目录（进度经事件推送），
   // 下载完成后可直接启动安装器（exe）/ 新版本（AppImage），或打开终端执行
   // sudo 覆盖安装命令（deb/rpm）。url/altUrls 只接受 GitHub release 资源直链
-  // 与白名单加速链接；altUrls 为候选加速源，主进程在直连失败时依次降级重试。
+  // 与白名单加速链接；altUrls 为候选加速源，主进程在直连失败时依次降级重试；
+  // expectedSize / expectedDigest 来自 release API（assets[].size / digest），
+  // 由主进程在下载完成后校验安装包完整性与内容。
   updater: {
-    download: (url: string, kind: string, altUrls?: string[]): Promise<{ filePath: string }> =>
-      ipcRenderer.invoke('updater:download', url, kind, altUrls ?? []),
+    download: (
+      url: string,
+      kind: string,
+      altUrls?: string[],
+      expectedSize?: number | null,
+      expectedDigest?: string | null
+    ): Promise<{ filePath: string }> =>
+      ipcRenderer.invoke('updater:download', url, kind, altUrls ?? [], expectedSize ?? null, expectedDigest ?? null),
     cancel: (): Promise<void> => ipcRenderer.invoke('updater:cancel'),
     // 在文件管理器中定位安装包
     reveal: (filePath: string): Promise<void> => ipcRenderer.invoke('updater:reveal', filePath),
     install: (filePath: string, kind: string): Promise<{ action: 'launched' | 'terminal' | 'none'; command?: string }> =>
       ipcRenderer.invoke('updater:install', filePath, kind),
-    onProgress: (callback: (payload: { received: number; total: number | null }) => void) => {
-      const handler = (_event: unknown, payload: { received: number; total: number | null }) => callback(payload)
+    onProgress: (
+      callback: (payload: { received: number; total: number | null; speed: number | null }) => void
+    ) => {
+      const handler = (
+        _event: unknown,
+        payload: { received: number; total: number | null; speed: number | null }
+      ) => callback(payload)
       ipcRenderer.on('updater:progress', handler)
       return () => ipcRenderer.removeListener('updater:progress', handler)
+    },
+    // 下载线路说明（系统代理 / 直连）：下载开始时推一次，供界面解释「为什么慢」
+    onRoute: (callback: (payload: { label: string; proxy: string | null }) => void) => {
+      const handler = (_event: unknown, payload: { label: string; proxy: string | null }) => callback(payload)
+      ipcRenderer.on('updater:route', handler)
+      return () => ipcRenderer.removeListener('updater:route', handler)
     },
     onDone: (callback: (payload: { filePath: string; kind: string }) => void) => {
       const handler = (_event: unknown, payload: { filePath: string; kind: string }) => callback(payload)

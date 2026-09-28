@@ -20,7 +20,8 @@
     "build": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --publish never",
     "build:dir": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
     "typecheck": "tsc --noEmit -p tsconfig.electron.json",
-    "smoke:webdav": "electron scripts/smoke-webdav.js"
+    "smoke:webdav": "electron scripts/smoke-webdav.js",
+    "smoke:updater": "electron scripts/smoke-updater-download.js"
   },
   "dependencies": {
     "@aurora/shared": "workspace:*",

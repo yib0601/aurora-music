@@ -1087,6 +1087,8 @@ export function SettingsPage() {
         kind: updateInfo.assetKind,
         version: updateInfo.version,
         label: updateInfo.assetLabel,
+        size: updateInfo.assetSize,
+        digest: updateInfo.assetDigest,
       })
       if (started) return
     }
