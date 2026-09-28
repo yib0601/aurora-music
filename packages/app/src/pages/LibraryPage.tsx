@@ -306,16 +306,10 @@ export function LibraryPage() {
 
   const filteredTracks = sortedTracks
 
-  // 副标题：曲库规模用「首数 + 总时长」表达。只给首数无法判断体量——
-  // 100 首 3 分钟流行歌和 100 首 10 分钟的交响乐完全不是一回事。
-  // 用 tracks（去重后展示集）而非隐藏副本，与列表里看到的数量一致。
+  // 副标题：只展示去重后展示集的首数，与列表里看到的数量一致。
   const librarySummary = useMemo(() => {
     if (tracks.length === 0) return '导入音乐，开始构建你的专属音乐库'
-    const minutes = Math.round(tracks.reduce((sum, t) => sum + (t.duration || 0), 0) / 60)
-    const hours = Math.floor(minutes / 60)
-    const rest = minutes % 60
-    const span = hours > 0 ? (rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`) : `${rest} 分钟`
-    return `${tracks.length} 首歌曲 · 约 ${span}`
+    return `${tracks.length} 首歌曲`
   }, [tracks])
 
   // 分组只在对应标签页（或已进入某个分组详情）时才需要计算：
