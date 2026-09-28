@@ -14,6 +14,11 @@
 /**
  * 公共加速前缀候选：都接受「前缀 + 原始 GitHub 链接」的拼接形式。
  * 只保留实测较稳的两个；gh.llkk.cc 等第三方镜像会与前者同时失效，加入反而拖慢失败路径。
+ *
+ * 实测提醒：这两个前缀的吞吐只有 30~40KB/s，比直连 GitHub（约 270KB/s）还慢一个数量级，
+ * 比「经系统代理」慢四十倍以上，因此它们只是断网兜底，不是提速手段。真正的提速在
+ * desktop/src/ipc/updater.ts：下载走 Chromium 网络栈以跟随系统代理，并用低速看门狗
+ * 在源明显过慢时自动换源。
  */
 const GITHUB_PROXY_PREFIXES = ['https://gh-proxy.com/', 'https://ghfast.top/']
 

@@ -21,6 +21,8 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
         kind: info.assetKind!,
         version: info.version,
         label: info.assetLabel,
+        size: info.assetSize,
+        digest: info.assetDigest,
       })
       if (started) {
         // 下载进度由全局对话框展示，横幅完成使命

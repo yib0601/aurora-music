@@ -22,6 +22,10 @@ export interface SystemInfoLike {
 export interface AssetPick {
   url: string
   kind: AssetKind
+  /** release API 给出的包体字节数：下载完成后用于校验完整性（无 Content-Length 的源也只靠它） */
+  size: number | null
+  /** release API 给出的 sha256 摘要（形如 `sha256:<hex>`）：下载完成后端到端校验内容 */
+  digest: string | null
 }
 
 export const ASSET_LABEL: Record<AssetKind, string> = {
@@ -75,32 +79,34 @@ export function assetPreferenceOrder(env: {
 
 /** 从 release assets 里按候选顺序挑出第一个存在的包（同类型有多个时优先本机架构那份） */
 export function pickAsset(
-  assets: Array<{ name?: string; browser_download_url?: string }>,
+  assets: Array<{ name?: string; browser_download_url?: string; size?: number; digest?: string }>,
   order: AssetKind[],
   arch?: string | null
 ): AssetPick | null {
-  const urls = new Map<AssetKind, string>()
-  const archMatched = new Map<AssetKind, string>()
+  const picked = new Map<AssetKind, { url: string; size: number | null; digest: string | null }>()
+  const archMatched = new Map<AssetKind, { url: string; size: number | null; digest: string | null }>()
   const wantArch = (arch || '').toLowerCase()
 
   for (const asset of assets) {
     const name = (asset?.name || '').toLowerCase()
     const url = asset?.browser_download_url
     if (!name || !url) continue
+    const size = typeof asset?.size === 'number' && asset.size > 0 ? asset.size : null
+    const digest = typeof asset?.digest === 'string' && asset.digest ? asset.digest : null
     for (const kind of order) {
       if (!name.endsWith(ASSET_SUFFIX[kind])) continue
-      if (!urls.has(kind)) urls.set(kind, url)
+      if (!picked.has(kind)) picked.set(kind, { url, size, digest })
       // macOS 的 dmg 分 `-arm64` / `-x64` 两份，名字里带本机架构的才是能跑的那份
       if (wantArch && !archMatched.has(kind) && name.includes(`-${wantArch}`)) {
-        archMatched.set(kind, url)
+        archMatched.set(kind, { url, size, digest })
       }
       break
     }
   }
 
   for (const kind of order) {
-    const url = archMatched.get(kind) || urls.get(kind)
-    if (url) return { url, kind }
+    const hit = archMatched.get(kind) || picked.get(kind)
+    if (hit) return { url: hit.url, kind, size: hit.size, digest: hit.digest }
   }
   return null
 }

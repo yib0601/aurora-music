@@ -23,6 +23,16 @@ function formatBytes(n: number): string {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
 }
 
+/** 下载速度展示：主进程每 200ms 推一次瞬时速度 */
+function formatSpeed(bps: number | null): string | null {
+  if (bps === null || !isFinite(bps) || bps <= 0) return null
+  const mb = bps / 1024 / 1024
+  return mb >= 1 ? `${mb.toFixed(2)} MB/s` : `${(bps / 1024).toFixed(0)} KB/s`
+}
+
+/** 低于这个速度基本说明线路没走对（正常经代理约 1~2 MB/s） */
+const SLOW_BPS = 300 * 1024
+
 /** 各安装包类型的「现在安装」说明文案 */
 const INSTALL_HINT: Record<string, string> = {
   exe: '启动安装器后将退出当前应用，按向导完成安装',
@@ -38,6 +48,8 @@ export function UpdateDownloadDialog() {
   const task = useUpdateDownloadStore((s) => s.task)
   const received = useUpdateDownloadStore((s) => s.received)
   const total = useUpdateDownloadStore((s) => s.total)
+  const speed = useUpdateDownloadStore((s) => s.speed)
+  const route = useUpdateDownloadStore((s) => s.route)
   const filePath = useUpdateDownloadStore((s) => s.filePath)
   const error = useUpdateDownloadStore((s) => s.error)
   const visible = useUpdateDownloadStore((s) => s.visible)
@@ -49,6 +61,9 @@ export function UpdateDownloadDialog() {
 
   const open = visible && phase !== 'idle' && !!task
   const percent = total ? Math.min(100, Math.floor((received / total) * 100)) : null
+  const speedText = formatSpeed(speed)
+  // 下载速度明显偏低且已下了不少：多半是没走代理，直接给出可执行的提示
+  const slowWarning = phase === 'downloading' && speed !== null && speed < SLOW_BPS && received > 4 * 1024 * 1024
 
   const handleClose = (nextOpen: boolean) => {
     if (nextOpen) return
@@ -118,7 +133,10 @@ export function UpdateDownloadDialog() {
             <div className="flex items-center gap-2 font-text text-[13px] text-white/80">
               <Loader2 className="h-4 w-4 animate-spin text-mint" strokeWidth={1.8} />
               正在下载安装包…
-              {percent !== null ? <span className="ml-auto text-mint">{percent}%</span> : null}
+              <span className="ml-auto flex items-baseline gap-2">
+                {speedText ? <span className="text-[11px] text-white/50">{speedText}</span> : null}
+                {percent !== null ? <span className="text-mint">{percent}%</span> : null}
+              </span>
             </div>
             {/* 进度条：无 Content-Length 时退化为不确定动画 */}
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
@@ -134,8 +152,14 @@ export function UpdateDownloadDialog() {
             <p className="font-text text-[11px] text-white/45">
               {formatBytes(received)}
               {total ? ` / ${formatBytes(total)}` : ''}
-              <span className="ml-2">保存至系统「下载」目录</span>
+              {route ? <span className="ml-2">· {route}</span> : null}
+              <span className="ml-2">· 保存至系统「下载」目录</span>
             </p>
+            {slowWarning && (
+              <p className="rounded-[10px] border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 font-text text-[11px] leading-relaxed text-amber-200/80">
+                当前速度偏低。应用跟随系统代理下载，若本机代理未开启或未设为系统代理，会自动回退直连，速度会明显下降。
+              </p>
+            )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={hide}>
                 后台下载

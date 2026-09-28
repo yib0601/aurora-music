@@ -28,6 +28,10 @@ export interface UpdateTask {
   version: string
   /** 用于展示的安装包类型名，如「RPM 包」 */
   label: string | null
+  /** release API 给出的安装包字节数：主进程用它兜底校验下载完整性 */
+  size?: number | null
+  /** release API 给出的 sha256 摘要（`sha256:<hex>`）：主进程下载完成后校验内容 */
+  digest?: string | null
 }
 
 interface UpdateDownloadState {
@@ -35,6 +39,10 @@ interface UpdateDownloadState {
   task: UpdateTask | null
   received: number
   total: number | null
+  /** 实时速度（字节/秒），主进程未提供时为 null */
+  speed: number | null
+  /** 下载线路说明（如「系统代理 127.0.0.1:7897」/「直连」），仅桌面端会推送 */
+  route: string | null
   /** 下载完成后的安装包路径（done 阶段） */
   filePath: string | null
   /** error 阶段的原因 */
@@ -60,9 +68,10 @@ function setupEvents(set: (partial: Partial<UpdateDownloadState>) => void) {
   const api = (window as any).electronAPI?.updater
   if (!api) return
   eventCleanups = [
-    api.onProgress((p: { received: number; total: number | null }) => {
-      set({ received: p.received, total: p.total })
+    api.onProgress((p: { received: number; total: number | null; speed?: number | null }) => {
+      set({ received: p.received, total: p.total, speed: p.speed ?? null })
     }),
+    api.onRoute?.((p: { label: string }) => set({ route: p.label })) ?? (() => {}),
     api.onDone((p: { filePath: string }) => {
       // 完成时重新弹出详情框，即使用户下载中收起了它
       set({ phase: 'done', filePath: p.filePath, visible: true })
@@ -156,6 +165,8 @@ export const useUpdateDownloadStore = create<UpdateDownloadState>()((set, get) =
   task: null,
   received: 0,
   total: null,
+  speed: null,
+  route: null,
   filePath: null,
   error: null,
   visible: false,
@@ -163,12 +174,22 @@ export const useUpdateDownloadStore = create<UpdateDownloadState>()((set, get) =
   start: (task) => {
     if (get().phase === 'downloading') return // 已有任务在跑
     teardownEvents()
-    set({ phase: 'downloading', task, received: 0, total: null, filePath: null, error: null, visible: true })
+    set({
+      phase: 'downloading',
+      task,
+      received: 0,
+      total: null,
+      speed: null,
+      route: null,
+      filePath: null,
+      error: null,
+      visible: true,
+    })
 
     if (isDesktop()) {
       setupEvents((partial) => set(partial))
       ;(window as any).electronAPI.updater
-        .download(task.url, task.kind, task.altUrls ?? [])
+        .download(task.url, task.kind, task.altUrls ?? [], task.size ?? null, task.digest ?? null)
         .catch((err: unknown) => {
           // 正常失败已由 onError 事件落到 error 状态；
           // 这里只兜底「事件通道缺失」或取消后 invoke 拒绝的情况
@@ -199,13 +220,33 @@ export const useUpdateDownloadStore = create<UpdateDownloadState>()((set, get) =
       cancelMobileDownload()
     }
     teardownEvents()
-    set({ phase: 'idle', task: null, received: 0, total: null, filePath: null, error: null, visible: false })
+    set({
+      phase: 'idle',
+      task: null,
+      received: 0,
+      total: null,
+      speed: null,
+      route: null,
+      filePath: null,
+      error: null,
+      visible: false,
+    })
   },
 
   reset: () => {
     teardownEvents()
     if (!isDesktop()) stopPolling()
-    set({ phase: 'idle', task: null, received: 0, total: null, filePath: null, error: null, visible: false })
+    set({
+      phase: 'idle',
+      task: null,
+      received: 0,
+      total: null,
+      speed: null,
+      route: null,
+      filePath: null,
+      error: null,
+      visible: false,
+    })
   },
 
   show: () => {
