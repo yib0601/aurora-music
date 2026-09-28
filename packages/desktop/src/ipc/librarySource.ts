@@ -32,6 +32,7 @@ import {
   deleteMissingRemoteTracks,
   deleteTracksBySourcePrefix,
 } from './database'
+import { registerCoverFile } from './mediaCache'
 
 /** sourceId → 来源配置。由渲染层在启动与配置变更时同步（syncLibrarySources） */
 const registry = new Map<string, LibrarySourceConfig>()
@@ -281,6 +282,8 @@ export async function ensureRemoteCover(track: Track, userData: string): Promise
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     const dest = path.join(dir, `${track.id}${ext}`)
     await fs.promises.writeFile(dest, data)
+    // 登记进媒体缓存配额：封面与音频、歌词共用一份总容量
+    registerCoverFile(track.id, dest)
     return dest
   } catch (err) {
     console.warn('[LibrarySource] 远端封面提取失败:', track.path, (err as Error).message)
