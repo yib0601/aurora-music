@@ -93,18 +93,25 @@ export interface PlatformExtension {
   /** 移除来源及其全部曲目，返回移除后的全库 */
   removeLibrarySource?: (sourceId: string) => Promise<Track[]>
 
-  // ─── 在线播放缓存（目前仅桌面端主进程实现）─────────────────────
-  // 命中返回缓存播放地址（aurora-cache://），未命中返回 null 并由平台层
-  // 后台拉流写入；本次播放仍走源直链，下次再播同一首即命中。
+  // ─── 媒体缓存：音频 / 封面 / 歌词（目前仅桌面端主进程实现）─────────
+  // 三类内容共用一份容量配置，内部按比例分配。命中返回缓存协议地址
+  // （aurora-cache://），未命中返回 null 并由主进程后台写入；本次仍用
+  // 原始地址，下次即命中。
   /** 解析缓存播放地址；未命中返回 { src: null } */
   resolveCachedAudio?: (req: {
     url: string
     key: string
     headers?: Record<string, string>
   }) => Promise<{ src: string | null }>
-  /** 下发缓存容量配置（0 = 关闭并清空） */
+  /** 解析远端封面的缓存地址；未命中返回 { src: null } */
+  resolveCachedCover?: (req: {
+    url: string
+    key: string
+    headers?: Record<string, string>
+  }) => Promise<{ src: string | null }>
+  /** 下发缓存容量配置（0 = 关闭缓存，不再新增） */
   configureAudioCache?: (opts: { limitMB: number }) => Promise<void>
-  /** 当前缓存占用 */
+  /** 当前缓存占用（三类内容合计） */
   getAudioCacheUsage?: () => Promise<{ usedBytes: number; count: number }>
   /** 清空全部缓存 */
   clearAudioCache?: () => Promise<void>
@@ -288,10 +295,14 @@ export function createDesktopPlatform(): Platform {
       return api.removeLibrarySource(sourceId)
     },
 
-    // ─── 在线播放缓存：转发到主进程 ───
+    // ─── 媒体缓存：转发到主进程 ───
     async resolveCachedAudio(req) {
       if (!api?.audioCache?.resolve) return { src: null }
       return api.audioCache.resolve(req)
+    },
+    async resolveCachedCover(req) {
+      if (!api?.audioCache?.resolveCover) return { src: null }
+      return api.audioCache.resolveCover(req)
     },
     async configureAudioCache(opts) {
       if (!api?.audioCache?.configure) return
