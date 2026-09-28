@@ -306,6 +306,18 @@ export function LibraryPage() {
 
   const filteredTracks = sortedTracks
 
+  // 副标题：曲库规模用「首数 + 总时长」表达。只给首数无法判断体量——
+  // 100 首 3 分钟流行歌和 100 首 10 分钟的交响乐完全不是一回事。
+  // 用 tracks（去重后展示集）而非隐藏副本，与列表里看到的数量一致。
+  const librarySummary = useMemo(() => {
+    if (tracks.length === 0) return '导入音乐，开始构建你的专属音乐库'
+    const minutes = Math.round(tracks.reduce((sum, t) => sum + (t.duration || 0), 0) / 60)
+    const hours = Math.floor(minutes / 60)
+    const rest = minutes % 60
+    const span = hours > 0 ? (rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`) : `${rest} 分钟`
+    return `${tracks.length} 首歌曲 · 约 ${span}`
+  }, [tracks])
+
   // 分组只在对应标签页（或已进入某个分组详情）时才需要计算：
   // 歌曲页每批扫描数据都重算专辑+艺术家两套分组是纯浪费（歌曲多时是主要卡顿来源之一）
   const needAlbumGroups = libraryTab === 'albums' || selectedGroup?.type === 'album'
@@ -455,11 +467,11 @@ export function LibraryPage() {
         // 替代旧版负 margin 悬浮方案（标题/工具栏错位且间距脆弱）
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
-            <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
+            <h1 className="font-display text-[26px] md:text-[36px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
               音乐库
             </h1>
             <p className="font-text text-[13px] text-white/65 mt-1 tracking-[-0.2px]">
-              {tracks.length === 0 ? '导入音乐，开始构建你的专属音乐库' : `${tracks.length} 首歌曲`}
+              {librarySummary}
               {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
                   被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效。
                   悬停提示逐组列出具体名单——只给条数不给名单，用户无从核对 */}

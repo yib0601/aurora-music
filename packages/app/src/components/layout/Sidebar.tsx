@@ -35,8 +35,10 @@ const navItems = [
 /**
  * 侧边栏：Mineradio 品牌色 × DeepSeek Harness 结构语言
  * - 品牌主色仍是 mint #00F5D4（项目识别），DS 负责结构/材质/排版
- * - active 态按 DS 改为「surface 层级 + 1px 发丝描边」标识选中，
- *   不再用大面积 mint 色块与 text-shadow 微光（DS Don't：不滥用发光）
+ * - active 态用「品牌低透底色 + 主色字/图标」标识选中：导航是全局方位锚点，
+ *   仅靠 surface 层级差（白 7% 底 + 发丝边）在浅色主题与暖色封面色场下
+ *   辨识度不足——底色与玻璃同族时几乎看不出选中项，改用色相区分
+ * - 仍不用实心 mint 色块与 text-shadow 微光（DS Don't：不滥用发光）
  * - 导航项圆角走 DS media 档（10px），间距走 DS 阶梯
  */
 export function Sidebar() {
@@ -114,7 +116,7 @@ export function Sidebar() {
               cn(
                 'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
                 isActive
-                  ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
+                  ? 'bg-mint/[0.13] border-mint/[0.18] text-mint font-medium shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
                   : 'border-transparent text-white/72 hover:text-white hover:bg-white/[0.05]'
               )
             }
