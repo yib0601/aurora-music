@@ -1,7 +1,7 @@
-import { memo, useCallback, useEffect, useState, type CSSProperties, type RefObject } from 'react'
+import { memo, useCallback, type ComponentType, type CSSProperties, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Heart, Play, Plus, ListPlus, ListEnd, Disc3, Cloud } from 'lucide-react'
+import { Heart, Play, Plus, ListPlus, ListEnd, Disc3, Cloud, MoreHorizontal, Info } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,6 +12,16 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
@@ -32,23 +42,45 @@ import type { Track } from '@/types'
  * 记录并恢复滚动位置，虚拟列表会自动跟随容器当前的 scrollTop 渲染。
  */
 
-/** 行高（含 1px 分隔线）：桌面 36 封面 + 上下各 10；移动 44 封面 + 上下各 8 */
-const ROW_HEIGHT_DESKTOP = 56
-const ROW_HEIGHT_MOBILE = 60
+/**
+ * 行高（含 1px 分隔线）：44px 封面 + 上下各 14px。
+ * ⚠️ 必须与 CSS 里行的实际高度（h-[72px]）严格一致，否则虚拟列表累积偏移。
+ * 移动端与桌面同高——触屏行本身就是点击目标，没有理由比桌面更紧凑。
+ */
+const ROW_HEIGHT = 72
 
-/** 行与表头共用的列模板：标题(弹性) / 艺术家 10rem / 专辑 12rem / 收藏 2.5rem / 时长 */
+/** 行与表头共用的列模板：标题(弹性) / 艺术家 10rem / 专辑 12rem / 收藏 2.5rem / 时长 / 更多操作
+ * 移动端窄列只留「标题(双行) / 收藏 / 时长」——触屏靠整行点击播放，不塞更多按钮 */
 const GRID_TEMPLATE =
-  'grid-cols-[minmax(0,1fr)_2.5rem_3rem] md:grid-cols-[minmax(0,1fr)_10rem_12rem_2.5rem_4rem]'
+  'grid-cols-[minmax(0,1fr)_2.5rem_3rem] md:grid-cols-[minmax(0,1fr)_10rem_12rem_2.5rem_4rem_2.5rem]'
 
-function useIsDesktopWidth() {
-  const [isMd, setIsMd] = useState(() => window.matchMedia('(min-width: 768px)').matches)
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)')
-    const onChange = (e: MediaQueryListEvent) => setIsMd(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return isMd
+/**
+ * 菜单组件族：右键菜单（ContextMenu）与行尾「…」下拉（DropdownMenu）共用同一份
+ * 曲目操作渲染，避免两处菜单项各自演进后漂移。两族同名组件的 API 与样式一致，
+ * 因此直接按组件传参即可，不需要复制菜单内容。
+ */
+type MenuKit = {
+  Item: ComponentType<any>
+  Separator: ComponentType<any>
+  Sub: ComponentType<any>
+  SubTrigger: ComponentType<any>
+  SubContent: ComponentType<any>
+}
+
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Separator: ContextMenuSeparator,
+  Sub: ContextMenuSub,
+  SubTrigger: ContextMenuSubTrigger,
+  SubContent: ContextMenuSubContent,
+}
+
+const DROPDOWN_KIT: MenuKit = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+  Sub: DropdownMenuSub,
+  SubTrigger: DropdownMenuSubTrigger,
+  SubContent: DropdownMenuSubContent,
 }
 
 /**
@@ -59,37 +91,100 @@ function useIsDesktopWidth() {
 export const PlaylistSubmenuItems = memo(function PlaylistSubmenuItems({
   trackId,
   onCreatePlaylist,
+  kit = CONTEXT_KIT,
 }: {
   trackId: string
   onCreatePlaylist: (trackId: string) => void
+  kit?: MenuKit
 }) {
   const playlists = usePlaylistStore((s) => s.playlists)
+  const { Item, Separator } = kit
 
   if (playlists.length === 0) {
     return (
-      <ContextMenuItem onClick={() => onCreatePlaylist(trackId)}>
+      <Item onClick={() => onCreatePlaylist(trackId)}>
         <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
         新建播放列表...
-      </ContextMenuItem>
+      </Item>
     )
   }
 
   return (
     <>
       {playlists.map((pl) => (
-        <ContextMenuItem
+        <Item
           key={pl.id}
           onClick={() => usePlaylistStore.getState().addTracksToPlaylist(pl.id, [trackId])}
         >
           <ListPlus className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
           {pl.name}
-        </ContextMenuItem>
+        </Item>
       ))}
-      <ContextMenuSeparator />
-      <ContextMenuItem onClick={() => onCreatePlaylist(trackId)}>
+      <Separator />
+      <Item onClick={() => onCreatePlaylist(trackId)}>
         <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
         新建播放列表...
-      </ContextMenuItem>
+      </Item>
+    </>
+  )
+})
+
+/**
+ * 曲目操作菜单内容：右键菜单与行尾「…」下拉共用。
+ * 之所以抽出，是因为两处菜单若各写一份，新增操作时必然漏掉一处。
+ */
+const TrackMenuItems = memo(function TrackMenuItems({
+  track,
+  idx,
+  liked,
+  onPlay,
+  onCreatePlaylist,
+  onOpenDetail,
+  kit,
+}: {
+  track: Track
+  idx: number
+  liked: boolean
+  onPlay: (idx: number) => void
+  onCreatePlaylist: (trackId: string) => void
+  onOpenDetail: () => void
+  kit: MenuKit
+}) {
+  const { Item, Separator, Sub, SubTrigger, SubContent } = kit
+  return (
+    <>
+      <Item onClick={onOpenDetail}>
+        <Info className="h-4 w-4 mr-2" strokeWidth={1.5} />
+        查看歌曲详情
+      </Item>
+      <Separator />
+      <Item onClick={() => onPlay(idx)}>
+        <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
+        立即播放
+      </Item>
+      <Item onClick={() => usePlayerStore.getState().addToPlayNext(track)}>
+        <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
+        下一首播放
+      </Item>
+      <Item onClick={() => usePlayerStore.getState().addToQueue(track)}>
+        <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
+        添加到队列
+      </Item>
+      <Separator />
+      <Sub>
+        <SubTrigger>
+          <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.5} />
+          添加到播放列表
+        </SubTrigger>
+        <SubContent className="w-48">
+          <PlaylistSubmenuItems trackId={track.id} onCreatePlaylist={onCreatePlaylist} kit={kit} />
+        </SubContent>
+      </Sub>
+      <Separator />
+      <Item onClick={() => useLibraryStore.getState().toggleLike(track.id)}>
+        <Heart className={cn('h-4 w-4 mr-2', liked && 'fill-coral text-coral')} strokeWidth={1.5} />
+        {liked ? '取消收藏' : '收藏'}
+      </Item>
     </>
   )
 })
@@ -133,7 +228,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
         <div
           style={style}
           className={cn(
-            'group grid items-center h-[60px] md:h-[56px] cursor-pointer border-b border-white/[0.05] row-hover',
+            'group grid items-center h-[72px] cursor-pointer border-b border-white/[0.05] row-hover',
             GRID_TEMPLATE,
           )}
           // 移动端无 hover/double-click 概念，改用单击触发播放；
@@ -153,7 +248,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                 }
               }}
               title="查看歌曲详情"
-              className="w-11 h-11 md:w-9 md:h-9 rounded-[10px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
+              className="w-11 h-11 rounded-[12px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
             >
               <CoverImage
                 track={track}
@@ -208,36 +303,47 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
           <div className="px-1.5 md:px-3 text-right font-text text-white/45 text-[12px] md:text-[13px] tabular-nums tracking-[-0.12px]">
             {formatTime(track.duration)}
           </div>
+          {/* 行尾「更多操作」：只在桌面显示（触屏端整行点击即播，且窄列塞不下）。
+              菜单内容与右键一致——触屏/无右键意识的用户也能摸到完整操作，
+              原先这些操作只藏在右键菜单里，等于不可发现 */}
+          <div className="hidden md:flex items-center justify-center">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  title="更多操作"
+                  aria-label="更多操作"
+                  onClick={(e) => e.stopPropagation()}
+                  className="btn-icon opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
+                >
+                  <MoreHorizontal className="h-4 w-4" strokeWidth={1.5} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <TrackMenuItems
+                  track={track}
+                  idx={idx}
+                  liked={liked}
+                  onPlay={onPlay}
+                  onCreatePlaylist={onCreatePlaylist}
+                  onOpenDetail={() => navigate(`/song/${track.id}`)}
+                  kit={DROPDOWN_KIT}
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        <ContextMenuItem onClick={() => onPlay(idx)}>
-          <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          立即播放
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => usePlayerStore.getState().addToPlayNext(track)}>
-          <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          下一首播放
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => usePlayerStore.getState().addToQueue(track)}>
-          <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          添加到队列
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-            添加到播放列表
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent className="w-48">
-            <PlaylistSubmenuItems trackId={track.id} onCreatePlaylist={onCreatePlaylist} />
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => useLibraryStore.getState().toggleLike(track.id)}>
-          <Heart className={cn('h-4 w-4 mr-2', liked && 'fill-coral text-coral')} strokeWidth={1.5} />
-          {liked ? '取消收藏' : '收藏'}
-        </ContextMenuItem>
+        <TrackMenuItems
+          track={track}
+          idx={idx}
+          liked={liked}
+          onPlay={onPlay}
+          onCreatePlaylist={onCreatePlaylist}
+          onOpenDetail={() => navigate(`/song/${track.id}`)}
+          kit={CONTEXT_KIT}
+        />
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -258,20 +364,13 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
   duplicateMap?: ReadonlyMap<string, DuplicateGroup<Track>>
 }) {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
-  const isMd = useIsDesktopWidth()
-  const rowHeight = isMd ? ROW_HEIGHT_DESKTOP : ROW_HEIGHT_MOBILE
 
   const virtualizer = useVirtualizer({
     count: tracks.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: useCallback(() => rowHeight, [rowHeight]),
+    estimateSize: useCallback(() => ROW_HEIGHT, []),
     overscan: 10,
   })
-
-  // 行高随视口宽度（桌面/移动）变化时强制重算布局
-  useEffect(() => {
-    virtualizer.measure()
-  }, [virtualizer, rowHeight])
 
   return (
     <>
@@ -282,6 +381,7 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
         <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">专辑</div>
         <div />
         <div className="text-right py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">时长</div>
+        <div />
       </div>
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((vi) => {
