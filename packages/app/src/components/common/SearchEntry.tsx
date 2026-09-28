@@ -17,8 +17,10 @@ export function SearchEntry() {
       className="search-entry"
     >
       <Search className="h-4 w-4 flex-shrink-0" strokeWidth={1.5} />
+      {/* 占位写明搜索范围（歌曲/歌手/专辑），比单字「搜索」更能说明这个框能做什么；
+          小屏由 .search-entry 媒体查询隐藏文字只留放大镜 */}
       <span className="search-entry-label font-text text-[13px] tracking-[-0.15px] whitespace-nowrap">
-        搜索
+        搜索歌曲、歌手、专辑
       </span>
     </button>
   )
