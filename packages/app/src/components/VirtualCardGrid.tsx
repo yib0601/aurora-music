@@ -23,7 +23,7 @@ import {
   getVirtualRowHeight,
 } from '@/lib/gridLayout'
 import { CoverImage } from '@/components/common/CoverImage'
-import { PlaylistSubmenuItems } from '@/components/VirtualTrackTable'
+import { PlaylistSubmenuItems, useBindScrollElement } from '@/components/VirtualTrackTable'
 import { DuplicateBadge } from '@/components/common/DuplicateInfo'
 import type { DuplicateGroup } from '@aurora/shared'
 import type { Track } from '@/types'
@@ -203,6 +203,8 @@ export const VirtualCardGrid = memo(function VirtualCardGrid({
     estimateSize: useCallback(() => virtualRowHeight, [virtualRowHeight]),
     overscan: 6,
   })
+  // 同 VirtualTrackTable：挂载时父节点 ref 未赋值导致 virtualizer 未绑定的竞态
+  useBindScrollElement(virtualizer, scrollRef)
 
   useEffect(() => {
     virtualizer.measure()
