@@ -126,4 +126,4 @@ cd android && ./gradlew assembleDebug   # 产物在 app/build/outputs/apk/
 
 ## 许可
 
-[PolyForm Noncommercial License 1.0.0](./LICENSE)：允许个人使用、学习、二次修改与非商业分发；任何商业目的的使用需联系作者授权。v0.4.2 及更早的已发布版本仍按 MIT 授权。
+[PolyForm Noncommercial License 1.0.0](./LICENSE)：禁止商业用途。个人使用、学习、二次修改与非商业分发不受限制，商业目的的使用需联系作者授权。v0.4.2 及更早的已发布版本仍按 MIT 授权。

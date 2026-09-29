@@ -14,7 +14,7 @@ interface LyricsViewProps {
 }
 
 const sampleLyrics = `[00:00.00]Aurora Music
-[00:03.00]优雅的音乐播放器
+[00:03.00]跨平台音乐播放器
 [00:06.00]
 [00:10.00]点击歌曲开始播放
 [00:14.00]歌词将在此处同步显示
