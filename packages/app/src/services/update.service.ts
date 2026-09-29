@@ -18,9 +18,10 @@ export const APP_VERSION: string =
   (import.meta as any).env?.VITE_APP_VERSION ||
   '0.0.0'
 
-// GitHub 仓库（与 package.json repository 保持一致）
+// GitHub 仓库（与 package.json repository 保持一致）；设置页「关于本软件」复用同一地址
+export const REPO_URL = 'https://github.com/yib0601/aurora-music'
 const RELEASES_API = 'https://api.github.com/repos/yib0601/aurora-music/releases/latest'
-const RELEASES_PAGE = 'https://github.com/yib0601/aurora-music/releases/latest'
+const RELEASES_PAGE = `${REPO_URL}/releases/latest`
 
 /**
  * 检查更新的单次请求超时：大陆直连 api.github.com 失败时可能挂起 10s 以上，

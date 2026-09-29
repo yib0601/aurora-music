@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check } from 'lucide-react'
+import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check, Github } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -9,9 +9,9 @@ import type { LibrarySourceConfig } from '@/types'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform, DEFAULT_MOBILE_DOWNLOAD_DIR } from '@/services/platform'
-import { isDesktop } from '@/lib/utils'
+import { isDesktop, isMobile } from '@/lib/utils'
 import { toast } from '@/components/common/Toast'
-import { APP_VERSION, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
+import { APP_VERSION, REPO_URL, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 import { getAudioCacheUsage, clearAudioCache } from '@/services/audioCache.service'
 import { resetCoverCache } from '@/components/common/CoverImage'
@@ -21,6 +21,21 @@ import {
   probeAuroraService,
 } from '@aurora/shared'
 import type { AuroraEndpoints } from '@aurora/shared'
+
+/**
+ * 打开外部链接。
+ * - 桌面端：window.open 被主进程 setWindowOpenHandler 接管，交由系统浏览器（与「检查更新」跳下载页同一链路）
+ * - 移动端：Capacitor 的 WebView 未开启多窗口支持，window.open 不可靠；改走 location ——
+ *   BridgeWebViewClient 会把非应用内地址交给系统浏览器（launchIntent → ACTION_VIEW），应用页面本身不卸载
+ * - Web 端：按普通新标签页打开
+ */
+function openExternalUrl(url: string) {
+  if (isMobile()) {
+    window.location.href = url
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
 
 const themeOptions = [
   { value: 'dark' as const, label: '深色', icon: Moon },
@@ -1624,6 +1639,34 @@ export function SettingsPage() {
                   <p className="font-text text-caption text-white/70">检查失败，请确认网络后重试</p>
                 </div>
               )}
+            </div>
+          </section>
+
+          {/* 关于本软件：软件标识、版本与项目地址 */}
+          <section className="card-list p-5">
+            <h2 className="font-display text-tagline mb-4 text-white">关于本软件</h2>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 mr-3">
+                  <p className="font-text text-caption-strong text-white/80">Aurora Music</p>
+                  <p className="font-text text-caption text-white/60 mt-0.5">
+                    跨平台音乐播放器 · v{APP_VERSION}
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 px-3.5 flex-shrink-0"
+                  onClick={() => openExternalUrl(REPO_URL)}
+                >
+                  <Github className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                  项目仓库
+                </Button>
+              </div>
+
+              <p className="inset-note font-text text-caption text-white/60 px-3.5 py-3">
+                开源许可 PolyForm Noncommercial License 1.0.0 · 禁止商业用途
+              </p>
             </div>
           </section>
         </div>
