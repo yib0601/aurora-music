@@ -1,4 +1,4 @@
-import { memo, useCallback, type ComponentType, type CSSProperties, type RefObject } from 'react'
+import { memo, useCallback, useEffect, type ComponentType, type CSSProperties, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Heart, Play, Plus, ListPlus, ListEnd, Disc3, Cloud, MoreHorizontal, Info } from 'lucide-react'
@@ -41,6 +41,27 @@ import type { Track } from '@/types'
  * 滚动容器由调用方持有（scrollRef）：页面被隐藏/重新显示时调用方可以
  * 记录并恢复滚动位置，虚拟列表会自动跟随容器当前的 scrollTop 渲染。
  */
+
+/**
+ * 修复 @tanstack/react-virtual 的挂载竞态：virtualizer 在子组件的 useLayoutEffect
+ * 里绑定滚动容器，而 React commit 顺序是「子先父后」——那一刻父节点（滚动容器）
+ * 的 ref 尚未赋值，getScrollElement() 返回 null，virtualizer 保持未绑定：
+ * scrollRect 停在初始值 0 ⇒ getVirtualItems() 恒空、列表一片空白，
+ * 而 getTotalSize() 不依赖容器 ⇒ 占位高度与滚动条照常，正是「有高度有滚动条却没行」。
+ * 通常下一次重渲染（如 getAllTracks 异步写库）会触发 _willUpdate 自愈；
+ * 但挂载时曲库已稳定（切换标签/视图导致重挂载）时 memo 挡住一切重渲染，
+ * 空白就永久停留——「列表偶发空白」的根因。
+ * passive effect 在整个 commit 完成后执行，父节点 ref 必然已赋值，
+ * 在此补一次绑定（_willUpdate 幂等：滚动元素未变化时是 no-op）。
+ */
+export function useBindScrollElement(
+  virtualizer: { _willUpdate: () => void },
+  scrollRef: RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    virtualizer._willUpdate()
+  }, [virtualizer, scrollRef])
+}
 
 /**
  * 行高（含 1px 分隔线）：44px 封面 + 上下各 14px。
@@ -371,6 +392,7 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
     estimateSize: useCallback(() => ROW_HEIGHT, []),
     overscan: 10,
   })
+  useBindScrollElement(virtualizer, scrollRef)
 
   return (
     <>
