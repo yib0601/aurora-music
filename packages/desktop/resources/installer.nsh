@@ -5,11 +5,11 @@
   Push $R0
   Push $R1
 
-  # 先尝试优雅关闭正在运行的应用
+  # 先尝试正常关闭正在运行的应用
   nsExec::Exec `taskkill /IM "${APP_EXECUTABLE_FILENAME}"`
   Pop $R0
   ${if} $R0 == 0
-    # 给应用一点时间优雅退出，确保文件不再被占用
+    # 给应用一点时间退出，确保文件不再被占用
     Sleep 500
   ${endIf}
 

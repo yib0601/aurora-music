@@ -25,7 +25,7 @@ fpm -s dir -t rpm \
   -n "$APP_NAME" \
   -v "$VERSION" \
   --architecture x86_64 \
-  --description "Aurora Music - 跨平台优雅音乐播放器" \
+  --description "Aurora Music - 跨平台音乐播放器" \
   --url "https://github.com/aurora-music/aurora-music" \
   --vendor "Aurora Music" \
   --maintainer "Aurora Music <aurora-music@example.com>" \
