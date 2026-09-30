@@ -9,14 +9,33 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!--
+      运行时主题。系统栏配色必须写在这里，不能只靠 Web 侧 StatusBar 插件：
+        · 导航栏（navigationBarColor）在 Capacitor 里没有任何插件接口，
+          只能在主题层给值；
+        · 状态栏在 Android 15+ 强制 edge-to-edge 后 setBackgroundColor 被系统
+          忽略，主题值就是唯一可预期的来源。
+      windowLight* 的含义是「系统栏图标用深色」（即浅色背景），app 是深色底，
+      故两者都取 false，让系统绘制浅色图标。
+    -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/aurora_window_bg</item>
+        <item name="android:statusBarColor">@color/aurora_window_bg</item>
+        <item name="android:navigationBarColor">@color/aurora_window_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
-
+    <!--
+      启动主题。缺失 postSplashScreenTheme 时，core-splashscreen 无法把窗口切回
+      运行时主题，系统栏会一直停留在启动主题的默认样式上（真机实测：状态栏
+      #757575 灰、导航栏 #FAFAFA 白，与深色播放器割裂），这里补上必须的一行。
+    -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>
