@@ -46,12 +46,16 @@ export interface UpdaterRoute {
 const INSTALLER_KINDS = new Set(['apk', 'exe', 'appimage', 'deb', 'rpm', 'dmg'])
 
 /**
- * 下载地址白名单：GitHub 官方域名，或「公共加速前缀 + GitHub 原始链接」。
- * 与渲染层 services/update-source.ts 的前缀列表保持一致（主进程无法复用 app 包代码）。
+ * 下载地址白名单：GitHub 官方域名、「公共加速前缀 + GitHub 原始链接」，或境内清单源。
+ * 与渲染层 services/update-source.ts 的列表保持一致（主进程无法复用 app 包代码），
  * 任何其他域名一律拒绝，避免该 IPC 被利用来下载任意文件。
+ *
+ * 境内清单源（registry.npmmirror.com）承载「npm 包内托管各平台安装包」的通道，
+ * 是 GitHub 资产域名与 Cloudflare 加速站在大陆网络同时不可达时唯一可用的下载线路。
  */
 const GITHUB_HOSTS = new Set(['github.com', 'objects.githubusercontent.com'])
-const PROXY_HOSTS = new Set(['gh-proxy.com', 'ghfast.top'])
+const PROXY_HOSTS = new Set(['gh-proxy.com', 'ghfast.top', 'ghproxy.net'])
+const MANIFEST_HOSTS = new Set(['registry.npmmirror.com'])
 
 function hostOf(url: string): string | null {
   try {
@@ -65,7 +69,7 @@ function hostOf(url: string): string | null {
 function isAllowedDownloadUrl(url: string): boolean {
   const host = hostOf(url)
   if (!host) return false
-  return GITHUB_HOSTS.has(host) || PROXY_HOSTS.has(host)
+  return GITHUB_HOSTS.has(host) || PROXY_HOSTS.has(host) || MANIFEST_HOSTS.has(host)
 }
 
 /** 下载中的请求；同一时间只允许一个，新请求会拒绝（渲染层已有互斥，这里兜底） */

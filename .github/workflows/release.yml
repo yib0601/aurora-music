@@ -506,3 +506,111 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============ 境内更新通道（npm 包 → registry.npmmirror.com 自动镜像） ============
+  # 为什么需要它：大陆存在一类网络环境，GitHub 主站 IP 放行而 CDN 域名被污染——
+  # 「检查更新」（api.github.com）能成功，「下载安装包」（github.com 302 到
+  # objects.githubusercontent.com，以及停在 Cloudflare 上的公共加速站）却全军覆没，
+  # 用户看到的就是「能查到新版本，点下载却失败或卡在 0%」。
+  #
+  # npmmirror 是境内的 npm 镜像：匿名可取、无仓库配额、无「拿平台当 CDN」的封号风险，
+  # 实测 6.7MB/s、支持 Range。把 update.json 与 APK 打成 npm 包发布，客户端即可
+  # 完全绕开 GitHub 完成检查与下载。
+  #
+  # 未配置 NPM_TOKEN 时本 job 自动跳过，不影响 GitHub Release 正常发布。
+  # 包名必须与 packages/app/src/services/update-source.ts 的 MANIFEST_PACKAGE 一致。
+  publish-manifest:
+    name: Publish update manifest (npmmirror)
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      MANIFEST_PACKAGE: aurora-music-release
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Check NPM_TOKEN
+        id: guard
+        run: |
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置 NPM_TOKEN，跳过境内更新通道发布（GitHub Release 不受影响）"
+          fi
+
+      - name: Download artifacts
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/download-artifact@v5
+        with:
+          path: release-artifacts
+
+      - name: Assemble package (update.json + APK)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          V="${{ github.ref_name }}"; V="${V#v}"
+          PKG=packages/npm-manifest
+          rm -rf "$PKG"; mkdir -p "$PKG"
+
+          APK=$(find release-artifacts/android-apk -name '*.apk' | head -1)
+          [ -n "$APK" ] || { echo "::error::未找到 APK 产物"; exit 1; }
+          APK_NAME="Aurora-Music-$V-android.apk"
+          cp "$APK" "$PKG/$APK_NAME"
+
+          # 清单：Android 指向境内 CDN；其余平台暂不在此包内分发（桌面端有系统代理
+          # 跟随与低速看门狗，GitHub 通道对它可用性更好）
+          python3 -c '
+          import json, os, subprocess, sys
+          pkg, pkgname, v, name, size, sha = sys.argv[1:7]
+          notes = subprocess.run(["git", "log", "-1", "--pretty=format:%s"], capture_output=True, text=True).stdout.strip()
+          manifest = {
+              "version": v,
+              "notes": notes,
+              "assets": [{
+                  "kind": "apk",
+                  "name": name,
+                  "url": f"https://registry.npmmirror.com/{pkgname}/{v}/files/{name}",
+                  "size": int(size),
+                  "sha256": sha,
+              }],
+          }
+          with open(os.path.join(pkg, "update.json"), "w", encoding="utf-8") as f:
+              json.dump(manifest, f, ensure_ascii=False, indent=2)
+          ' "$PKG" "$MANIFEST_PACKAGE" "$V" "$APK_NAME" "$(stat -c%s "$PKG/$APK_NAME")" "$(sha256sum "$PKG/$APK_NAME" | awk '{print $1}')"
+
+          cat > "$PKG/package.json" <<EOF
+          {
+            "name": "$MANIFEST_PACKAGE",
+            "version": "$V",
+            "description": "Aurora Music 大内网更新通道：更新清单与 Android 安装包，供客户端内置更新读取",
+            "license": "PolyForm-Noncommercial-1.0.0"
+          }
+          EOF
+
+          cat "$PKG/update.json"
+
+      - name: Publish to npm
+        if: steps.guard.outputs.ready == 'true'
+        working-directory: packages/npm-manifest
+        run: |
+          set -euo pipefail
+          V="${{ github.ref_name }}"; V="${V#v}"
+          if npm view "$MANIFEST_PACKAGE@$V" version >/dev/null 2>&1; then
+            echo "::notice::$MANIFEST_PACKAGE@$V 已存在，跳过发布"
+            exit 0
+          fi
+          npm publish --access public
+          echo "已发布 $MANIFEST_PACKAGE@$V，npmmirror 通常数分钟内同步完成"
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}

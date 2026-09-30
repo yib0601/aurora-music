@@ -1069,6 +1069,9 @@ export function SettingsPage() {
   const [checking, setChecking] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [updateState, setUpdateState] = useState<'idle' | 'latest' | 'error'>('idle')
+  // 失败原因（超时 / HTTP 状态码）：一句「检查失败」对排障毫无帮助，两条通道全灭时
+  // 用户至少能看出是网络被阻断还是服务端异常
+  const [updateError, setUpdateError] = useState<string | null>(null)
 
   // 内置下载任务状态：横幅与此处共用同一任务，下载中/完成时展示对应入口
   const downloadPhase = useUpdateDownloadStore((s) => s.phase)
@@ -1083,6 +1086,7 @@ export function SettingsPage() {
     setChecking(true)
     setUpdateState('idle')
     setUpdateInfo(null)
+    setUpdateError(null)
     try {
       const info = await checkForUpdate()
       if (info) {
@@ -1090,7 +1094,8 @@ export function SettingsPage() {
       } else {
         setUpdateState('latest')
       }
-    } catch {
+    } catch (err) {
+      setUpdateError(err instanceof Error && err.message ? err.message : null)
       setUpdateState('error')
     } finally {
       setChecking(false)
@@ -1636,7 +1641,9 @@ export function SettingsPage() {
               {updateState === 'error' && (
                 <div className="inset-note flex items-center gap-2 px-3.5 py-3">
                   <AlertCircle className="h-4 w-4 text-coral flex-shrink-0" strokeWidth={1.6} />
-                  <p className="font-text text-caption text-white/70">检查失败，请确认网络后重试</p>
+                  <p className="font-text text-caption text-white/70">
+                    {updateError ? `检查失败：${updateError}` : '检查失败，请确认网络后重试'}
+                  </p>
                 </div>
               )}
             </div>
