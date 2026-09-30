@@ -141,7 +141,8 @@ export function PlaylistPage() {
     <div className="flex flex-col h-full overflow-hidden mx-auto w-full max-w-[1200px]">
       <div className="px-4 pt-4 md:px-8 md:pt-8 pb-6">
         {/* 返回在左、搜索在右：搜索入口与其他页面一样固定在头部右上角原位置 */}
-        <div className="flex items-center justify-between mb-4">
+        {/* page-toolbar：手机端把 28px 的返回按钮提到 36px，与右侧搜索入口同为一行网格 */}
+        <div className="page-toolbar flex items-center justify-between mb-4">
           <button
             className="btn-icon"
             onClick={goBack}
