@@ -56,8 +56,18 @@ jobs:
       - name: Typecheck shared
         run: pnpm --filter @aurora/shared typecheck
 
+      # 媒体缓存的配额分配 / LRU 驱逐 / 索引兼容全在 @aurora/shared 的纯逻辑里，
+      # 桌面端与移动端共用同一份实现，typecheck 覆盖不到，必须跑单测。
+      - name: Test shared
+        run: pnpm --filter @aurora/shared test
+
       - name: Typecheck app
         run: pnpm --filter @aurora/app exec tsc --noEmit
+
+      # 移动端媒体缓存的落盘逻辑（索引 / 驱逐 / 清空 / 失败清理）跑在
+      # Capacitor Filesystem 的内存实现上，CI 只做 typecheck 覆盖不到。
+      - name: Test app
+        run: pnpm --filter @aurora/app test
 
       - name: Typecheck desktop main (electron)
         run: pnpm --filter @aurora/desktop typecheck

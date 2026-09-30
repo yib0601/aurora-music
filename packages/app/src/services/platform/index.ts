@@ -93,10 +93,10 @@ export interface PlatformExtension {
   /** 移除来源及其全部曲目，返回移除后的全库 */
   removeLibrarySource?: (sourceId: string) => Promise<Track[]>
 
-  // ─── 媒体缓存：音频 / 封面 / 歌词（目前仅桌面端主进程实现）─────────
-  // 三类内容共用一份容量配置，内部按比例分配。命中返回缓存协议地址
-  // （aurora-cache://），未命中返回 null 并由主进程后台写入；本次仍用
-  // 原始地址，下次即命中。
+  // ─── 媒体缓存：音频 / 封面 / 歌词（桌面端主进程、移动端 Filesystem）──
+  // 三类内容共用一份容量配置，内部按比例分配。命中返回本地地址（桌面端
+  // aurora-cache:// 协议、移动端 Capacitor 文件地址），未命中返回 null 并由
+  // 平台在后台写入；本次仍用原始地址，下次即命中。
   /** 解析缓存播放地址；未命中返回 { src: null } */
   resolveCachedAudio?: (req: {
     url: string
