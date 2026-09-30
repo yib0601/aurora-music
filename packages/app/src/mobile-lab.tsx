@@ -5,6 +5,7 @@
  *   /mobile-lab.html?ui=mobile&scene=np        全屏播放详情页（有曲目、播放中）
  *   /mobile-lab.html?ui=mobile&scene=np-paused 全屏播放详情页（暂停）
  *   /mobile-lab.html?ui=mobile&scene=np-empty  全屏播放详情页（无曲目空态）
+ *   /mobile-lab.html?ui=mobile&scene=np&lyrics=none  全屏播放详情页（有曲目、无歌词）
  *   /mobile-lab.html?ui=mobile&scene=bar       底部迷你播放条（有曲目）
  *   /mobile-lab.html?ui=mobile&scene=bar-empty 底部迷你播放条（无曲目）
  *   &theme=light 切浅色主题；&t=125 指定播放秒数；&cover=none 走无封面占位
@@ -72,7 +73,9 @@ const LRC = `[00:00.00]作词：李焯雄  作曲：周传雄
 `
 
 // 歌词读取改为返回内置 lrc（移动端真实路径是读本地缓存 → 在线搜索，浏览器里两者都拿不到）
-;(platform as unknown as { readLyrics: () => Promise<string | null> }).readLyrics = async () => LRC
+// &lyrics=none 模拟「这首歌没有歌词」，用于验收全屏页的空态版式
+;(platform as unknown as { readLyrics: () => Promise<string | null> }).readLyrics = async () =>
+  qs.get('lyrics') === 'none' ? null : LRC
 
 const track: Track = {
   id: 'lab-track-1',
@@ -131,7 +134,7 @@ function BarScene() {
           </div>
         ))}
       </div>
-      <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-16px)] z-30">
+      <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-32px)] z-30">
         <PlayerBar
           currentTrack={isEmpty ? null : track}
           volume={0.7}
