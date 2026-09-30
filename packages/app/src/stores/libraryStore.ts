@@ -91,8 +91,10 @@ interface LibraryState {
   setDownloadDir: (dir: string | null) => void
   setDownloadQuality: (quality: DownloadQuality) => void
   /**
-   * 在线播放缓存容量上限（MB）：0 表示关闭缓存。
-   * 仅桌面端有缓存实现；移动端与 Web 上此设置不生效（设置页已做平台标注）
+   * 媒体缓存容量上限（MB）：音频 / 封面 / 歌词共用这一份配额并内部按比例分配，
+   * 0 表示关闭缓存（不再新增，已有内容保留，腾空间走「清空缓存」）。
+   * 桌面端落盘在主进程 userData，移动端落在应用专属存储；Web 平台未实现，
+   * 此值不生效（设置页按能力探测隐藏缓存分区）。
    */
   audioCacheLimitMB: number
   setAudioCacheLimitMB: (mb: number) => void
@@ -251,7 +253,8 @@ export const useLibraryStore = create<LibraryState>()(
       },
       setDownloadDir: (dir) => set({ downloadDir: dir || null }),
       setDownloadQuality: (quality) => set({ downloadQuality: quality }),
-      audioCacheLimitMB: 1024,
+      // 默认容量按平台给：手机存储紧张，1GB 起步偏重；两端都可在设置里改
+      audioCacheLimitMB: platform.platform === 'mobile' ? 512 : 1024,
       setAudioCacheLimitMB: (mb) => set({ audioCacheLimitMB: Math.max(0, Math.floor(mb)) }),
     }),
     {
@@ -279,7 +282,7 @@ export const useLibraryStore = create<LibraryState>()(
       // v5 新增歌单解析源配置（歌单导入功能）
       // v6 新增媒体库来源配置（WebDAV 网络存储）
       // v7 移除扁平玻璃开关（glassMode 与 .glass-flat 规则已删除，代码里从无入口）
-      // v8 新增在线播放缓存容量配置（audioCacheLimitMB，默认 1024MB）
+      // v8 新增媒体缓存容量配置（audioCacheLimitMB；默认按平台：桌面 1024MB / 移动 512MB）
       // v9 音源合并：独立的「歌单解析源」并入音源（OnlineSourceConfig.playlistUrl），
       //    同一服务的搜索与歌单解析落回同一条配置，删除 playlistResolverSources
       // v10 音源地址归一：端点不再在保存时拼好，配置只留一条 sourceUrl（+ 可选歌单地址与

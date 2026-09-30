@@ -1,15 +1,17 @@
 /**
  * 媒体缓存（渲染层门面）
  *
- * 缓存实体在主进程磁盘，音频、封面、歌词共用一份容量配置并按比例分配
- * （见 desktop/ipc/mediaCache.ts）：歌源直链有效期只有几十分钟，不能作为缓存键，
+ * 缓存实体落盘在各端本地（桌面端主进程 userData，见 desktop/ipc/mediaCache.ts；
+ * 移动端应用专属存储，见 platform/mobile/mediaCache.ts），音频、封面、歌词共用
+ * 同一份容量配置并按比例分配：歌源直链有效期只有几十分钟，不能作为缓存键，
  * 这里按「来源 id + 歌曲 id」推导稳定键；远端封面同理，按曲目身份推导键，
  * 避免歌源给封面地址加时效参数导致每次都 miss。
  *
- * 命中时返回 aurora-cache:// 地址；未命中返回 null 且主进程已在后台拉取，
- * 本次仍走原始地址，下次再遇到同一目标即命中。
+ * 命中时返回可直接加载的本地地址（桌面端 aurora-cache:// 协议，移动端 Capacitor
+ * 文件地址）；未命中返回 null 且已在后台拉取，本次仍走原始地址，下次再遇到
+ * 同一目标即命中。
  *
- * 仅桌面端实现；Web / 移动端平台层未实现对应方法，调用处可选链短路。
+ * Web 平台未实现对应方法，调用处可选链短路。
  */
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
