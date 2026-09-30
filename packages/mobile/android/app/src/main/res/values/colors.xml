@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Aurora 系统栏 / 窗口底色。
+
+  三处必须同色，否则启动链路上会出现可见的色块跳变：
+    1. splash 背景（capacitor.config.ts 的 SplashScreen.backgroundColor）
+    2. 窗口背景 windowBackground（冷启动第一帧，WebView 尚未绘制时的兜底）
+    3. 状态栏 / 导航栏（这里）
+
+  Web 侧主题切换由 services/systemBars.ts 动态改状态栏；导航栏在 Android 上
+  没有对应的 Capacitor 插件，只能由这里静态给深色值 —— app 默认深色，
+  浅色主题下深色导航栏也是系统级常见形态，不做动态翻转。
+-->
+<resources>
+    <color name="aurora_window_bg">#0A0A0A</color>
+</resources>

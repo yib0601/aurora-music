@@ -29,6 +29,7 @@ import {
   openAllFilesAccessSettings,
 } from '@/services/permission'
 import { useThemeColor } from '@/hooks/useThemeColor'
+import { syncSystemBars } from '@/services/systemBars'
 import { platform, setFolderPickerHandler } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { MobileFolderPicker } from '@/components/MobileFolderPicker'
@@ -573,6 +574,9 @@ function AppLayout() {
       // 0px）——例如 shadow-ds-card、backdrop-blur-ds。因此这里必须与 dark 类
       // 同步挂载，且取值只能是 light/dark（ds-tokens.css 只认这两个值）。
       document.documentElement.setAttribute('data-ds-theme', isDark ? 'dark' : 'light')
+      // Android 系统栏（状态栏）跟随主题：Capacitor 的 StatusBar 配置只应用一次，
+      // 主题切换后不会自愈，必须在每次主题变更时同步。插件不存在时静默跳过
+      syncSystemBars(isDark)
       const meta = document.querySelector('meta[name="theme-color"]')
       if (meta) meta.setAttribute('content', isDark ? '#0A0A0A' : '#F9F8F8')
     }
