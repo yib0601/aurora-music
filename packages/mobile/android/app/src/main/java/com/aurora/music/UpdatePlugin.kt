@@ -45,9 +45,16 @@ class UpdatePlugin : Plugin() {
 
     companion object {
         private const val TAG = "UpdatePlugin"
-        /** 连接/读取超时：更新包较大，超时给宽松些 */
-        private const val CONNECT_TIMEOUT_MS = 15_000
-        private const val READ_TIMEOUT_MS = 30_000
+        /**
+         * 建连超时压到 8s（与桌面端 updater 一致）：大陆网络直连 GitHub 资产域名时
+         * TCP 建连可能挂起十几秒，用户看到的就是「进度条一直卡在 0%」。宁可快速失败换源。
+         */
+        private const val CONNECT_TIMEOUT_MS = 8_000
+        /**
+         * 读超时是「两次读之间的最大间隔」而非总时长——只要持续有数据就不会触发，
+         * 所以不必为慢速源留大余量；连续 20s 一个字节都没有，基本可判定这条源废了。
+         */
+        private const val READ_TIMEOUT_MS = 20_000
         /** 进度日志/推送的节流间隔，避免高频写状态 */
         private const val PROGRESS_THROTTLE_MS = 200L
     }
@@ -192,7 +199,9 @@ class UpdatePlugin : Plugin() {
                 throw IllegalStateException("服务器返回 HTTP $code")
             }
 
-            total = active.contentLengthLong.takeIf { it > 0 } ?: 0
+            // 长度未知时为 0（chunked 响应没有 Content-Length），此时跳过收尾校验
+            val expected = active.contentLengthLong.takeIf { it > 0 } ?: 0
+            total = expected
             received = 0
 
             FileOutputStream(target).use { out ->
@@ -214,6 +223,12 @@ class UpdatePlugin : Plugin() {
                     }
                     out.flush()
                 }
+            }
+            // 收尾硬闸门：长度已知时字节数必须完全吻合。服务器提前断流（CDN 掐连接、
+            // 代理超时）时 input.read 会正常返回 -1 收尾，不校验就会把半截 APK 当成功，
+            // 用户装到一半才看到「解析包错误」——必须当成这条源失败并换下一个。
+            if (expected > 0 && received != expected) {
+                throw IllegalStateException("下载不完整（$received/$expected 字节）")
             }
             notifyProgress()
         } finally {
