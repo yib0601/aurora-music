@@ -994,7 +994,7 @@ export function SettingsPage() {
   const setDownloadQuality = useLibraryStore((s) => s.setDownloadQuality)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
 
-  // 媒体缓存：容量档位 + 当前占用；仅桌面端有实现，其余平台隐藏该分区
+  // 媒体缓存：容量档位 + 当前占用；平台未实现时隐藏该分区（见下方 supportsAudioCache）
   const audioCacheLimitMB = useLibraryStore((s) => s.audioCacheLimitMB)
   const setAudioCacheLimitMB = useLibraryStore((s) => s.setAudioCacheLimitMB)
   const [cacheUsage, setCacheUsage] = useState<{ usedBytes: number; count: number }>({ usedBytes: 0, count: 0 })
@@ -1440,7 +1440,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          {/* 媒体缓存：仅桌面端有主进程实现 */}
+          {/* 媒体缓存：桌面端与移动端均有实现，Web 等未实现的平台不显示 */}
           {supportsAudioCache && (
             <section className="card-list p-5">
               <h2 className="font-display text-tagline mb-4 text-white">缓存</h2>

@@ -21,6 +21,13 @@ import {
   saveLyricsFile,
 } from './scanner'
 import { searchOnlineTracks, searchLyrics } from './online'
+import {
+  clearMobileMediaCache,
+  configureMobileMediaCache,
+  getMobileCacheUsage,
+  resolveMobileCachedAudio,
+  resolveMobileCachedCover,
+} from './mediaCache'
 import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, encodeFilePathToUrl } from '@aurora/shared'
 import {
   requestMediaPermissions,
@@ -280,6 +287,20 @@ export function createMobilePlatform(): PlatformInterface & {
     headers?: Record<string, string>,
     downloadDir?: string
   ) => Promise<{ savedPath: string }>
+  /** 媒体缓存（音频 / 封面 / 歌词）：实现在 ./mediaCache.ts，与桌面端同构 */
+  resolveCachedAudio: (req: {
+    url: string
+    key: string
+    headers?: Record<string, string>
+  }) => Promise<{ src: string | null }>
+  resolveCachedCover: (req: {
+    url: string
+    key: string
+    headers?: Record<string, string>
+  }) => Promise<{ src: string | null }>
+  configureAudioCache: (opts: { limitMB: number }) => Promise<void>
+  getAudioCacheUsage: () => Promise<{ usedBytes: number; count: number }>
+  clearAudioCache: () => Promise<void>
 } {
   return {
     platform: 'mobile',
@@ -560,6 +581,18 @@ export function createMobilePlatform(): PlatformInterface & {
         return { savedPath: savePath }
       }
     },
+
+    // ─── 媒体缓存：音频 / 封面 / 歌词（实现在 ./mediaCache.ts）───
+    // 与桌面端同构：三类内容共用一份容量配置、按池 LRU 驱逐，落盘走 Capacitor
+    // Filesystem（应用专属目录，无需存储权限）。设置页按能力探测决定是否显示
+    // 缓存分区，这里挂上方法即代表移动端可用。
+    resolveCachedAudio: resolveMobileCachedAudio,
+    resolveCachedCover: resolveMobileCachedCover,
+    async configureAudioCache(opts) {
+      await configureMobileMediaCache(opts?.limitMB ?? 1024)
+    },
+    getAudioCacheUsage: getMobileCacheUsage,
+    clearAudioCache: clearMobileMediaCache,
 
     database: db,
     windowControls: new NoopWindowControls(),

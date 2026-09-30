@@ -79,6 +79,23 @@ export {
   registerMediaProvider,
   registeredMediaProviderKinds,
 } from './mediaProvider'
+export {
+  CACHE_POOLS,
+  CACHE_INDEX_VERSION,
+  POOL_RATIO,
+  POOL_MIN_MB,
+  poolLimitsMB,
+  cacheBodyKey,
+  cacheFileKey,
+  sumSizes,
+  selectEvictions,
+  parseCacheIndex,
+  serializeCacheIndex,
+  audioExtFrom,
+  imageExtFrom,
+  hashCacheKey,
+} from './mediaCacheCore'
+export type { CachePool, CacheEntry } from './mediaCacheCore'
 export type { LibrarySourceConfig, RemoteEntry, WalkOptions, ParsedAudioFormat } from './webdav'
 export {
   REMOTE_SCHEME,

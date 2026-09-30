@@ -4,6 +4,7 @@ import { encodeFilePathToUrl } from '@aurora/shared'
 import * as mm from 'music-metadata-browser'
 import type { Track } from '@/types'
 import { MobileDatabase } from './database'
+import { registerLyricsFile, touchLyricsFile } from './mediaCache'
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus',
@@ -228,7 +229,10 @@ export async function readLyricsFile(trackId: string): Promise<string | null> {
     const b64 = raw.includes(',') ? raw.split(',')[1] : raw
     // atob 返回的是 Latin-1 二进制字符串，需反解 UTF-8，否则中文会乱码
     // (写入端用 btoa(unescape(encodeURIComponent(lyrics))) 做 UTF-8 编码，这里做对称解码)
-    return decodeURIComponent(escape(atob(b64)))
+    const lyrics = decodeURIComponent(escape(atob(b64)))
+    // 命中即刷新最近使用时间：歌词很小，读一次就更新，常用歌词不会被当冷数据清掉
+    await touchLyricsFile(trackId, new TextEncoder().encode(lyrics).length)
+    return lyrics
   } catch {
     return null
   }
@@ -244,5 +248,7 @@ export async function saveLyricsFile(lyrics: string, trackId: string): Promise<s
     data: b64,
     recursive: true,
   })
+  // 登记进媒体缓存索引（歌词池）：纳入「缓存占用」统计与容量驱逐
+  await registerLyricsFile(trackId, new TextEncoder().encode(lyrics).length)
   return path
 }
