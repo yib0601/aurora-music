@@ -1,9 +1,10 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
   ChevronDown, Heart, ListMusic, Music2,
 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
+import { usePlaybackProgress } from '@/hooks/usePlaybackProgress'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -38,7 +39,6 @@ interface Props {
 export function MobileNowPlaying({ open, onClose }: Props) {
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
-  const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
   const repeatMode = usePlayerStore((s) => s.repeatMode)
   const shuffleMode = usePlayerStore((s) => s.shuffleMode)
@@ -46,16 +46,21 @@ export function MobileNowPlaying({ open, onClose }: Props) {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const toggleLike = useLibraryStore((s) => s.toggleLike)
 
-  const [seeking, setSeeking] = useState(false)
-  const [seekValue, setSeekValue] = useState(0)
+  const hasTrack = !!currentTrack
 
-  // open 切换时重置 seeking 状态
-  useEffect(() => {
-    if (!open) {
-      setSeeking(false)
-      setSeekValue(0)
-    }
-  }, [open])
+  // 进度刻意不订阅 store：原生快照每 500ms 轮询回来一次，走 React 会连带歌词
+  // 一起重渲染；交给 hook 用 rAF 外推 + 命令式写 DOM，见 usePlaybackProgress。
+  // active 传 open && hasTrack：浮层收起或空态时归零，不残留上次会话的进度
+  const { sliderRef, timeRef, onSeekStart, onSeekCommit } = usePlaybackProgress({
+    duration,
+    active: open && hasTrack,
+  })
+
+  // 歌词可用性：null = 还没结论（首帧或加载中），false = 确定这首歌没有歌词。
+  // 无歌词时把「封面 + 标题 + 提示」整块收进剩余空间居中，见下方 wrapper 的注释。
+  // 初值必须是 null 而不是 false：否则每首歌都会先按空态排一帧再跳回填满态
+  const [hasLyrics, setHasLyrics] = useState<boolean | null>(null)
+  const lyricsEmpty = hasLyrics === false
 
   // 阻止背景滚动
   useEffect(() => {
@@ -70,16 +75,8 @@ export function MobileNowPlaying({ open, onClose }: Props) {
   // 注意：所有 hooks 必须在 early return 之前调用，避免 React hooks 顺序错误
   if (!open) return null
 
-  const displayedProgress = seeking ? seekValue : progress
-  const hasTrack = !!currentTrack
-  // 同上：progress/duration 会被持久化，无当前曲目时不得残留一段进度
-  const progressPercent = hasTrack && duration > 0 ? (displayedProgress / duration) * 100 : 0
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
   const isLiked = currentTrack ? likedTracks.has(currentTrack.id) : false
-
-  const handleSeekStart = () => { setSeeking(true); setSeekValue(progress) }
-  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => setSeekValue(parseFloat(e.target.value))
-  const handleSeekCommit = () => { setSeeking(false); usePlayerStore.getState().seekTo(seekValue) }
 
   const cyclePlayMode = () => usePlayerStore.getState().cyclePlayMode()
 
@@ -140,11 +137,23 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         </button>
       </header>
 
+      {/* 封面 + 标题 + 歌词的整体分组。
+          有歌词：歌词区 flex-1 吃掉剩余高度（与拆分前的逐像素布局一致）；
+          无歌词：歌词区只剩一行提示，若仍让它占满，封面与控件之间会空出近半屏
+          纯黑（真机实测约 400px），整页重心被推到上半屏。改为整组在剩余空间内
+          垂直居中，上下留白对称，控件仍贴底 */}
+      <div className={cn('relative flex-1 min-h-0 flex flex-col', lyricsEmpty && 'justify-center')}>
       {/* 封面：宽度同时受视口宽与视口高约束（矮屏自动缩小，把高度让给歌词）。
           -inset-* 那层是封面自身的色雾（静态 radial，无 filter），
           让封面「压」在氛围底上而不是浮在纯黑里 */}
       <div className="relative px-7 pt-1 flex justify-center">
-        <div className="relative w-[min(70vw,34vh)] aspect-square">
+        {/* 无歌词时整组已在剩余空间内居中，空白上下对称；此时封面再放大一档
+            （70vw/34vh → 80vw/42vh），把居中后仍然松散的下半屏填起来，
+            否则「居中」只是把同一块纯黑从下方搬到了上下两侧 */}
+        <div className={cn(
+          'relative aspect-square',
+          lyricsEmpty ? 'w-[min(80vw,42vh)]' : 'w-[min(70vw,34vh)]'
+        )}>
           <div
             aria-hidden
             className="absolute -inset-6 rounded-[46px] opacity-35 dark:opacity-70"
@@ -175,29 +184,43 @@ export function MobileNowPlaying({ open, onClose }: Props) {
 
       {/* 歌词：占据剩余高度。用 large 档——全屏页与桌面详情页同属「大面积」场景，
           13px 的默认档在整屏宽度上显得空；行高与上下渐隐由 LyricsView 内部给出 */}
-      <div className="relative flex-1 min-h-0 px-5 pt-3">
-        <LyricsView large className="h-full" onLineClick={(t) => usePlayerStore.getState().seekTo(t)} />
+      <div className={cn('relative px-5 pt-3', lyricsEmpty ? 'flex-none' : 'flex-1 min-h-0')}>
+        <LyricsView
+          large
+          className="h-full"
+          onLineClick={(t) => usePlayerStore.getState().seekTo(t)}
+          onHasLyricsChange={setHasLyrics}
+        />
+      </div>
       </div>
 
       {/* 进度条：32px 触控高度 + 常显圆形滑块（seek-lg 专属，见 globals.css）。
-          限宽居中：平板/折叠屏展开后整屏拉通会让时间标签离轨道过远 */}
+          限宽居中：平板/折叠屏展开后整屏拉通会让时间标签离轨道过远。
+          值与 --seek 全部由 usePlaybackProgress 的 rAF 命令式写入（input 非受控），
+          所以这里不接 value / style —— 进度每帧推进不再重渲染整页 */}
       <div className="relative mx-auto w-full max-w-[480px] px-5 pb-1">
         <div className="flex items-center gap-2.5">
-          <span className="min-w-[34px] text-right text-[11.5px] text-white/45 tabular-nums">
-            {formatTime(displayedProgress)}
+          <span
+            ref={timeRef}
+            className="min-w-[34px] text-right text-[11.5px] text-white/45 tabular-nums"
+          >
+            0:00
           </span>
           <input
+            ref={sliderRef}
             type="range"
             min={0}
             max={duration || 100}
-            value={displayedProgress}
-            step={0.1}
+            // 粒度取 0.01 秒而不是 0.1：range 的 value 会被浏览器量化到 step 的
+            // 整数倍，粗粒度会把逐帧外推重新打成台阶，thumb 只能一跳一跳地跟
+            step={0.01}
+            defaultValue={0}
             disabled={!hasTrack}
-            onTouchStart={handleSeekStart}
-            onChange={handleSeekChange}
-            onTouchEnd={handleSeekCommit}
+            aria-label="播放进度"
+            onPointerDown={onSeekStart}
+            onPointerUp={onSeekCommit}
+            onPointerCancel={onSeekCommit}
             className="seek-bar seek-lg flex-1 cursor-pointer disabled:opacity-40"
-            style={{ '--seek': `${progressPercent}%` } as CSSProperties}
           />
           <span className="min-w-[34px] text-[11.5px] text-white/45 tabular-nums">
             {formatTime(duration)}

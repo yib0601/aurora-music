@@ -475,7 +475,7 @@ export function LibraryPage() {
             </p>
           </div>
           {/* 工具栏：搜索入口常驻（本地无歌时也可用在线搜索）；重扫/视图切换仅列表态显示 */}
-          <div className="flex items-center gap-2 flex-shrink-0 pb-1">
+          <div className="page-toolbar flex items-center gap-2 flex-shrink-0 pb-1">
             <SearchEntry />
             {tracks.length > 0 && libraryTab === 'songs' && (
               <>

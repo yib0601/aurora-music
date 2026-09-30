@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
-import { AudioLines } from 'lucide-react'
+import { AudioLines, Music2 } from 'lucide-react'
 import type { LyricLine } from '@/types'
 import { parseLRC, findActiveLine, loadLyricsForTrack } from '@/services/lyrics.service'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -11,6 +11,15 @@ interface LyricsViewProps {
   /** 大字号模式：详情页全屏场景下放大歌词行，避免宽屏显得空旷 */
   large?: boolean
   onLineClick?: (time: number) => void
+  /**
+   * 歌词可用性回调：`true` = 已有歌词行可渲染，`false` = 确定无歌词（非加载中）。
+   *
+   * 全屏播放页需要据此改纵向分配：无歌词时歌词区只剩一行提示，若仍按
+   * `flex-1` 占满剩余高度，封面与控件之间会空出近半屏的纯黑（真机实测
+   * 约 400px），整页重心飘在上半屏。加载中一律回报 `true`，避免「先按空态
+   * 排一次 → 歌词到位后再跳回」的抖动。
+   */
+  onHasLyricsChange?: (hasLyrics: boolean) => void
 }
 
 const sampleLyrics = `[00:00.00]Aurora Music
@@ -22,7 +31,7 @@ const sampleLyrics = `[00:00.00]Aurora Music
 [00:22.00]享受音乐，享受生活
 `
 
-export function LyricsView({ lyricsText, className, large, onLineClick }: LyricsViewProps) {
+export function LyricsView({ lyricsText, className, large, onLineClick, onHasLyricsChange }: LyricsViewProps) {
   const progress = usePlayerStore((s) => s.progress)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -65,6 +74,14 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
     () => (lyrics.length > 0 ? findActiveLine(lyrics, progress) : -1),
     [lyrics, progress]
   )
+
+  // 报告「有没有歌词」给父级（全屏播放页据此决定歌词区是否占满剩余高度）。
+  // loading 期间按「有」上报：加载完成通常只在百毫秒内，若此刻先按空态排一次，
+  // 歌词到位后整页会立刻跳一下
+  const hasLyrics = loading || lyrics.length > 0
+  useEffect(() => {
+    onHasLyricsChange?.(hasLyrics)
+  }, [hasLyrics, onHasLyricsChange])
 
   const scrollTimerRef = useRef<number | null>(null)
 
@@ -147,9 +164,19 @@ export function LyricsView({ lyricsText, className, large, onLineClick }: Lyrics
       }}
     >
       {lyrics.length === 0 && (
-        <p className={cn('text-white/25', large ? 'text-[16px]' : 'text-[14px]')}>
-          {loading ? '搜索歌词中...' : '暂无歌词'}
-        </p>
+        // 空态给出图标 + 文案两档：全屏播放页里这一段是画面下半区的唯一内容，
+        // 只留一行 14px 灰字会显得「什么都没加载出来」而不是「这首歌没有歌词」
+        // ⚠️ 透明度落在浅色主题可读性分档（/30）上，见 globals.css
+        <div className="flex flex-col items-center gap-2.5">
+          <Music2
+            aria-hidden
+            className={cn('text-white/30', large ? 'h-7 w-7' : 'h-6 w-6')}
+            strokeWidth={1.4}
+          />
+          <p className={cn('text-white/30', large ? 'text-[15px]' : 'text-[13px]')}>
+            {loading ? '正在搜索歌词…' : '暂无歌词'}
+          </p>
+        </div>
       )}
       {lyrics.map((line, idx) => {
         const distance = Math.abs(idx - activeIdx)

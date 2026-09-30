@@ -902,12 +902,14 @@ function AppLayout() {
 
               {/* Mineradio 悬浮胶囊控制台 — 全局唯一实例，所有页面（含歌曲详情）常驻，
                   避免详情页内嵌另一份播放条导致切换页面时播放条位置/宽度跳变 */}
-              {/* 移动端：贴屏幕底部（safe-area），宽度铺满屏宽 -16 */}
+              {/* 移动端：贴屏幕底部（safe-area），左右内缩与页面内容同轴（16px）。
+                  旧值 8px 比内容窄一圈，胶囊两侧比列表多探出 8px，滚动时能看见两条
+                  对不齐的边；宽度统一后播放条与封面/标题共用同一条视觉轴 */}
               <div
                 className={cn(
                   'absolute left-1/2 -translate-x-1/2 z-30',
                   mobile
-                    ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-16px)]'
+                    ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-32px)]'
                     : 'bottom-3 w-[clamp(360px,calc(100%-48px),640px)] min-[1500px]:w-[clamp(360px,calc(100%-48px),720px)]',
                 )}
               >

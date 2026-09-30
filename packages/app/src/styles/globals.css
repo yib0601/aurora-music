@@ -881,6 +881,36 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .segmented-item:hover { color: rgb(var(--tw-white)); background: rgb(var(--tw-white) / .05); }
   .segmented-item.is-on { background: rgb(var(--tw-mint)); color: rgb(var(--tw-mint-fg)); font-weight: 600; }
 
+  /* 主播放按钮（移动端迷你条 44px / 全屏页 64px 共用）
+   *
+   * 纯色填充的大圆在暗底上是一块「平板」，与项目其余玻璃/光感材质不在同一语汇。
+   * 这里叠一层左上→右下的白高光让圆面有球面受光（只加 background-image，
+   * 与 bg-mint 的 background-color 叠加，互不覆盖）。
+   * 收边的 1px 内描边写在组件侧的 box-shadow 里，不在这里 —— shadow-* 工具类
+   * 会整体覆盖 box-shadow 属性，两处都写会静默丢掉一个。
+   * 不引入第二色相、不做外发光：都试过，在暗底上只会显脏。 */
+  .play-fab {
+    background-image: linear-gradient(158deg, rgba(255,255,255,.24) 0%, rgba(255,255,255,0) 48%);
+  }
+
+  /* 手机端页面工具栏：三种控件高度对齐
+   *
+   * 三档控件在桌面各有语义（search-entry 36 主入口 / segmented 32 分段 /
+   * btn-icon 28 次级），但并排出现在 390px 宽的手机上会露出 36 / 34 / 28
+   * 三种高度，标题右侧整列参差；28px 的触控目标也远低于可点范围。
+   *
+   * 只收紧工具栏，不动全站 .btn-icon：PlayerBar / QueueView / Toast 的尺寸
+   * 由各自场景决定，改全局会连带位移。断点沿用本项目既有的手机断点 639px
+   * （见上方 .search-entry 的小屏压缩态）。 */
+  @media (max-width: 639px) {
+    .page-toolbar { gap: 6px; }
+    .page-toolbar .btn-icon { width: 36px; height: 36px; padding: 0; }
+    /* 分段项：item 30 + 容器内边距 4 + 边框 2 = 36px，与工具栏其余控件同网格。
+       宽度只锁图标型（原 w-7），文字型（歌曲/专辑/艺术家）宽度由 padding 撑开 */
+    .segmented-item { height: 30px; }
+    .page-toolbar .segmented-item { width: 30px; }
+  }
+
   /* 胶囊按钮：三档高度，颜色由 pill-mint / pill-soft 等修饰类决定 */
   .pill {
     display: inline-flex;
