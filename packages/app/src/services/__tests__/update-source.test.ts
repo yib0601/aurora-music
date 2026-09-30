@@ -3,10 +3,7 @@ import {
   fetchFastest,
   isAllowedDownloadUrl,
   isGithubUrl,
-  isManifestUrl,
   isProxyUrl,
-  manifestAssetUrl,
-  manifestCandidates,
   releasesApiCandidates,
   withGithubProxies,
 } from '@/services/update-source'
@@ -18,43 +15,34 @@ afterEach(() => {
 const ASSET = 'https://github.com/yib0601/aurora-music/releases/download/v0.5.7/Aurora-Music-0.5.7-android.apk'
 const API = 'https://api.github.com/repos/yib0601/aurora-music/releases/latest'
 
-describe('境内清单源候选', () => {
-  it('指向 npmmirror 的 update.json', () => {
-    const [url] = manifestCandidates()
-    expect(url).toBe('https://registry.npmmirror.com/aurora-music-release/latest/files/update.json')
-    expect(isManifestUrl(url)).toBe(true)
-  })
-
-  it('安装包地址使用具体版本号（latest 别名不能拼文件路径）', () => {
-    expect(manifestAssetUrl('aurora-music-release', '0.5.7', 'a.apk')).toBe(
-      'https://registry.npmmirror.com/aurora-music-release/0.5.7/files/a.apk'
-    )
-  })
-})
-
 describe('候选展开', () => {
-  it('GitHub 资产展开为「官方 + 各加速前缀」', () => {
+  it('GitHub 资产展开为「官方 + 可用加速前缀」', () => {
     const list = withGithubProxies(ASSET)
     expect(list[0]).toBe(ASSET)
     expect(list).toContain(`https://gh-proxy.com/${ASSET}`)
     expect(list).toContain(`https://ghfast.top/${ASSET}`)
-    expect(list).toContain(`https://ghproxy.net/${ASSET}`)
   })
 
-  it('境内清单源地址原样返回，不做二次包裹', () => {
-    const own = manifestAssetUrl('aurora-music-release', '0.5.7', 'a.apk')
-    expect(withGithubProxies(own)).toEqual([own])
+  it('剔除实测不可用的前缀', () => {
+    const list = withGithubProxies(ASSET)
+    // ghproxy.net 实测仅 33KB/s（150s 未下完）、ghproxy.cn 返回 HTML 错误页伪装 200
+    expect(list.some((u) => u.includes('ghproxy.net'))).toBe(false)
+    expect(list.some((u) => u.includes('ghproxy.cn'))).toBe(false)
+  })
+
+  it('非 GitHub 地址原样返回，不做二次包裹', () => {
+    const other = 'https://example.com/file.apk'
+    expect(withGithubProxies(other)).toEqual([other])
   })
 })
 
 describe('检查更新候选', () => {
-  it('API 候选只含支持 api.github.com 的前缀', () => {
+  it('只包含能透传 api.github.com 的前缀', () => {
     const list = releasesApiCandidates(API)
     expect(list[0]).toBe(API)
     expect(list).toContain(`https://gh-proxy.com/${API}`)
-    // ghfast.top / ghproxy.net 对 api.github.com 恒 403，不能混进检查更新链路
+    // ghfast.top 对 api.github.com 恒 403，不能混进检查更新链路白等一轮超时
     expect(list.some((u) => u.includes('ghfast.top'))).toBe(false)
-    expect(list.some((u) => u.includes('ghproxy.net'))).toBe(false)
   })
 })
 
@@ -63,15 +51,12 @@ describe('下载白名单', () => {
     expect(isGithubUrl(ASSET)).toBe(true)
     expect(isAllowedDownloadUrl('https://objects.githubusercontent.com/x.apk')).toBe(true)
     expect(isProxyUrl('https://gh-proxy.com/' + ASSET)).toBe(true)
-    expect(isAllowedDownloadUrl('https://ghproxy.net/' + ASSET)).toBe(true)
-  })
-
-  it('放行境内清单源', () => {
-    expect(isAllowedDownloadUrl(manifestAssetUrl('aurora-music-release', '0.5.7', 'a.apk'))).toBe(true)
+    expect(isAllowedDownloadUrl('https://ghfast.top/' + ASSET)).toBe(true)
   })
 
   it('拒绝任意域名与降级协议', () => {
     expect(isAllowedDownloadUrl('https://evil.example.com/x.apk')).toBe(false)
+    expect(isAllowedDownloadUrl('https://cdn.jsdelivr.net/npm/pkg@1.0.0/a.apk')).toBe(false)
     expect(isAllowedDownloadUrl('http://github.com/x.apk')).toBe(false)
     expect(isAllowedDownloadUrl('not-a-url')).toBe(false)
   })
@@ -118,17 +103,17 @@ describe('fetchFastest 并发竞速', () => {
     ).rejects.toThrow('HTTP 500')
   })
 
-  it('响应体解析失败不算成功（HTML 错误页不能冒充 JSON）', async () => {
+  it('HTML 错误页不能冒充 JSON（镜像站伪装 200 的场景）', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
         if (String(url).includes('html')) return new Response('<html>403</html>')
-        return new Response('{"version":"0.5.8"}')
+        return new Response('{"tag_name":"v0.5.8"}')
       })
     )
     const value = await fetchFastest(['https://a.test/html', 'https://b.test/json'], (res) => res.json(), {
       timeoutMs: 2000,
     })
-    expect(value).toEqual({ version: '0.5.8' })
+    expect(value).toEqual({ tag_name: 'v0.5.8' })
   })
 })
