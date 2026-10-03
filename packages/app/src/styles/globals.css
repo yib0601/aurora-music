@@ -1146,6 +1146,79 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
 .apple-press { transition: transform 0.18s var(--ease-mineradio); }
 .apple-press:active { transform: scale(0.96); }
 
+/* ===== 歌曲列表列宽档位（容器查询） =====
+ * 病灶：歌曲行原先用**视口**断点写死列宽（md:grid-cols-[...10rem_12rem_2.5rem_4rem_2.5rem]），
+ * 而歌曲表的可用宽度取决于**容器**，与视口差着一大截。实测 1198px 窗口：
+ *   侧栏 224 + 页面左右内边距 64 + 右侧 Now Playing 面板 288 + 滚动条 ⇒ 容器只剩约 622px。
+ * 固定列（艺术家 160 + 专辑 192 + 收藏 40 + 时长 64 + 更多 40 = 496）加上行内边距，
+ * 已经吃满 622 ⇒ 弹性标题列 `minmax(0,1fr)` 塌到 0，标题截成「Thi…」，
+ * 右侧却留大片空白（用户截图的现场）。视口断点看不出容器实际多窄，只能改用容器断点。
+ *
+ * 档位按「标题可用文字宽」倒推。标题文字宽 = W − 8(容器 pr-2) − 80(封面 44 + 间距 12 + 内边距 24)
+ * − 固定列；收藏/时长/更多恒为 40 + 64 + 40 = 144。本机最长的真实标题
+ * 「Everybody Dies In Their Nightmares」实测约 253px，故各档都保证 ≥ 208px：
+ *   W ≥ 1000：艺术家 160 + 专辑 192 + 144 = 496 ⇒ 标题 ≥ 416px
+ *   780 ≤ W < 1000：艺术家 144 + 专辑 160 + 144 = 448 ⇒ 标题 ≥ 244px
+ *   568 ≤ W < 780：艺术家收起(0) + 专辑 112 + 144 = 256 ⇒ 标题 ≥ 224px
+ *   W < 568：艺术家与专辑都收起 ⇒ 固定列仅 144 ⇒ 标题 = W − 232（W=446 时 214px）
+ * 收起的列一律把信息挪到别处（艺术家→标题下方第二行），不做信息删减。
+ *
+ * ⚠️ 隐藏列必须用 visibility + 去掉水平内边距，**不能 display:none**：
+ * display:none 的元素不再是 grid item，其后的列会整体左移一格——
+ * 实测收藏列被塞进 0 宽轨道压没、时长列被 2.5rem 轨道裁短，行尾反而空出 2.5rem。
+ * 容器查询要求调用方给父级加 container-type（只测 inline 轴，不影响块轴滚动）。
+ */
+.track-list-container {
+  container-type: inline-size;
+}
+
+/* 默认档（宽窗）：标题 1fr / 艺术家 10rem / 专辑 12rem / 收藏 2.5rem / 时长 4rem / 更多 2.5rem */
+.track-row-grid {
+  --track-cols: minmax(0, 1fr) 10rem 12rem 2.5rem 4rem 2.5rem;
+}
+
+/* md 以下沿用 Tailwind 的移动端三列模板（标题双行 / 收藏 / 时长），此处不接管 */
+@media (min-width: 768px) {
+  .track-row-grid {
+    grid-template-columns: var(--track-cols);
+  }
+}
+
+@container (max-width: 999px) {
+  .track-row-grid {
+    --track-cols: minmax(0, 1fr) 9rem 10rem 2.5rem 4rem 2.5rem;
+  }
+}
+
+/* 窄档：艺术家列收起 → 「艺术家」挪到标题下方第二行（行高 72px 本就容得下两行，
+ * 移动端就是这么排的），腾出的 128px 全给标题 */
+@container (max-width: 779px) {
+  .track-row-grid {
+    --track-cols: minmax(0, 1fr) 0 7rem 2.5rem 4rem 2.5rem;
+  }
+  .track-row-grid > .track-col-artist {
+    visibility: hidden;
+    padding-inline: 0;
+    overflow: hidden;
+  }
+  /* 双类选择器压过 Tailwind 的 .md\:hidden（单类，utilities 层排在后） */
+  .track-row-grid .track-artist-inline {
+    display: block;
+  }
+}
+
+/* 最窄档：连专辑列也收起。专辑是「有更好、没有也能活」的一列，标题不是 */
+@container (max-width: 567px) {
+  .track-row-grid {
+    --track-cols: minmax(0, 1fr) 0 0 2.5rem 4rem 2.5rem;
+  }
+  .track-row-grid > .track-col-album {
+    visibility: hidden;
+    padding-inline: 0;
+    overflow: hidden;
+  }
+}
+
 /* ===== 旋转黑胶唱片（歌曲详情页封面） =====
  * 播放中匀速旋转；暂停用 animation-play-state 停转，避免回跳
  */
