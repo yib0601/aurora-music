@@ -43,6 +43,22 @@ export {
   resolvePlaylistUrl,
   parsePlaylistLink,
 } from './playlistResolver'
+export {
+  tradToSimp,
+  normalizeForMatch,
+  firstArtistOf,
+  hasKnownArtist,
+  hasVersionMarker,
+  hasVersionMarkerStrict,
+  targetHasVersionMarker,
+  isNonOriginalCandidate,
+  cleanTitleForQuery,
+  titleVariants,
+  titleMatchStrength,
+  artistMatches,
+  pickCoverCandidate,
+} from './coverMatch'
+export type { CoverMatchTarget } from './coverMatch'
 export type { PlaylistCapableSource } from './playlistResolver'
 export { mergeLegacyPlaylistSources, migrateOnlineSources, migrateLyricsSources } from './sourceMigration'
 export {
