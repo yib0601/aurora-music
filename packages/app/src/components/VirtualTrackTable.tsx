@@ -71,9 +71,19 @@ export function useBindScrollElement(
 const ROW_HEIGHT = 72
 
 /** 行与表头共用的列模板：标题(弹性) / 艺术家 10rem / 专辑 12rem / 收藏 2.5rem / 时长 / 更多操作
- * 移动端窄列只留「标题(双行) / 收藏 / 时长」——触屏靠整行点击播放，不塞更多按钮 */
-const GRID_TEMPLATE =
-  'grid-cols-[minmax(0,1fr)_2.5rem_3rem] md:grid-cols-[minmax(0,1fr)_10rem_12rem_2.5rem_4rem_2.5rem]'
+ * 移动端窄列只留「标题(双行) / 收藏 / 时长」——触屏靠整行点击播放，不塞更多按钮
+ *
+ * ⚠️ 桌面端的列宽**不能只用视口断点**：歌曲表的容器比视口窄得多（侧栏 224 + 页面内边距 64
+ * + 右侧 Now Playing 面板 288 + 滚动条），视口 1024px 时容器只剩约 440px，
+ * 而固定列合计已 496px ⇒ 弹性标题列被压成 0，标题截断成「Thi…」右侧却留大片空白。
+ * 因此桌面列宽由 `.track-row-grid` 的**容器查询**按 --track-cols 驱动（档位见 globals.css）。
+ *
+ * ⚠️ 这里**不能**再保留 `md:grid-cols-[...]` 兜底：Tailwind 的 utilities 层排在自定义
+ * 规则之后，同优先级下后者胜出，视口 ≥768px 时那条固定模板会把容器查询的结果整体盖掉
+ * （实测 --track-cols 已切到窄档、计算值却仍是 160/192px）。移动端三列模板保留即可，
+ * ≥768px 的模板由 .track-row-grid 自己给（--track-cols 的默认值就是原桌面模板）。
+ * 调用方的滚动容器必须带 `.track-list-container`，否则容器查询不生效。 */
+const GRID_TEMPLATE = 'grid-cols-[minmax(0,1fr)_2.5rem_3rem] track-row-grid'
 
 /**
  * 菜单组件族：右键菜单（ContextMenu）与行尾「…」下拉（DropdownMenu）共用同一份
@@ -294,16 +304,22 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                   </span>
                 )}
               </span>
-              {/* 移动端隐藏艺术家列，改为标题下方第二行展示 */}
-              <span className="block md:hidden font-text text-[12px] text-white/40 truncate mt-0.5 tracking-[-0.12px]">
+              {/* 艺术家第二行：移动端本就展示；桌面端容器收窄到 779px 以下时
+                  艺术家列收起，由 globals.css 的容器查询把它打开（.track-row-grid 后代
+                  选择器 + 双类，足以压过 Tailwind 的 md:hidden） */}
+              <span className="track-artist-inline block md:hidden font-text text-[12px] text-white/40 truncate mt-0.5 tracking-[-0.12px]">
                 {track.artist}
               </span>
             </div>
           </div>
-          <div className="hidden md:block px-3 font-text text-white/50 text-[14px] truncate tracking-[-0.224px]">
+          {/* track-col-artist：容器收窄时整列隐藏（见 globals.css 档位），
+              艺术家改由标题下方第二行承担，信息不丢 */}
+          <div className="hidden md:block track-col-artist px-3 font-text text-white/50 text-[14px] truncate tracking-[-0.224px]">
             {track.artist}
           </div>
-          <div className="hidden md:block px-3 font-text text-white/45 text-[14px] truncate tracking-[-0.224px]">
+          {/* track-col-album：容器过窄时整列隐藏（见 globals.css 的容器查询档位），
+              这是「把宽度让给标题」的最后手段——专辑列是可省的，标题不是 */}
+          <div className="hidden md:block track-col-album px-3 font-text text-white/45 text-[14px] truncate tracking-[-0.224px]">
             {track.album}
           </div>
           <div className="flex items-center justify-center">
@@ -399,8 +415,8 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
       {/* 表头：移动端隐藏（列表语义已由双行布局表达） */}
       <div className={cn('hidden md:grid items-center border-b border-white/[0.08]', GRID_TEMPLATE)}>
         <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">标题</div>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">艺术家</div>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">专辑</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-artist">艺术家</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-album">专辑</div>
         <div />
         <div className="text-right py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">时长</div>
         <div />

@@ -587,7 +587,9 @@ export function LibraryPage() {
 
           {activeGroup ? (
         // 分组详情：返回 + 组信息 + 播放全部 + 该组歌曲列表（单组歌曲量小，直接平铺）
-        <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
+        // track-list-container 与全库列表同源：平铺的 VirtualTrackRow 也要按容器宽度切列宽档位，
+        // 否则从全库切进分组后列宽会突变（同一套行组件、两种列宽）
+        <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2 track-list-container">
           <div className="flex items-center gap-3 mb-4 md:mb-5">
             <button
               onClick={() => setSelectedGroup(null)}
@@ -631,10 +633,12 @@ export function LibraryPage() {
       ) : libraryTab === 'artists' ? (
         renderGroupGrid(artistGroups, 'artist')
       ) : viewMode === 'list' ? (
+        // track-list-container：歌曲行按**容器**宽度切列宽档位（见 globals.css），
+        // 视口断点在「侧栏 + Now Playing 面板」并存时判不准可用宽度，会把标题挤成省略号
         <div
           ref={songsScrollRef}
           onScroll={handleSongsScroll}
-          className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2"
+          className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2 track-list-container"
         >
           <VirtualTrackTable
             tracks={filteredTracks}
