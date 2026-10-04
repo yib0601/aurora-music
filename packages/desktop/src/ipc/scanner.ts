@@ -6,8 +6,9 @@ import { v4 as uuidv4 } from 'uuid'
 import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
 import { registerCoverFile } from './mediaCache'
-import { searchOnlineTracks, fetchWithTimeout } from '@aurora/shared'
-import type { OnlineSearchOptions, OnlineTrackSearchResult } from '@aurora/shared'
+import { isUsableCoverFile } from './coverFile'
+import { searchOnlineTracks, fetchWithTimeout, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate } from '@aurora/shared'
+import type { OnlineSearchOptions } from '@aurora/shared'
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus'])
 
@@ -254,7 +255,10 @@ export async function scanFolder(
  * 当 UI 需要某曲目的封面而记录中无 coverPath 时，单独提取并缓存。
  */
 export async function ensureCover(track: Track, userData: string): Promise<string | null> {
-  if (track.coverPath) return track.coverPath
+  // 悬空路径不能早退（见 isUsableCoverFile）：早退会把一个不存在的文件当成功结果
+  // 返回，渲染层缓存后封面就永久空了
+  if (isUsableCoverFile(track.coverPath)) return track.coverPath!
+  if (track.coverPath) updateTrack(track.id, { coverPath: undefined })
   try {
     const metadata = await parseFile(track.path, { duration: false })
     const pic = metadata.common.picture?.[0]
@@ -274,121 +278,13 @@ export async function ensureCover(track: Track, userData: string): Promise<strin
   }
 }
 
-/** 归一化标题/艺术家用于宽松匹配（繁→简、去大小写、空白与常见标点） */
-function normalizeForMatch(s?: string): string {
-  return tradToSimp((s || '').toLowerCase()).replace(/[\s\-_·,，.。!！?？'"""''（）()【】\[\]@、]/g, '')
-}
-
-/**
- * 华语歌名高频繁→简映射：老标签多为繁体（反方向的鐘/刀馬旦/愛在西元前），
- * 而在线歌源以简体索引，不做转换会导致标题匹配失败。覆盖高频字而非全表。
- */
-const TRAD_TO_SIMP_MAP: Record<string, string> = Object.fromEntries(
-  Object.entries({
-    愛: '爱', 馬: '马', 鐘: '钟', 鍾: '钟', 門: '门', 們: '们', 倫: '伦', 傑: '杰', 說: '说', 話: '话',
-    語: '语', 請: '请', 謝: '谢', 詩: '诗', 詞: '词', 記: '记', 憶: '忆', 該: '该', 讓: '让', 見: '见',
-    親: '亲', 寶: '宝', 貝: '贝', 兒: '儿', 學: '学', 長: '长', 遠: '远', 這: '这', 還: '还', 過: '过',
-    時: '时', 後: '后', 點: '点', 開: '开', 關: '关', 問: '问', 間: '间', 雲: '云', 風: '风', 飛: '飞',
-    鳥: '鸟', 魚: '鱼', 龍: '龙', 葉: '叶', 樹: '树', 線: '线', 綫: '线', 紅: '红', 綠: '绿', 藍: '蓝',
-    黃: '黄', 雙: '双', 單: '单', 獨: '独', 對: '对', 錯: '错', 選: '选', 擇: '择', 決: '决', 約: '约',
-    會: '会', 讀: '读', 寫: '写', 書: '书', 畫: '画', 戀: '恋', 煙: '烟', 車: '车', 橋: '桥', 樓: '楼',
-    國: '国', 華: '华', 萬: '万', 歲: '岁', 歷: '历', 麗: '丽', 陽: '阳', 陰: '阴', 圓: '圆', 滿: '满',
-    燈: '灯', 聲: '声', 聽: '听', 樂: '乐', 夢: '梦', 靈: '灵', 淚: '泪', 傷: '伤', 無: '无', 與: '与',
-    為: '为', 於: '于', 麼: '么', 體: '体', 臉: '脸', 頭: '头', 髮: '发', 發: '发', 難: '难', 離: '离',
-    別: '别', 剛: '刚', 劉: '刘', 陳: '陈', 張: '张', 孫: '孙', 楊: '杨', 吳: '吴', 趙: '赵', 鄭: '郑',
-    蘇: '苏', 鄧: '邓', 蕭: '萧', 羅: '罗', 蘭: '兰', 韓: '韩', 許: '许', 幾: '几', 處: '处', 願: '愿',
-    靜: '静', 顏: '颜', 須: '须', 裏: '里', 裡: '里', 麵: '面', 錶: '表', 錄: '录', 鋼: '钢', 鐵: '铁',
-    銀: '银', 鏡: '镜', 閃: '闪', 電: '电', 韻: '韵', 飄: '飘', 飯: '饭', 館: '馆', 驕: '骄', 騎: '骑',
-    鳳: '凤', 鴿: '鸽', 嘗: '尝', 夠: '够', 屆: '届', 島: '岛', 嶺: '岭', 帥: '帅', 廣: '广', 場: '场',
-    塊: '块', 壞: '坏', 壓: '压', 奪: '夺', 奮: '奋', 媽: '妈', 寧: '宁', 將: '将', 專: '专', 屬: '属',
-    帶: '带', 幫: '帮', 庫: '库', 彈: '弹', 強: '强', 復: '复', 懷: '怀', 戰: '战', 戲: '戏', 擁: '拥',
-    據: '据', 斷: '断', 曉: '晓', 東: '东', 條: '条', 來: '来', 楓: '枫', 標: '标', 機: '机', 歡: '欢',
-    殺: '杀', 毀: '毁', 沒: '没', 涼: '凉', 淺: '浅', 溫: '温', 滄: '沧', 滅: '灭', 漢: '汉', 潛: '潜',
-    濃: '浓', 濕: '湿', 燒: '烧', 熱: '热', 爺: '爷', 牽: '牵', 獻: '献', 環: '环', 產: '产', 異: '异',
-    瘋: '疯', 療: '疗', 盜: '盗', 盡: '尽', 確: '确', 禮: '礼', 稱: '称', 窮: '穷', 競: '竞', 筆: '笔',
-    節: '节', 簡: '简', 籠: '笼', 粵: '粤', 終: '终', 給: '给', 經: '经', 緊: '紧', 總: '总', 繼: '继',
-    續: '续', 聖: '圣', 聞: '闻', 聰: '聪', 腸: '肠', 臺: '台', 舊: '旧', 艷: '艳', 藝: '艺', 號: '号',
-    雖: '虽', 蝸: '蜗', 蟻: '蚁', 衝: '冲', 裝: '装', 複: '复', 覺: '觉', 觸: '触', 訂: '订', 評: '评',
-    譯: '译', 護: '护', 變: '变', 費: '费', 賴: '赖', 趕: '赶', 跡: '迹', 蹤: '踪', 輕: '轻', 輝: '辉',
-    輸: '输', 轉: '转', 轟: '轰', 迴: '回', 連: '连', 進: '进', 遊: '游', 運: '运', 達: '达', 遙: '遥',
-    適: '适', 遷: '迁', 遺: '遗', 鄰: '邻', 醫: '医', 釋: '释', 鈴: '铃', 錦: '锦', 鍵: '键', 鑽: '钻',
-    閉: '闭', 陣: '阵', 類: '类', 餘: '余', 騰: '腾', 驚: '惊', 髒: '脏', 鬥: '斗', 魯: '鲁', 鴨: '鸭',
-    鴻: '鸿', 麥: '麦', 齊: '齐', 齒: '齿', 龜: '龟', 妳: '你', 洩: '泄', 掛: '挂', 芃: '芃',
-  })
-)
-
-function tradToSimp(s: string): string {
-  return s.replace(/[\u4e00-\u9fff]/g, (ch) => TRAD_TO_SIMP_MAP[ch] ?? ch)
-}
-
-/**
- * 清洗标题用于搜索与匹配：剔除打标工具追加的演唱者后缀。
- * - 全角「－后缀」基本是演唱者尾巴（反方向的鐘－周杰倫），直接剔除；
- * - 半角「- 后缀」仅当像艺术家名时剔除（与艺术家一致、或为 2-6 个汉字），
- *   避免误伤 "歌名 - Live" 这类正常标题。
- */
-function cleanTitleForQuery(title: string, artist?: string): string {
-  let t = title.trim()
-  t = t.replace(/－[^－]{1,30}$/, '').trim()
-  const m = t.match(/^(.+?)\s*-\s*([^-]{1,30})$/)
-  if (m) {
-    const stem = m[1].trim()
-    const suffix = m[2].trim()
-    const a = normalizeForMatch(artist)
-    const s = normalizeForMatch(suffix)
-    const artistPlaceholder = !a || META_PLACEHOLDERS.has(artist || '')
-    const looksLikeArtist =
-      (!artistPlaceholder && s && (a.includes(s) || s.includes(a))) ||
-      (/^[\u4e00-\u9fff]{2,6}$/.test(suffix) && stem.length >= 2)
-    if (looksLikeArtist) t = stem
-  }
-  return t || title.trim()
-}
-
-/** 取第一艺术家：多人合唱标签（周杰倫、方文山）整个塞进查询词会干扰搜索 */
-function firstArtistOf(artist: string): string {
-  return artist.split(/[、,，/&]| feat\.? | ft\.? /i)[0].trim()
-}
-
-/**
- * 在线封面候选挑选：标题必须匹配（归一化后相等或互相包含），
- * 艺术家匹配 +1、时长差 ≤3s +2，取总分最高且带封面 URL 者。
- * 标题不匹配的一律排除，宁可无图也不贴错封面。
- */
-function pickOnlineCoverCandidate(
-  candidates: OnlineTrackSearchResult[],
-  track: Track
-): OnlineTrackSearchResult | null {
-  // 本地标题先做演唱者后缀剔除 + 繁简归一（老标签：反方向的鐘－周杰倫 → 反方向的钟）
-  const wantTitle = normalizeForMatch(cleanTitleForQuery(track.title, track.artist))
-  const wantArtist = normalizeForMatch(track.artist)
-  let best: OnlineTrackSearchResult | null = null
-  let bestScore = 0
-  for (const c of candidates) {
-    if (!c.coverUrl || !/^https?:\/\//i.test(c.coverUrl)) continue
-    // 候选标题同样剔除后缀再归一（歌源条目也常带 "- 歌手" 尾巴）
-    const ct = normalizeForMatch(cleanTitleForQuery(c.title, c.artist))
-    if (!wantTitle || !ct) continue
-    if (ct !== wantTitle && !ct.includes(wantTitle) && !wantTitle.includes(ct)) continue
-    let score = 2
-    const ca = normalizeForMatch(c.artist)
-    if (wantArtist && ca && (ca === wantArtist || ca.includes(wantArtist) || wantArtist.includes(ca))) score += 1
-    if (track.duration > 0 && c.duration > 0 && Math.abs(c.duration - track.duration) <= 3) score += 2
-    if (score > bestScore) {
-      best = c
-      bestScore = score
-    }
-  }
-  return best
-}
-
-/** 扫描/标签里的占位值，搜索时剔除避免污染关键词 */
 const META_PLACEHOLDERS = new Set(['未知艺术家', '未知专辑', '未知歌曲'])
 
 /**
  * 在线补齐封面：文件无内嵌封面时的兜底。
- * 用「艺术家 + 标题」搜索用户配置的在线歌源，取标题匹配（艺术家/时长加分）
- * 的候选封面下载并落盘缓存。无匹配返回 null；网络/下载失败抛错
+ * 用「艺术家 + 标题」搜索用户配置的在线歌源，取标题匹配、歌手门禁通过的候选
+ * 封面下载并落盘缓存（见 shared/coverMatch：歌手不符或带版本标记的一律不选，
+ * 宁可无图也不贴错封面）。无匹配返回 null；网络/下载失败抛错
  * （渲染层按"失败可重试"处理，不会当作无封面缓存）。
  */
 export async function fetchOnlineCover(
@@ -396,7 +292,9 @@ export async function fetchOnlineCover(
   userData: string,
   options?: OnlineSearchOptions
 ): Promise<string | null> {
-  if (track.coverPath) return track.coverPath
+  // 同 ensureCover：悬空路径不早退，否则在线兜底会被一个已删的缓存文件拦住
+  if (isUsableCoverFile(track.coverPath)) return track.coverPath!
+  if (track.coverPath) updateTrack(track.id, { coverPath: undefined })
   const rawArtist = META_PLACEHOLDERS.has(track.artist) ? '' : track.artist
   const rawTitle = META_PLACEHOLDERS.has(track.title) ? '' : track.title
   // 查询词清洗：第一艺术家 + 去演唱者后缀的标题，并统一转简体（歌源多以简体索引）
@@ -406,7 +304,12 @@ export async function fetchOnlineCover(
   if (!query) return null
 
   const candidates = await searchOnlineTracks(query, options)
-  const best = pickOnlineCoverCandidate(candidates, track)
+  const best = pickCoverCandidate(candidates, {
+    title: rawTitle,
+    artist: rawArtist,
+    duration: track.duration,
+    album: track.album,
+  })
   if (!best?.coverUrl) return null
 
   const resp = await fetchWithTimeout(
