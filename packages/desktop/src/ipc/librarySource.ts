@@ -31,8 +31,11 @@ import {
   getTracksByPaths,
   deleteMissingRemoteTracks,
   deleteTracksBySourcePrefix,
+  updateTrack,
 } from './database'
 import { registerCoverFile } from './mediaCache'
+// 与本地按需提取共用同一份「悬空路径」判定，避免两处各写一份阈值
+import { isUsableCoverFile } from './coverFile'
 
 /** sourceId → 来源配置。由渲染层在启动与配置变更时同步（syncLibrarySources） */
 const registry = new Map<string, LibrarySourceConfig>()
@@ -254,7 +257,10 @@ export function removeLibrarySourceTracks(sourceId: string): number {
  * （内嵌封面总在文件前部），命中封面则落盘缓存并写回 coverPath。
  */
 export async function ensureRemoteCover(track: Track, userData: string): Promise<string | null> {
-  if (track.coverPath) return track.coverPath
+  // 悬空路径不能早退：本地缓存文件被清掉后，库里会留下指向已删文件的 coverPath，
+  // 早退返回它会被渲染层当成成功结果缓存一整个会话，远端封面再也补不回来
+  if (isUsableCoverFile(track.coverPath)) return track.coverPath!
+  if (track.coverPath) updateTrack(track.id, { coverPath: undefined })
   if (!track.sourceId || !track.remoteUrl) return null
   const cfg = registry.get(track.sourceId)
   if (!cfg) return null
