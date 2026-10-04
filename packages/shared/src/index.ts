@@ -54,7 +54,7 @@ export {
   isNonOriginalCandidate,
   cleanTitleForQuery,
   titleVariants,
-  titleMatchStrength,
+  titleMatches,
   artistMatches,
   pickCoverCandidate,
 } from './coverMatch'

@@ -168,9 +168,23 @@ export function cleanTitleForQuery(title: string, artist?: string): string {
   return t || (title || '').trim()
 }
 
+/** 剔除标题里的括号补充（中文全角、英文半角、书名号、方头括号） */
+function stripBracketed(title: string): string {
+  return (title || '')
+    .replace(/[（(][^（()）]*[)）]/g, ' ')
+    .replace(/[《【][^《》【】]*[》】]/g, ' ')
+    .trim()
+}
+
 /**
- * 标题变体：主标题（去演唱者后缀）、去书名号版本、「歌手 (歌名)」括号内标题。
- * 歌源里大量条目标题被写成「歌手 (歌名)」「歌手《歌名》」，只比对主标题会漏判。
+ * 标题变体：主标题、去书名号版本、括号内标题、去括号裸标题。
+ *
+ * - 歌源里大量条目标题被写成「歌手 (歌名)」「歌手《歌名》」，括号内变体覆盖这类；
+ * - 括号补充也可能是**非版本**的发行标注（「不怪她 (Blame) (Explicit)」），
+ *   裸标题变体让它们仍能与本地标题对齐，是否同一录音交给版本标记与时长判定。
+ *
+ * 括号内是版本词（Live / Remix…）时不取作变体：那样任意两首 Live 都会互相匹配，
+ * 正确性反过来依赖版本标记对齐，徒增误判面。
  */
 export function titleVariants(title: string, artist?: string): string[] {
   const out: string[] = []
@@ -182,25 +196,30 @@ export function titleVariants(title: string, artist?: string): string[] {
     push(normalizeForMatch(cleanTitleForQuery(title.replace(/[《》【】]/g, ' '), artist)))
   }
   const inner = /[（(《【]([^（()）《》【】]{1,40})[)）】》]/.exec(title || '')
-  if (inner) push(normalizeForMatch(cleanTitleForQuery(inner[1], artist)))
+  if (inner && !VERSION_MARKER_RE.test(tradToSimp(inner[1].toLowerCase()))) {
+    push(normalizeForMatch(cleanTitleForQuery(inner[1], artist)))
+  }
+  const bare = stripBracketed(title)
+  if (bare && bare !== title) push(normalizeForMatch(cleanTitleForQuery(bare, artist)))
   return out
 }
 
 /**
- * 标题匹配强度：exact=任一变体完全相等；loose=仅互为包含（弱证据，
- * 「那个石家庄人」也包含于「杀死那个石家庄人」）；null=不匹配。
+ * 标题是否匹配：任一变体**完全相等**才放行，不做包含判断。
+ *
+ * 包含关系在这里是危险证据：「龙卷风」包含于「龙卷风 live」、「那个石家庄人」
+ * 包含于「杀死那个石家庄人」，一旦放行就会把版本词被剥离后的 Live 候选
+ * 当成同一首。歌源条目里真正需要的宽松只在「歌手 (歌名)」「歌手《歌名》」
+ * 这类搬运标题上，已由 titleVariants 的括号变体覆盖。
  */
-export function titleMatchStrength(want: string[], cand: string[]): 'exact' | 'loose' | null {
-  let loose = false
+export function titleMatches(want: string[], cand: string[]): boolean {
   for (const w of want) {
     if (!w) continue
     for (const c of cand) {
-      if (!c) continue
-      if (c === w) return 'exact'
-      if (c.includes(w) || w.includes(c)) loose = true
+      if (c && c === w) return true
     }
   }
-  return loose ? 'loose' : null
+  return false
 }
 
 /**
@@ -215,20 +234,6 @@ export function artistMatches(wantArtistRaw: string, candArtistRaw: string): boo
   if (c && (c === want || c.includes(want) || want.includes(c))) return true
   for (const seg of artistSegments(candArtistRaw)) {
     if (seg === want || seg.includes(want) || want.includes(seg)) return true
-  }
-  return false
-}
-
-/**
- * 歌手是否**完全相同**（比 artistMatches 严：不认包含关系）。
- * 用于版本标记不一致时的例外判定：包含关系太松（「周杰伦」包含于「周杰伦;袁咏琳」），
- * 合唱版与原版不是同一录音。
- */
-export function artistExactlyMatches(wantArtistRaw: string, candArtistRaw: string): boolean {
-  const want = normalizeForMatch(firstArtistOf(wantArtistRaw))
-  if (!want) return false
-  for (const seg of artistSegments(candArtistRaw)) {
-    if (seg === want) return true
   }
   return false
 }
@@ -258,16 +263,28 @@ const SAME_RECORDING_TOLERANCE = 3
 const MAX_DURATION_DIFF = 20
 
 /**
+ * 版本标记状态是否一致：一致（都是原版 / 都是版本）放行，不一致一律排除。
+ *
+ * 为什么不做「本地原版 + 候选 Live」的例外：实测本地原版曲目在歌源里几乎
+ * 都能搜到对应的原版条目（江南 267s、退后 261s、龙卷风 250s、爱错 238s，
+ * 歌手与时长都对得上），而「原版配 Live」只会让演唱会封面顶替录音室封面
+ * （黑色幽默 283s 对 Live 291s、怎么说我不爱你 275s 对 Live 277s）。
+ * 本地真的是版本条目时（输了你赢了世界又如何 (Live)），同标记的候选照样放行。
+ */
+function versionMarkerAligned(cand: { title?: string; album?: string }, target: CoverMatchTarget): boolean {
+  return isNonOriginalCandidate(cand) === targetHasVersionMarker(target)
+}
+
+/**
  * 严格挑选封面候选，不合格返回 null（宁可无图也不贴错图）。
  *
- * 依次排除：无封面地址 / 标题变体对不上 / 时长差距过大（另一个录音）/
- * 歌手对不上 / **版本标记状态与本地不一致**（本地原版 vs 候选 Live、反之
- * 亦然，见 targetHasVersionMarker）；剩下按「歌手 +3、时长差 ≤3s +2、
+ * 排除顺序：无封面地址 / 标题变体不相等 / 时长差过大（另一个录音）/
+ * 歌手对不上 / 版本标记状态不一致；剩下按「歌手 +3、时长差 ≤3s +2、
  * ≤10s +1」打分，且只在「时长几乎一致」的那一档里取最优。
  *
- * 版本标记对齐后再比对**完整标题**（含括号里的版本词），不再只比主标题：
- * 本地「Plain Jane (Remix)」若允许匹配候选「Plain Jane」，就会把原版录音的
- * 封面贴到 Remix 上——两首在歌源里恰好同长，时长分不开。
+ * 任一字段带版本标记时还要比对**完整标题**（含括号里的版本词）：本地
+ * 「Plain Jane (Remix)」配候选「Plain Jane (Live)」两边都是版本、歌手也同，
+ * 只有完整标题能识别出这不是同一版录音。
  */
 export function pickCoverCandidate(
   candidates: OnlineTrackSearchResult[],
@@ -282,30 +299,22 @@ export function pickCoverCandidate(
   const scored: Array<{ c: OnlineTrackSearchResult; score: number }> = []
   for (const c of candidates || []) {
     if (!hasCoverUrl(c)) continue
-    const strength = titleMatchStrength(wantTitle, titleVariants(c.title, c.artist))
-    if (!strength) continue
-    const cIsVersion = isNonOriginalCandidate(c)
-    // 版本标记状态必须一致：原版配原版、版本配版本，否则是另一个录音
-    if (cIsVersion !== targetIsVersion) continue
-    // 本地是版本条目时，候选的**完整标题**（含版本词）也要能对上，
-    // 否则「Plain Jane (Remix)」会被原版候选的封面占位
-    if (targetIsVersion && wantTitleWithMarker) {
-      const cFull = normalizeForMatch(cleanTitleForQuery(c.title, c.artist))
-      if (!cFull || !(cFull === wantTitleWithMarker || cFull.includes(wantTitleWithMarker) || wantTitleWithMarker.includes(cFull))) {
-        continue
-      }
-    }
-    const bothDuration = target.duration > 0 && c.duration > 0
-    const diff = bothDuration ? Math.abs(c.duration - target.duration) : Infinity
-    // 弱证据必须有时长佐证，否则「那个石家庄人」会被当成同一首
-    if (strength === 'loose' && diff > LOOSE_TITLE_MAX_DURATION_DIFF) continue
+    if (!titleMatches(wantTitle, titleVariants(c.title, c.artist))) continue
     // 时长差过大 = 另一个录音：即便标题与歌手都对也不借用其封面
-    if (diff > MAX_DURATION_DIFF) continue
+    const bothDuration = target.duration > 0 && c.duration > 0
+    const diff = bothDuration ? Math.abs(c.duration - target.duration) : 0
+    if (bothDuration && diff > MAX_DURATION_DIFF) continue
     if (knownArtist && !artistMatches(target.artist, c.artist)) continue
+    if (!versionMarkerAligned(c, target)) continue
+    if ((targetIsVersion || isNonOriginalCandidate(c)) && wantTitleWithMarker) {
+      // 完整标题用「归一化后相等」，同样不做包含判断：
+      // 「龙卷风live」不会等于「龙卷风」
+      if (normalizeForMatch(cleanTitleForQuery(c.title, c.artist)) !== wantTitleWithMarker) continue
+    }
     let score = 1
     if (knownArtist && artistMatches(target.artist, c.artist)) score += 3
-    if (diff <= SAME_RECORDING_TOLERANCE) score += 2
-    else if (diff <= LOOSE_TITLE_MAX_DURATION_DIFF) score += 1
+    if (bothDuration && diff <= SAME_RECORDING_TOLERANCE) score += 2
+    else if (bothDuration && diff <= LOOSE_TITLE_MAX_DURATION_DIFF) score += 1
     scored.push({ c, score })
   }
   if (scored.length === 0) return null

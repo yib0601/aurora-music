@@ -204,23 +204,78 @@ describe('pickCoverCandidate：边界', () => {
     expect(picked?.title).toBe('周兴哲 (永不失联的爱)')
   })
 
-  it('弱包含关系必须有时长佐证', () => {
-    // 「那个石家庄人」包含于目标标题，但时长差 19s
+  it('包含关系不成立：版本词被剥离后的同名候选不算同一首', () => {
+    // 「龙卷风」⊂「龙卷风 (Live)」——去掉版本词后归一化相等，但那是另一录音
     expect(
-      pickCoverCandidate([cand('那个石家庄人', '万能青年旅店', 325, COVER)], {
-        title: '杀死那个石家庄人',
-        artist: '万能青年旅店',
-        duration: 344,
+      pickCoverCandidate([cand('龙卷风 (Live)', '周杰伦', 244, COVER)], {
+        title: '龙卷风',
+        artist: '周杰伦',
+        duration: 251,
       })
     ).toBeNull()
-    // 时长接近则接受（现场现场版被标成短标题的常见情形）
+    // 「那个石家庄人」⊂「杀死那个石家庄人」——包含关系不认
     expect(
       pickCoverCandidate([cand('那个石家庄人', '万能青年旅店', 344, COVER)], {
         title: '杀死那个石家庄人',
         artist: '万能青年旅店',
         duration: 344,
+      })
+    ).toBeNull()
+  })
+
+  it('本地是版本条目时，同标记的候选可命中', () => {
+    const picked = pickCoverCandidate([cand('输了你赢了世界又如何 (Live)', '林俊杰', 283, COVER)], {
+      title: '输了你赢了世界又如何 (Live)',
+      artist: '林俊杰',
+      duration: 283,
+    })
+    expect(picked?.title).toBe('输了你赢了世界又如何 (Live)')
+  })
+
+  it('版本标记状态不一致的一律不选（原版配 Live / Remix 配原版）', () => {
+    // 本地原版 + 候选 Live
+    expect(
+      pickCoverCandidate([cand('江南 (Live)', '林俊杰', 268, COVER)], {
+        title: '江南',
+        artist: '林俊杰',
+        duration: 268,
+      })
+    ).toBeNull()
+    // 本地 Remix + 候选原版（歌源里两首恰好同长，时长分不开）
+    expect(
+      pickCoverCandidate([cand('Plain Jane', 'A$AP Ferg', 203, COVER)], {
+        title: 'Plain Jane (Remix)',
+        artist: 'A$AP Ferg、Nicki Minaj',
+        duration: 203,
+      })
+    ).toBeNull()
+    // 本地 Remix + 候选另一版 Remix：完整标题对不上
+    expect(
+      pickCoverCandidate([cand('Plain Jane (Remix) [Bonus]', 'A$AP Ferg', 203, COVER)], {
+        title: 'Plain Jane (Remix)',
+        artist: 'A$AP Ferg',
+        duration: 203,
+      })
+    ).toBeNull()
+  })
+
+  it('时长差过大视为另一个录音', () => {
+    // 标题与歌手都对，但本地 250s、候选 210s（差 40s，超出 20s 容差）
+    expect(
+      pickCoverCandidate([cand('永不失联的爱', '周兴哲', 210, COVER)], {
+        title: '永不失联的爱',
+        artist: '周兴哲',
+        duration: 250,
+      })
+    ).toBeNull()
+    // 差 20s 恰在容差边界上，仍然放行
+    expect(
+      pickCoverCandidate([cand('永不失联的爱', '周兴哲', 230, COVER)], {
+        title: '永不失联的爱',
+        artist: '周兴哲',
+        duration: 250,
       })?.title
-    ).toBe('那个石家庄人')
+    ).toBe('永不失联的爱')
   })
 
   it('带版本标记的同名候选不选', () => {
