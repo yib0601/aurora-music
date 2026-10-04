@@ -22,6 +22,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.electron.json",
     "smoke:webdav": "electron scripts/smoke-webdav.js",
     "smoke:cache": "electron scripts/smoke-media-cache.js",
+    "smoke:cover": "electron scripts/smoke-cover-stale.js",
+    "smoke:cover-online": "electron scripts/smoke-online-cover-pick.js",
     "smoke:updater": "electron scripts/smoke-updater-download.js"
   },
   "dependencies": {
