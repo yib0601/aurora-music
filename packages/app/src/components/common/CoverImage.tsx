@@ -3,6 +3,7 @@ import type { Track } from '@/types'
 import { platform } from '@/services/platform'
 import { resolveCachedCoverSrc } from '@/services/audioCache.service'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { usePlayerStore } from '@/stores/playerStore'
 
 /**
  * 封面懒加载组件。
@@ -167,6 +168,27 @@ export interface CoverImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement
 /** 内嵌封面短边低于该值视为低清：铺满沉浸背景会明显糊，触发在线高清补齐 */
 const LOWRES_COVER_THRESHOLD = 512
 
+/**
+ * 把封面解析结果同步进播放器 store。
+ *
+ * playerStore 是 model-first 的：queue / currentTrack / recentPlayedTracks 各持 Track
+ * 副本，只写 libraryStore 不刷新播放条、队列面板与歌词页的封面（它们直接读 playerStore）。
+ * 这里只补齐「封面字段」而不做全量覆盖——副本自身的地址与播放态由播放器自己维护，
+ * 整份替换会把播放器刚解析好的地址打回去。
+ * 同一首歌可能在队列里出现多份，故按 id 全量比对；setState 前先判有无变化，
+ * 避免图片 load / error 回调上的空写触发额外渲染。
+ */
+function syncPlayerStoreCover(track: CoverTrack, coverPath: string | undefined): void {
+  const state = usePlayerStore.getState()
+  const needsCurrent = state.currentTrack?.id === track.id && state.currentTrack.coverPath !== coverPath
+  const needsQueue = state.queue.some((t) => t.id === track.id && t.coverPath !== coverPath)
+  if (!needsCurrent && !needsQueue) return
+  usePlayerStore.setState({
+    currentTrack: needsCurrent ? { ...state.currentTrack!, coverPath } : state.currentTrack,
+    queue: needsQueue ? state.queue.map((t) => (t.id === track.id ? { ...t, coverPath } : t)) : state.queue,
+  })
+}
+
 export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: CoverImageProps) {
   const updateTrack = useLibraryStore((s) => s.updateTrack)
   const [resolved, setResolved] = useState<string | null>(null)
@@ -213,6 +235,9 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
           setResolved(path)
           // 回写 store：其他列表位置立即复用（DB 持久化由主进程 ensureCover 完成）
           updateTrack(trackId!, { coverPath: path })
+          // 播放器副本同步：右侧 Now Playing 面板、播放条与队列面板读的是
+          // playerStore，只写 libraryStore 不会让它们拿到刚提取出的封面
+          syncPlayerStoreCover(track!, path)
           return
         }
         if (!resolvedCovers.has(trackId!)) {
@@ -227,6 +252,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
         if (cancelled || !onlinePath) return
         setResolved(onlinePath)
         updateTrack(trackId!, { coverPath: onlinePath })
+        syncPlayerStoreCover(track!, onlinePath)
       })
     }
     attempt(0)
@@ -250,6 +276,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
         if (!cancelled && onlinePath) {
           setUpgraded(onlinePath)
           updateTrack(trackId, { coverPath: onlinePath })
+          syncPlayerStoreCover(track!, onlinePath)
         }
       })
     }
@@ -287,7 +314,17 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
         // 本地封面文件同样可能是刚被驱逐掉的：清掉记录让组件重新提取，
         // 否则 store 里 coverPath 还在、needsExtraction 不触发，封面就永久空了
         // （重新提取有「确认无封面」终态兜底，不会反复重试）
-        if (src && trackId) updateTrack(trackId, { coverPath: undefined })
+        if (src && trackId) {
+          // 会话级解析缓存里可能存着这条已经失效的路径（主进程在旧版本会把它当
+          // 成功结果返回），不删的话重新提取只会拿到同一个坏路径，img 再次 404，
+          // 组件与缓存互相踢皮球，封面永远回不来
+          resolvedCovers.delete(trackId)
+          resolvedOnlineCovers.delete(trackId)
+          updateTrack(trackId, { coverPath: undefined })
+          // 播放器副本同步清掉：复活后的歌源高清封面只写 libraryStore，
+          // 不同步的话播放条/队列里这一格会一路停在碎图上，直到重启
+          syncPlayerStoreCover(track!, undefined)
+        }
         setFailed(true)
         imgProps.onError?.(e)
       }}
