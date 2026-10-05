@@ -259,24 +259,40 @@ if (process.platform === 'linux') {
  * 打包渠道（.desktop 的 Exec 已带该参数）走不到这里；这里兜底的是
  * `/usr/local/bin/aurora-music` 直接敲、桌面项被改过、或未重装旧包的场景。
  *
- * 判定用 screen.workArea.y：X11/Xwayland 下 GNOME 顶栏算作 workarea inset（y>0），
- * Wayland 原生下为 0。不用「setBounds 回读」判定——应用自身的窗口几何有缓存，
- * 同进程内回读会给出刚设进去的值，探测不出真实后端。
+ * 判定用 XDG_SESSION_TYPE：只有 Wayland 会话才需要切后端（纯 X11 会话本来就是
+ * 可控的）。不用 `screen.workArea.y` 判定——它依赖桌面环境是否把顶栏算作 workarea
+ * inset，会随 DE 与「顶栏自动隐藏」而变，不适合做开关依据；只作日志旁证。
+ * 也不用「setBounds 回读」判定——应用自身的窗口几何有缓存，同进程内回读会给出
+ * 刚设进去的值，探测不出真实后端。
+ *
+ * ⚠️ 切换前必须先确认 Xwayland 真的可用：若强制 x11 后端但 DISPLAY 不通，
+ *    Chromium 会以 `Missing X server or $DISPLAY` + `The platform failed to
+ *    initialize.` 直接退出——应用**完全起不来**，比原来的「从底部缩放」严重得多。
+ *    实测：无 DISPLAY 时注入 -> 进程数 0（启动失败）；有 DISPLAY 时注入 -> 正常。
+ *
+ * 不会反复重启：重启后的进程 argv 里已带 --ozone-platform，开头即 return。
  *
  * 重启前先把 isQuitting 置真，否则 createWindow 注册的 close 处理器会把窗口藏进托盘
  * 卡住退出，重启不会发生。
  */
 function injectX11BackendOnLinux(): void {
   if (process.platform !== 'linux') return
-  // 外部显式指定后端时以外部为准（排障用：--ozone-platform=wayland 可退回原生）
+  // 外部或上一轮已定后端：以命令行现状为准（排障用：--ozone-platform=wayland 可退回原生）
   if (process.argv.some((arg) => arg.startsWith('--ozone-platform'))) return
+  // 非 Wayland 会话语义无需切换
+  if (process.env.XDG_SESSION_TYPE !== 'wayland') return
+  // Xwayland 不可达则不切换（否则应用直接起不来）
+  if (!isXwaylandReachable()) {
+    console.warn('[ozone] 未检测到可用的 X 显示（Xwayland），保持 Wayland 后端启动；' +
+      '拖拽上/左边缘将表现为从底部/右侧缩放')
+    return
+  }
 
   const argv = process.argv.slice(1)
   app.once('ready', () => {
     try {
       const y = screen.getPrimaryDisplay().workArea.y
-      console.log(`[ozone] 后端探测：workArea.y=${y} → ${y > 0 ? 'X11/Xwayland' : 'Wayland 原生'}`)
-      if (y > 0) return
+      console.log(`[ozone] Wayland 会话，切到 X11 后端以支持边缘缩放（workArea.y=${y}）；重启一次`)
       app.relaunch({ args: ['--ozone-platform=x11', ...argv] })
       // 必须置真，否则 close 处理器（隐藏到托盘）会拦住退出，重启不会发生
       isQuitting = true
@@ -286,6 +302,23 @@ function injectX11BackendOnLinux(): void {
       console.error('[ozone] 切换到 X11 后端失败，继续以当前后端启动:', err)
     }
   })
+}
+
+/**
+ * Xwayland 可达性：DISPLAY 有值且对应 socket 真实存在。
+ * 只看环境变量不够——变量存在但 socket 已消失时，强制 x11 后端会让进程起不来。
+ */
+function isXwaylandReachable(): boolean {
+  const display = process.env.DISPLAY
+  if (!display) return false
+  // DISPLAY 形态：[host]:<n>[.<screen>]。远端 host 不做本地 socket 校验
+  const match = /^:(\d+)(?:\.\d+)?$/.exec(display)
+  if (!match) return display.includes('/') ? false : true
+  try {
+    return fs.existsSync(`/tmp/.X11-unix/X${match[1]}`)
+  } catch {
+    return false
+  }
 }
 
 injectX11BackendOnLinux()
