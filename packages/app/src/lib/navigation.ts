@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
+import { HOME_ROUTE, ROUTE_BUILDERS } from './routes'
 
 /**
  * 返回上一屏。
@@ -8,7 +9,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
  * react-router 给每条历史写入 state.idx（首条为 0），据此判断能否真退；
  * 退不了时兜底回主屏，用 replace 避免把详情页留在栈里造成「返回又回去」。
  */
-export function useGoBack(fallback = '/library') {
+export function useGoBack(fallback: string = HOME_ROUTE) {
   const navigate = useNavigate()
   return () => {
     const idx = (window.history.state as { idx?: number } | null)?.idx
@@ -28,7 +29,8 @@ export function useOpenSongDetail() {
   const navigate = useNavigate()
   const location = useLocation()
   return (id: string) => {
-    if (location.pathname === `/song/${id}`) return
-    navigate(`/song/${id}`)
+    const target = ROUTE_BUILDERS.songDetail(id)
+    if (location.pathname === target) return
+    navigate(target)
   }
 }
