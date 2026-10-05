@@ -112,6 +112,9 @@
       "icon": "resources/icon.png",
       "maintainer": "Aurora Music <aurora-music@example.com>",
       "syncDesktopName": true,
+      "executableArgs": [
+        "--ozone-platform=x11"
+      ],
       "desktop": {
         "entry": {
           "Name": "Aurora Music",

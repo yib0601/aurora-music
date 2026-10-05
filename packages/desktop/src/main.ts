@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, globalShortcut, protocol, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut, protocol, Tray, Menu, nativeImage, screen } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
@@ -229,6 +229,66 @@ function createWindow() {
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder')
 }
+
+// 【为什么 Linux 必须固定走 X11 后端】
+//
+// 窗口是 frame:false 的无边框窗，边缘缩放由渲染层的 ResizeHandles 驱动：
+// pointermove → computeBounds(edge, startBounds, dx, dy) → IPC window:setBounds。
+// 「拖上边缘」要求 y 往外推、height 同步加大（见 ResizeHandle.tsx 的 n 分支），
+// 「拖左边缘」同理要改 x —— 整条链路依赖**客户端能设置窗口位置**。
+//
+// Chromium 的 Wayland 后端里窗口位置由合成器决定，客户端设不了：setBounds 的
+// x/y 分量被静默丢弃，只剩 width/height 生效。于是拖上边缘表现为「窗口原地向下长」
+// ——用户看到的就是「从底部缩放」。
+//
+// 【为什么不能在这里 appendSwitch】
+// ozone 平台在 Chromium 初始化前就由**进程命令行**定死，Node 层拿到 app 对象时已晚。
+// 实测（electron 43.1.0 + GNOME Wayland，判据 workArea.y：32=X11/Xwayland、0=Wayland 原生）：
+//   · 命令行 --ozone-platform=x11                          → workArea.y=32（生效）
+//   · app.commandLine.appendSwitch('ozone-platform','x11') → workArea.y=0（无效）
+//   · appendSwitch('ozone-platform-hint','x11')            → 同样无效
+// 所以只能靠「启动入口注入命令行」：下面的 injectX11BackendOnLinux() 兜底重启，
+// 同时打包侧把该参数写进 .desktop 的 Exec（resources/Aurora-Music.desktop）以减少一次重启。
+//
+// 【非 X11 后端的能力损失】仅限「合成器不参与窗口位置/边框决策」这一层；
+// 窗口移动、最大化、托盘、通知、MPRIS 均不受影响。
+
+/**
+ * Linux：确保进程带 --ozone-platform=x11 启动（见上方注释）。
+ *
+ * 打包渠道（.desktop 的 Exec 已带该参数）走不到这里；这里兜底的是
+ * `/usr/local/bin/aurora-music` 直接敲、桌面项被改过、或未重装旧包的场景。
+ *
+ * 判定用 screen.workArea.y：X11/Xwayland 下 GNOME 顶栏算作 workarea inset（y>0），
+ * Wayland 原生下为 0。不用「setBounds 回读」判定——应用自身的窗口几何有缓存，
+ * 同进程内回读会给出刚设进去的值，探测不出真实后端。
+ *
+ * 重启前先把 isQuitting 置真，否则 createWindow 注册的 close 处理器会把窗口藏进托盘
+ * 卡住退出，重启不会发生。
+ */
+function injectX11BackendOnLinux(): void {
+  if (process.platform !== 'linux') return
+  // 外部显式指定后端时以外部为准（排障用：--ozone-platform=wayland 可退回原生）
+  if (process.argv.some((arg) => arg.startsWith('--ozone-platform'))) return
+
+  const argv = process.argv.slice(1)
+  app.once('ready', () => {
+    try {
+      const y = screen.getPrimaryDisplay().workArea.y
+      console.log(`[ozone] 后端探测：workArea.y=${y} → ${y > 0 ? 'X11/Xwayland' : 'Wayland 原生'}`)
+      if (y > 0) return
+      app.relaunch({ args: ['--ozone-platform=x11', ...argv] })
+      // 必须置真，否则 close 处理器（隐藏到托盘）会拦住退出，重启不会发生
+      isQuitting = true
+      app.exit(0)
+    } catch (err) {
+      // 注入失败也要让应用继续跑：只是回到「拖上边缘表现为从底部缩放」的老行为
+      console.error('[ozone] 切换到 X11 后端失败，继续以当前后端启动:', err)
+    }
+  })
+}
+
+injectX11BackendOnLinux()
 
 // 单实例锁：用户重复点击图标时聚焦已有窗口，而不是启动新进程
 const gotTheLock = app.requestSingleInstanceLock()
