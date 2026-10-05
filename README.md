@@ -110,7 +110,7 @@ cd android && ./gradlew assembleDebug   # 产物在 app/build/outputs/apk/
 
 平台说明：
 
-- **Linux** 仅支持 Wayland；AMD GPU 渲染黑屏已内置 `--disable-gpu` 解决。
+- **Linux** 走 X11 后端（Wayland 会话下由 Xwayland 承载，`.desktop` 的 Exec 已带 `--ozone-platform=x11`，主进程另有兜底重启）：无边框窗口的边缘缩放依赖客户端设置窗口位置，Wayland 原生后端下位置由合成器决定、设不了，拖上/左边缘会退化成「从底部/右侧缩放」。排障时可用 `--ozone-platform=wayland` 退回原生后端。
 - **macOS** dmg 按芯片分 `-arm64` / `-x64`；ad-hoc 签名、未经公证，首启被 Gatekeeper 拦截时执行 `xattr -cr /Applications/Aurora-Music.app`。
 - **移动端 UI 预览**：不必连真机。`pnpm dev:app` 后打开 `http://localhost:5173/?ui=mobile` 即强制走移动端布局（`?ui=desktop` 反向强制，只影响排版分支、不改变平台实现）；`http://localhost:5173/mobile-lab.html?ui=mobile&scene=np` 是播放界面验收台，用 mock 曲目渲染真实组件，`scene` 可切 `np` / `np-paused` / `np-empty` / `bar` / `bar-empty`，另支持 `theme=light` 与 `t=<秒>`。改移动端排版前先在这里对齐视觉，比反复装 APK 快得多。注意浏览器里请把视口切到手机宽度（< 768px）——移动端顶部导航本身带 `md:hidden`，宽视口下会被隐藏。
 - 切换 Node / Electron 版本后需重新 `pnpm rebuild`。
