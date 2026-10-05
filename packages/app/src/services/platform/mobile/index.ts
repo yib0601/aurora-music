@@ -13,6 +13,11 @@ import type {
   LyricsSearchResult,
   FolderPickerOptions,
   Track,
+  RecommendPlaylist,
+  ToplistGroup,
+  ToplistDetail,
+  MusicHallOptions,
+  MusicHallSource,
 } from '@/types'
 import { MobileDatabase } from './database'
 import {
@@ -20,7 +25,13 @@ import {
   readLyricsFile,
   saveLyricsFile,
 } from './scanner'
-import { searchOnlineTracks, searchLyrics } from './online'
+import {
+  searchOnlineTracks,
+  searchLyrics,
+  fetchRecommendPlaylists,
+  fetchToplistGroups,
+  fetchToplistSongs,
+} from './online'
 import {
   clearMobileMediaCache,
   configureMobileMediaCache,
@@ -275,6 +286,15 @@ export function createMobilePlatform(): PlatformInterface & {
   scanFolder: (folderPath: string) => Promise<Track[]>
   getAllTracks: () => Promise<Track[]>
   removeFolder: (folderPath: string) => Promise<Track[]>
+  // 音乐馆（推荐歌单 / 榜单）：渲染层直调共享执行器（原生 fetch 不受 CORS 限制）
+  musicHall: {
+    recommendPlaylists(
+      source: MusicHallSource,
+      options?: MusicHallOptions
+    ): Promise<RecommendPlaylist[]>
+    toplistGroups(source: MusicHallSource, options?: MusicHallOptions): Promise<ToplistGroup[]>
+    toplistSongs(source: MusicHallSource, options?: MusicHallOptions): Promise<ToplistDetail>
+  }
   searchLyrics: (
     query: string,
     artist?: string,
@@ -486,6 +506,23 @@ export function createMobilePlatform(): PlatformInterface & {
 
     async searchOnlineTracks(query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]> {
       return searchOnlineTracks(query, options)
+    },
+
+    /**
+     * 音乐馆（推荐歌单 / 榜单）：渲染层直调共享执行器。
+     * 移动端 fetch 已被换成 CapacitorHttp（原生 HTTP），不受 WebView CORS 限制，
+     * 因此无需像桌面端那样绕主进程
+     */
+    musicHall: {
+      async recommendPlaylists(source, options) {
+        return fetchRecommendPlaylists(source, options)
+      },
+      async toplistGroups(source, options) {
+        return fetchToplistGroups(source, options)
+      },
+      async toplistSongs(source, options) {
+        return fetchToplistSongs(source, options)
+      },
     },
 
     /** 在线歌词搜索（与桌面端 lyrics:search 一致，源列表由调用方下传） */

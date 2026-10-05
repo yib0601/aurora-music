@@ -10,6 +10,11 @@ import type {
   LyricsSearchResult,
   Track,
   LibrarySourceConfig,
+  RecommendPlaylist,
+  ToplistGroup,
+  ToplistDetail,
+  MusicHallOptions,
+  MusicHallSource,
 } from '@/types'
 import {
   createMobilePlatform as createMobilePlatformImpl,
@@ -146,7 +151,27 @@ class NoopWindowControls implements WindowControls {
   async isMaximized() { return false }
 }
 
-export type Platform = PlatformInterface & PlatformExtension
+/**
+ * 音乐馆读取能力（可选）：三端实现见 services/platform/*
+ * - 桌面端：转发到主进程执行（渲染进程 fetch 会被上游 CORS 拦截）
+ * - 移动端：渲染层直调 shared（fetch 已换成 CapacitorHttp）
+ * - Web / Noop：空实现（浏览器无该能力），音乐馆据此展示不可用空态
+ *
+ * 形状与 types/index.ts 的 MusicHallPlatform 一致；这里用可选声明接入 Platform，
+ * 未实现该能力的端（web / Noop）也能被统一调用而不抛错。
+ */
+export interface MusicHallExtension {
+  musicHall?: {
+    recommendPlaylists(
+      source: MusicHallSource,
+      options?: MusicHallOptions
+    ): Promise<RecommendPlaylist[]>
+    toplistGroups(source: MusicHallSource, options?: MusicHallOptions): Promise<ToplistGroup[]>
+    toplistSongs(source: MusicHallSource, options?: MusicHallOptions): Promise<ToplistDetail>
+  }
+}
+
+export type Platform = PlatformInterface & PlatformExtension & MusicHallExtension
 
 export function createDesktopPlatform(): Platform {
   const api = (window as any).electronAPI
@@ -220,6 +245,23 @@ export function createDesktopPlatform(): Platform {
     async searchOnlineTracks(query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]> {
       if (!api?.searchOnlineTracks) return []
       return api.searchOnlineTracks(query, options)
+    },
+
+    // 音乐馆：桌面端转发主进程执行（渲染进程 fetch 会被上游 CORS 拦截）。
+    // 未实现时返回空结果而不是抛错：调用方据空结果展示空态，不因平台差异崩
+    musicHall: {
+      async recommendPlaylists(source, options) {
+        const r = await api?.musicHall?.recommendPlaylists(source, options)
+        return (r as RecommendPlaylist[]) || []
+      },
+      async toplistGroups(source, options) {
+        const r = await api?.musicHall?.toplistGroups(source, options)
+        return (r as ToplistGroup[]) || []
+      },
+      async toplistSongs(source, options) {
+        const r = await api?.musicHall?.toplistSongs(source, options)
+        return (r as ToplistDetail) || { id: options?.id ?? '', name: '', total: 0, songs: [] }
+      },
     },
 
     database: new NoopDatabase(),
@@ -361,6 +403,43 @@ export function createPlatform(): Platform {
     database: new NoopDatabase(),
     windowControls: new NoopWindowControls(),
   }
+}
+
+/**
+ * 音乐馆读取的统一入口：平台未实现该能力（web / Noop）时返回空结果，
+ * 调用方据空结果展示空态 —— 浏览器里不因平台差异崩，也不出现半截内容。
+ */
+export async function hallRecommend(
+  source: MusicHallSource,
+  options?: MusicHallOptions
+): Promise<RecommendPlaylist[]> {
+  return (await platform.musicHall?.recommendPlaylists(source, options)) || []
+}
+
+export async function hallToplists(
+  source: MusicHallSource,
+  options?: MusicHallOptions
+): Promise<ToplistGroup[]> {
+  return (await platform.musicHall?.toplistGroups(source, options)) || []
+}
+
+export async function hallToplistSongs(
+  source: MusicHallSource,
+  options?: MusicHallOptions
+): Promise<ToplistDetail> {
+  return (
+    (await platform.musicHall?.toplistSongs(source, options)) || {
+      id: options?.id ?? '',
+      name: '',
+      total: 0,
+      songs: [],
+    }
+  )
+}
+
+/** 当前端是否具备音乐馆能力（web 端为 false，UI 据此展示不可用提示） */
+export function supportsMusicHall(): boolean {
+  return Boolean(platform.musicHall)
 }
 
 export const platform = createPlatform()

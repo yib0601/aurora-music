@@ -3,6 +3,8 @@ import {
   apiKeyFromUrl,
   buildAuroraEndpoints,
   checkSourceForm,
+  fillEndpointTemplate,
+  hallEndpointOf,
   normalizeSourceBase,
   parseSourceInput,
   parseAuroraEndpoints,
@@ -288,11 +290,29 @@ describe('searchEndpointOf / playlistEndpointOf（执行时解析端点）', () 
 })
 
 describe('buildAuroraEndpoints', () => {
-  it('按兜底模板组装搜索与歌单端点', () => {
+  it('按兜底模板组装五个端点（搜索 / 歌单解析 / 音乐馆三项）', () => {
     expect(buildAuroraEndpoints('https://music.lighthouses.top', 'K1')).toEqual({
       search: 'https://music.lighthouses.top/aurora?query={query}&quality={quality}&key=K1',
       playlist: 'https://music.lighthouses.top/aurora/playlist?url={url}&key=K1',
+      recommend:
+        'https://music.lighthouses.top/aurora/recommend?categoryId={categoryId}&sortId={sortId}&page={page}&limit={limit}&key=K1',
+      toplists: 'https://music.lighthouses.top/aurora/toplists?preview={preview}&key=K1',
+      toplist: 'https://music.lighthouses.top/aurora/toplist?id={id}&page={page}&limit={limit}&key=K1',
     })
+  })
+
+  it('音乐馆端点占位符原样保留（留给执行器替换）', () => {
+    const ep = buildAuroraEndpoints('https://x.com', 'K1')!
+    expect(ep.recommend).toContain('{categoryId}')
+    expect(ep.recommend).toContain('{limit}')
+    expect(ep.toplists).toContain('{preview}')
+    expect(ep.toplist).toContain('{id}')
+  })
+
+  it('服务端只自描述一部分时，其余端点仍按兜底约定可用', () => {
+    const ep = buildAuroraEndpoints('https://x.com', 'K1', { search: '/v2/search?q={query}' })!
+    expect(ep.search).toBe('https://x.com/v2/search?q={query}&key=K1')
+    expect(ep.toplists).toBe('https://x.com/aurora/toplists?preview={preview}&key=K1')
   })
 
   it('占位符原样保留（留给执行器替换）', () => {
@@ -353,6 +373,52 @@ describe('parseAuroraEndpoints', () => {
     expect(parseAuroraEndpoints({ status: 'ok' })).toBeNull()
     expect(parseAuroraEndpoints(null)).toBeNull()
     expect(parseAuroraEndpoints({ endpoints: { search: 42 } })).toBeNull()
+  })
+
+  it('音乐馆三项自描述被认下（白名单漏项会被静默丢弃）', () => {
+    expect(
+      parseAuroraEndpoints({
+        endpoints: {
+          search: '/aurora?query={query}',
+          playlist: '/aurora/playlist?url={url}',
+          recommend: '/aurora/recommend?limit={limit}',
+          toplists: '/aurora/toplists?preview={preview}',
+          toplist: '/aurora/toplist?id={id}',
+        },
+      })
+    ).toEqual({
+      search: '/aurora?query={query}',
+      playlist: '/aurora/playlist?url={url}',
+      recommend: '/aurora/recommend?limit={limit}',
+      toplists: '/aurora/toplists?preview={preview}',
+      toplist: '/aurora/toplist?id={id}',
+    })
+  })
+})
+
+describe('hallEndpointOf / fillEndpointTemplate', () => {
+  it('服务地址形态派生音乐馆端点；接口模板形态无该能力', () => {
+    const service = { sourceUrl: 'https://x.com' }
+    expect(hallEndpointOf(service, 'toplists')).toContain('/aurora/toplists')
+    expect(hallEndpointOf(service, 'recommend')).toContain('{categoryId}')
+    expect(hallEndpointOf({ sourceUrl: 'https://x.com/api?query={query}' }, 'toplists')).toBe('')
+    expect(hallEndpointOf(null, 'toplist')).toBe('')
+  })
+
+  it('自描述优先，缺失项回落兜底', () => {
+    const source = {
+      sourceUrl: 'https://x.com',
+      endpoints: { toplist: '/v9/chart?id={id}&limit={limit}' },
+    }
+    expect(hallEndpointOf(source, 'toplist')).toBe('https://x.com/v9/chart?id={id}&limit={limit}')
+    expect(hallEndpointOf(source, 'toplists')).toBe('https://x.com/aurora/toplists?preview={preview}')
+  })
+
+  it('占位符替换做 URL 编码，模板缺该键则忽略', () => {
+    expect(fillEndpointTemplate('/a?id={id}&n={limit}&extra=1', { id: 'a b', limit: 30 })).toBe(
+      '/a?id=a%20b&n=30&extra=1'
+    )
+    expect(fillEndpointTemplate('/a?p={page}', { limit: 10 })).toBe('/a?p={page}')
   })
 })
 

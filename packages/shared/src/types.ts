@@ -53,8 +53,15 @@ export interface OnlineSourceConfig {
   /**
    * 服务端自描述的端点模板缓存（设置页「测试连接」读到才有）：
    * 服务端改路径或参数名时客户端无需改配置；读到之前按默认约定组装。
+   * 前两项是既有能力（搜索 / 歌单解析），后三项由「音乐馆」使用（推荐歌单 / 榜单列表 / 榜单详情）。
    */
-  endpoints?: { search?: string; playlist?: string }
+  endpoints?: {
+    search?: string
+    playlist?: string
+    recommend?: string
+    toplists?: string
+    toplist?: string
+  }
   /** 附加请求头（如鉴权 Token、Referer、User-Agent），同名头覆盖默认值 */
   headers?: Record<string, string>
   enabled: boolean
@@ -85,6 +92,96 @@ export interface OnlineTrackSearchResult {
   source: string
   /** 来源展示名（源配置的 name） */
   sourceName: string
+}
+
+// ─── 音乐馆（在线推荐歌单 / 排行榜，只读浏览） ─────────────────
+// 与「在线搜索」并列的第三类只读能力：应用仍然不内置任何平台抓取器，
+// 数据由用户配置的音源服务按协议提供（见 QQ_Music 的 /aurora/recommend 等端点）。
+// 音乐馆只做浏览：点开的歌单/榜单是**临时集合**，不落库、不下载；
+// 播放按需取址（本地有同曲播本地，否则按名搜索取在线地址）。
+
+/** 推荐歌单条目（服务端 `list[]`） */
+export interface RecommendPlaylist {
+  /** 歌单号（可回传给歌单解析端点，按 id 取全量曲目） */
+  id: string
+  name: string
+  coverUrl?: string
+  /** 播放量（服务端提供时才有） */
+  listenNum?: number
+  /** 创建者名 */
+  creatorName?: string
+  createTime?: string
+  /** 来源标识（源配置的 id） */
+  source: string
+  sourceName: string
+}
+
+/** 榜单预览曲目（服务端 `toplists[].songs[]`，通常无 songmid，仅用于展示） */
+export interface ToplistPreviewSong {
+  rank: number
+  title: string
+  artist: string
+  coverUrl?: string
+}
+
+/** 榜单条目（服务端 `groups[].toplists[]`） */
+export interface ToplistBrief {
+  /** 榜单 id（topId），回传给榜单详情端点 */
+  id: number
+  name: string
+  updateTime?: string
+  period?: string
+  listenNum?: number
+  coverUrl?: string
+  /** 预览曲目（服务端 preview=0 时为空数组） */
+  songs: ToplistPreviewSong[]
+}
+
+/** 榜单分组（巅峰榜 / 地区榜 / …） */
+export interface ToplistGroup {
+  groupId?: number
+  groupName: string
+  toplists: ToplistBrief[]
+}
+
+/** 榜单详情曲目（服务端 `songs[]`；带 songmid，供将来精确取址） */
+export interface ToplistSong {
+  rank: number
+  title: string
+  artist: string
+  album: string
+  duration: number
+  coverUrl?: string
+  /** 歌曲 mid（服务端提供时才有） */
+  songmid?: string
+}
+
+/** 音乐馆浏览请求参数 */
+export interface MusicHallOptions {
+  /** 推荐歌单：分类 id（默认全部） */
+  categoryId?: string
+  /** 推荐歌单：排序 id */
+  sortId?: string
+  page?: number
+  limit?: number
+  /** 榜单列表：每个榜单预览曲目数（0 = 不返回） */
+  preview?: number
+  /** 榜单详情：topId */
+  id?: number | string
+}
+
+/** 音乐馆端点取值（源配置与之结构兼容，供执行器判定能力） */
+export interface MusicHallSourceInput {
+  sourceUrl?: string
+  endpoints?: { recommend?: string; toplists?: string; toplist?: string } | null
+  headers?: Record<string, string>
+  enabled?: boolean
+}
+
+/** 音乐馆数据来源（一条音源 = 一个服务端） */
+export interface MusicHallSource extends MusicHallSourceInput {
+  id: string
+  name: string
 }
 
 /** 歌词源配置 */

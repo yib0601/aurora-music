@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Menu, X, Music, Heart, Clock, Settings, Link2 } from 'lucide-react'
+import { Menu, X, Music, Heart, Clock, Settings, Link2, Compass } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { ROUTES, type NavItem } from '@/lib/routes'
@@ -24,6 +24,7 @@ import { useUIStore } from '@/stores/uiStore'
  */
 const navItems: NavItem[] = [
   { to: ROUTES.library, icon: Music, label: '本地音乐' },
+  { to: ROUTES.hall, icon: Compass, label: '音乐馆' },
   { to: ROUTES.liked, icon: Heart, label: '收藏' },
   { to: ROUTES.recent, icon: Clock, label: '最近播放' },
   { to: ROUTES.settings, icon: Settings, label: '设置' },

@@ -23,13 +23,28 @@ export interface AuroraEndpoints {
   search: string
   /** 歌单解析端点模板，含 {url} / key */
   playlist: string
+  /** 推荐歌单列表端点模板（音乐馆，只读浏览） */
+  recommend: string
+  /** 榜单列表端点模板（音乐馆，只读浏览） */
+  toplists: string
+  /** 单个榜单详情端点模板（音乐馆，含 {id} / {page} / {limit}） */
+  toplist: string
 }
 
 /** 服务端未给自描述时的兜底模板（与 QQ_Music 的 GET / 一致） */
 export const AURORA_ENDPOINT_FALLBACK: AuroraEndpoints = {
   search: '/aurora?query={query}&quality={quality}&key=<API_KEY>',
   playlist: '/aurora/playlist?url={url}&key=<API_KEY>',
+  recommend: '/aurora/recommend?categoryId={categoryId}&sortId={sortId}&page={page}&limit={limit}&key=<API_KEY>',
+  toplists: '/aurora/toplists?preview={preview}&key=<API_KEY>',
+  toplist: '/aurora/toplist?id={id}&page={page}&limit={limit}&key=<API_KEY>',
 }
+
+/**
+ * 端点自描述的字段白名单（服务端 `GET /` 的 `endpoints` 里认哪些键）。
+ * 新端点不加进来，服务端自描述就会被**静默丢弃** —— 不报错、页面永远空，最难查的一类问题。
+ */
+const ENDPOINT_KEYS = ['search', 'playlist', 'recommend', 'toplists', 'toplist'] as const
 
 /** 链接形态：service = 服务地址（端点由本模块组装）；endpoint = 用户手写的接口模板 */
 export type AuroraSourceKind = 'service' | 'endpoint'
@@ -220,10 +235,12 @@ export function buildAuroraEndpoints(
 ): AuroraEndpoints | null {
   const base = normalizeSourceBase(baseUrl)
   if (!base) return null
-  return {
-    search: resolveTemplate(base, templates?.search || AURORA_ENDPOINT_FALLBACK.search, apiKey),
-    playlist: resolveTemplate(base, templates?.playlist || AURORA_ENDPOINT_FALLBACK.playlist, apiKey),
+  const out = {} as AuroraEndpoints
+  // 逐键回落默认约定：服务端只自描述了一部分时，其余仍按默认路径可用
+  for (const key of ENDPOINT_KEYS) {
+    out[key] = resolveTemplate(base, templates?.[key] || AURORA_ENDPOINT_FALLBACK[key], apiKey)
   }
+  return out
 }
 
 /** 端点解析只关心这几个字段（OnlineSourceConfig 与之结构兼容） */
@@ -233,7 +250,7 @@ export interface SourceEndpointInput {
   /** 接口模板形态下手填的歌单解析地址 */
   playlistUrl?: string
   /** 服务端自描述的端点模板缓存 */
-  endpoints?: { search?: string; playlist?: string } | null
+  endpoints?: { search?: string; playlist?: string; recommend?: string; toplists?: string; toplist?: string } | null
 }
 
 /**
@@ -261,6 +278,36 @@ export function playlistEndpointOf(source: SourceEndpointInput | null | undefine
 }
 
 /**
+ * 取一条音源的**音乐馆端点模板**（推荐歌单 / 榜单列表 / 榜单详情）。
+ *
+ * 只对**服务地址形态**的音源生效：这三个端点没有「接口模板」形态 ——
+ * 音乐馆是浏览型界面，依赖响应里的固定字段（`list` / `groups` / `songs`），
+ * 手写第三方接口模板不可能对齐，故一律由协议按服务地址派生。
+ * 服务端没给自描述时回落默认路径（见 AURORA_ENDPOINT_FALLBACK）。
+ */
+export function hallEndpointOf(
+  source: SourceEndpointInput | null | undefined,
+  which: 'recommend' | 'toplists' | 'toplist'
+): string {
+  const parsed = parseSourceInput(source?.sourceUrl || '')
+  if (parsed?.kind !== 'service') return ''
+  return buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, source?.endpoints)?.[which] || ''
+}
+
+/**
+ * 把端点模板里的占位符替换成实际值（只替换模板中**出现**的占位符，
+ * 未出现的原样保留；模板里没有的键被忽略）。
+ * 值统一走 encodeURIComponent，由调用方决定参数的具体取值。
+ */
+export function fillEndpointTemplate(template: string, values: Record<string, string | number>): string {
+  let out = String(template || '')
+  for (const [key, value] of Object.entries(values)) {
+    out = out.split(`{${key}}`).join(encodeURIComponent(String(value)))
+  }
+  return out
+}
+
+/**
  * 从根路径 / 或 /health 的响应里读端点自描述。
  * 只认相对路径或 http(s) 地址的字符串，读到一项即返回，都没有返回 null。
  */
@@ -268,11 +315,11 @@ export function parseAuroraEndpoints(json: unknown): Partial<AuroraEndpoints> | 
   const endpoints = (json as { endpoints?: unknown } | null | undefined)?.endpoints
   if (!endpoints || typeof endpoints !== 'object') return null
   const out: Partial<AuroraEndpoints> = {}
-  for (const key of ['search', 'playlist'] as const) {
+  for (const key of ENDPOINT_KEYS) {
     const value = (endpoints as Record<string, unknown>)[key]
     if (typeof value === 'string' && value.trim()) out[key] = value.trim()
   }
-  return out.search || out.playlist ? out : null
+  return Object.keys(out).length > 0 ? out : null
 }
 
 export interface AuroraProbeResult {
