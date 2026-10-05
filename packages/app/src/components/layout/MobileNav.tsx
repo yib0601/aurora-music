@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Menu, X, Music, Heart, Clock, Settings, Link2 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { ROUTES, type NavItem } from '@/lib/routes'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -17,11 +18,15 @@ import { useUIStore } from '@/stores/uiStore'
  * 品牌 mint 收敛为图标强调色，不再整块铺色；圆角走 DS panel 档。
  * 抽屉开关、路由跳转与关闭逻辑一字未改。
  */
-const navItems = [
-  { to: '/library', icon: Music, label: '音乐库' },
-  { to: '/liked', icon: Heart, label: '收藏' },
-  { to: '/recent', icon: Clock, label: '最近播放' },
-  { to: '/settings', icon: Settings, label: '设置' },
+/**
+ * 主导航表。路径一律取 `@/lib/routes` 的常量，不在本文件写路径字面量；
+ * 形状与桌面侧栏（Sidebar）共用 NavItem。
+ */
+const navItems: NavItem[] = [
+  { to: ROUTES.library, icon: Music, label: '本地音乐' },
+  { to: ROUTES.liked, icon: Heart, label: '收藏' },
+  { to: ROUTES.recent, icon: Clock, label: '最近播放' },
+  { to: ROUTES.settings, icon: Settings, label: '设置' },
 ]
 
 export function MobileNav() {

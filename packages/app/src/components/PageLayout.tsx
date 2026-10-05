@@ -13,7 +13,7 @@ interface PageLayoutProps {
  * 所有页面共用，确保间距、内边距完全一致
  *
  * 用法：
- * 1. 简单标题：<PageLayout title="音乐库" subtitle="导入音乐...">
+ * 1. 简单标题：<PageLayout title="本地音乐" subtitle="导入音乐...">
  * 2. 自定义标题：<PageLayout header={<CustomHeader />}>
  */
 export function PageLayout({ title, subtitle, header, children, className }: PageLayoutProps) {

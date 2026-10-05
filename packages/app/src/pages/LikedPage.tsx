@@ -6,6 +6,7 @@ import { dedupeTracksForDisplay } from '@aurora/shared'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
+import { HOME_ROUTE } from '@/lib/routes'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { CoverImage } from '@/components/common/CoverImage'
@@ -84,11 +85,11 @@ export function LikedPage() {
             在歌曲上点击爱心，它们会出现在这里
           </p>
           <button
-            onClick={() => navigate('/library')}
+            onClick={() => navigate(HOME_ROUTE)}
             className="pill pill-lg pill-mint"
           >
             <Music className="h-4 w-4" strokeWidth={1.6} />
-            去音乐库
+            去本地音乐
           </button>
         </div>
       ) : (

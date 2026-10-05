@@ -293,7 +293,7 @@ export function SongDetailPage() {
             {tracks.length === 0 ? '正在加载歌曲…' : '未找到这首歌曲'}
           </h2>
           <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
-            {tracks.length === 0 ? '请稍候，音乐库正在加载' : '歌曲可能已被移除'}
+            {tracks.length === 0 ? '请稍候，本地音乐正在加载' : '歌曲可能已被移除'}
           </p>
           <button
             onClick={goBack}
