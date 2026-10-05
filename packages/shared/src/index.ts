@@ -9,6 +9,14 @@ export type {
   PlaylistResolverConfig,
   ParsedSong,
   PlaylistParseResult,
+  RecommendPlaylist,
+  ToplistPreviewSong,
+  ToplistBrief,
+  ToplistGroup,
+  ToplistSong,
+  MusicHallOptions,
+  MusicHallSource,
+  MusicHallSourceInput,
 } from './types'
 export {
   searchOnlineTracks,
@@ -17,6 +25,14 @@ export {
   correctSuspiciousAudioSources,
 } from './musicSource'
 export { searchLyrics, searchLyricsSource, BUILTIN_LYRICS_SOURCE } from './lyricsSource'
+export {
+  fetchRecommendPlaylists,
+  fetchToplistGroups,
+  fetchToplistSongs,
+  musicHallSourceOf,
+  musicHallEndpointOf,
+} from './musicHall'
+export type { ToplistDetail } from './musicHall'
 export { sanitizeFileName, inferAudioExtFromUrl } from './downloadUtils'
 export {
   encodeFilePathToUrl,
@@ -69,6 +85,8 @@ export {
   checkSourceForm,
   searchEndpointOf,
   playlistEndpointOf,
+  hallEndpointOf,
+  fillEndpointTemplate,
   buildAuroraEndpoints,
   parseAuroraEndpoints,
   probeAuroraService,

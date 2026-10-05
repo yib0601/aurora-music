@@ -110,6 +110,16 @@ const electronAPI = {
   ): Promise<OnlineTrackSearchResult[]> => {
     return ipcRenderer.invoke('tracks:searchOnline', query, options)
   },
+  // 音乐馆（推荐歌单 / 榜单）：与在线搜索同理，主进程执行、渲染层只拿结果。
+  // source 为渲染层选定的音源（应用不内置源，配置由用户持有）
+  musicHall: {
+    recommendPlaylists: (source: unknown, options?: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke('hall:recommend', source, options),
+    toplistGroups: (source: unknown, options?: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke('hall:toplists', source, options),
+    toplistSongs: (source: unknown, options?: unknown): Promise<unknown> =>
+      ipcRenderer.invoke('hall:toplistSongs', source, options),
+  },
   // 下载在线歌曲：主进程拉流写盘（渲染进程 fetch 会被歌源 CORS 拦截），
   // headers 来自歌源配置的附加请求头，保证下载请求与搜索请求一致；
   // downloadDir 为用户配置的默认下载目录，传了则免保存对话框直存；

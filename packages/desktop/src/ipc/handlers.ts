@@ -24,8 +24,19 @@ import { watchFolder, unwatchFolder } from './watcher'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track, LibrarySourceConfig } from '../types'
-import type { LyricsSearchOptions, LyricsSearchResult } from '@aurora/shared'
-import { searchOnlineTracks, searchLyrics, sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, fetchWithTimeout } from '@aurora/shared'
+import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource } from '@aurora/shared'
+import {
+  searchOnlineTracks,
+  searchLyrics,
+  sanitizeFileName,
+  inferAudioExtFromUrl,
+  embedCoverIntoAudio,
+  detectImageMime,
+  fetchWithTimeout,
+  fetchRecommendPlaylists,
+  fetchToplistGroups,
+  fetchToplistSongs,
+} from '@aurora/shared'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -495,6 +506,19 @@ export function registerIpcHandlers() {
       return searchOnlineTracks(query, options)
     }
   )
+
+  // 音乐馆（推荐歌单 / 榜单列表 / 榜单详情）：与在线搜索同理走主进程执行，
+  // 渲染进程直连会被上游 CORS 拦截。音源由渲染层传入（应用不内置源），
+  // 主进程只做协议执行与容错解析，不缓存任何榜单数据
+  ipcMain.handle('hall:recommend', async (_event, source: MusicHallSource, options?: MusicHallOptions) => {
+    return fetchRecommendPlaylists(source, options)
+  })
+  ipcMain.handle('hall:toplists', async (_event, source: MusicHallSource, options?: MusicHallOptions) => {
+    return fetchToplistGroups(source, options)
+  })
+  ipcMain.handle('hall:toplistSongs', async (_event, source: MusicHallSource, options?: MusicHallOptions) => {
+    return fetchToplistSongs(source, options)
+  })
 
   // 下载在线歌曲：主进程直接拉流（渲染进程 fetch 会被歌源服务器 CORS 拦截）
   // 传了默认下载目录（downloadDir）则免对话框直存并自动去重名；
