@@ -30,6 +30,7 @@ import {
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
+import { HOME_ROUTE } from '@/lib/routes'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
@@ -79,8 +80,8 @@ export function PlaylistPage() {
         <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
           <ListMusic className="h-16 w-16 mb-4 text-mint" strokeWidth={1.5} />
           <p className="text-tagline text-white mb-3">播放列表不存在</p>
-          <Button variant="link" onClick={() => navigate('/library')}>
-            返回音乐库
+          <Button variant="link" onClick={() => navigate(HOME_ROUTE)}>
+            返回本地音乐
           </Button>
         </div>
       </div>
@@ -126,7 +127,7 @@ export function PlaylistPage() {
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      toast('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
+      toast('没有匹配到本地音乐中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
       return
     }
     // 从文件名推断播放列表名称
@@ -209,7 +210,7 @@ export function PlaylistPage() {
                 className="text-destructive focus:text-destructive"
                 onClick={() => {
                   deletePlaylist(playlist.id)
-                  navigate('/library')
+                  navigate(HOME_ROUTE)
                 }}
               >
                 <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
@@ -229,7 +230,7 @@ export function PlaylistPage() {
                 <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
               </div>
               <p className="text-tagline text-white mb-1">播放列表为空</p>
-              <p className="font-text text-caption text-white/50">从音乐库中添加歌曲</p>
+              <p className="font-text text-caption text-white/50">从本地音乐中添加歌曲</p>
             </div>
           </div>
         ) : (

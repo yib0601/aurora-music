@@ -45,6 +45,7 @@ import {
 } from '@/services/update.service'
 import { cn, isMobile, isDesktop, isMobileUI } from '@/lib/utils'
 import { useOpenSongDetail } from '@/lib/navigation'
+import { HOME_ROUTE, KEEP_ALIVE_ROUTE, ROUTES, ROUTE_PATHS, isRoute } from '@/lib/routes'
 import type { Track, FolderPickerOptions } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
@@ -95,13 +96,13 @@ function AppLayout() {
   // 内容列的 pt-11 留白必须跟着它走，否则没有标题栏时会凭空多出 44px 空白
   const hasTitleBar = hasDesktopTitleBar()
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
-  const isSongDetail = location.pathname.startsWith('/song/')
+  const isSongDetail = isRoute(ROUTE_PATHS.songDetail, location.pathname)
 
   // 全局搜索浮层：入口按钮在各页头部工具栏原位置（标题右侧），App 层只负责
   // 统一渲染浮层与 ⌘/Ctrl+K 快捷键（设置页除外），保证任意页面唤起都可见
   const searchOpen = useUIStore((s) => s.searchOpen)
   const setSearchOpen = useUIStore((s) => s.setSearchOpen)
-  const isSettings = location.pathname.startsWith('/settings')
+  const isSettings = isRoute(ROUTES.settings, location.pathname)
   const isSettingsRef = useRef(isSettings)
   useEffect(() => { isSettingsRef.current = isSettings }, [isSettings])
   useEffect(() => {
@@ -267,14 +268,14 @@ function AppLayout() {
       // ⑥ 路由返回：详情页/歌单页与屏内返回按钮行为一致（回上一页）；
       //    其他非主屏页回主屏；已在主屏（音乐库）则进入「再按一次退出」确认流程
       const path = locationRef.current.pathname
-      if (path.startsWith('/song/') || path.startsWith('/playlist/')) {
+      if (isRoute(ROUTE_PATHS.songDetail, path) || isRoute(ROUTE_PATHS.playlist, path)) {
         // 应用内无历史可退（如冷启动直达详情页）时兜底回主屏
         if (window.history.length > 1) navigate(-1)
-        else navigate('/library')
+        else navigate(HOME_ROUTE)
         return
       }
-      if (path !== '/library') {
-        navigate('/library')
+      if (path !== HOME_ROUTE) {
+        navigate(HOME_ROUTE)
         return
       }
       // 主屏：二次确认退出，避免误触直接杀进程
@@ -866,22 +867,23 @@ function AppLayout() {
               )}
               <div className="relative flex-1 min-h-0">
                 {/*
-                  音乐库常驻挂载：离开 /library（如进入歌曲详情）时不卸载，
+                  本地音乐常驻挂载（KEEP_ALIVE_ROUTE）：离开它（如进入歌曲详情、音乐馆）时不卸载，
                   用 visibility 隐藏而非 display —— 布局尺寸与滚动容器全程保留，
                   虚拟列表不会因容器失焦归零而停摆，返回时零重建、零空白、滚动位置原样恢复。
+                  只有这一个页面常驻：两个虚拟列表同时挂载会让内存与 ResizeObserver 翻倍。
                 */}
                 <div
                   className={cn(
                     'h-full overflow-y-auto scrollbar-thin',
-                    location.pathname !== '/library' && 'invisible',
+                    location.pathname !== KEEP_ALIVE_ROUTE && 'invisible',
                   )}
                 >
                   <LibraryPage />
                 </div>
-                {/* 其他路由按需渲染，绝对定位铺满容器，与常驻的音乐库层共存互不影响 */}
+                {/* 其他路由按需渲染，绝对定位铺满容器，与常驻的本地音乐层共存互不影响 */}
                 {/* 桌面端详情页：滚动容器上延 44px（标题栏高度）到窗口顶，裁切边移到窗口边界，
                     内容阴影/光晕滚过标题栏底边时不再形成横向断层线 */}
-                {location.pathname !== '/library' && (
+                {location.pathname !== KEEP_ALIVE_ROUTE && (
                   <div
                     className={cn(
                       'absolute left-0 right-0 bottom-0 overflow-y-auto scrollbar-thin',
@@ -889,12 +891,13 @@ function AppLayout() {
                     )}
                   >
                     <Routes>
-                      <Route path="/" element={<Navigate to="/library" replace />} />
-                      <Route path="/liked" element={<LikedPage />} />
-                      <Route path="/recent" element={<RecentPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="/playlist/:id" element={<PlaylistPage />} />
-                      <Route path="/song/:id" element={<SongDetailPage />} />
+                      {/* 路径模式全部取自 lib/routes（唯一事实源），此处不写字面量 */}
+                      <Route path={ROUTES.root} element={<Navigate to={HOME_ROUTE} replace />} />
+                      <Route path={ROUTES.liked} element={<LikedPage />} />
+                      <Route path={ROUTES.recent} element={<RecentPage />} />
+                      <Route path={ROUTES.settings} element={<SettingsPage />} />
+                      <Route path={ROUTE_PATHS.playlist} element={<PlaylistPage />} />
+                      <Route path={ROUTE_PATHS.songDetail} element={<SongDetailPage />} />
                     </Routes>
                   </div>
                 )}

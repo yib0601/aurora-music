@@ -887,7 +887,7 @@ function LibrarySourceCard({
         <Button
           variant="ghost"
           size="icon"
-          title="移除来源（同时从音乐库移除该来源的歌曲）"
+          title="移除来源（同时从本地音乐移除该来源的歌曲）"
           className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
@@ -1160,7 +1160,7 @@ export function SettingsPage() {
       .tracks.filter((t) => t.path === folder || t.path.startsWith(prefix) || t.path.startsWith(prefix.replace(/\//g, '\\'))).length
     const ok = window.confirm(
       affected > 0
-        ? `移除扫描目录「${folder}」？\n该目录下的 ${affected} 首歌曲会同时从音乐库中移除（磁盘文件不会被删除）。`
+        ? `移除扫描目录「${folder}」？\n该目录下的 ${affected} 首歌曲会同时从本地音乐中移除（磁盘文件不会被删除）。`
         : `移除扫描目录「${folder}」？`
     )
     if (!ok) return
@@ -1228,7 +1228,7 @@ export function SettingsPage() {
     const affected = useLibraryStore.getState().tracks.filter((t) => t.path.startsWith(prefix)).length
     const ok = window.confirm(
       affected > 0
-        ? `移除网络存储「${source.name}」？\n该来源下的 ${affected} 首歌曲会同时从音乐库中移除（远端文件不会被删除）。`
+        ? `移除网络存储「${source.name}」？\n该来源下的 ${affected} 首歌曲会同时从本地音乐中移除（远端文件不会被删除）。`
         : `移除网络存储「${source.name}」？`
     )
     if (!ok) return
@@ -1324,7 +1324,7 @@ export function SettingsPage() {
           </section>
 
           <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">音乐库</h2>
+            <h2 className="font-display text-tagline mb-4 text-white">本地音乐</h2>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -1346,7 +1346,7 @@ export function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        title="移除目录（同时从音乐库移除该目录下的歌曲）"
+                        title="移除目录（同时从本地音乐移除该目录下的歌曲）"
                         className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
                         onClick={() => handleRemoveFolder(folder)}
                       >

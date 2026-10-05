@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2 } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
+import { ROUTES, type NavItem } from '@/lib/routes'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -25,11 +26,15 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 
-const navItems = [
-  { to: '/library', icon: Music, label: '音乐库' },
-  { to: '/liked', icon: Heart, label: '收藏' },
-  { to: '/recent', icon: Clock, label: '最近播放' },
-  { to: '/settings', icon: Settings, label: '设置' },
+/**
+ * 主导航表。路径一律取 `@/lib/routes` 的常量，不在本文件写路径字面量；
+ * 形状与移动端抽屉（MobileNav）共用 NavItem。
+ */
+const navItems: NavItem[] = [
+  { to: ROUTES.library, icon: Music, label: '本地音乐' },
+  { to: ROUTES.liked, icon: Heart, label: '收藏' },
+  { to: ROUTES.recent, icon: Clock, label: '最近播放' },
+  { to: ROUTES.settings, icon: Settings, label: '设置' },
 ]
 
 /**
@@ -81,7 +86,7 @@ export function Sidebar() {
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      toast('没有匹配到音乐库中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
+      toast('没有匹配到本地音乐中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
       return
     }
     const newPlaylist = createPlaylist('导入的播放列表')

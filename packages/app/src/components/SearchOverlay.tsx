@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
+import { ROUTES } from '@/lib/routes'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -650,7 +651,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                   </div>
                 </div>
                 <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">开始搜索</p>
-                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词，搜索本地音乐库与在线音源</p>
+                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词，搜索本地音乐与在线音源</p>
               </div>
             ) : (
               /* 历史搜索：有记录时空态展示，点击回搜，支持单条删除与一键清空 */
@@ -754,7 +755,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                     </p>
                     <button
                       onClick={() => {
-                        navigate('/settings')
+                        navigate(ROUTES.settings)
                         onClose()
                       }}
                       className="pill pill-md pill-soft text-mint"

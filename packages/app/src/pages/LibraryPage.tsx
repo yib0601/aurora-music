@@ -308,7 +308,7 @@ export function LibraryPage() {
 
   // 副标题：只展示去重后展示集的首数，与列表里看到的数量一致。
   const librarySummary = useMemo(() => {
-    if (tracks.length === 0) return '导入音乐，开始构建你的专属音乐库'
+    if (tracks.length === 0) return '导入音乐，开始构建你的专属本地音乐库'
     return `${tracks.length} 首歌曲`
   }, [tracks])
 
@@ -462,7 +462,7 @@ export function LibraryPage() {
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
             <h1 className="font-display text-[26px] md:text-[36px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
-              音乐库
+              本地音乐
             </h1>
             <p className="font-text text-[13px] text-white/65 mt-1 tracking-[-0.2px]">
               {librarySummary}
@@ -557,7 +557,7 @@ export function LibraryPage() {
             还没有音乐
           </h2>
           <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
-            导入你的音乐文件夹，开始构建你的专属音乐库
+            导入你的音乐文件夹，开始构建你的专属本地音乐库
           </p>
           <button
             onClick={handlePickFolder}
