@@ -12,6 +12,8 @@ import { QueueView } from '@/components/player/QueueView'
 import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
 import { ToastHost, toast, dismissToast } from '@/components/common/Toast'
 import { LibraryPage } from '@/pages/LibraryPage'
+import { MusicHallPage } from '@/pages/MusicHallPage'
+import { MusicHallDetailPage } from '@/pages/MusicHallDetailPage'
 import { LikedPage } from '@/pages/LikedPage'
 import { RecentPage } from '@/pages/RecentPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -893,6 +895,10 @@ function AppLayout() {
                     <Routes>
                       {/* 路径模式全部取自 lib/routes（唯一事实源），此处不写字面量 */}
                       <Route path={ROUTES.root} element={<Navigate to={HOME_ROUTE} replace />} />
+                      {/* 音乐馆：推荐歌单 + 排行榜（在线发现入口，普通页、按需挂载） */}
+                      <Route path={ROUTES.hall} element={<MusicHallPage />} />
+                      <Route path={ROUTE_PATHS.hallPlaylist} element={<MusicHallDetailPage />} />
+                      <Route path={ROUTE_PATHS.hallToplist} element={<MusicHallDetailPage />} />
                       <Route path={ROUTES.liked} element={<LikedPage />} />
                       <Route path={ROUTES.recent} element={<RecentPage />} />
                       <Route path={ROUTES.settings} element={<SettingsPage />} />

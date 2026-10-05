@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2 } from 'lucide-react'
+import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Compass } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
 import { ROUTES, type NavItem } from '@/lib/routes'
@@ -32,6 +32,7 @@ import {
  */
 const navItems: NavItem[] = [
   { to: ROUTES.library, icon: Music, label: '本地音乐' },
+  { to: ROUTES.hall, icon: Compass, label: '音乐馆' },
   { to: ROUTES.liked, icon: Heart, label: '收藏' },
   { to: ROUTES.recent, icon: Clock, label: '最近播放' },
   { to: ROUTES.settings, icon: Settings, label: '设置' },

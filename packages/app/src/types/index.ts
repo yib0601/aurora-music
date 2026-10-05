@@ -12,6 +12,14 @@ import type {
   PlaylistParseResult,
   LibrarySourceConfig,
   RemoteEntry,
+  RecommendPlaylist,
+  ToplistPreviewSong,
+  ToplistBrief,
+  ToplistGroup,
+  ToplistSong,
+  MusicHallOptions,
+  MusicHallSource,
+  ToplistDetail,
 } from '@aurora/shared'
 
 export type {
@@ -27,6 +35,14 @@ export type {
   PlaylistParseResult,
   LibrarySourceConfig,
   RemoteEntry,
+  RecommendPlaylist,
+  ToplistPreviewSong,
+  ToplistBrief,
+  ToplistGroup,
+  ToplistSong,
+  MusicHallOptions,
+  MusicHallSource,
+  ToplistDetail,
 }
 
 export interface Track {
@@ -194,4 +210,16 @@ export interface PlatformInterface {
   searchOnlineTracks(query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]>
   database: DatabaseAdapter
   windowControls: WindowControls
+}
+
+/**
+ * 音乐馆读取能力（可选）：三端实现见 services/platform/*
+ * - 桌面端：转发到主进程执行（渲染进程 fetch 会被上游 CORS 拦截）
+ * - 移动端：渲染层直调 shared（fetch 已换成 CapacitorHttp）
+ * - Web 端：空实现（浏览器无该能力），音乐馆据此展示不可用空态
+ */
+export interface MusicHallPlatform {
+  recommendPlaylists(options?: MusicHallOptions): Promise<RecommendPlaylist[]>
+  toplistGroups(options?: MusicHallOptions): Promise<ToplistGroup[]>
+  toplistSongs(options?: MusicHallOptions): Promise<ToplistDetail>
 }
