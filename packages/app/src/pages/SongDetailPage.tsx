@@ -17,6 +17,7 @@ import { loadLyricsForTrack } from '@/services/lyrics.service'
 import { ensurePlayableTrack } from '@/services/playlistIO.service'
 import { toast } from '@/components/common/Toast'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
+import { isDownloadableOnlineTrack } from '@/lib/onlineTrack'
 import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
 import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -383,8 +384,10 @@ export function SongDetailPage() {
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
                     添加到队列
                   </DropdownMenuItem>
-                  {/* 下载：仅在线曲目提供（本地曲目已在磁盘上） */}
-                  {track.onlineUrl && (
+                  {/* 下载：在线曲目才提供（本地曲目已在磁盘上）。判据不看 onlineUrl——
+                      最近播放/歌单导入的在线曲目快照按约定剥离了过期的直链，
+                      用地址判定会让这些在线歌曲没有下载入口，地址在下载时按需重取 */}
+                  {isDownloadableOnlineTrack(track) && (
                     <DropdownMenuItem
                       onClick={() => handleDownloadTrack(track)}
                       disabled={downloadingIds.has(track.id)}
