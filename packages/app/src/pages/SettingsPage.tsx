@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check, Github } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
@@ -49,15 +49,9 @@ const themeOptions = [
   { value: 'system' as const, label: '跟随系统', icon: Monitor },
 ]
 
-/** 缓存容量档位：0 表示关闭缓存，其余单位为 MB */
-const cacheLimitOptions = [
-  { value: 0, label: '关闭' },
-  { value: 256, label: '256 MB' },
-  { value: 512, label: '512 MB' },
-  { value: 1024, label: '1 GB' },
-  { value: 2048, label: '2 GB' },
-  { value: 4096, label: '4 GB' },
-]
+/** 缓存容量合法区间（MB），与 store 侧钳制规则一致 */
+const CACHE_LIMIT_MIN_MB = 64
+const CACHE_LIMIT_MAX_MB = 102400
 
 function formatBytes(n: number): string {
   if (!isFinite(n) || n <= 0) return '0 MB'
@@ -1146,10 +1140,16 @@ export function SettingsPage() {
   const setDownloadQuality = useLibraryStore((s) => s.setDownloadQuality)
   const removeScanFolder = useLibraryStore((s) => s.removeScanFolder)
 
-  // 媒体缓存：容量档位 + 当前占用；平台未实现时隐藏该分区（见下方 supportsAudioCache）
+  // 媒体缓存：自定义容量 + 当前占用；平台未实现时隐藏该分区（见下方 supportsAudioCache）
   const audioCacheLimitMB = useLibraryStore((s) => s.audioCacheLimitMB)
-  const setAudioCacheLimitMB = useLibraryStore((s) => s.setAudioCacheLimitMB)
+  const audioCacheLimitCustomMB = useLibraryStore((s) => s.audioCacheLimitCustomMB)
+  const setAudioCacheLimitCustomMB = useLibraryStore((s) => s.setAudioCacheLimitCustomMB)
+  const resetAudioCacheLimitToDefault = useLibraryStore((s) => s.resetAudioCacheLimitToDefault)
   const [cacheUsage, setCacheUsage] = useState<{ usedBytes: number; count: number }>({ usedBytes: 0, count: 0 })
+  // 输入框是受控的：草稿只在提交时才落库，非法草稿不写入 store
+  const [cacheLimitDraft, setCacheLimitDraft] = useState(String(audioCacheLimitMB))
+  const [cacheLimitInvalid, setCacheLimitInvalid] = useState(false)
+  const cacheLimitInputRef = useRef<HTMLInputElement>(null)
   const supportsAudioCache = typeof platform.getAudioCacheUsage === 'function'
   useEffect(() => {
     if (!supportsAudioCache) return
@@ -1166,6 +1166,34 @@ export function SettingsPage() {
       clearInterval(timer)
     }
   }, [supportsAudioCache])
+
+  // 生效值变化（提交被 store 钳制 / 恢复默认）后回写输入框，显示的永远是真实生效值
+  useEffect(() => {
+    setCacheLimitDraft(String(audioCacheLimitMB))
+    setCacheLimitInvalid(false)
+  }, [audioCacheLimitMB])
+
+  const refreshCacheUsage = () => {
+    void getAudioCacheUsage().then(setCacheUsage)
+  }
+
+  const commitCacheLimit = () => {
+    const raw = cacheLimitDraft.trim()
+    const mb = Number(raw)
+    // 空值 / 非数字：不写库，仅提示合法区间；区间外交给 store 钳制
+    if (raw === '' || !Number.isFinite(mb)) {
+      setCacheLimitInvalid(true)
+      return
+    }
+    setCacheLimitInvalid(false)
+    setAudioCacheLimitCustomMB(mb)
+    refreshCacheUsage()
+  }
+
+  const handleResetCacheLimit = () => {
+    resetAudioCacheLimitToDefault()
+    refreshCacheUsage()
+  }
 
   const handleClearCache = async () => {
     const ok = window.confirm('清空全部缓存？')
@@ -1604,31 +1632,68 @@ export function SettingsPage() {
               <div className="space-y-4">
                 <div>
                   <p className="font-text text-caption-strong text-white/80">缓存大小</p>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {cacheLimitOptions.map(({ value, label }) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          setAudioCacheLimitMB(value)
-                          // 关闭档位只停止新增缓存，磁盘上已有的内容不会消失：
-                          // 这里重新读一次真实占用，而不是按档位猜测
-                          void getAudioCacheUsage().then(setCacheUsage)
-                        }}
-                        className={`pill pill-md ${
-                          audioCacheLimitMB === value ? 'pill-mint' : 'pill-soft'
-                        }`}
+                  <p className="font-text text-caption text-white/60 mt-0.5">
+                    缓存上限可自由填写，默认 1 GB；超出上限时按最久未使用自动清理
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => cacheLimitInputRef.current?.focus()}
+                      className={`pill pill-md ${
+                        audioCacheLimitCustomMB ? 'pill-mint' : 'pill-soft'
+                      }`}
+                    >
+                      {audioCacheLimitCustomMB ? '自定义' : '默认'}{' '}
+                      {formatBytes(audioCacheLimitMB * 1024 * 1024)}
+                    </button>
+                    <input
+                      ref={cacheLimitInputRef}
+                      type="number"
+                      min={CACHE_LIMIT_MIN_MB}
+                      max={CACHE_LIMIT_MAX_MB}
+                      step={64}
+                      inputMode="numeric"
+                      value={cacheLimitDraft}
+                      placeholder="MB 数字"
+                      onChange={(e) => {
+                        setCacheLimitDraft(e.target.value)
+                        setCacheLimitInvalid(false)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          commitCacheLimit()
+                        }
+                      }}
+                      onBlur={commitCacheLimit}
+                      className={`inset-field pill-md w-[7.5rem] px-4 text-center font-text text-caption tabular-nums text-white/85 ${
+                        cacheLimitInvalid ? 'is-invalid' : ''
+                      }`}
+                    />
+                    <span className="font-text text-caption text-white/50">MB</span>
+                    {audioCacheLimitCustomMB && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 px-3.5"
+                        onClick={handleResetCacheLimit}
                       >
-                        {label}
-                      </button>
-                    ))}
+                        恢复默认
+                      </Button>
+                    )}
                   </div>
+                  {cacheLimitInvalid && (
+                    <p className="font-text text-caption text-coral/70 mt-2">
+                      请输入 {CACHE_LIMIT_MIN_MB} – {CACHE_LIMIT_MAX_MB} MB
+                    </p>
+                  )}
                 </div>
                 <div className="inset-note flex items-center justify-between px-3.5 py-3">
                   <div>
                     <p className="font-text text-caption-strong text-white/80">当前占用</p>
                     <p className="font-text text-caption text-white/60 mt-0.5">
-                      {formatBytes(cacheUsage.usedBytes)}
-                      {audioCacheLimitMB > 0 && ` / 上限 ${formatBytes(audioCacheLimitMB * 1024 * 1024)}`}
+                      {formatBytes(cacheUsage.usedBytes)} / 上限{' '}
+                      {formatBytes(audioCacheLimitMB * 1024 * 1024)}
                     </p>
                   </div>
                   <Button

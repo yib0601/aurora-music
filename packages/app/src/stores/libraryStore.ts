@@ -18,6 +18,24 @@ const MAX_SEARCH_HISTORY = 20
 /** 最近播放记录最大保留条数（本地 + 在线统一记录在此，重启不丢） */
 const MAX_RECENT_PLAYED = 100
 
+/** 缓存容量自定义档位的合法区间（MB，十进制口径，与设置页输入框一致） */
+const AUDIO_CACHE_LIMIT_MIN_MB = 64
+const AUDIO_CACHE_LIMIT_MAX_MB = 102400
+
+/** 未手填（或填了非法值）时的容量：默认按平台给，手机存储紧张，1GB 起步偏重 */
+function defaultAudioCacheLimitMB(): number {
+  return platform.platform === 'mobile' ? 512 : 1024
+}
+
+/**
+ * 钳制用户手填的缓存容量：非有限值（NaN / Infinity，含输入框空串转出的 NaN）退回
+ * 该平台默认值，区间外取最近边界，并统一向下取整为整数 MB。
+ */
+function clampAudioCacheLimitMB(mb: number): number {
+  if (!Number.isFinite(mb)) return defaultAudioCacheLimitMB()
+  return Math.min(AUDIO_CACHE_LIMIT_MAX_MB, Math.max(AUDIO_CACHE_LIMIT_MIN_MB, Math.floor(mb)))
+}
+
 interface LibraryState {
   tracks: Track[]
   /**
@@ -97,13 +115,24 @@ interface LibraryState {
   setDownloadDir: (dir: string | null) => void
   setDownloadQuality: (quality: DownloadQuality) => void
   /**
-   * 媒体缓存容量上限（MB）：音频 / 封面 / 歌词共用这一份配额并内部按比例分配，
-   * 0 表示关闭缓存（不再新增，已有内容保留，腾空间走「清空缓存」）。
+   * 媒体缓存容量上限（MB）：音频 / 封面 / 歌词共用这一份配额并内部按比例分配。
+   * 值由设置页的自定义档位写入，区间 64–102400 由 store 钳制（收口在
+   * setAudioCacheLimitCustomMB；setAudioCacheLimitMB 仅保留旧调用口径）。
    * 桌面端落盘在主进程 userData，移动端落在应用专属存储；Web 平台未实现，
    * 此值不生效（设置页按能力探测隐藏缓存分区）。
    */
   audioCacheLimitMB: number
   setAudioCacheLimitMB: (mb: number) => void
+  /**
+   * 缓存容量是否为「用户自定义档位」：false = 尚未手填（设置页显示「默认」，
+   * 容量按平台给）；true = 用户手填过（设置页显示「自定义」，并给出恢复默认入口）。
+   * 仅作标记，实际生效容量始终以 audioCacheLimitMB 为准。
+   */
+  audioCacheLimitCustomMB: boolean
+  /** 提交用户手填的容量（MB）：同一次 set 内写标记与钳制后的值，避免中间态 */
+  setAudioCacheLimitCustomMB: (mb: number) => void
+  /** 清除自定义标记并回到平台默认容量 */
+  resetAudioCacheLimitToDefault: () => void
 }
 
 /** 递增版本号：防止 getAllTracks 的延迟响应用旧数据覆盖 scan:complete 的新数据 */
@@ -268,9 +297,14 @@ export const useLibraryStore = create<LibraryState>()(
       },
       setDownloadDir: (dir) => set({ downloadDir: dir || null }),
       setDownloadQuality: (quality) => set({ downloadQuality: quality }),
-      // 默认容量按平台给：手机存储紧张，1GB 起步偏重；两端都可在设置里改
-      audioCacheLimitMB: platform.platform === 'mobile' ? 512 : 1024,
+      audioCacheLimitMB: defaultAudioCacheLimitMB(),
       setAudioCacheLimitMB: (mb) => set({ audioCacheLimitMB: Math.max(0, Math.floor(mb)) }),
+      // 默认视为「未自定义」：容量按平台给，设置页显示「默认」
+      audioCacheLimitCustomMB: false,
+      setAudioCacheLimitCustomMB: (mb) =>
+        set({ audioCacheLimitCustomMB: true, audioCacheLimitMB: clampAudioCacheLimitMB(mb) }),
+      resetAudioCacheLimitToDefault: () =>
+        set({ audioCacheLimitCustomMB: false, audioCacheLimitMB: defaultAudioCacheLimitMB() }),
     }),
     {
       name: 'aurora-library-state',
@@ -302,6 +336,7 @@ export const useLibraryStore = create<LibraryState>()(
         downloadDir: state.downloadDir,
         downloadQuality: state.downloadQuality,
         audioCacheLimitMB: state.audioCacheLimitMB,
+        audioCacheLimitCustomMB: state.audioCacheLimitCustomMB,
       }),
       // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
@@ -315,6 +350,8 @@ export const useLibraryStore = create<LibraryState>()(
       // v10 音源地址归一：端点不再在保存时拼好，配置只留一条 sourceUrl（+ 可选歌单地址与
       //     服务端端点缓存），端点改由执行时解析（auroraPreset 的 searchEndpointOf /
       //     playlistEndpointOf）；preset / baseUrl / apiKey 三个回显字段随之消失
+      // v11 缓存容量改版：新增自定义标记（audioCacheLimitCustomMB，旧数据置 false →
+      //     设置页显示「默认」）；原「关闭」档（0）随档位改版移除，迁移时归到平台默认容量
       migrate: (persisted: any, version: number) => {
         if (persisted) {
           if (version < 9) {
@@ -328,6 +365,14 @@ export const useLibraryStore = create<LibraryState>()(
           if (version < 10) {
             persisted.onlineSources = migrateOnlineSources(persisted.onlineSources)
             persisted.lyricsSources = migrateLyricsSources(persisted.lyricsSources)
+          }
+          if (version < 11) {
+            persisted.audioCacheLimitCustomMB = false
+            // 「关闭」档（0）已随档位改版移除：0 或非数字的旧值归到平台默认容量，
+            // 避免设置页显示「默认 0 MB」且上限恒为 0；非 0 旧值原样保留
+            if (typeof persisted.audioCacheLimitMB !== 'number' || persisted.audioCacheLimitMB <= 0) {
+              persisted.audioCacheLimitMB = defaultAudioCacheLimitMB()
+            }
           }
           if (version < 8) {
             if (typeof persisted.audioCacheLimitMB !== 'number') persisted.audioCacheLimitMB = 1024
@@ -355,7 +400,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 10,
+      version: 11,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)
