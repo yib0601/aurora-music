@@ -26,7 +26,7 @@ const isDev = !app.isPackaged
 // 默认会显示包名 "@aurora/desktop"，这里改为可读的 "Aurora Music"
 app.setName('Aurora Music')
 // 改名后默认 userData 会变成 <appData>/Aurora Music，需固定回历史路径，
-// 否则已有的音乐库数据库、封面与歌词缓存（<userData>/aurora-music/）会丢失
+// 否则已有的曲库数据库、封面与歌词缓存（<userData>/aurora-music/）会丢失
 app.setPath('userData', path.join(app.getPath('appData'), '@aurora', 'desktop'))
 
 // 托盘：点击窗口关闭按钮时最小化到托盘继续播放，从托盘菜单可真正退出

@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
-import { ROUTES } from '@/lib/routes'
+import { LIBRARY_LABEL, ROUTES } from '@/lib/routes'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -317,7 +317,7 @@ interface SearchOverlayProps {
 
 /**
  * Spotlight 风格搜索浮层（Liquid Glass）
- * - 以 portal 挂到 body，覆盖在音乐库之上，底层界面完全不改动
+ * - 以 portal 挂到 body，覆盖在曲库之上，底层界面完全不改动
  * - 顶部玻璃面板：搜索框 + 结果区（本地在上、在线在下同屏展示），Esc / 点击遮罩关闭
  * - 键盘：↑/↓ 移动高亮、Enter 播放高亮项（无高亮时记录搜索历史）
  * - 结果行用 row-hover + hairline 分隔；封面 rounded-xs + product-shadow
@@ -597,7 +597,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-start justify-center" role="dialog" aria-modal="true" aria-label="搜索">
-      {/* 遮罩：点击关闭；轻模糊让底层音乐库退后但仍可辨识。
+      {/* 遮罩：点击关闭；轻模糊让底层曲库退后但仍可辨识。
           不做淡入动画——backdrop-filter 不参与合成，软件渲染下
           模糊层淡入期间每帧重算全屏模糊会明显掉帧 */}
       <div
@@ -651,7 +651,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                   </div>
                 </div>
                 <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">开始搜索</p>
-                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词，搜索本地音乐与在线音源</p>
+                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词，搜索{LIBRARY_LABEL}与在线音源</p>
               </div>
             ) : (
               /* 历史搜索：有记录时空态展示，点击回搜，支持单条删除与一键清空 */

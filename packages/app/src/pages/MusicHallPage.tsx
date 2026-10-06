@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { cn } from '@/lib/utils'
-import { ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
+import { HALL_LABEL, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
 import type { RecommendPlaylist, ToplistBrief, ToplistGroup, ToplistPreviewSong } from '@/types'
 
 /**
- * 音乐馆：推荐歌单 + 排行榜（在线发现入口，只读浏览）。
+ * 在线音乐：推荐歌单 + 排行榜（由音源服务实时提供，只读浏览、即点即播、不入库）。
  *
  * 数据来自用户配置的音源服务（协议见 @aurora/shared 的 musicHall.ts）。
  * 应用不内置任何平台抓取器——未配音源时整页是引导空态，而不是内置的假数据。
@@ -46,7 +46,7 @@ export function MusicHallPage() {
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
             <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
-              音乐馆
+              {HALL_LABEL}
             </h1>
             <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
               推荐歌单与排行榜，点开即可试听
@@ -69,7 +69,7 @@ export function MusicHallPage() {
     >
       {unavailable ? (
         <HallEmpty
-          title="音乐馆暂不可用"
+          title={`${HALL_LABEL}暂不可用`}
           desc={unavailable}
           action={{ label: '去配置音源', onClick: () => navigate(ROUTES.settings) }}
         />
