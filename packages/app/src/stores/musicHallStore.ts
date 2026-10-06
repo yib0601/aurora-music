@@ -3,10 +3,10 @@ import { musicHallSourceOf, searchEndpointOf } from '@aurora/shared'
 import type { MusicHallSource, RecommendPlaylist, ToplistGroup, ToplistDetail } from '@/types'
 import { hallRecommend, hallToplists, hallToplistSongs, supportsMusicHall } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { HALL_LABEL } from '@/lib/routes'
+import { HALL_LABEL, LIBRARY_LABEL } from '@/lib/routes'
 
 /**
- * 在线音乐（旧称「音乐馆」，故 store / 类型 / 路由段名沿用 hall）状态：
+ * 音乐库（旧称「音乐馆」，store / 类型 / 路由段名沿用 hall / MusicHall*）状态：
  * 推荐歌单 / 榜单列表 / 榜单详情的加载态与数据缓存。
  *
  * **刻意不持久化**：榜单与推荐每天都在变，落盘的旧数据只会让用户看到过期的排行，
@@ -65,9 +65,11 @@ export function pickHallSource(): MusicHallSource | null {
 
 /** 无音源 / 平台不支持的统一提示文案（UI 空态与错误态共用一处） */
 export function hallUnavailableReason(): string {
-  if (!supportsMusicHall()) return `当前环境不支持${HALL_LABEL}（浏览器版无在线能力）`
+  // 本页是应用首屏，空态文案要同时交代「为什么空」与「本地内容仍可用」——
+  // 只说原因会让用户以为应用坏了
+  if (!supportsMusicHall()) return `当前环境不支持${HALL_LABEL}（浏览器版无在线能力），可先到「${LIBRARY_LABEL}」听本地曲库`
   const sources = useLibraryStore.getState().onlineSources
-  if (sources.length === 0) return `尚未配置音源，${HALL_LABEL}的推荐与榜单都由音源服务提供`
+  if (sources.length === 0) return `${HALL_LABEL}的推荐与榜单由音源服务提供，尚未配置音源；本地曲库不受影响`
   if (!sources.some((s) => s.enabled)) return '音源已全部停用，请在设置页启用音乐源'
   if (!pickHallSource()) return `当前音源不支持${HALL_LABEL}（需填写服务地址形态的音源）`
   return ''

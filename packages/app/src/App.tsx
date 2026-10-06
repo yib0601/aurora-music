@@ -268,7 +268,7 @@ function AppLayout() {
       }
 
       // ⑥ 路由返回：详情页/歌单页与屏内返回按钮行为一致（回上一页）；
-      //    其他非主屏页回主屏；已在主屏（曲库）则进入「再按一次退出」确认流程
+      //    其他非主屏页回主屏；已在主屏（音乐库）则进入「再按一次退出」确认流程
       const path = locationRef.current.pathname
       if (isRoute(ROUTE_PATHS.songDetail, path) || isRoute(ROUTE_PATHS.playlist, path)) {
         // 应用内无历史可退（如冷启动直达详情页）时兜底回主屏
@@ -869,10 +869,11 @@ function AppLayout() {
               )}
               <div className="relative flex-1 min-h-0">
                 {/*
-                  我的音乐常驻挂载（KEEP_ALIVE_ROUTE）：离开它（如进入歌曲详情、在线音乐）时不卸载，
+                  我的音乐常驻挂载（KEEP_ALIVE_ROUTE）：离开它（如进入歌曲详情、音乐库）时不卸载，
                   用 visibility 隐藏而非 display —— 布局尺寸与滚动容器全程保留，
                   虚拟列表不会因容器失焦归零而停摆，返回时零重建、零空白、滚动位置原样恢复。
                   只有这一个页面常驻：两个虚拟列表同时挂载会让内存与 ResizeObserver 翻倍。
+                  注意与 HOME_ROUTE（音乐库）已解耦：主屏不是常驻页，二者不要合并。
                 */}
                 <div
                   className={cn(
@@ -895,7 +896,7 @@ function AppLayout() {
                     <Routes>
                       {/* 路径模式全部取自 lib/routes（唯一事实源），此处不写字面量 */}
                       <Route path={ROUTES.root} element={<Navigate to={HOME_ROUTE} replace />} />
-                      {/* 在线音乐：推荐歌单 + 排行榜（在线发现入口，普通页、按需挂载） */}
+                      {/* 音乐库：推荐歌单 + 排行榜（在线发现入口；应用主屏，但按需挂载——常驻页是我的音乐） */}
                       <Route path={ROUTES.hall} element={<MusicHallPage />} />
                       <Route path={ROUTE_PATHS.hallPlaylist} element={<MusicHallDetailPage />} />
                       <Route path={ROUTE_PATHS.hallToplist} element={<MusicHallDetailPage />} />

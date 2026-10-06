@@ -81,9 +81,9 @@ export const ROUTE_PATHS = {
   /** 歌曲详情：沉浸式视图（隐藏侧栏与右侧瓷砖） */
   songDetail: '/song/:id',
   playlist: '/playlist/:id',
-  /** 在线音乐 · 推荐歌单详情（dataId 形如 `diss-<歌单号>`） */
+  /** 音乐库 · 推荐歌单详情（dataId 形如 `diss-<歌单号>`） */
   hallPlaylist: `${ROUTES.hall}/playlist/:id`,
-  /** 在线音乐 · 榜单详情（id 为榜单 topId） */
+  /** 音乐库 · 榜单详情（id 为榜单 topId） */
   hallToplist: `${ROUTES.hall}/toplist/:id`,
 } as const
 
@@ -114,16 +114,4 @@ export interface NavItem {
   /** lucide 图标组件（不可写成自定的 {className,strokeWidth} 窄类型：strokeWidth 允许 string | number） */
   icon: LucideIcon
   label: string
-}
-
-/**
- * 导航分组：组标题 + 组内条目。
- *
- * 分组的价值在于把「从哪来」这层语义画出来，否则用户只能靠名字猜
- * （见本文件 LIBRARY_LABEL 处对「音乐库 / 音乐馆」命名缺陷的说明）。
- * 组标题是**分区标签**，不要与组内项名逐字重复。
- */
-export interface NavGroup {
-  title: string
-  items: NavItem[]
 }
