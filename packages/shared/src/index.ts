@@ -17,12 +17,56 @@ export type {
   MusicHallOptions,
   MusicHallSource,
   MusicHallSourceInput,
+  OnlineSourceKind,
+  LxTrackRef,
 } from './types'
+export {
+  LX_KNOWN_PLATFORMS,
+  setLxHostDeps,
+  getLxHostDeps,
+  LX_PLATFORM_LABELS,
+  clearLxSourceCache,
+  fetchLxScript,
+  inspectLxSource,
+  lxQualityFor,
+  normalizeLxQuality,
+  resolveLxSourceUrl,
+  searchLxSource,
+} from './lxHost'
+export {
+  LX_SEARCH_LIMIT,
+  setLxScriptProvider,
+  getLxScriptProvider,
+  resolveLxScript,
+  asLxScriptSource,
+  toLxMusicInfo,
+  isUsableLxMeta,
+  resolveLxTrack,
+  resolveLxTrackUrl,
+  searchLxSourceForAggregate,
+} from './lxResolver'
+export type {
+  LxScriptProvider,
+  LxMetaMapping,
+  ResolveLxTrackInput,
+  LxResolveOutcome,
+} from './lxResolver'
+export type {
+  LxHostDeps,
+  LxPlatformCapability,
+  LxRequestFn,
+  LxRequestOptions,
+  LxResponse,
+  LxScriptSource,
+  LxSearchResult,
+  LxSourceInspection,
+} from './lxHost'
 export {
   searchOnlineTracks,
   searchMusicSource,
   isSuspiciousAudio,
   correctSuspiciousAudioSources,
+  clearSearchCache,
 } from './musicSource'
 export { searchLyrics, searchLyricsSource, BUILTIN_LYRICS_SOURCE } from './lyricsSource'
 export {

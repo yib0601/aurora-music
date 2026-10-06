@@ -17,11 +17,16 @@ import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } fr
 import { getAudioCacheUsage, clearAudioCache } from '@/services/audioCache.service'
 import { resetCoverCache } from '@/components/common/CoverImage'
 import {
+  LxScriptProbe,
+  type LxProbeState,
+} from '@/components/common/LxSourceProbe'
+import { checkLxScriptLink, lxFormSupported } from '@/components/common/lxSourceForm'
+import {
   buildAuroraEndpoints,
   checkSourceForm,
   probeAuroraService,
 } from '@aurora/shared'
-import type { AuroraEndpoints } from '@aurora/shared'
+import type { AuroraEndpoints, LxSourceInspection, OnlineSourceKind } from '@aurora/shared'
 
 /**
  * 打开外部链接。
@@ -67,7 +72,11 @@ const downloadQualityOptions = [
   { value: 'flac' as const, label: '无损 FLAC' },
 ]
 
-/** 单个音源卡片：默认仅展示名称 + 能力标签 + 启用开关；点击编辑展开草稿表单，校验通过后点保存才写入 */
+/**
+ * 单个音源卡片：默认仅展示名称 + 能力标签 + 启用开关；点击编辑展开草稿表单，校验通过后点保存才写入。
+ * 两种形态共用这张卡片：kind='lx' 是洛雪音源脚本（链接即脚本地址，字段只有 名称 / 脚本链接 / 请求头），
+ * kind='aurora' 走既有的服务地址 / 接口模板那套。探测结果一律不落库，每次进编辑按需现探。
+ */
 function SourceEditorCard({
   name,
   sourceUrl,
@@ -78,6 +87,7 @@ function SourceEditorCard({
   placeholderUrl,
   playlistPlaceholderUrl,
   kind,
+  sourceKind,
   onUpdate,
   onRemove,
 }: {
@@ -93,6 +103,8 @@ function SourceEditorCard({
   placeholderUrl: string
   playlistPlaceholderUrl?: string
   kind: 'music' | 'lyrics'
+  /** 源形态：缺省视为 aurora，老配置不写该字段 */
+  sourceKind?: OnlineSourceKind
   onUpdate: (updates: {
     name?: string
     sourceUrl?: string
@@ -105,6 +117,7 @@ function SourceEditorCard({
 }) {
   const hasHeaders = headers != null && Object.keys(headers).length > 0
   const isMusic = kind === 'music'
+  const isLx = sourceKind === 'lx'
   const [editing, setEditing] = useState(false)
   const [showHeaders, setShowHeaders] = useState(hasHeaders)
   const [nameDraft, setNameDraft] = useState(name)
@@ -117,18 +130,24 @@ function SourceEditorCard({
   const [probe, setProbe] = useState<{ loading: boolean; ok?: boolean; message?: string }>({ loading: false })
   // 探测到的服务端端点自描述：存进配置后由执行时组装使用（服务端改路径，配置自动跟上）
   const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(endpoints)
+  // 洛雪形态的探测结果：只活在本次会话，不写进配置（配置里只留脚本链接）
+  const [lxProbe, setLxProbe] = useState<LxProbeState>({ loading: false })
 
   // 形态与校验都收在 checkSourceForm：链接自身决定形态，不需要用户选
   const linkText = linkDraft.trim()
-  const { parsed, isService, linkError, showPlaylist, playlistError, canSave } = checkSourceForm({
+  const aurora = checkSourceForm({
     kind,
     link: linkDraft,
     playlistUrl: playlistDraft,
     headersInvalid,
   })
+  const { parsed, isService, linkError, showPlaylist, playlistError } = aurora
+  // 洛雪形态另走一条校验：脚本链接既不是服务地址也不是接口模板，checkSourceForm 那套判定对它无效
+  const lxLinkError = isLx && linkText ? checkLxScriptLink(linkText) : null
+  const canSave = isLx ? Boolean(linkText) && !lxLinkError && !headersInvalid : aurora.canSave
   // 预览即执行时真正会用的端点：优先服务端自描述，其次默认约定
   const preview =
-    isService && parsed ? buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, probeEndpoints) : null
+    !isLx && isService && parsed ? buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, probeEndpoints) : null
 
   // 进入编辑：链接就是配置里存的那条（端点不落库，没有需要还原的派生字段）
   const startEditing = () => {
@@ -141,6 +160,7 @@ function SourceEditorCard({
     setHeadersInvalid(false)
     setParsedHeaders(headers)
     setShowHeaders(hasHeaders)
+    setLxProbe({ loading: false })
     setEditing(true)
   }
 
@@ -184,6 +204,18 @@ function SourceEditorCard({
   const handleSave = () => {
     if (!canSave) return
     const displayName = nameDraft.trim() || name
+    if (isLx) {
+      // 洛雪形态：只存那条脚本链接与请求头，脚本源码不落库（运行时按链接现拉）
+      onUpdate({
+        name: displayName,
+        sourceUrl: linkText,
+        headers: parsedHeaders,
+        playlistUrl: undefined,
+        endpoints: undefined,
+      })
+      setEditing(false)
+      return
+    }
     if (isService) {
       // 服务地址形态：只存那条链接（+ 探测到的端点自描述），两个端点由执行时派生
       onUpdate({
@@ -226,17 +258,25 @@ function SourceEditorCard({
         ) : (
           <>
             <span className="flex-1 font-text text-caption-strong text-white/90 truncate py-1">{name || '未命名源'}</span>
-            {/* 能力标签：一眼看出这条音源能搜索、还是也能解析歌单 */}
+            {/* 能力标签：一眼看出这条音源能搜索、还是也能解析歌单；洛雪脚本源只标形态与平台 */}
             <span className="flex items-center gap-1 flex-shrink-0">
-              {sourceUrl.trim() && (
+              {isLx ? (
                 <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
-                  {isMusic ? '搜索' : '歌词'}
+                  洛雪脚本
                 </span>
-              )}
-              {isMusic && (playlistUrl || '').trim() && (
-                <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/55">
-                  歌单
-                </span>
+              ) : (
+                <>
+                  {sourceUrl.trim() && (
+                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
+                      {isMusic ? '搜索' : '歌词'}
+                    </span>
+                  )}
+                  {isMusic && (playlistUrl || '').trim() && (
+                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/55">
+                      歌单
+                    </span>
+                  )}
+                </>
               )}
             </span>
           </>
@@ -278,6 +318,27 @@ function SourceEditorCard({
       </div>
       {editing && (
         <>
+          {isLx ? (
+            /* 洛雪脚本源：只有一条脚本链接 + 可选请求头，端点与密钥那套对它不适用 */
+            <div>
+              <p className="font-text text-caption text-white/50 mb-1">脚本链接</p>
+              <LxScriptProbe
+                url={linkDraft}
+                headers={parsedHeaders}
+                instanceId={`lx-card-${name}-${sourceUrl}`}
+                probe={lxProbe}
+                onUrlChange={setLinkDraft}
+                onProbeChange={setLxProbe}
+                invalid={Boolean(lxLinkError)}
+                error={lxLinkError}
+                compact
+              />
+              <p className="font-text text-caption text-white/35 mt-1">
+                脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索
+              </p>
+            </div>
+          ) : (
+            <>
           {/* 一条链接搞定：服务地址由软件组装两个端点，接口模板原样使用——形态由链接自身判定 */}
           <div>
             <p className="font-text text-caption text-white/50 mb-1">{isMusic ? '音源地址' : '接口地址'}</p>
@@ -359,37 +420,8 @@ function SourceEditorCard({
               <p className="font-text text-caption text-white/35 truncate">歌单 {maskPreview(preview.playlist)}</p>
             </div>
           )}
-
-          {/* 请求头：可选，折叠编辑；两种形态共用（服务地址形态也可能需要自定义头） */}
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setShowHeaders(!showHeaders)}
-              className="flex items-center gap-1 font-text text-caption text-white/40 hover:text-white/70 transition-colors duration-200"
-            >
-              <ChevronDown
-                className={`h-3 w-3 transition-transform duration-200 ease-mineradio ${showHeaders ? 'rotate-180' : ''}`}
-                strokeWidth={1.8}
-              />
-              请求头{hasHeaders ? '（已配置）' : '（可选）'}
-            </button>
-            {showHeaders && (
-              <>
-                <textarea
-                  value={headersDraft}
-                  placeholder={'{"Authorization": "Bearer ..."}'}
-                  onChange={(e) => handleHeadersChange(e.target.value)}
-                  rows={2}
-                  className={`inset-field mt-1.5 w-full px-2.5 py-1.5 font-text text-caption text-white/70 resize-none ${
-                    headersInvalid ? 'is-invalid' : ''
-                  }`}
-                />
-                {headersInvalid && (
-                  <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
-                )}
-              </>
-            )}
-          </div>
+            </>
+          )}
           <div className="mt-2.5 flex items-center justify-end gap-2">
             <Button
               variant="ghost"
@@ -427,13 +459,19 @@ function SourceAddDialog({
   onSave: (source: {
     name: string
     sourceUrl: string
+    kind?: OnlineSourceKind
     playlistUrl?: string
     endpoints?: { search?: string; playlist?: string }
     headers?: Record<string, string>
+    /** 仅洛雪形态会带：测试不通过时保存为停用，不因一次网络抖动把用户挡在门外 */
+    enabled?: boolean
   }) => void
 }) {
   const [name, setName] = useState('')
-  // 一条链接：服务地址由软件组装两个端点，接口模板原样使用——形态由链接自身判定
+  // 源形态：缺省 Aurora，保持既有用户路径零变化
+  const [sourceKind, setSourceKind] = useState<OnlineSourceKind>('aurora')
+  // 一条链接：服务地址由软件组装两个端点，接口模板原样使用——形态由链接自身判定；
+  // 洛雪形态下这条链接是脚本地址
   const [linkDraft, setLinkDraft] = useState('')
   const [playlistUrl, setPlaylistUrl] = useState('')
   const [headersDraft, setHeadersDraft] = useState('')
@@ -441,11 +479,13 @@ function SourceAddDialog({
   const [headers, setHeaders] = useState<Record<string, string> | undefined>(undefined)
   const [probe, setProbe] = useState<{ loading: boolean; ok?: boolean; message?: string }>({ loading: false })
   const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(undefined)
+  const [lxProbe, setLxProbe] = useState<LxProbeState>({ loading: false })
 
   // 每次打开重置表单
   useEffect(() => {
     if (open) {
       setName('')
+      setSourceKind('aurora')
       setLinkDraft('')
       setPlaylistUrl('')
       setHeadersDraft('')
@@ -453,19 +493,44 @@ function SourceAddDialog({
       setHeaders(undefined)
       setProbe({ loading: false })
       setProbeEndpoints(undefined)
+      setLxProbe({ loading: false })
     }
   }, [open])
 
   const isLyrics = kind === 'lyrics'
+  // 洛雪脚本要在平台侧拉取与执行：桌面端经主进程、移动端走原生 HTTP，纯浏览器（web）没有该能力。
+  // 入口就挡掉——不让用户填完链接、点完测试才拿到「不支持」；平台在运行期不会变，取一次即可
+  const lxSupported = lxFormSupported({ desktop: isDesktop(), mobile: isMobile() })
+  // 只有音乐源有洛雪形态（它提供的是取址能力，歌词源那套占位符协议与它无关）
+  const isLx = kind === 'music' && sourceKind === 'lx'
   const linkText = linkDraft.trim()
   // 形态与校验都收在 checkSourceForm：链接自身决定形态，不需要用户选
-  const { parsed, isService, linkError, showPlaylist, playlistError, canSave } = checkSourceForm({
+  const aurora = checkSourceForm({
     kind,
     link: linkDraft,
     playlistUrl,
     headersInvalid,
   })
-  const preview = isService && parsed ? buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey) : null
+  const { parsed, isService, linkError, showPlaylist, playlistError } = aurora
+  // 洛雪形态另走一条校验：脚本链接既不是服务地址也不是接口模板
+  const lxLinkError = isLx ? checkLxScriptLink(linkDraft) : null
+  const canSave = isLx
+    ? Boolean(linkText) && !lxLinkError && !headersInvalid
+    : aurora.canSave
+  const preview = !isLx && isService && parsed ? buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey) : null
+
+  // 换形态等于换协议：上一种形态的链接与探测结果都不再适用，一律清空
+  const handleKindChange = (next: OnlineSourceKind) => {
+    if (next === sourceKind) return
+    // 不支持的形态直接忽略：卡片本身已按 disabled 处理，这里是双保险
+    if (next === 'lx' && !lxSupported) return
+    setSourceKind(next)
+    setLinkDraft('')
+    setPlaylistUrl('')
+    setProbe({ loading: false })
+    setProbeEndpoints(undefined)
+    setLxProbe({ loading: false })
+  }
 
   const handleProbe = async () => {
     if (!parsed || parsed.kind !== 'service') return
@@ -502,7 +567,24 @@ function SourceAddDialog({
 
   const handleSave = () => {
     if (!canSave) return
-    const displayName = name.trim() || (isLyrics ? '新歌词源' : '新音源')
+    const displayName = name.trim() || (isLyrics ? '新歌词源' : isLx ? '新洛雪源' : '新音源')
+    if (isLx) {
+      // 洛雪形态：只写脚本链接，脚本源码不落库（运行时按链接现拉）。
+      // 测试未通过也允许先存，但落 enabled=false——源不可用就不该默认参与搜索，
+      // 否则每次搜索都要白等一轮脚本拉取失败；一次网络抖动不会把用户挡在门外。
+      onSave({
+        name: displayName,
+        sourceUrl: linkText,
+        kind: 'lx',
+        headers,
+        enabled: lxProbe.ok === true,
+      })
+      onOpenChange(false)
+      if (lxProbe.ok !== true) {
+        toast('脚本未测试通过，已保存为停用；测试通过后可在列表中启用', { type: 'error', duration: 5000 })
+      }
+      return
+    }
     if (isService) {
       // 服务地址形态：只存那条链接（+ 探测到的端点自描述），两个端点由执行时派生
       onSave({ name: displayName, sourceUrl: linkText, endpoints: probeEndpoints })
@@ -527,25 +609,92 @@ function SourceAddDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">
-            {isLyrics ? '添加歌词源' : '添加音源'}
+            {isLyrics ? '添加歌词源' : isLx ? '添加洛雪音源' : '添加音源'}
           </DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
             {isLyrics
               ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
-              : '填一条链接即可：服务地址会自动生成搜索与歌单解析接口，第三方接口地址原样使用'}
+              : isLx
+                ? '粘贴一条洛雪音源脚本链接：脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索'
+                : '填一条链接即可：服务地址会自动生成搜索与歌单解析接口，第三方接口地址原样使用'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {/* 形态选择：只有音乐源有两种形态，歌词源固定接口模板，不显示该区块（既有路径零变化） */}
+          {!isLyrics && (
+            <div>
+              <p className="font-text text-caption text-white/60 mb-1.5">音源形态</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { value: 'aurora' as const, label: 'Aurora 协议源', hint: '服务地址 / 接口模板' },
+                    {
+                      value: 'lx' as const,
+                      label: '洛雪音源脚本',
+                      // 纯浏览器没有脚本执行能力：卡片直接说明原因并禁用，不让用户白填一遍
+                      hint: lxSupported ? '脚本链接（取址）' : '仅桌面端 / 手机端支持',
+                    },
+                  ]
+                ).map((option) => {
+                  const disabled = option.value === 'lx' && !lxSupported
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={disabled}
+                      title={disabled ? '浏览器环境不支持洛雪音源脚本，请使用桌面端或手机端' : undefined}
+                      onClick={() => handleKindChange(option.value)}
+                      className={`text-left px-3 py-2 rounded-[10px] border transition-colors duration-200 ease-mineradio ${
+                        sourceKind === option.value
+                          ? 'border-mint/50 bg-mint/[0.08]'
+                          : 'border-white/[0.08] hover:border-white/20'
+                      } ${disabled ? 'opacity-45 cursor-not-allowed hover:border-white/[0.08]' : ''}`}
+                    >
+                      <span
+                        className={`block font-text text-caption-strong ${
+                          sourceKind === option.value ? 'text-mint' : 'text-white/80'
+                        }`}
+                      >
+                        {option.label}
+                      </span>
+                      <span className="block font-text text-caption text-white/45 mt-0.5">{option.hint}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <div>
             <p className="font-text text-caption text-white/60 mb-1.5">名称（可选）</p>
             <input
               type="text"
               value={name}
-              placeholder={isLyrics ? '如：LRCLIB' : '如：我的音源'}
+              placeholder={isLyrics ? '如：LRCLIB' : isLx ? '如：我的洛雪源' : '如：我的音源'}
               onChange={(e) => setName(e.target.value)}
               className={inputCls}
             />
           </div>
+          {isLx ? (
+            <div>
+              <p className="font-text text-caption text-white/60 mb-1.5">脚本链接</p>
+              <LxScriptProbe
+                url={linkDraft}
+                headers={headers}
+                instanceId="lx-add-dialog"
+                probe={lxProbe}
+                onUrlChange={setLinkDraft}
+                onProbeChange={setLxProbe}
+                invalid={Boolean(lxLinkError)}
+                error={lxLinkError}
+              />
+              {!lxLinkError && (
+                <p className="font-text text-caption text-white/35 mt-1">
+                  脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
           <div>
             <p className="font-text text-caption text-white/60 mb-1.5">{isLyrics ? '接口地址' : '音源地址'}</p>
             <input
@@ -628,6 +777,8 @@ function SourceAddDialog({
                   <p className="font-text text-caption text-white/35 truncate">歌单 {maskKey(preview.playlist)}</p>
                 </div>
               )}
+            </>
+          )}
             </>
           )}
           <div>
@@ -1531,6 +1682,7 @@ export function SettingsPage() {
                         placeholderUrl="https://your-api.com/search?q={query}"
                         playlistPlaceholderUrl="https://your-api.com/resolve?url={url}"
                         kind="music"
+                        sourceKind={src.kind}
                         endpoints={src.endpoints}
                         onUpdate={(updates) => updateOnlineSource(src.id, updates)}
                         onRemove={() => removeOnlineSource(src.id)}
@@ -1684,7 +1836,7 @@ export function SettingsPage() {
         open={addMusicOpen}
         kind="music"
         onOpenChange={setAddMusicOpen}
-        onSave={(source) => addOnlineSource({ ...source, enabled: true })}
+        onSave={(source) => addOnlineSource({ ...source, enabled: source.enabled ?? true })}
       />
       <SourceAddDialog
         open={addLyricsOpen}

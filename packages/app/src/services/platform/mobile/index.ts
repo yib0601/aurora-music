@@ -9,6 +9,8 @@ import type {
   WindowControls,
   OnlineTrackSearchResult,
   OnlineSearchOptions,
+  LxScriptSource,
+  LxSourceInspection,
   LyricsSearchOptions,
   LyricsSearchResult,
   FolderPickerOptions,
@@ -39,6 +41,12 @@ import {
   resolveMobileCachedAudio,
   resolveMobileCachedCover,
 } from './mediaCache'
+import {
+  fetchLxScript,
+  inspectLxSource,
+  installMobileLxHost,
+  resolveLxSourceUrl,
+} from './lxHost'
 import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, encodeFilePathToUrl } from '@aurora/shared'
 import {
   requestMediaPermissions,
@@ -51,6 +59,10 @@ import {
 // fetch 实现（仅原生容器生效），让 @aurora/shared 的请求绕开 WebView 限制
 if (Capacitor.isNativePlatform()) {
   setCustomFetch(createNativeFetch())
+  // 洛雪宿主依赖（含脚本源码供应器）必须在这里注册一次，不能等到用户点「测试洛雪源」：
+  // 聚合搜索会先于它发生，未注册时 searchOnlineTracks 会把 kind='lx' 的源判为
+  // 「脚本源码不可得」而静默跳过——用户看到的是「配了源却搜不出歌」且没有任何报错。
+  installMobileLxHost()
 }
 
 // 单例数据库实例
@@ -509,7 +521,39 @@ export function createMobilePlatform(): PlatformInterface & {
     },
 
     /**
-     * 音乐馆（推荐歌单 / 榜单）：渲染层直调共享执行器。
+     * 洛雪音源（kind='lx'）：
+     * - inspect / search / fetchScript：移动端没有「宿主和调用方分离」的问题，
+     *   渲染层直接调共享宿主（依赖在 ./lxHost.ts 注册，请求走 CapacitorHttp 原生 HTTP）；
+     * - resolveLxTrack：与桌面端同一套语义（回填 onlineUrl 的副本，失败返回 null）。
+     */
+    async fetchLxScript(url: string): Promise<string> {
+      return await fetchLxScript(url)
+    },
+
+    async inspectLxSource(source: LxScriptSource): Promise<LxSourceInspection> {
+      return await inspectLxSource(source)
+    },
+
+    async resolveLxTrack(track: Track): Promise<Track | null> {
+      if (!track?.lx) return null
+      try {
+        const { useLibraryStore } = await import('@/stores/libraryStore')
+        const state = useLibraryStore.getState()
+        const source = state.onlineSources.find((s) => s.id === track.lx!.sourceId)
+        // 找不到音源配置或该源不是脚本源：返回 null 由调用方回落既有取址路径
+        if (!source || source.kind !== 'lx') return null
+        // 脚本多数按音质档位取址，档位唯一意图来源是用户的下载音质设置（默认 flac）
+        const { url } = await resolveLxSourceUrl(source, track.lx, state.downloadQuality || 'flac')
+        if (!url || !/^https?:\/\//i.test(url)) return null
+        return { ...track, onlineUrl: url }
+      } catch (err) {
+        console.warn('[Lx] 移动端脚本取址失败:', track.lx?.sourceId, err)
+        return null
+      }
+    },
+
+    /**
+     * 在线音乐（推荐歌单 / 榜单）：渲染层直调共享执行器。
      * 移动端 fetch 已被换成 CapacitorHttp（原生 HTTP），不受 WebView CORS 限制，
      * 因此无需像桌面端那样绕主进程
      */

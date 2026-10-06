@@ -6,6 +6,10 @@ import type {
   WindowControls,
   OnlineTrackSearchResult,
   OnlineSearchOptions,
+  OnlineSourceConfig,
+  DownloadQuality,
+  LxScriptSource,
+  LxSourceInspection,
   LyricsSearchOptions,
   LyricsSearchResult,
   Track,
@@ -28,6 +32,29 @@ import { encodeFilePathToUrl, encodePathSegments } from '@aurora/shared'
 // 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）；
 // DEFAULT_MOBILE_DOWNLOAD_DIR 供设置页展示「未设置时的默认目录」文案
 export { setFolderPickerHandler, DEFAULT_MOBILE_DOWNLOAD_DIR }
+
+/**
+ * 取音源配置与下载音质的信源（供洛雪取址用）：渲染层各处的音源列表最终都来自
+ * libraryStore 的持久化状态，这里惰性动态导入以避开「store ← platform」的
+ * 初始化环（store 顶层 import platform）。
+ */
+async function loadLibraryState(): Promise<{
+  sources: OnlineSourceConfig[]
+  quality: DownloadQuality
+}> {
+  try {
+    const mod = await import('@/stores/libraryStore')
+    const state = mod.useLibraryStore?.getState?.()
+    return {
+      sources: Array.isArray(state?.onlineSources) ? state.onlineSources : [],
+      // 与下载音质设置一致：脚本源的档位由脚本自己声明，用户设置的档位是唯一意图来源
+      quality: state?.downloadQuality || 'flac',
+    }
+  } catch (err) {
+    console.warn('[Lx] 读取音源配置失败:', err)
+    return { sources: [], quality: 'flac' }
+  }
+}
 
 // 平台扩展能力：扫描事件订阅、媒体键、在线歌词搜索
 // 桌面端通过 electronAPI 转发；移动端用回调机制
@@ -247,7 +274,39 @@ export function createDesktopPlatform(): Platform {
       return api.searchOnlineTracks(query, options)
     },
 
-    // 音乐馆：桌面端转发主进程执行（渲染进程 fetch 会被上游 CORS 拦截）。
+    // ─── 洛雪音源（kind='lx'）：转发到主进程脚本宿主 ───
+    // 宿主实现里含函数（request / utils），无法经 IPC 序列化，因此宿主只在主进程装配；
+    // 渲染层只传「音源配置 + 查询词 + 定位信息」这类纯数据。
+    async fetchLxScript(url: string): Promise<string> {
+      if (!api?.lxSource?.fetchScript) throw new Error('当前版本不支持洛雪音源脚本')
+      return api.lxSource.fetchScript(url)
+    },
+
+    async inspectLxSource(source: LxScriptSource): Promise<LxSourceInspection> {
+      if (!api?.lxSource?.inspect) return { ok: false, platforms: {}, error: '当前版本不支持洛雪音源脚本' }
+      return api.lxSource.inspect(source)
+    },
+
+    async resolveLxTrack(track: Track): Promise<Track | null> {
+      if (!track?.lx) return null // 非脚本源（或条目缺定位信息）：调用方回落既有取址路径
+      if (!api?.lxSource?.resolveUrl) return null
+      // 音源配置只在调用时读：用户可能在设置页刚改过脚本地址或删过源
+      const { sources, quality } = await loadLibraryState()
+      const source = sources.find((s) => s.id === track.lx!.sourceId)
+      // 找不到音源配置或该源不是脚本源时同样返回 null：不猜、不拿别的源硬取
+      if (!source || source.kind !== 'lx') return null
+      try {
+        const { url } = await api.lxSource.resolveUrl(track.lx, source, quality)
+        if (!url || !/^https?:\/\//i.test(url)) return null
+        // 只回填副本：直链会过期，不落盘、不写库（持久化时 onlineUrl 本就剥离）
+        return { ...track, onlineUrl: url }
+      } catch (err) {
+        console.warn('[Lx] 脚本取址失败:', track.lx.sourceId, err)
+        return null
+      }
+    },
+
+    // 在线音乐：桌面端转发主进程执行（渲染进程 fetch 会被上游 CORS 拦截）。
     // 未实现时返回空结果而不是抛错：调用方据空结果展示空态，不因平台差异崩
     musicHall: {
       async recommendPlaylists(source, options) {
@@ -400,13 +459,19 @@ export function createPlatform(): Platform {
     async saveLyrics() { return '' },
     async readLyrics() { return null },
     async searchOnlineTracks() { return [] },
+    // 未知环境无脚本宿主能力：按空能力处理，调用方回落既有取址路径而不崩
+    async fetchLxScript() { throw new Error('当前平台不支持洛雪音源脚本') },
+    async inspectLxSource(): Promise<LxSourceInspection> {
+      return { ok: false, platforms: {}, error: '当前平台不支持洛雪音源脚本' }
+    },
+    async resolveLxTrack() { return null },
     database: new NoopDatabase(),
     windowControls: new NoopWindowControls(),
   }
 }
 
 /**
- * 音乐馆读取的统一入口：平台未实现该能力（web / Noop）时返回空结果，
+ * 在线音乐读取的统一入口：平台未实现该能力（web / Noop）时返回空结果，
  * 调用方据空结果展示空态 —— 浏览器里不因平台差异崩，也不出现半截内容。
  */
 export async function hallRecommend(

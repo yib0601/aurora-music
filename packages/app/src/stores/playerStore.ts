@@ -47,8 +47,8 @@ interface PlayerState {
   shuffleMode: ShuffleMode
   shuffleHistory: number[]
 
-  playTrack: (track: Track) => void
-  playQueue: (tracks: Track[], startIndex?: number) => void
+  playTrack: (track: Track) => Promise<void>
+  playQueue: (tracks: Track[], startIndex?: number) => Promise<void>
   addToQueue: (track: Track) => void
   addToPlayNext: (track: Track) => void
   removeFromQueue: (index: number) => void
@@ -95,7 +95,9 @@ const initialState = {
  */
 function stripOnlineUrl(track: Track | null): Track | null {
   if (!track || !track.onlineUrl) return track
-  const { onlineUrl: _url, ...rest } = track
+  // lx 定位信息（洛雪脚本源）与直链同命运：脚本侧的曲目定位依赖上游、重启后未必有效，
+  // 交由播放时的按需取址重建，因此这里随 onlineUrl 一起剥离
+  const { onlineUrl: _url, lx: _lx, ...rest } = track
   return rest as Track
 }
 
@@ -117,6 +119,38 @@ function isNetworkBackedTrack(track: Track | null | undefined): boolean {
  * 失败（未配置歌源 / 无结果 / 网络异常）时静默：曲目元信息仍保留在 UI，
  * 用户点播放会经 ensurePlayableTrack 再次取址。
  */
+/**
+ * 播放前的取址闸门：用户点播的曲目可能**还没有播放地址**。
+ *
+ * 典型场景就是洛雪脚本源：脚本的搜索只给元信息（曲目定位信息 lx），直链要按 id
+ * 现取（见平台侧 resolveLxTrack）；导入歌单 / 最近播放里的在线曲目在落盘时也剥离了地址。
+ * 没有这道闸门，播放器会拿着空地址去加载，表现为「双击了但没声音」，且毫无提示。
+ *
+ * 取址失败不阻断：返回原曲目，交给播放器按原有语义处理（无地址即不播放）。
+ */
+async function resolveBeforePlay(track: Track): Promise<Track> {
+  if (track.path || track.onlineUrl || track.remoteUrl) return track
+  if (!track.lx && !track.onlineSource && !track.onlineId) return track
+  try {
+    const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
+    return (await ensurePlayableTrack(track)) || track
+  } catch (err) {
+    console.warn('[播放] 按需取址失败:', err)
+    return track
+  }
+}
+
+/** 取址 → 播放（自动续播路径共用）：取址失败就按原样交给播放器，保持既有语义 */
+async function playResolved(track: Track, volume: number, muted: boolean, autoplay = true): Promise<void> {
+  const ready = await resolveBeforePlay(track)
+  if (ready !== track) {
+    const state = usePlayerStore.getState()
+    usePlayerStore.setState({ queue: state.queue.map((t) => (t.id === ready.id ? ready : t)) })
+    if (state.currentTrack?.id === ready.id) usePlayerStore.setState({ currentTrack: ready })
+  }
+  audioPlayTrack(ready, volume, muted, autoplay)
+}
+
 async function restoreOnlineTrack(): Promise<void> {
   const track = usePlayerStore.getState().currentTrack
   if (!track) return
@@ -229,13 +263,18 @@ export const usePlayerStore = create<PlayerState>()(
     (set, get) => ({
       ...initialState,
 
-      playTrack: (track) => {
+      playTrack: async (track) => {
+        // 取址闸门先行：在线条目（尤其洛雪脚本源）多数没有现成地址
+        const ready = await resolveBeforePlay(track)
         const state = get()
-        let index = state.queue.findIndex((t) => t.id === track.id)
+        let index = state.queue.findIndex((t) => t.id === ready.id)
         let newQueue = state.queue
         if (index < 0) {
-          newQueue = [...state.queue, track]
+          newQueue = [...state.queue, ready]
           index = newQueue.length - 1
+        } else {
+          // 命中的旧条目可能还是无地址的快照：用取到地址的副本替换，避免续播时又空跑
+          newQueue = state.queue.map((t) => (t.id === ready.id ? ready : t))
         }
         const newHistory =
           state.shuffleMode === 'on'
@@ -243,26 +282,31 @@ export const usePlayerStore = create<PlayerState>()(
             : state.shuffleHistory
         set({ queue: newQueue, currentIndex: index, shuffleHistory: newHistory })
         if (useNative()) {
-          set({ currentTrack: track, progress: 0 })
+          set({ currentTrack: ready, progress: 0 })
           nativeBootstrapPlay(0, true)
           return
         }
-        audioPlayTrack(track, state.volume, state.muted)
+        audioPlayTrack(ready, state.volume, state.muted)
       },
 
-      playQueue: (tracks, startIndex = 0) => {
+      playQueue: async (tracks, startIndex = 0) => {
         // 空队列或索引越界时直接返回，避免 audioPlayTrack(undefined) 崩溃
         if (!tracks || tracks.length === 0) return
         const idx = Math.max(0, Math.min(startIndex, tracks.length - 1))
+        // 队列先落地再取址：取址可能有网络往返，期间用户已能看到队列与当前曲目
         const newHistory =
           get().shuffleMode === 'on' && tracks[idx] ? [idx] : []
         set({ queue: tracks, currentIndex: idx, shuffleHistory: newHistory })
+        const ready = await resolveBeforePlay(tracks[idx])
+        if (ready !== tracks[idx]) {
+          set({ queue: get().queue.map((t) => (t.id === ready.id ? ready : t)) })
+        }
         if (useNative()) {
-          set({ currentTrack: tracks[idx], progress: 0 })
+          set({ currentTrack: ready, progress: 0 })
           nativeBootstrapPlay(0, true)
           return
         }
-        audioPlayTrack(tracks[idx], get().volume, get().muted)
+        audioPlayTrack(ready, get().volume, get().muted)
       },
 
       addToQueue: (track) => {
@@ -270,6 +314,12 @@ export const usePlayerStore = create<PlayerState>()(
         if (queue.some((t) => t.id === track.id)) return
         set({ queue: [...queue, track] })
         syncNativeMirror()
+        // 空闲时就先取址：切到它时才不会有「等了几秒才开始响」的顿感
+        void resolveBeforePlay(track).then((ready) => {
+          if (ready === track) return
+          const st = get()
+          set({ queue: st.queue.map((t) => (t.id === ready.id ? ready : t)) })
+        })
       },
 
       addToPlayNext: (track) => {
@@ -278,6 +328,11 @@ export const usePlayerStore = create<PlayerState>()(
         const insertAt = currentIndex < 0 ? 0 : currentIndex + 1
         set({ queue: [...queue.slice(0, insertAt), track, ...queue.slice(insertAt)] })
         syncNativeMirror()
+        void resolveBeforePlay(track).then((ready) => {
+          if (ready === track) return
+          const st = get()
+          set({ queue: st.queue.map((t) => (t.id === ready.id ? ready : t)) })
+        })
       },
 
       removeFromQueue: (index) => {
@@ -384,7 +439,7 @@ export const usePlayerStore = create<PlayerState>()(
 
         if (state.repeatMode === 'one') {
           audioSeekTo(0)
-          audioPlayTrack(state.currentTrack!, state.volume, state.muted)
+          void playResolved(state.currentTrack!, state.volume, state.muted)
           return
         }
 
@@ -401,7 +456,7 @@ export const usePlayerStore = create<PlayerState>()(
           const newHistory = [...state.shuffleHistory, nextIndex].slice(-100)
           const nextTrack = state.queue[nextIndex]
           set({ currentIndex: nextIndex, shuffleHistory: newHistory })
-          audioPlayTrack(nextTrack, state.volume, state.muted)
+          void playResolved(nextTrack, state.volume, state.muted)
           return
         }
 
@@ -417,7 +472,7 @@ export const usePlayerStore = create<PlayerState>()(
 
         const nextTrack = state.queue[nextIndex]
         set({ currentIndex: nextIndex })
-        audioPlayTrack(nextTrack, state.volume, state.muted)
+        void playResolved(nextTrack, state.volume, state.muted)
       },
 
       previous: () => {
@@ -452,7 +507,7 @@ export const usePlayerStore = create<PlayerState>()(
 
         const prevTrack = state.queue[prevIndex]
         set({ currentIndex: prevIndex })
-        audioPlayTrack(prevTrack, state.volume, state.muted)
+        void playResolved(prevTrack, state.volume, state.muted)
       },
 
       seekTo: (seconds) => {

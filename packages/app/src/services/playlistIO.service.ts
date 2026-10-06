@@ -98,9 +98,20 @@ const PLAY_RESOLVE_CONCURRENCY = 4
  * 导入歌单的在线曲目不持久化播放地址（会过期），用用户配置的
  * 音乐源重新搜索取最佳结果，并回填 importedTracks 供后续播放直接使用。
  * 未配置音乐源或无结果返回 null
+ *
+ * 洛雪脚本源（kind='lx'）走另一条路：曲目自带脚本定位信息（track.lx）时优先让脚本
+ * 自己取址——脚本侧定位的是具体平台的具体曲目，比「按歌名重新搜一遍」准得多；
+ * 取不到再落回下面的统一搜索取址。
  */
 export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
   if (track.path || track.onlineUrl) return track
+  if (track.lx) {
+    const viaScript = await platform.resolveLxTrack?.(track).catch(() => null)
+    if (viaScript?.onlineUrl) {
+      usePlaylistStore.getState().addImportedTracks([viaScript])
+      return viaScript
+    }
+  }
   const { onlineSources, downloadQuality } = useLibraryStore.getState()
   if (!onlineSources.some((s) => s.enabled && searchEndpointOf(s))) return null
   try {
@@ -128,6 +139,8 @@ export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
       onlineSourceName: r.sourceName,
       onlineId: r.id,
       duration: track.duration || r.duration,
+      // 洛雪源的结果可能只有元信息（直链按需再取），把定位信息一并带上
+      lx: r.lx,
     }
     usePlaylistStore.getState().addImportedTracks([resolved])
     return resolved

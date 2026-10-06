@@ -110,7 +110,21 @@ const electronAPI = {
   ): Promise<OnlineTrackSearchResult[]> => {
     return ipcRenderer.invoke('tracks:searchOnline', query, options)
   },
-  // 音乐馆（推荐歌单 / 榜单）：与在线搜索同理，主进程执行、渲染层只拿结果。
+  // 洛雪音源（kind='lx'）：脚本宿主在主进程执行（宿主依赖含函数、且渲染进程直连上游会被 CORS 拦）。
+  // source 为渲染层持有的音源配置（含 sourceUrl 与可选的 script 源码）；
+  // resolveUrl 回喂脚本返回的定位信息（lx: { sourceId, platform, meta }）取直链。
+  lxSource: {
+    fetchScript: (url: string, force?: boolean): Promise<string> =>
+      ipcRenderer.invoke('lx:fetchScript', url, force),
+    inspect: (source: unknown, force?: boolean): Promise<unknown> =>
+      ipcRenderer.invoke('lx:inspect', source, force),
+    search: (source: unknown, query: string, limit?: number): Promise<unknown[]> =>
+      ipcRenderer.invoke('lx:search', source, query, limit),
+    resolveUrl: (ref: unknown, source: unknown, quality?: string): Promise<{ url: string; quality: string }> =>
+      ipcRenderer.invoke('lx:resolveUrl', ref, source, quality),
+    clearCache: (): Promise<void> => ipcRenderer.invoke('lx:clearCache'),
+  },
+  // 在线音乐（推荐歌单 / 榜单）：与在线搜索同理，主进程执行、渲染层只拿结果。
   // source 为渲染层选定的音源（应用不内置源，配置由用户持有）
   musicHall: {
     recommendPlaylists: (source: unknown, options?: unknown): Promise<unknown[]> =>

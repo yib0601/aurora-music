@@ -17,10 +17,35 @@
 /** 在线音质档位：标准 128k / 高品质 320k / 无损 FLAC */
 export type DownloadQuality = '128' | '320' | 'flac'
 
+/**
+ * 音源形态：
+ * - `aurora`（缺省）：本应用自有协议（服务地址自组装端点 / 用户手写的接口模板）；
+ * - `lx`：洛雪音乐（lx-music-desktop / lx-music-mobile）的用户自定义音源脚本，
+ *   sourceUrl 填脚本链接，脚本在客户端沙箱里加载执行（见 lxHost.ts）。
+ *   脚本源多数只有「取址」能力（无公共搜索接口），搜索由本应用自己做。
+ */
+export type OnlineSourceKind = 'aurora' | 'lx'
+
+/**
+ * 洛雪脚本源的曲目定位信息：脚本多数只有 musicUrl（取址）而没有搜索接口，
+ * 因此曲目由本应用搜索得到（音源服务的 search，或脚本自带的 search 能力），
+ * 重取直链时把这份定位信息原样回喂脚本（脚本按自己的字段取 id）。
+ */
+export interface LxTrackRef {
+  /** 洛雪音源（脚本）id */
+  sourceId: string
+  /** 平台标识（kw / kg / tx / wy / mg / git …） */
+  platform: string
+  /** 脚本返回的原始曲目对象（原样回传，脚本按自己的字段名取值） */
+  meta: Record<string, unknown>
+}
+
 /** 音源配置：一个源可同时提供在线搜索与歌单解析两种能力 */
 export interface OnlineSourceConfig {
   id: string
   name: string
+  /** 源形态，缺省视为 aurora（老配置不写该字段） */
+  kind?: OnlineSourceKind
   /**
    * 音源地址：用户填的那条链接，也是本配置唯一的事实源。
    * 端点地址在执行时才解析组装（见 auroraPreset.ts 的 searchEndpointOf / playlistEndpointOf）：
@@ -53,7 +78,7 @@ export interface OnlineSourceConfig {
   /**
    * 服务端自描述的端点模板缓存（设置页「测试连接」读到才有）：
    * 服务端改路径或参数名时客户端无需改配置；读到之前按默认约定组装。
-   * 前两项是既有能力（搜索 / 歌单解析），后三项由「音乐馆」使用（推荐歌单 / 榜单列表 / 榜单详情）。
+   * 前两项是既有能力（搜索 / 歌单解析），后三项由「在线音乐」使用（推荐歌单 / 榜单列表 / 榜单详情）。
    */
   endpoints?: {
     search?: string
@@ -92,12 +117,18 @@ export interface OnlineTrackSearchResult {
   source: string
   /** 来源展示名（源配置的 name） */
   sourceName: string
+  /**
+   * 洛雪脚本源的取址定位信息（kind='lx' 的源才有）。
+   * 带该字段的条目 `audioUrl` 可能为空串——脚本源的直链必须回喂脚本按需取
+   * （见 lxHost.resolveLxSourceUrl），搜索阶段不取址。
+   */
+  lx?: LxTrackRef
 }
 
-// ─── 音乐馆（在线推荐歌单 / 排行榜，只读浏览） ─────────────────
+// ─── 在线音乐（在线推荐歌单 / 排行榜，只读浏览） ─────────────────
 // 与「在线搜索」并列的第三类只读能力：应用仍然不内置任何平台抓取器，
 // 数据由用户配置的音源服务按协议提供（见 QQ_Music 的 /aurora/recommend 等端点）。
-// 音乐馆只做浏览：点开的歌单/榜单是**临时集合**，不落库、不下载；
+// 在线音乐只做浏览：点开的歌单/榜单是**临时集合**，不落库、不下载；
 // 播放按需取址（本地有同曲播本地，否则按名搜索取在线地址）。
 
 /** 推荐歌单条目（服务端 `list[]`） */
@@ -156,7 +187,7 @@ export interface ToplistSong {
   songmid?: string
 }
 
-/** 音乐馆浏览请求参数 */
+/** 在线音乐浏览请求参数 */
 export interface MusicHallOptions {
   /** 推荐歌单：分类 id（默认全部） */
   categoryId?: string
@@ -170,7 +201,7 @@ export interface MusicHallOptions {
   id?: number | string
 }
 
-/** 音乐馆端点取值（源配置与之结构兼容，供执行器判定能力） */
+/** 在线音乐端点取值（源配置与之结构兼容，供执行器判定能力） */
 export interface MusicHallSourceInput {
   sourceUrl?: string
   endpoints?: { recommend?: string; toplists?: string; toplist?: string } | null
@@ -178,7 +209,7 @@ export interface MusicHallSourceInput {
   enabled?: boolean
 }
 
-/** 音乐馆数据来源（一条音源 = 一个服务端） */
+/** 在线音乐数据来源（一条音源 = 一个服务端） */
 export interface MusicHallSource extends MusicHallSourceInput {
   id: string
   name: string

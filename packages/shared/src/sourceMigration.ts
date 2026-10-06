@@ -83,6 +83,23 @@ export function migrateOnlineSources(sources: unknown): OnlineSourceConfig[] {
     if (!raw || typeof raw !== 'object') continue
     const s = raw as RawSource
     const sourceUrl = sourceUrlOf(s)
+
+    // 洛雪脚本源（kind='lx'）没有 aurora 端点一说：地址就是脚本链接，
+    // 也不存在 {query} 接口模板形态，因此整体跳过端点解析与派生。
+    // 脚本源码不落库（体积可达数百 KB），运行前由平台侧按 sourceUrl 拉取并缓存。
+    if (s.kind === 'lx') {
+      const lx: OnlineSourceConfig = {
+        id: typeof s.id === 'string' && s.id ? s.id : defaultId(),
+        name: typeof s.name === 'string' && s.name ? s.name : '洛雪音源',
+        kind: 'lx',
+        sourceUrl,
+        enabled: s.enabled !== false,
+      }
+      if (s.headers && typeof s.headers === 'object') lx.headers = s.headers
+      out.push(lx)
+      continue
+    }
+
     const parsed = parseSourceInput(sourceUrl)
 
     const migrated: OnlineSourceConfig = {

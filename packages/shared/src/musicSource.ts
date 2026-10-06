@@ -1,6 +1,8 @@
 import type { DownloadQuality, OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
 import { searchEndpointOf } from './auroraPreset'
 import { fetchWithTimeout } from './fetchWithTimeout'
+import { getLxHostDeps } from './lxHost'
+import { resolveLxScript, searchLxSourceForAggregate } from './lxResolver'
 
 // 统一默认请求头（部分接口对 UA 敏感），可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -150,27 +152,175 @@ export function correctSuspiciousAudioSources(
 }
 
 /**
+ * 用「条目自带的 128 档地址」就地替换，等价于拿一次额外 128 搜索来校正。
+ * 服务端协议里主档响应会回填 qualityUrls / url_128（多音质直链），
+ * 其中 128 档就是这个源的基础档、元数据与音频同源。可用于校正时完全不必再打一次网络。
+ */
+function correctSuspiciousFromOwnBaseline(
+  results: OnlineTrackSearchResult[]
+): OnlineTrackSearchResult[] {
+  return results.map((r) => {
+    if (!isSuspiciousAudio(r)) return r
+    const own128 = r.qualityUrls?.['128']
+    if (!own128) return r
+    // 替换后必须 128 档自身不再可疑，否则保持原样（与 correctSuspiciousAudioSources 同口径）
+    if (isSuspiciousAudio({ ...r, audioQuality: '128', audioUrl: own128 })) return r
+    return { ...r, audioUrl: own128, audioQuality: '128' }
+  })
+}
+
+/** 结果里是否还存在「声称无损、地址却有损」的可疑条目 */
+function hasSuspicious(results: OnlineTrackSearchResult[]): boolean {
+  return results.some((r) => isSuspiciousAudio(r))
+}
+
+/**
+ * 搜索结果短 TTL 缓存（含并发合流）
+ *
+ * 为什么值得：搜索结果被「浮层反复开关 / 改字又改回 / 键盘上下切词」反复命中，
+ * 而每次 miss 都是一轮完整上游链路。缓存只在内存、进程退出即失效，不落盘、不外发。
+ * 取舍：TTL 取 30s——远小于上游直链自身时效（QQ vkey 数小时），
+ * 又不至于让用户感知到「搜索结果不新鲜」。失败结果不缓存，避免把一次抖动固化半分钟。
+ */
+const SEARCH_CACHE_TTL_MS = 30_000
+const SEARCH_CACHE_MAX = 200
+const searchCache = new Map<string, { at: number; value: OnlineTrackSearchResult[] }>()
+const searchInFlight = new Map<string, Promise<OnlineTrackSearchResult[]>>()
+
+/** 清空搜索缓存（音源配置变更时调用）：合流中的请求不受影响，其完成后也不再写入 */
+export function clearSearchCache(): void {
+  searchCache.clear()
+  searchInFlight.clear()
+}
+
+/**
+ * 洛雪源是否具备搜索所需的最小条件（脚本源没有 aurora 端点，不能沿用 searchEndpointOf 判空）
+ */
+function isLxUsable(source: OnlineSourceConfig): boolean {
+  return source.kind === 'lx' && !!source.enabled && !!String(source.sourceUrl || '').trim()
+}
+
+/** 源是否应参与聚合搜索：lx 源走脚本宿主，其余走既有端点判定 */
+export function isSearchableSource(source: OnlineSourceConfig | null | undefined): boolean {
+  if (!source) return false
+  if (source.kind === 'lx') return isLxUsable(source)
+  return !!source.enabled && !!searchEndpointOf(source)
+}
+
+/**
+ * 单源搜索的缓存键前缀（纯函数，便于单测）。
+ *
+ * lx 源必须用「id + kind + 脚本地址」兜底：脚本源没有 aurora 端点，若继续拿
+ * searchEndpointOf 拼键，多个 lx 源会一起退化成同一个空端点前缀 → 缓存串味。
+ * 非 lx 源键形不变（仍是解析出的端点地址），保证既有缓存语义与测试口径不漂移。
+ */
+export function sourceCacheKeyOf(source: OnlineSourceConfig): string {
+  if (source.kind === 'lx') return `lx\u0001${source.id}\u0001${String(source.sourceUrl || '').trim()}`
+  return searchEndpointOf(source)
+}
+
+/** 单源搜索 + 缓存。命中内存直接返回；同刻同键并发共享同一次网络执行（后到的等前一个）。
+ *
+ * key 同时纳入「解析出的端点地址」：用户改了音源地址而 id 未变时，缓存必须立刻失效。
+ * 返回同一份数组引用——调用方只做遍历与拼接，不就地修改，无需拷贝。
+ */
+function searchSourceCached(
+  source: OnlineSourceConfig,
+  query: string,
+  quality?: DownloadQuality
+): Promise<OnlineTrackSearchResult[]> {
+  const key = `${sourceCacheKeyOf(source)}\u0000${quality || ''}\u0000${query}`
+  const hit = searchCache.get(key)
+  if (hit && Date.now() - hit.at < SEARCH_CACHE_TTL_MS) {
+    // LRU 触达：重新插入即移到队尾
+    searchCache.delete(key)
+    searchCache.set(key, hit)
+    return Promise.resolve(hit.value)
+  }
+
+  const running = searchInFlight.get(key)
+  if (running) return running
+
+  const exec =
+    source.kind === 'lx'
+      ? searchLxSourceForAggregate(source, query, getLxHostDeps())
+      : searchMusicSource(source, query, quality)
+
+  const task = exec
+    .then((value: OnlineTrackSearchResult[]) => {
+      searchCache.delete(key)
+      searchCache.set(key, { at: Date.now(), value })
+      while (searchCache.size > SEARCH_CACHE_MAX) {
+        const oldest = searchCache.keys().next().value
+        if (oldest === undefined) break
+        searchCache.delete(oldest)
+      }
+      return value
+    })
+    .finally(() => {
+      searchInFlight.delete(key)
+    })
+  searchInFlight.set(key, task)
+  return task
+}
+
+/**
  * 聚合在线搜索：并发调用所有启用的源
  * - 单源失败不影响其他源；全部失败时抛错，前端展示直白的中文网络错误提示
- * - 请求音质非 128 时额外拉一次 128 基线档，用于可疑音源校正（见 correctSuspiciousAudioSources）
+ * - 请求音质非 128 时，另有 128 档用于可疑音源校正（见 correctSuspiciousAudioSources）
+ *
+ * 降低搜索耗时的三层手段（全部在客户端侧，源端无需配合）：
+ * 1) 校正优先**就地取材**：主档结果若自带 qualityUrls['128']，直接用它替换可疑地址，
+ *    完全省掉「再搜一次 128 档」那一整轮往返。实测源在 flac 请求下会回填 url_128，
+ *    因此绝大多数情况都走这条零成本路径。
+ * 2) 就地取材不成立（主档没回填 128 档：源不支持多音质）时，才补拉一次 128 基线档，
+ *    且与主档**同轮并发**；旧实现是主档 await 完成后才发起的串行第二跳，白白多等一倍。
+ * 3) 走 searchSourceCached：重复词命中内存，连一次往返都不出。
  */
 export async function searchOnlineTracks(
   query: string,
   options?: OnlineSearchOptions
 ): Promise<OnlineTrackSearchResult[]> {
   const trimmed = (query || '').trim()
-  const sources = (options?.sources || []).filter((s) => s && s.enabled && searchEndpointOf(s))
-  if (!trimmed || sources.length === 0) return []
+  const requested = (options?.sources || []).filter((s) => isSearchableSource(s))
+  if (!trimmed || requested.length === 0) return []
+
+  // lx 源需要宿主与脚本源码才能真正发起搜索；缺任一条件先摘掉并说明原因，
+  // 否则「脚本源码不可得」会伪装成网络失败，把统一的中文报错推给用户。
+  const sources: OnlineSourceConfig[] = []
+  for (const s of requested) {
+    if (s.kind !== 'lx') {
+      sources.push(s)
+      continue
+    }
+    if (!getLxHostDeps()) {
+      console.warn(`[歌源] 跳过洛雪音源「${s.name}」：未初始化洛雪脚本宿主（缺少 lx.request 实现）`)
+      continue
+    }
+    if (!(await resolveLxScript(s))) {
+      console.warn(`[歌源] 跳过洛雪音源「${s.name}」：脚本源码不可得（配置未内联脚本且未注册脚本供应器）`)
+      continue
+    }
+    sources.push(s)
+  }
+  if (sources.length === 0) return []
 
   const quality = options?.quality
-  const needBaseline = !!quality && quality !== '128'
-  const settled = await Promise.allSettled(
-    sources.map((s) => searchMusicSource(s, trimmed, quality))
+  // 只有非 128 档才可能有「声称 flac」的可疑项；128 档自身永远不需要额外基线
+  const qualityMatters = !!quality && quality !== '128'
+
+  const mainSettled = await Promise.all(
+    sources.map((s) =>
+      searchSourceCached(s, trimmed, quality).then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason) => ({ status: 'rejected' as const, reason })
+      )
+    )
   )
   const results: OnlineTrackSearchResult[] = []
   let allFailed = true
-  for (let i = 0; i < settled.length; i++) {
-    const r = settled[i]
+  for (let i = 0; i < mainSettled.length; i++) {
+    const r = mainSettled[i]
     if (r.status === 'fulfilled') {
       allFailed = false
       results.push(...r.value)
@@ -182,13 +332,29 @@ export async function searchOnlineTracks(
     throw new Error('所有音乐源请求失败，请检查网络连接或源配置')
   }
 
-  if (!needBaseline) return results
+  if (!qualityMatters) return results
 
-  // 基线档仅用于校正，失败静默忽略
-  const baselineSettled = await Promise.allSettled(
-    sources.map((s) => searchMusicSource(s, trimmed, '128'))
+  // 第一层：大多数源在主档响应里已回填 128 档地址，就地校正，零额外往返
+  const inPlace = correctSuspiciousFromOwnBaseline(results)
+  if (!hasSuspicious(inPlace)) return inPlace
+
+  // 第二层：仍有就地校正不了的可疑项（主档没回填 128 档）→ 补拉 128 基线档。
+  // 失败静默忽略，此时保留就地校正的结果即可（比串行版严格不差）
+  // 洛雪源条目 audioUrl 为空串、不带音质声明，既不可能是可疑项，补拉基线对它也无意义，故排除在外。
+  const auroraSources = sources.filter((s) => s.kind !== 'lx')
+  if (auroraSources.length === 0) return inPlace
+  const baselineSettled = await Promise.all(
+    auroraSources.map((s) =>
+      searchSourceCached(s, trimmed, '128').then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        () => ({ status: 'rejected' as const, value: [] as OnlineTrackSearchResult[] })
+      )
+    )
   )
   const baseline: OnlineTrackSearchResult[] = []
   for (const r of baselineSettled) if (r.status === 'fulfilled') baseline.push(...r.value)
-  return correctSuspiciousAudioSources(results, baseline)
+  if (baseline.length === 0) return inPlace
+
+  // 补拉到的基线档对「就地没修好的」那批继续兜底，最终口径与串行版一致
+  return correctSuspiciousAudioSources(inPlace, baseline)
 }
