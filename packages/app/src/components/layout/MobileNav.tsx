@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Menu, X, Heart, Clock, Settings, Link2, Library, Radio } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { HALL_LABEL, LIBRARY_LABEL, ROUTES, type NavGroup, type NavItem } from '@/lib/routes'
+import { HALL_LABEL, LIBRARY_LABEL, ROUTES, type NavItem } from '@/lib/routes'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -19,33 +19,23 @@ import { useUIStore } from '@/stores/uiStore'
  * 抽屉开关、路由跳转与关闭逻辑一字未改。
  */
 /**
- * 主导航表，按语义分组（与桌面侧栏 Sidebar 同源同结构，仅样式不同）。
+ * 主导航表（扁平，无分组标题；与桌面侧栏 Sidebar 同源同顺序，仅样式不同）。
  * 路径一律取 `@/lib/routes` 的常量，不在本文件写路径字面量。
- * 分组依据与组标题取名的理由见 Sidebar 同名注释（「我的」/「在线」不可写成
- * 「我的音乐」/「在线音乐」；最近播放跨来源，收藏入口对在线曲目开放但当前空转）。
+ * 顺序与取名理由见 Sidebar 同名注释：音乐库（在线）居首并与主屏一致。
  */
-const navGroups: NavGroup[] = [
-  {
-    title: '我的',
-    items: [
-      { to: ROUTES.library, icon: Library, label: LIBRARY_LABEL },
-      { to: ROUTES.liked, icon: Heart, label: '收藏' },
-      { to: ROUTES.recent, icon: Clock, label: '最近播放' },
-    ],
-  },
-  {
-    title: '在线',
-    items: [{ to: ROUTES.hall, icon: Radio, label: HALL_LABEL }],
-  },
+const navItems: NavItem[] = [
+  { to: ROUTES.hall, icon: Radio, label: HALL_LABEL },
+  { to: ROUTES.library, icon: Library, label: LIBRARY_LABEL },
+  { to: ROUTES.liked, icon: Heart, label: '收藏' },
+  { to: ROUTES.recent, icon: Clock, label: '最近播放' },
 ]
 
-/** 不属于任何内容分组的独立入口（设置是应用配置，不是内容） */
+/** 独立入口（设置是应用配置，不是内容），与内容项用间距区隔 */
 const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, label: '设置' }]
 
 /**
- * 抽屉导航项样式。抽成一处：分组引入了「组内项 / 组外项」两条渲染路径，
+ * 抽屉导航项样式。抽成一处：内容项与组外项两条渲染路径共用，
  * 内联两份同样的 className 必然漂移（改一处忘另一处 → 选中态不一致）。
- * 组外项多一个 mt-3 与内容组拉开距离。
  */
 const drawerLinkClass = (isActive: boolean, spaced = false) =>
   cn(
@@ -124,19 +114,12 @@ export function MobileNav() {
           </button>
         </div>
 
-        <nav className="flex flex-col px-3 mt-2 pb-[env(safe-area-inset-bottom)]">
-          {navGroups.map((group) => (
-            <div key={group.title} className="flex flex-col gap-px">
-              <span className="font-text text-[11px] font-semibold text-white/45 uppercase tracking-wider px-3 pt-3 pb-1.5">
-                {group.title}
-              </span>
-              {group.items.map(({ to, icon: Icon, label }) => (
-                <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive)}>
-                  <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
-                  {label}
-                </NavLink>
-              ))}
-            </div>
+        <nav className="flex flex-col gap-px px-3 mt-2 pb-[env(safe-area-inset-bottom)]">
+          {navItems.map(({ to, icon: Icon, label }) => (
+            <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive)}>
+              <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
+              {label}
+            </NavLink>
           ))}
           {footerItems.map(({ to, icon: Icon, label }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive, true)}>

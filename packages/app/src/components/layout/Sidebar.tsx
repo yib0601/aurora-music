@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Library, Radio } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
-import { HALL_LABEL, LIBRARY_LABEL, ROUTES, type NavGroup, type NavItem } from '@/lib/routes'
+import { HALL_LABEL, LIBRARY_LABEL, ROUTES, type NavItem } from '@/lib/routes'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -27,43 +27,32 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 /**
- * 主导航表，按语义分组。路径一律取 `@/lib/routes` 的常量，不在本文件写路径字面量；
- * 形状与移动端抽屉（MobileNav）共用 NavItem / NavGroup。
+ * 主导航表（扁平，无分组标题）。路径一律取 `@/lib/routes` 的常量；
+ * 形状与移动端抽屉（MobileNav）共用 NavItem。
  *
- * 分组依据是「东西从哪来」，而非「叫什么名」——这正是用户反馈
- * 「音乐库和音乐馆分不清哪个是做什么的」的根因：
- * 两者同词根、同「盛放音乐的容器」语义，只差一个字，扫读时必须读到第二字才能分辨。
+ * 顺序即产品优先级：**音乐库（在线）排第一位**，它是冷启动主屏（HOME_ROUTE），
+ * 导航首位与主屏保持一致，用户按「第一位 = 首屏」的直觉操作不会错位。
+ * 我的音乐（本地曲库）紧随其后。
  *
- * ⚠️ 分组标题用「我的」「在线」，**不能**写成「我的音乐」「在线音乐」：
- * 会与项名逐字重复（组名与项名同层撞车）。且「收藏 / 最近播放」跨来源——
- * **最近播放**确实统一登记本地与在线曲目（见 libraryStore.recentPlayedTracks）；
- * **收藏**入口对在线曲目开放（歌曲详情 / 移动端播放页都调 toggleLiked），
- * 但实现只在本地 tracks 里查 id，在线曲目命中不到、静默空转（见 libraryStore.toggleLiked）。
- * 两者都带有「你的行为记录」性质，故组名取「我的」（涵盖你入库的 + 你标的 + 你听过的），
- * 而非暗示本地专属的「我的音乐」。
+ * 名称沿革见 lib/routes.ts 的 LIBRARY_LABEL 处注释：曾用「音乐库 / 音乐馆」，
+ * 再改「我的音乐 / 在线音乐」+「我的 / 在线」分组，现取消分组且「音乐库」改指在线页。
+ * 「收藏 / 最近播放」跨来源（最近播放统一登记本地与在线；收藏入口对在线曲目开放但当前空转），
+ * 取消分组后它们与两个内容页平级，不再需要为分组标题措辞纠结。
  */
-const navGroups: NavGroup[] = [
-  {
-    title: '我的',
-    items: [
-      { to: ROUTES.library, icon: Library, label: LIBRARY_LABEL },
-      { to: ROUTES.liked, icon: Heart, label: '收藏' },
-      { to: ROUTES.recent, icon: Clock, label: '最近播放' },
-    ],
-  },
-  {
-    title: '在线',
-    items: [{ to: ROUTES.hall, icon: Radio, label: HALL_LABEL }],
-  },
+const navItems: NavItem[] = [
+  { to: ROUTES.hall, icon: Radio, label: HALL_LABEL },
+  { to: ROUTES.library, icon: Library, label: LIBRARY_LABEL },
+  { to: ROUTES.liked, icon: Heart, label: '收藏' },
+  { to: ROUTES.recent, icon: Clock, label: '最近播放' },
 ]
 
-/** 不属于任何内容分组的独立入口（设置是应用配置，不是内容） */
+/** 独立入口（设置是应用配置，不是内容），与内容项用间距区隔 */
 const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, label: '设置' }]
 
 /**
- * 导航项样式。抽成一处：分组引入了「组内项 / 组外项」两条渲染路径，
- * 内联三份同样的 className 必然漂移（改一处忘另一处 → 选中态不一致）。
- * 组外项多一个 mt-3 与内容组拉开距离。
+ * 导航项样式。抽成一处：内容项与组外项两条渲染路径共用，
+ * 内联两份同样的 className 必然漂移（改一处忘另一处 → 选中态不一致）。
+ * 组外项多一个 mt-3 与内容区拉开距离。
  */
 const navLinkClass = (isActive: boolean, spaced = false) =>
   cn(
@@ -148,22 +137,15 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 主导航：按「你的 / 在线的」分组，组标题给出语义分区 */}
-      <nav className="flex flex-col px-3 mt-1">
-        {navGroups.map((group) => (
-          <div key={group.title} className="flex flex-col gap-px">
-            <span className="font-text text-[11px] font-semibold text-white/45 uppercase tracking-wider px-3 pt-3 pb-1.5">
-              {group.title}
-            </span>
-            {group.items.map(({ to, icon: Icon, label }) => (
-              <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive)}>
-                <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
-                {label}
-              </NavLink>
-            ))}
-          </div>
+      {/* 主导航：音乐库（在线发现）居首，与主屏一致 */}
+      <nav className="flex flex-col gap-px px-3 mt-1">
+        {navItems.map(({ to, icon: Icon, label }) => (
+          <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive)}>
+            <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
+            {label}
+          </NavLink>
         ))}
-        {/* 设置：应用配置，不属于任何内容分组，与内容组用间距区隔 */}
+        {/* 设置：应用配置，不属于内容项，用间距区隔 */}
         {footerItems.map(({ to, icon: Icon, label }) => (
           <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive, true)}>
             <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />

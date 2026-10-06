@@ -6,7 +6,7 @@ import { dedupeTracksForDisplay } from '@aurora/shared'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
-import { HOME_ROUTE, LIBRARY_LABEL } from '@/lib/routes'
+import { LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { CoverImage } from '@/components/common/CoverImage'
@@ -106,7 +106,7 @@ export function RecentPage() {
             导入音乐后，你播放的歌曲会出现在这里
           </p>
           <button
-            onClick={() => navigate(HOME_ROUTE)}
+            onClick={() => navigate(LIBRARY_ROUTE)}
             className="pill pill-lg pill-mint"
           >
             <Music className="h-4 w-4" strokeWidth={1.6} />
