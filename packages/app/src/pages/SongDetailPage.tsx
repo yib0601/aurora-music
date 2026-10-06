@@ -19,6 +19,7 @@ import { toast } from '@/components/common/Toast'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { isDownloadableOnlineTrack } from '@/lib/onlineTrack'
 import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
+import { LIBRARY_LABEL } from '@/lib/routes'
 import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -191,7 +192,7 @@ export function SongDetailPage() {
   }, [currentTrack, id, navigate])
 
   const recentPlayedTracks = useLibraryStore((s) => s.recentPlayedTracks)
-  // 从音乐库查找，找不到则回退到播放器队列（如在线搜索的歌曲），
+  // 从曲库查找，找不到则回退到播放器队列（如在线搜索的歌曲），
   // 再回退到最近播放记录（在线歌曲不在曲库/队列中时仍可查看）
   const track = useMemo(() => {
     const fromLibrary = tracks.find((t) => t.id === id)
@@ -268,7 +269,7 @@ export function SongDetailPage() {
     return facts
   }, [track])
 
-  // 音乐库属性（默认收起，展开后可见）
+  // 曲库属性（默认收起，展开后可见）
   const statItems = useMemo(() => {
     if (!track) return [] as { icon: LucideIcon; label: string; value: string }[]
     return [
@@ -293,7 +294,7 @@ export function SongDetailPage() {
             {tracks.length === 0 ? '正在加载歌曲…' : '未找到这首歌曲'}
           </h2>
           <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
-            {tracks.length === 0 ? '请稍候，本地音乐正在加载' : '歌曲可能已被移除'}
+            {tracks.length === 0 ? `请稍候，${LIBRARY_LABEL}正在加载` : '歌曲可能已被移除'}
           </p>
           <button
             onClick={goBack}

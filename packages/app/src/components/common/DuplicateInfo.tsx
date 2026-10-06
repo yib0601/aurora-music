@@ -9,7 +9,7 @@ import type { Track } from '@/types'
  * 重复曲目明示组件。
  *
  * 去重只影响展示、不删记录，但「藏了哪首」必须可查：
- * - DuplicateSummaryHover：音乐库头部「已隐藏 N 首重复曲目」提示，
+ * - DuplicateSummaryHover：曲库头部「已隐藏 N 首重复曲目」提示，
  *   悬停浮层逐组列出重复名单（留了哪份、藏了哪份）；
  * - DuplicateBadge：列表/网格中胜出副本行上的小徽标，悬停看该首的副本明细。
  *

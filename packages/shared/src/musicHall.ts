@@ -8,7 +8,7 @@ import { fillEndpointTemplate, hallEndpointOf } from './auroraPreset'
 import { fetchWithTimeout } from './fetchWithTimeout'
 
 /**
- * 音乐馆读取执行器（协议执行器，与 musicSource 同构）
+ * 在线音乐读取执行器（协议执行器，与 musicSource 同构）
  *
  * 只做**只读浏览**：推荐歌单列表、榜单列表、榜单详情。
  * 响应解析一律容错——字段名宽松兼容、结构缺失降级为空数组而不是抛错，
@@ -53,7 +53,7 @@ function pickArray(json: any, keys: string[]): any[] {
   return []
 }
 
-/** 取某个启用音源的音乐馆端点模板；无能力返回空串 */
+/** 取某个启用音源的在线音乐端点模板；无能力返回空串 */
 function endpointFor(source: MusicHallSource, which: 'recommend' | 'toplists' | 'toplist'): string {
   return hallEndpointOf(source, which)
 }
@@ -264,7 +264,7 @@ export async function fetchToplistSongs(
 }
 
 /**
- * 选出一个提供音乐馆能力的音源（按配置顺序取第一个）。
+ * 选出一个提供在线音乐能力的音源（按配置顺序取第一个）。
  * 返回 null 表示没有任何音源提供该能力（UI 据此展示空态引导）。
  */
 export function musicHallSourceOf(sources: MusicHallSource[]): MusicHallSource | null {

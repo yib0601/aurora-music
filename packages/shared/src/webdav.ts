@@ -84,7 +84,7 @@ export function guessAudioMime(name: string): string | undefined {
   return map[name.slice(dot).toLowerCase()]
 }
 
-/** 音乐库扫描时用于解析元数据的文件头字节数 */
+/** 曲库扫描时用于解析元数据的文件头字节数 */
 export const METADATA_HEAD_BYTES = 1024 * 1024
 
 /** 解析器给出的、与本函数判断相关的 format 字段子集 */

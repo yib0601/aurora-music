@@ -3,9 +3,11 @@ import { musicHallSourceOf, searchEndpointOf } from '@aurora/shared'
 import type { MusicHallSource, RecommendPlaylist, ToplistGroup, ToplistDetail } from '@/types'
 import { hallRecommend, hallToplists, hallToplistSongs, supportsMusicHall } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { HALL_LABEL } from '@/lib/routes'
 
 /**
- * 音乐馆状态：推荐歌单 / 榜单列表 / 榜单详情的加载态与数据缓存。
+ * 在线音乐（旧称「音乐馆」，故 store / 类型 / 路由段名沿用 hall）状态：
+ * 推荐歌单 / 榜单列表 / 榜单详情的加载态与数据缓存。
  *
  * **刻意不持久化**：榜单与推荐每天都在变，落盘的旧数据只会让用户看到过期的排行，
  * 且首屏还要先渲染缓存再替换造成闪烁。每次进入页面按需拉取即可（数据量小、上游快）。
@@ -52,8 +54,8 @@ interface MusicHallState {
 }
 
 /**
- * 取当前可用的音乐馆音源。
- * 条件是「已启用 + 服务地址形态（音乐馆端点由协议派生）」——
+ * 取当前可用的在线音乐音源。
+ * 条件是「已启用 + 服务地址形态（在线音乐端点由协议派生）」——
  * 接口模板形态的音源没有这三个端点，选它只会得到空结果。
  */
 export function pickHallSource(): MusicHallSource | null {
@@ -63,11 +65,11 @@ export function pickHallSource(): MusicHallSource | null {
 
 /** 无音源 / 平台不支持的统一提示文案（UI 空态与错误态共用一处） */
 export function hallUnavailableReason(): string {
-  if (!supportsMusicHall()) return '当前环境不支持音乐馆（浏览器版无在线能力）'
+  if (!supportsMusicHall()) return `当前环境不支持${HALL_LABEL}（浏览器版无在线能力）`
   const sources = useLibraryStore.getState().onlineSources
-  if (sources.length === 0) return '尚未配置音源，音乐馆的推荐与榜单都由音源服务提供'
+  if (sources.length === 0) return `尚未配置音源，${HALL_LABEL}的推荐与榜单都由音源服务提供`
   if (!sources.some((s) => s.enabled)) return '音源已全部停用，请在设置页启用音乐源'
-  if (!pickHallSource()) return '当前音源不支持音乐馆（需填写服务地址形态的音源）'
+  if (!pickHallSource()) return `当前音源不支持${HALL_LABEL}（需填写服务地址形态的音源）`
   return ''
 }
 

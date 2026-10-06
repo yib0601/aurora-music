@@ -238,7 +238,7 @@ async function runScan(folderPath: string): Promise<Track[]> {
       await Filesystem.readdir({ path: folderPath, directory: Directory.ExternalStorage })
     } catch {
       // readdir 失败可能是权限不足，也可能是目录已删除：用 stat 区分。
-      // 目录确实不存在才清理其曲目；权限问题必须保留记录，避免误删音乐库
+      // 目录确实不存在才清理其曲目；权限问题必须保留记录，避免误删曲库
       const exists = await Filesystem.stat({ path: folderPath, directory: Directory.ExternalStorage })
         .then(() => true)
         .catch(() => false)
@@ -286,7 +286,7 @@ export function createMobilePlatform(): PlatformInterface & {
   scanFolder: (folderPath: string) => Promise<Track[]>
   getAllTracks: () => Promise<Track[]>
   removeFolder: (folderPath: string) => Promise<Track[]>
-  // 音乐馆（推荐歌单 / 榜单）：渲染层直调共享执行器（原生 fetch 不受 CORS 限制）
+  // 在线音乐（推荐歌单 / 榜单）：渲染层直调共享执行器（原生 fetch 不受 CORS 限制）
   musicHall: {
     recommendPlaylists(
       source: MusicHallSource,

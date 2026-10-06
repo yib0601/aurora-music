@@ -194,8 +194,8 @@ async function runScan(folderPath: string): Promise<Track[]> {
     if (!isReadableDir(folderPath)) {
       // 扫描目录本身已不存在：区分「确实被删除」与「外置盘未挂载/临时不可访问」
       // - 父目录仍在 → 目录被用户删除，清理其曲目并通知 UI 移除该扫描目录，
-      //   否则音乐库里会残留已删目录的歌曲（数量对不上）
-      // - 父目录也不在 → 更可能是外置盘未挂载，保留曲目记录，仅报错跳过，避免误删音乐库
+      //   否则曲库里会残留已删目录的歌曲（数量对不上）
+      // - 父目录也不在 → 更可能是外置盘未挂载，保留曲目记录，仅报错跳过，避免误删曲库
       if (fs.existsSync(path.dirname(folderPath))) {
         unwatchFolder(folderPath)
         const removed = deleteTracksByFolder(folderPath)
@@ -401,8 +401,8 @@ export function registerIpcHandlers() {
     return getAllTracks()
   })
 
-  // 从音乐库移除某个扫描目录：删除该目录下的全部曲目记录（含封面缓存），
-  // 返回移除后的全库列表，渲染进程直接用它刷新音乐库
+  // 从曲库移除某个扫描目录：删除该目录下的全部曲目记录（含封面缓存），
+  // 返回移除后的全库列表，渲染进程直接用它刷新曲库
   ipcMain.handle('library:removeFolder', (_event, folderPath: string): Track[] => {
     if (typeof folderPath !== 'string' || !folderPath.trim()) return getAllTracks()
     unwatchFolder(folderPath)
@@ -507,7 +507,7 @@ export function registerIpcHandlers() {
     }
   )
 
-  // 音乐馆（推荐歌单 / 榜单列表 / 榜单详情）：与在线搜索同理走主进程执行，
+  // 在线音乐（推荐歌单 / 榜单列表 / 榜单详情）：与在线搜索同理走主进程执行，
   // 渲染进程直连会被上游 CORS 拦截。音源由渲染层传入（应用不内置源），
   // 主进程只做协议执行与容错解析，不缓存任何榜单数据
   ipcMain.handle('hall:recommend', async (_event, source: MusicHallSource, options?: MusicHallOptions) => {

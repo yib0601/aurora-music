@@ -7,7 +7,7 @@ import { toast } from '@/components/common/Toast'
 import { HallEmpty, formatCount } from '@/pages/MusicHallPage'
 import { cn, formatTime } from '@/lib/utils'
 import { useGoBack } from '@/lib/navigation'
-import { ROUTE_PATHS, isRoute } from '@/lib/routes'
+import { ROUTE_PATHS, isRoute, HALL_LABEL } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -16,7 +16,7 @@ import { matchTracksByNames } from '@aurora/shared'
 import type { Track } from '@/types'
 
 /**
- * 音乐馆详情页：推荐歌单 / 榜单共用。
+ * 在线音乐详情页：推荐歌单 / 榜单共用。
  *
  * 数据来源按路由分派：
  *  - `/hall/toplist/:id`  → 榜单详情端点（带排名序号与时长）
@@ -149,9 +149,9 @@ export function MusicHallDetailPage() {
   const unavailable = hallUnavailableReason()
   if (unavailable) {
     return (
-      <PageLayout header={<DetailHeader title="音乐馆" onBack={goBack} />}>
+      <PageLayout header={<DetailHeader title={HALL_LABEL} onBack={goBack} />}>
         <HallEmpty
-          title="音乐馆暂不可用"
+          title={`${HALL_LABEL}暂不可用`}
           desc={unavailable}
           action={{ label: '去配置音源', onClick: () => navigate('/settings') }}
         />

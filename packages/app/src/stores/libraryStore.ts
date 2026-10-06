@@ -24,9 +24,9 @@ interface LibraryState {
   playlists: Playlist[]
   scanFolders: string[]
   viewMode: ViewMode
-  /** 音乐库浏览标签：全部歌曲 / 按专辑 / 按艺术家 */
+  /** 曲库浏览标签：全部歌曲 / 按专辑 / 按艺术家 */
   libraryTab: LibraryTab
-  /** 音乐库歌曲排序字段与方向 */
+  /** 曲库歌曲排序字段与方向 */
   sortBy: SortField
   sortOrder: SortOrder
   theme: 'light' | 'dark' | 'system'
@@ -338,7 +338,7 @@ export const useLibraryStore = create<LibraryState>()(
   )
 )
 
-// 订阅播放统计事件，独立更新音乐库数据（解耦 playerStore 的跨Store副作用）
+// 订阅播放统计事件，独立更新曲库数据（解耦 playerStore 的跨Store副作用）
 audioEvents.on('playStatsUpdate', ({ trackId, lastPlayedAt, playCount, track }) => {
   const library = useLibraryStore.getState()
   // 本地曲目同步曲库字段；在线曲目不在曲库，此调用空转

@@ -2,7 +2,7 @@ import { fetchRecommendPlaylists, fetchToplistGroups, fetchToplistSongs, musicHa
 import { setCustomFetch } from '../fetchWithTimeout'
 import type { MusicHallSource } from '../types'
 
-/** 固定音源：服务地址形态（音乐馆端点由协议派生） */
+/** 固定音源：服务地址形态（在线音乐端点由协议派生） */
 const SOURCE: MusicHallSource = {
   id: 'src-1',
   name: '我的音源',
@@ -76,7 +76,7 @@ describe('fetchRecommendPlaylists', () => {
     expect(await fetchRecommendPlaylists(SOURCE)).toEqual([])
   })
 
-  it('接口模板形态的音源没有音乐馆能力，不发起请求', async () => {
+  it('接口模板形态的音源没有在线音乐能力，不发起请求', async () => {
     let called = false
     setCustomFetch(async () => {
       called = true
@@ -241,7 +241,7 @@ describe('fetchToplistSongs', () => {
 })
 
 describe('musicHallSourceOf', () => {
-  it('取第一个已启用且有音乐馆能力的音源', () => {
+  it('取第一个已启用且有在线音乐能力的音源', () => {
     expect(musicHallSourceOf([SOURCE])).toBe(SOURCE)
     expect(
       musicHallSourceOf([{ ...SOURCE, id: 'off', enabled: false }, SOURCE])

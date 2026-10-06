@@ -30,7 +30,7 @@ import {
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
-import { HOME_ROUTE } from '@/lib/routes'
+import { HOME_ROUTE, LIBRARY_LABEL } from '@/lib/routes'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
@@ -81,7 +81,7 @@ export function PlaylistPage() {
           <ListMusic className="h-16 w-16 mb-4 text-mint" strokeWidth={1.5} />
           <p className="text-tagline text-white mb-3">播放列表不存在</p>
           <Button variant="link" onClick={() => navigate(HOME_ROUTE)}>
-            返回本地音乐
+            返回{LIBRARY_LABEL}
           </Button>
         </div>
       </div>
@@ -127,7 +127,7 @@ export function PlaylistPage() {
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      toast('没有匹配到本地音乐中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
+      toast(`没有匹配到${LIBRARY_LABEL}中的歌曲，请先扫描包含这些歌曲的目录`, { type: 'error' })
       return
     }
     // 从文件名推断播放列表名称
@@ -230,7 +230,7 @@ export function PlaylistPage() {
                 <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
               </div>
               <p className="text-tagline text-white mb-1">播放列表为空</p>
-              <p className="font-text text-caption text-white/50">从本地音乐中添加歌曲</p>
+              <p className="font-text text-caption text-white/50">从{LIBRARY_LABEL}中添加歌曲</p>
             </div>
           </div>
         ) : (
@@ -248,7 +248,7 @@ export function PlaylistPage() {
             {playlistTracks.map((track, idx) => (
               <div
                 key={track.id}
-                // 与音乐库一致：桌面端双击播放（单击仅 hover），移动端单击播放
+                // 与曲库一致：桌面端双击播放（单击仅 hover），移动端单击播放
                 onClick={isDesktop() ? undefined : () => handlePlayTrack(track, idx)}
                 onDoubleClick={isDesktop() ? () => handlePlayTrack(track, idx) : undefined}
                 className={cn(

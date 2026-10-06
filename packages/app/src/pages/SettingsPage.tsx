@@ -10,6 +10,7 @@ import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform, DEFAULT_MOBILE_DOWNLOAD_DIR } from '@/services/platform'
 import { isDesktop, isMobile } from '@/lib/utils'
+import { LIBRARY_LABEL } from '@/lib/routes'
 import { toast } from '@/components/common/Toast'
 import { APP_VERSION, REPO_URL, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
@@ -887,7 +888,7 @@ function LibrarySourceCard({
         <Button
           variant="ghost"
           size="icon"
-          title="移除来源（同时从本地音乐移除该来源的歌曲）"
+          title={`移除来源（同时从${LIBRARY_LABEL}移除该来源的歌曲）`}
           className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
@@ -1149,9 +1150,9 @@ export function SettingsPage() {
   }
 
   /**
-   * 移除扫描目录：除了解除目录配置，还要把该目录下的曲目从音乐库中删除，
-   * 否则音乐库会残留已移除目录的歌曲（数量对不上、点进去还能播放）。
-   * 磁盘文件不受影响，只是不再属于音乐库。
+   * 移除扫描目录：除了解除目录配置，还要把该目录下的曲目从曲库中删除，
+   * 否则曲库会残留已移除目录的歌曲（数量对不上、点进去还能播放）。
+   * 磁盘文件不受影响，只是不再属于曲库。
    */
   const handleRemoveFolder = async (folder: string) => {
     const prefix = folder.endsWith('/') || folder.endsWith('\\') ? folder : folder + '/'
@@ -1160,7 +1161,7 @@ export function SettingsPage() {
       .tracks.filter((t) => t.path === folder || t.path.startsWith(prefix) || t.path.startsWith(prefix.replace(/\//g, '\\'))).length
     const ok = window.confirm(
       affected > 0
-        ? `移除扫描目录「${folder}」？\n该目录下的 ${affected} 首歌曲会同时从本地音乐中移除（磁盘文件不会被删除）。`
+        ? `移除扫描目录「${folder}」？\n该目录下的 ${affected} 首歌曲会同时从${LIBRARY_LABEL}中移除（磁盘文件不会被删除）。`
         : `移除扫描目录「${folder}」？`
     )
     if (!ok) return
@@ -1222,13 +1223,13 @@ export function SettingsPage() {
     }
   }
 
-  /** 移除网络存储来源：连同该来源的曲目一起从音乐库删除（远端文件不受影响） */
+  /** 移除网络存储来源：连同该来源的曲目一起从曲库删除（远端文件不受影响） */
   const handleRemoveLibrarySource = async (source: LibrarySourceConfig) => {
     const prefix = `webdav:${source.id}/`
     const affected = useLibraryStore.getState().tracks.filter((t) => t.path.startsWith(prefix)).length
     const ok = window.confirm(
       affected > 0
-        ? `移除网络存储「${source.name}」？\n该来源下的 ${affected} 首歌曲会同时从本地音乐中移除（远端文件不会被删除）。`
+        ? `移除网络存储「${source.name}」？\n该来源下的 ${affected} 首歌曲会同时从${LIBRARY_LABEL}中移除（远端文件不会被删除）。`
         : `移除网络存储「${source.name}」？`
     )
     if (!ok) return
@@ -1324,7 +1325,7 @@ export function SettingsPage() {
           </section>
 
           <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">本地音乐</h2>
+            <h2 className="font-display text-tagline mb-4 text-white">{LIBRARY_LABEL}</h2>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -1346,7 +1347,7 @@ export function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        title="移除目录（同时从本地音乐移除该目录下的歌曲）"
+                        title={`移除目录（同时从${LIBRARY_LABEL}移除该目录下的歌曲）`}
                         className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
                         onClick={() => handleRemoveFolder(folder)}
                       >

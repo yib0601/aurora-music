@@ -290,7 +290,7 @@ describe('searchEndpointOf / playlistEndpointOf（执行时解析端点）', () 
 })
 
 describe('buildAuroraEndpoints', () => {
-  it('按兜底模板组装五个端点（搜索 / 歌单解析 / 音乐馆三项）', () => {
+  it('按兜底模板组装五个端点（搜索 / 歌单解析 / 在线音乐三项）', () => {
     expect(buildAuroraEndpoints('https://music.lighthouses.top', 'K1')).toEqual({
       search: 'https://music.lighthouses.top/aurora?query={query}&quality={quality}&key=K1',
       playlist: 'https://music.lighthouses.top/aurora/playlist?url={url}&key=K1',
@@ -301,7 +301,7 @@ describe('buildAuroraEndpoints', () => {
     })
   })
 
-  it('音乐馆端点占位符原样保留（留给执行器替换）', () => {
+  it('在线音乐端点占位符原样保留（留给执行器替换）', () => {
     const ep = buildAuroraEndpoints('https://x.com', 'K1')!
     expect(ep.recommend).toContain('{categoryId}')
     expect(ep.recommend).toContain('{limit}')
@@ -375,7 +375,7 @@ describe('parseAuroraEndpoints', () => {
     expect(parseAuroraEndpoints({ endpoints: { search: 42 } })).toBeNull()
   })
 
-  it('音乐馆三项自描述被认下（白名单漏项会被静默丢弃）', () => {
+  it('在线音乐三项自描述被认下（白名单漏项会被静默丢弃）', () => {
     expect(
       parseAuroraEndpoints({
         endpoints: {
@@ -397,7 +397,7 @@ describe('parseAuroraEndpoints', () => {
 })
 
 describe('hallEndpointOf / fillEndpointTemplate', () => {
-  it('服务地址形态派生音乐馆端点；接口模板形态无该能力', () => {
+  it('服务地址形态派生在线音乐端点；接口模板形态无该能力', () => {
     const service = { sourceUrl: 'https://x.com' }
     expect(hallEndpointOf(service, 'toplists')).toContain('/aurora/toplists')
     expect(hallEndpointOf(service, 'recommend')).toContain('{categoryId}')

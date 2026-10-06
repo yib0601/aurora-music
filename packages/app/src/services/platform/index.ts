@@ -50,7 +50,7 @@ export interface PlatformExtension {
    */
   fetchOnlineCover?: (trackId: string, options?: OnlineSearchOptions) => Promise<string | null>
   /**
-   * 从音乐库移除某个扫描目录：连该目录下的曲目记录一起删除，返回移除后的全库曲目。
+   * 从曲库移除某个扫描目录：连该目录下的曲目记录一起删除，返回移除后的全库曲目。
    * 目录条目本身由调用方从 scanFolders 中删除（库数据与配置分离）。
    */
   removeFolder?: (folderPath: string) => Promise<Track[]>
@@ -152,10 +152,10 @@ class NoopWindowControls implements WindowControls {
 }
 
 /**
- * 音乐馆读取能力（可选）：三端实现见 services/platform/*
+ * 在线音乐读取能力（可选）：三端实现见 services/platform/*
  * - 桌面端：转发到主进程执行（渲染进程 fetch 会被上游 CORS 拦截）
  * - 移动端：渲染层直调 shared（fetch 已换成 CapacitorHttp）
- * - Web / Noop：空实现（浏览器无该能力），音乐馆据此展示不可用空态
+ * - Web / Noop：空实现（浏览器无该能力），在线音乐据此展示不可用空态
  *
  * 形状与 types/index.ts 的 MusicHallPlatform 一致；这里用可选声明接入 Platform，
  * 未实现该能力的端（web / Noop）也能被统一调用而不抛错。
@@ -293,7 +293,7 @@ export function createDesktopPlatform(): Platform {
       return api.onTracksScanned(cb)
     },
     // 渐进式扫描：主进程每解析完一首就推 track:scanned，这里转发给 UI，
-    // 让音乐库边扫描边显示（此前只转发了 scan:complete，该能力在桌面端一直是失效的）
+    // 让曲库边扫描边显示（此前只转发了 scan:complete，该能力在桌面端一直是失效的）
     onTrackScanned(cb: (track: Track) => void) {
       if (!api?.onTrackScanned) return () => {}
       return api.onTrackScanned(cb)
@@ -437,7 +437,7 @@ export async function hallToplistSongs(
   )
 }
 
-/** 当前端是否具备音乐馆能力（web 端为 false，UI 据此展示不可用提示） */
+/** 当前端是否具备在线音乐能力（web 端为 false，UI 据此展示不可用提示） */
 export function supportsMusicHall(): boolean {
   return Boolean(platform.musicHall)
 }

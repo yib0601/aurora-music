@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Compass } from 'lucide-react'
+import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Library, Radio } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
-import { ROUTES, type NavItem } from '@/lib/routes'
+import { HALL_LABEL, LIBRARY_LABEL, ROUTES, type NavGroup, type NavItem } from '@/lib/routes'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -27,16 +27,52 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 /**
- * 主导航表。路径一律取 `@/lib/routes` 的常量，不在本文件写路径字面量；
- * 形状与移动端抽屉（MobileNav）共用 NavItem。
+ * 主导航表，按语义分组。路径一律取 `@/lib/routes` 的常量，不在本文件写路径字面量；
+ * 形状与移动端抽屉（MobileNav）共用 NavItem / NavGroup。
+ *
+ * 分组依据是「东西从哪来」，而非「叫什么名」——这正是用户反馈
+ * 「音乐库和音乐馆分不清哪个是做什么的」的根因：
+ * 两者同词根、同「盛放音乐的容器」语义，只差一个字，扫读时必须读到第二字才能分辨。
+ *
+ * ⚠️ 分组标题用「我的」「在线」，**不能**写成「我的音乐」「在线音乐」：
+ * 会与项名逐字重复（组名与项名同层撞车）。且「收藏 / 最近播放」跨来源——
+ * **最近播放**确实统一登记本地与在线曲目（见 libraryStore.recentPlayedTracks）；
+ * **收藏**入口对在线曲目开放（歌曲详情 / 移动端播放页都调 toggleLiked），
+ * 但实现只在本地 tracks 里查 id，在线曲目命中不到、静默空转（见 libraryStore.toggleLiked）。
+ * 两者都带有「你的行为记录」性质，故组名取「我的」（涵盖你入库的 + 你标的 + 你听过的），
+ * 而非暗示本地专属的「我的音乐」。
  */
-const navItems: NavItem[] = [
-  { to: ROUTES.library, icon: Music, label: '本地音乐' },
-  { to: ROUTES.hall, icon: Compass, label: '音乐馆' },
-  { to: ROUTES.liked, icon: Heart, label: '收藏' },
-  { to: ROUTES.recent, icon: Clock, label: '最近播放' },
-  { to: ROUTES.settings, icon: Settings, label: '设置' },
+const navGroups: NavGroup[] = [
+  {
+    title: '我的',
+    items: [
+      { to: ROUTES.library, icon: Library, label: LIBRARY_LABEL },
+      { to: ROUTES.liked, icon: Heart, label: '收藏' },
+      { to: ROUTES.recent, icon: Clock, label: '最近播放' },
+    ],
+  },
+  {
+    title: '在线',
+    items: [{ to: ROUTES.hall, icon: Radio, label: HALL_LABEL }],
+  },
 ]
+
+/** 不属于任何内容分组的独立入口（设置是应用配置，不是内容） */
+const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, label: '设置' }]
+
+/**
+ * 导航项样式。抽成一处：分组引入了「组内项 / 组外项」两条渲染路径，
+ * 内联三份同样的 className 必然漂移（改一处忘另一处 → 选中态不一致）。
+ * 组外项多一个 mt-3 与内容组拉开距离。
+ */
+const navLinkClass = (isActive: boolean, spaced = false) =>
+  cn(
+    'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
+    spaced && 'mt-3',
+    isActive
+      ? 'bg-mint/[0.13] border-mint/[0.18] text-mint font-medium shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
+      : 'border-transparent text-white/72 hover:text-white hover:bg-white/[0.05]',
+  )
 
 /**
  * 侧边栏：Mineradio 品牌色 × DeepSeek Harness 结构语言
@@ -87,7 +123,7 @@ export function Sidebar() {
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      toast('没有匹配到本地音乐中的歌曲，请先扫描包含这些歌曲的目录', { type: 'error' })
+      toast(`没有匹配到${LIBRARY_LABEL}中的歌曲，请先扫描包含这些歌曲的目录`, { type: 'error' })
       return
     }
     const newPlaylist = createPlaylist('导入的播放列表')
@@ -112,21 +148,24 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 主导航 */}
-      <nav className="flex flex-col gap-px px-3 mt-1">
-        {navItems.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
-                isActive
-                  ? 'bg-mint/[0.13] border-mint/[0.18] text-mint font-medium shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
-                  : 'border-transparent text-white/72 hover:text-white hover:bg-white/[0.05]'
-              )
-            }
-          >
+      {/* 主导航：按「你的 / 在线的」分组，组标题给出语义分区 */}
+      <nav className="flex flex-col px-3 mt-1">
+        {navGroups.map((group) => (
+          <div key={group.title} className="flex flex-col gap-px">
+            <span className="font-text text-[11px] font-semibold text-white/45 uppercase tracking-wider px-3 pt-3 pb-1.5">
+              {group.title}
+            </span>
+            {group.items.map(({ to, icon: Icon, label }) => (
+              <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive)}>
+                <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
+                {label}
+              </NavLink>
+            ))}
+          </div>
+        ))}
+        {/* 设置：应用配置，不属于任何内容分组，与内容组用间距区隔 */}
+        {footerItems.map(({ to, icon: Icon, label }) => (
+          <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive, true)}>
             <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
             {label}
           </NavLink>
