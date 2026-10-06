@@ -1,5 +1,5 @@
 import * as mm from 'music-metadata-browser'
-import type { FileInfo, Track } from '@/types'
+import type { FileInfo, LxSourceInspection, Track } from '@/types'
 
 /**
  * Web 平台实现：基于 File System Access API（Chrome / Edge 支持）。
@@ -261,6 +261,20 @@ export function createWebPlatform() {
 
     async searchOnlineTracks(): Promise<never[]> {
       return []
+    },
+
+    // 洛雪脚本宿主需要 Node 网络栈与真实 crypto（且脚本是第三方不可控代码）：
+    // 浏览器端一律按「无该能力」处理，UI 据此回落既有取址路径并展示不可用提示
+    async fetchLxScript(): Promise<string> {
+      throw new Error('浏览器环境不支持洛雪音源脚本（请使用桌面端或手机端）')
+    },
+
+    async inspectLxSource(): Promise<LxSourceInspection> {
+      return { ok: false, platforms: {}, error: '浏览器环境不支持洛雪音源脚本' }
+    },
+
+    async resolveLxTrack(): Promise<Track | null> {
+      return null
     },
 
     database: {

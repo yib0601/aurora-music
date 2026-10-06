@@ -20,6 +20,10 @@ import type {
   MusicHallOptions,
   MusicHallSource,
   ToplistDetail,
+  OnlineSourceKind,
+  LxTrackRef,
+  LxSourceInspection,
+  LxScriptSource,
 } from '@aurora/shared'
 
 export type {
@@ -43,6 +47,10 @@ export type {
   MusicHallOptions,
   MusicHallSource,
   ToplistDetail,
+  OnlineSourceKind,
+  LxTrackRef,
+  LxSourceInspection,
+  LxScriptSource,
 }
 
 export interface Track {
@@ -87,6 +95,13 @@ export interface Track {
   /** 音频实际来源后端标识（源提供 qualitySource 字段时才有），行内展示 */
   onlineAudioSource?: string
   onlineId?: string
+  /**
+   * 洛雪脚本源的取址定位信息（kind='lx' 的音源才有）：
+   * 脚本源没有公共搜索接口，曲目由本应用搜索得到（音源服务或脚本自带 search），
+   * 这份定位信息原样回喂脚本取直链。持久化时与 onlineUrl 一起剥离（脚本侧 id 依赖上游，
+   * 且直链本身会过期；重启后按元信息重新搜索即可）。
+   */
+  lx?: LxTrackRef
 }
 
 export interface Album {
@@ -208,15 +223,28 @@ export interface PlatformInterface {
   saveLyrics(lyrics: string, trackId: string): Promise<string>
   readLyrics(trackId: string): Promise<string | null>
   searchOnlineTracks(query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]>
+  /**
+   * 拉取洛雪音源脚本源码（kind='lx' 的音源）。
+   * 桌面端经主进程拉取（避开渲染进程 CORS 并从主进程缓存），移动端走原生 HTTP。
+   */
+  fetchLxScript(url: string): Promise<string>
+  /** 探测洛雪脚本能力（平台 / 音质档位 / 是否有自带搜索），设置页「测试」与保存前校验用 */
+  inspectLxSource(source: LxScriptSource): Promise<LxSourceInspection>
+  /**
+   * 洛雪脚本源按需取直链：track.lx 存在时回喂脚本取址并回填 onlineUrl；
+   * 非脚本源、缺定位信息或取址失败一律返回 null（调用方据此回落既有搜索取址路径）。
+   * 只读：不写库、不落盘。
+   */
+  resolveLxTrack(track: Track): Promise<Track | null>
   database: DatabaseAdapter
   windowControls: WindowControls
 }
 
 /**
- * 音乐馆读取能力（可选）：三端实现见 services/platform/*
+ * 在线音乐读取能力（可选）：三端实现见 services/platform/*
  * - 桌面端：转发到主进程执行（渲染进程 fetch 会被上游 CORS 拦截）
  * - 移动端：渲染层直调 shared（fetch 已换成 CapacitorHttp）
- * - Web 端：空实现（浏览器无该能力），音乐馆据此展示不可用空态
+ * - Web 端：空实现（浏览器无该能力），在线音乐据此展示不可用空态
  */
 export interface MusicHallPlatform {
   recommendPlaylists(options?: MusicHallOptions): Promise<RecommendPlaylist[]>
