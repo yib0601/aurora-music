@@ -37,7 +37,12 @@ const DialogContent = React.forwardRef<
         /* DS 材质：panel 圆角(16px) + 1px 发丝描边；
            材质由 .glass-liquid 提供（液态玻璃：更透 + 顶部锐亮线 + 底部柔和折返光），
            此处不再叠加 backdrop-blur-ds，否则会以 utility 覆盖并丢掉 saturate */
-        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 glass-liquid border border-white/[0.08] rounded-ds-panel p-6 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+        /* 列宽必须显式给 minmax(0,1fr)：grid 的隐式列是 auto，其最小尺寸取
+           min-content，任何 nowrap 长内容（如音源地址预览里的整条带密钥 URL）
+           都会把列顶宽，进而把整块内容连同底部按钮推出弹窗外（fixed 元素
+           width 仍是 max-w-*，只是内容越界）。显式 1fr 并带 0 下限后，
+           子元素按 min-w-0 收缩，truncate 才真正生效。 */
+        'fixed left-[50%] top-[50%] z-50 grid grid-cols-[minmax(0,1fr)] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 glass-liquid border border-white/[0.08] rounded-ds-panel p-6 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className
       )}
       {...props}
