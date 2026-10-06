@@ -30,7 +30,7 @@ import {
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
-import { HOME_ROUTE, LIBRARY_LABEL } from '@/lib/routes'
+import { HOME_ROUTE, LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
@@ -80,7 +80,7 @@ export function PlaylistPage() {
         <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
           <ListMusic className="h-16 w-16 mb-4 text-mint" strokeWidth={1.5} />
           <p className="text-tagline text-white mb-3">播放列表不存在</p>
-          <Button variant="link" onClick={() => navigate(HOME_ROUTE)}>
+          <Button variant="link" onClick={() => navigate(LIBRARY_ROUTE)}>
             返回{LIBRARY_LABEL}
           </Button>
         </div>

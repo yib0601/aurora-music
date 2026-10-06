@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { cn } from '@/lib/utils'
-import { HALL_LABEL, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
+import { HALL_LABEL, LIBRARY_LABEL, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
 import type { RecommendPlaylist, ToplistBrief, ToplistGroup, ToplistPreviewSong } from '@/types'
 
 /**
- * 在线音乐：推荐歌单 + 排行榜（由音源服务实时提供，只读浏览、即点即播、不入库）。
+ * 音乐库：推荐歌单 + 排行榜（由音源服务实时提供，只读浏览、即点即播、不入库）。
  *
  * 数据来自用户配置的音源服务（协议见 @aurora/shared 的 musicHall.ts）。
  * 应用不内置任何平台抓取器——未配音源时整页是引导空态，而不是内置的假数据。
@@ -49,7 +49,7 @@ export function MusicHallPage() {
               {HALL_LABEL}
             </h1>
             <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
-              推荐歌单与排行榜，点开即可试听
+              推荐歌单与排行榜，来自你配置的音源，点开即可试听
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 pb-1 page-toolbar">
@@ -72,6 +72,8 @@ export function MusicHallPage() {
           title={`${HALL_LABEL}暂不可用`}
           desc={unavailable}
           action={{ label: '去配置音源', onClick: () => navigate(ROUTES.settings) }}
+          // 本页是应用首屏：空态必须给出「不配也能用」的出路，否则冷启动像坏掉
+          secondaryAction={{ label: `去${LIBRARY_LABEL}`, onClick: () => navigate(LIBRARY_ROUTE) }}
         />
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
@@ -303,10 +305,13 @@ export function HallEmpty({
   title,
   desc,
   action,
+  secondaryAction,
 }: {
   title: string
   desc: string
   action?: { label: string; onClick: () => void }
+  /** 次要出路：本页是应用首屏，空态不能只留一条路（本地内容始终可用） */
+  secondaryAction?: { label: string; onClick: () => void }
 }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center">
@@ -320,10 +325,19 @@ export function HallEmpty({
       <p className="font-text text-[14px] text-white/50 mb-6 tracking-[-0.15px] text-center max-w-md px-6 leading-relaxed">
         {desc}
       </p>
-      {action && (
-        <button onClick={action.onClick} className="pill pill-lg pill-mint">
-          {action.label}
-        </button>
+      {(action || secondaryAction) && (
+        <div className="flex items-center gap-3">
+          {action && (
+            <button onClick={action.onClick} className="pill pill-lg pill-mint">
+              {action.label}
+            </button>
+          )}
+          {secondaryAction && (
+            <button onClick={secondaryAction.onClick} className="pill pill-lg pill-soft">
+              {secondaryAction.label}
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
