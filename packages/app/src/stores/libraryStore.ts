@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { mergeLegacyPlaylistSources, migrateLyricsSources, migrateOnlineSources } from '@aurora/shared'
+import {
+  mergeLegacyPlaylistSources,
+  migrateLyricsSources,
+  migrateOnlineSources,
+  clearSearchCache,
+  clearLxSourceCache,
+} from '@aurora/shared'
 import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
@@ -156,8 +162,9 @@ export const useLibraryStore = create<LibraryState>()(
         })
       },
       addRecentPlayed: (track, lastPlayedAt, playCount) => {
-        // 记录只留元数据快照：剥离会过期的在线播放地址，播放时按需重新取址
-        const { onlineUrl: _omitUrl, onlineQualityUrls: _omitQuality, ...meta } = track
+        // 记录只留元数据快照：剥离会过期的在线播放地址与洛雪脚本定位信息（lx），
+        // 播放时按元信息重新搜索取址（见 playlistIO.service 的 ensurePlayableTrack）
+        const { onlineUrl: _omitUrl, onlineQualityUrls: _omitQuality, lx: _omitLx, ...meta } = track
         const record: Track = { ...meta, lastPlayedAt, playCount } as Track
         const rest = get().recentPlayedTracks.filter((t) => t.id !== record.id)
         set({ recentPlayedTracks: [record, ...rest].slice(0, MAX_RECENT_PLAYED) })
@@ -210,6 +217,10 @@ export const useLibraryStore = create<LibraryState>()(
       addOnlineSource: (source) => {
         const id = `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         set({ onlineSources: [...get().onlineSources, { ...source, id }] })
+        // 音源集合变了，共享层的搜索缓存（30s TTL）与洛雪脚本宿主缓存必须立即失效，
+        // 否则刚加/刚改的源在半分钟内搜不出东西，看起来像「源没生效」
+        clearSearchCache()
+        clearLxSourceCache()
       },
       updateOnlineSource: (id, updates) => {
         set({
@@ -217,9 +228,13 @@ export const useLibraryStore = create<LibraryState>()(
             s.id === id ? { ...s, ...updates } : s
           ),
         })
+        clearSearchCache()
+        clearLxSourceCache()
       },
       removeOnlineSource: (id) => {
         set({ onlineSources: get().onlineSources.filter((s) => s.id !== id) })
+        clearSearchCache()
+        clearLxSourceCache()
       },
 
       addLyricsSource: (source) => {
@@ -259,6 +274,9 @@ export const useLibraryStore = create<LibraryState>()(
     }),
     {
       name: 'aurora-library-state',
+      // 在线源按**白名单**落盘：配置字段之外的一切（将来的运行期数据、洛雪脚本源码——
+      // 可达数百 KB，写进 localStorage 会撑爆配额）都不写库。洛雪脚本按链接拉取并缓存，
+      // 本就不该进配置，这里兜住任何意外塞进来的运行期字段。
       partialize: (state) => ({
         recentPlayedTracks: state.recentPlayedTracks,
         scanFolders: state.scanFolders,
@@ -269,7 +287,16 @@ export const useLibraryStore = create<LibraryState>()(
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
         searchHistory: state.searchHistory,
-        onlineSources: state.onlineSources,
+        onlineSources: state.onlineSources.map((s) => ({
+          id: s.id,
+          name: s.name,
+          sourceUrl: s.sourceUrl,
+          enabled: s.enabled,
+          ...(s.kind ? { kind: s.kind } : {}),
+          ...(s.headers ? { headers: s.headers } : {}),
+          ...(s.playlistUrl ? { playlistUrl: s.playlistUrl } : {}),
+          ...(s.endpoints ? { endpoints: s.endpoints } : {}),
+        })),
         lyricsSources: state.lyricsSources,
         librarySources: state.librarySources,
         downloadDir: state.downloadDir,

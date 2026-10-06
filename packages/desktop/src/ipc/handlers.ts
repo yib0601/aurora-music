@@ -23,6 +23,7 @@ import {
 import { watchFolder, unwatchFolder } from './watcher'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
+import { registerLxSourceIpc } from './lxSource'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track, LibrarySourceConfig } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource } from '@aurora/shared'
 import {
@@ -258,6 +259,10 @@ export function registerIpcHandlers() {
   registerSystemIpc()
   // 内置更新：安装包下载（进度事件）与安装（启动安装器 / 打开终端执行命令）
   registerUpdaterIpc(sendToRenderer)
+  // 洛雪音源脚本宿主：脚本拉取 / 能力探测 / 自带搜索 / 取址四类 IPC。
+  // 必须在主进程执行：宿主依赖含函数（无法经 IPC 传递）、渲染进程直连上游会被 CORS 拦，
+  // 且脚本可能需要 node:vm 才能被超时打断（见 ipc/lxSource.ts 顶部说明）
+  registerLxSourceIpc()
 
   // 媒体缓存清出封面时回填曲库：被删掉的封面文件不能留在 cover_path 里，
   // 否则渲染层认为「已有封面」而不再提取，封面对用户就永久消失了。
