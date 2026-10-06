@@ -16,9 +16,9 @@ import type { LucideIcon } from 'lucide-react'
 /** 页面路径（静态段） */
 export const ROUTES = {
   root: '/',
-  /** 本地音乐（曲库）：应用默认主屏 */
+  /** 我的音乐（曲库）：应用默认主屏 */
   library: '/library',
-  /** 音乐馆：推荐歌单 + 排行榜（在线发现入口） */
+  /** 在线音乐：推荐歌单 + 排行榜（在线发现入口） */
   hall: '/hall',
   liked: '/liked',
   recent: '/recent',
@@ -26,10 +26,34 @@ export const ROUTES = {
 } as const
 
 /**
+ * 两个音乐页的用户可见名称：导航 label、页面标题、空态按钮与各处内嵌文案共用这两处。
+ *
+ * 命名轴是**所有权/来源**，不是「容器」近义词：
+ * - 我的音乐 = 用户自己扫描入库的本地/WebDAV 资产，长期有效、离线可播
+ * - 在线音乐 = 由音源服务实时提供的推荐与榜单，即点即播、不入库
+ *
+ * 此前叫「音乐库 / 音乐馆」——同词根 + 同「盛放音乐的容器」语义，只差一个字，
+ * 扫读时必须读到第二个字才能分辨，用户反馈「分不清哪个是做什么的」。
+ * 改到互斥属性轴：两个页面名不再共享词根，「我的 X」与「在线 X」互为对照。
+ *
+ * ⚠️ 「在线音乐」不是新造词：改动前它已作为**来源泛称**用在两处
+ * （SearchOverlay 的来源徽章兜底名与结果分组名、SongDetailPage 的来源标签），
+ * 那两处是「曲目来自哪个源」的标签，与导航项「在线音乐」字面相同但**语义层不同**
+ * （来源标签 vs 页面名），无运行时冲突，故不因本次改名而动。
+ *
+ * 注意 `LIBRARY_LABEL` 是**页面名**，不能代入「构建你的专属 X」一类修饰句
+ * （「专属我的音乐」不通）；那类文案改用「曲库」这个普通名词。
+ */
+export const LIBRARY_LABEL = '我的音乐'
+
+/** 在线音乐页的用户可见名称（旧称「音乐馆」，标识符仍沿用 MusicHall*）。与 LIBRARY_LABEL 成对使用，勿单独改一个 */
+export const HALL_LABEL = '在线音乐'
+
+/**
  * 应用主屏：冷启动落地页、返回兜底目标、移动端「再按一次退出」的主屏判定都用它。
  *
- * 主屏是**本地音乐**而非音乐馆：用户自己扫描入库的曲库是长期资产，
- * 音乐馆是发现入口，冷启动应落在自己的资产上。
+ * 主屏是**我的音乐**而非在线音乐：用户自己扫描入库的曲库是长期资产，
+ * 在线音乐是发现入口，冷启动应落在自己的资产上。
  */
 export const HOME_ROUTE = ROUTES.library
 
@@ -45,9 +69,9 @@ export const ROUTE_PATHS = {
   /** 歌曲详情：沉浸式视图（隐藏侧栏与右侧瓷砖） */
   songDetail: '/song/:id',
   playlist: '/playlist/:id',
-  /** 音乐馆 · 推荐歌单详情（dataId 形如 `diss-<歌单号>`） */
+  /** 在线音乐 · 推荐歌单详情（dataId 形如 `diss-<歌单号>`） */
   hallPlaylist: `${ROUTES.hall}/playlist/:id`,
-  /** 音乐馆 · 榜单详情（id 为榜单 topId） */
+  /** 在线音乐 · 榜单详情（id 为榜单 topId） */
   hallToplist: `${ROUTES.hall}/toplist/:id`,
 } as const
 
@@ -78,4 +102,16 @@ export interface NavItem {
   /** lucide 图标组件（不可写成自定的 {className,strokeWidth} 窄类型：strokeWidth 允许 string | number） */
   icon: LucideIcon
   label: string
+}
+
+/**
+ * 导航分组：组标题 + 组内条目。
+ *
+ * 分组的价值在于把「从哪来」这层语义画出来，否则用户只能靠名字猜
+ * （见本文件 LIBRARY_LABEL 处对「音乐库 / 音乐馆」命名缺陷的说明）。
+ * 组标题是**分区标签**，不要与组内项名逐字重复。
+ */
+export interface NavGroup {
+  title: string
+  items: NavItem[]
 }

@@ -6,7 +6,7 @@ import { dedupeTracksForDisplay } from '@aurora/shared'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
-import { HOME_ROUTE } from '@/lib/routes'
+import { HOME_ROUTE, LIBRARY_LABEL } from '@/lib/routes'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { CoverImage } from '@/components/common/CoverImage'
@@ -54,7 +54,7 @@ export function LikedPage() {
   return (
     <PageLayout
       header={
-        // 与音乐库页同款头部：标题左、工具栏右；搜索入口固定在标题右侧原位置
+        // 与曲库页同款头部：标题左、工具栏右；搜索入口固定在标题右侧原位置
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
             <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
@@ -89,7 +89,7 @@ export function LikedPage() {
             className="pill pill-lg pill-mint"
           >
             <Music className="h-4 w-4" strokeWidth={1.6} />
-            去本地音乐
+            去{LIBRARY_LABEL}
           </button>
         </div>
       ) : (

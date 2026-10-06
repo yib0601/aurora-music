@@ -141,7 +141,7 @@ function startHowl(track: Track, src: string, isOnline: boolean, targetVolume: n
     volume: 0, // 初始为 0，播放后 fade in
     onplay: () => {
       audioEvents.emit('play', { track })
-      // 触发播放统计事件，libraryStore 独立订阅更新音乐库数据
+      // 触发播放统计事件，libraryStore 独立订阅更新曲库数据
       audioEvents.emit('playStatsUpdate', {
         trackId: track.id,
         lastPlayedAt: Date.now(),

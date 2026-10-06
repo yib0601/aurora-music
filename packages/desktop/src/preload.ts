@@ -78,7 +78,7 @@ const electronAPI = {
     ipcRenderer.invoke('library-source:scan', sourceId),
   removeLibrarySource: (sourceId: string): Promise<any[]> =>
     ipcRenderer.invoke('library-source:remove', sourceId),
-  // 从音乐库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
+  // 从曲库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
   removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),
   // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）

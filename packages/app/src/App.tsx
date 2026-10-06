@@ -60,7 +60,7 @@ const SCAN_FLUSH_MS = 300
 let pendingScanned: Track[] = []
 let scanFlushTimer: ReturnType<typeof setTimeout> | null = null
 
-/** 把攒下的扫描结果一次性写入音乐库（addTracks 按 id 去重，重复扫描无副作用） */
+/** 把攒下的扫描结果一次性写入曲库（addTracks 按 id 去重，重复扫描无副作用） */
 function flushScannedTracks() {
   if (scanFlushTimer) {
     clearTimeout(scanFlushTimer)
@@ -208,7 +208,7 @@ function AppLayout() {
   }, [nativeMobile, triggerScanForConfiguredFolders])
 
   // 系统返回键：分层消费——先关已打开的浮层（Now Playing / 文件夹选择器 /
-  // 权限弹窗 / 导航抽屉 / 搜索浮层），再退回上一屏路由；已在主屏（音乐库）时
+  // 权限弹窗 / 导航抽屉 / 搜索浮层），再退回上一屏路由；已在主屏（曲库）时
   // 提示再按一次退出，不直接杀进程。各浮层/抽屉开关经 ref 读取，保证监听只
   // 注册一次、回调内永远拿到最新状态。
   const searchOpenRef = useRef(searchOpen)
@@ -268,7 +268,7 @@ function AppLayout() {
       }
 
       // ⑥ 路由返回：详情页/歌单页与屏内返回按钮行为一致（回上一页）；
-      //    其他非主屏页回主屏；已在主屏（音乐库）则进入「再按一次退出」确认流程
+      //    其他非主屏页回主屏；已在主屏（曲库）则进入「再按一次退出」确认流程
       const path = locationRef.current.pathname
       if (isRoute(ROUTE_PATHS.songDetail, path) || isRoute(ROUTE_PATHS.playlist, path)) {
         // 应用内无历史可退（如冷启动直达详情页）时兜底回主屏
@@ -456,7 +456,7 @@ function AppLayout() {
     if (platform.onFolderMissing) {
       unsubscribers.push(
         platform.onFolderMissing(({ folder, removed }) => {
-          console.warn(`[Scan] 目录已不存在，已从音乐库清理 ${removed} 首曲目并移除该扫描目录:`, folder)
+          console.warn(`[Scan] 目录已不存在，已从曲库清理 ${removed} 首曲目并移除该扫描目录:`, folder)
           useLibraryStore.getState().removeScanFolder(folder)
         })
       )
@@ -869,7 +869,7 @@ function AppLayout() {
               )}
               <div className="relative flex-1 min-h-0">
                 {/*
-                  本地音乐常驻挂载（KEEP_ALIVE_ROUTE）：离开它（如进入歌曲详情、音乐馆）时不卸载，
+                  我的音乐常驻挂载（KEEP_ALIVE_ROUTE）：离开它（如进入歌曲详情、在线音乐）时不卸载，
                   用 visibility 隐藏而非 display —— 布局尺寸与滚动容器全程保留，
                   虚拟列表不会因容器失焦归零而停摆，返回时零重建、零空白、滚动位置原样恢复。
                   只有这一个页面常驻：两个虚拟列表同时挂载会让内存与 ResizeObserver 翻倍。
@@ -882,7 +882,7 @@ function AppLayout() {
                 >
                   <LibraryPage />
                 </div>
-                {/* 其他路由按需渲染，绝对定位铺满容器，与常驻的本地音乐层共存互不影响 */}
+                {/* 其他路由按需渲染，绝对定位铺满容器，与常驻的我的音乐层共存互不影响 */}
                 {/* 桌面端详情页：滚动容器上延 44px（标题栏高度）到窗口顶，裁切边移到窗口边界，
                     内容阴影/光晕滚过标题栏底边时不再形成横向断层线 */}
                 {location.pathname !== KEEP_ALIVE_ROUTE && (
@@ -895,7 +895,7 @@ function AppLayout() {
                     <Routes>
                       {/* 路径模式全部取自 lib/routes（唯一事实源），此处不写字面量 */}
                       <Route path={ROUTES.root} element={<Navigate to={HOME_ROUTE} replace />} />
-                      {/* 音乐馆：推荐歌单 + 排行榜（在线发现入口，普通页、按需挂载） */}
+                      {/* 在线音乐：推荐歌单 + 排行榜（在线发现入口，普通页、按需挂载） */}
                       <Route path={ROUTES.hall} element={<MusicHallPage />} />
                       <Route path={ROUTE_PATHS.hallPlaylist} element={<MusicHallDetailPage />} />
                       <Route path={ROUTE_PATHS.hallToplist} element={<MusicHallDetailPage />} />

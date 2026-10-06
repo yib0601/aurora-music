@@ -10,7 +10,7 @@ import type { FileInfo, Track } from '@/types'
  * 会话级限制（浏览器安全模型决定，无法绕过）：
  * - 目录句柄与 objectURL 仅在当前页面会话有效，刷新后丢失；
  *   后台静默扫描发现句柄缺失时静默跳过，用户重新「导入音乐」即可恢复。
- * - 曲目记录不做跨会话持久化（Noop 数据库），刷新后音乐库为空。
+ * - 曲目记录不做跨会话持久化（Noop 数据库），刷新后曲库为空。
  *
  * 地址约定：track.path = `web:<folderKey>/<相对路径>`，
  * 播放/封面通过 trackId 查会话缓存（audioUrls / coverUrls）转成 objectURL。

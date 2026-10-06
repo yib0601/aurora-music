@@ -23,11 +23,11 @@ export interface AuroraEndpoints {
   search: string
   /** 歌单解析端点模板，含 {url} / key */
   playlist: string
-  /** 推荐歌单列表端点模板（音乐馆，只读浏览） */
+  /** 推荐歌单列表端点模板（在线音乐，只读浏览） */
   recommend: string
-  /** 榜单列表端点模板（音乐馆，只读浏览） */
+  /** 榜单列表端点模板（在线音乐，只读浏览） */
   toplists: string
-  /** 单个榜单详情端点模板（音乐馆，含 {id} / {page} / {limit}） */
+  /** 单个榜单详情端点模板（在线音乐，含 {id} / {page} / {limit}） */
   toplist: string
 }
 
@@ -278,10 +278,10 @@ export function playlistEndpointOf(source: SourceEndpointInput | null | undefine
 }
 
 /**
- * 取一条音源的**音乐馆端点模板**（推荐歌单 / 榜单列表 / 榜单详情）。
+ * 取一条音源的**在线音乐端点模板**（推荐歌单 / 榜单列表 / 榜单详情）。
  *
  * 只对**服务地址形态**的音源生效：这三个端点没有「接口模板」形态 ——
- * 音乐馆是浏览型界面，依赖响应里的固定字段（`list` / `groups` / `songs`），
+ * 在线音乐是浏览型界面，依赖响应里的固定字段（`list` / `groups` / `songs`），
  * 手写第三方接口模板不可能对齐，故一律由协议按服务地址派生。
  * 服务端没给自描述时回落默认路径（见 AURORA_ENDPOINT_FALLBACK）。
  */

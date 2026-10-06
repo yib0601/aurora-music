@@ -34,7 +34,7 @@ import type { Track } from '@/types'
 /**
  * 虚拟化歌曲表格。
  *
- * 背景：音乐库原先一次性渲染全部歌曲行（数千首 = 数千个 ContextMenu + CoverImage），
+ * 背景：曲库原先一次性渲染全部歌曲行（数千首 = 数千个 ContextMenu + CoverImage），
  * 进入歌曲详情页再返回时整表重建，是"返回列表很卡"的主因。
  * 这里改用 @tanstack/react-virtual 只渲染可视区域内的行。
  *
