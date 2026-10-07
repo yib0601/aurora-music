@@ -129,6 +129,15 @@ pnpm dev:app          # 仅 Web UI
 
 环境要求：Node.js ≥ 20、pnpm ≥ 9.15；Android 构建另需 JDK 17+ 与 Android SDK。
 
+测试：
+
+```bash
+pnpm --filter @aurora/shared test   # 歌源协议与洛雪宿主的纯逻辑（含进程/超时对抗验证）
+pnpm --filter @aurora/app test      # 渲染层与移动端缓存落盘
+```
+
+`@aurora/shared` 里有 4 条用例读**外部素材**（第三方洛雪脚本仓库 `pdone/lx-music-source`，脚本本身不入库）：本地已有克隆就直接用，没有就浅克隆到临时目录，两者都拿不到（出网受限）则显式 skip 并打印原因，不判失败。指定本地克隆用 `LX_SCRIPT_DIR=<目录>`，缓存位置用 `LX_SCRIPT_CACHE`。
+
 Android 构建：
 
 ```bash

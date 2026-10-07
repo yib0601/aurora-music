@@ -32,24 +32,42 @@ import {
 } from '../lxResolver'
 import { searchOnlineTracks, clearSearchCache } from '../musicSource'
 import type { OnlineSourceConfig } from '../types'
+import { esbuildBin, lxScriptReason, readLxScript } from './lxScriptFixture'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const SRC_DIR = '/tmp/lx-music-source'
-const readScript = (rel: string) => fs.readFileSync(path.join(SRC_DIR, rel), 'utf8')
 /**
  * 子进程用入口：**沙箱化的 lxHost 真实源码**（esbuild 打包，符号遮蔽与 evaluate 接线
  * 与 issues 完全一致），而不是 dist —— 后者是 CommonJS 产物，Node 里以 ESM 解析会因
  * 无扩展名相对导入而加载失败（与本次验证对象无关）。
  */
 const LXRUN_ENTRY = path.join(HERE, 'lxVerifierChildrun.mjs')
-const ESBUILD = '/home/yibin/Code/aurora-music/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/bin/esbuild'
 
-function lxHostBundleSource(): string {
+/** 跳过用的最小上下文（vitest 的 TestContext 结构上满足） */
+type SkipCtx = { skip: (note?: string) => void }
+
+/**
+ * 取一条**外部素材脚本**（pdone/lx-music-source，不入库）。拿不到就显式跳过本条：
+ * 素材属第三方、获取受网络限制，缺它是环境问题，不是实现回归——但也不许静默通过，
+ * 跳过原因会打出来。取法见 lxScriptFixture。
+ */
+function requireScript(ctx: SkipCtx, rel: string): string {
+  const text = readLxScript(rel)
+  if (!text) ctx.skip(lxScriptReason() || `素材缺失：${rel}`)
+  return text as string
+}
+
+/** 用 esbuild 打包 lxHost 真实源码；esbuild 不可得（本机路径写死过的老坑）则跳过 */
+function requireBundle(ctx: SkipCtx): string {
+  const bin = esbuildBin()
+  if (!bin) ctx.skip('esbuild 不可得：node_modules/.bin 与 .pnpm 下均未找到，无法打包 lxHost')
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'lxbundle-'))
   const outFile = path.join(out, 'lxHost.mjs')
-  const r = spawnSync(ESBUILD, [path.join(HERE, '..', 'lxHost.ts'), '--bundle', '--format=esm', '--platform=node', `--outfile=${outFile}`, '--log-level=error'], {
+  const r = spawnSync(bin as string, [path.join(HERE, '..', 'lxHost.ts'), '--bundle', '--format=esm', '--platform=node', `--outfile=${outFile}`, '--log-level=error'], {
     encoding: 'utf8',
   })
+  // 执行器本身跑不起来（平台包缺失、权限不足）是环境问题 → 跳过；
+  // 命令跑起来了但打包报错才是真回归 → 失败。
+  if (r.error) ctx.skip(`esbuild 不可执行（${(r.error as Error).message}）：${bin}`)
   if (r.status !== 0) throw new Error('esbuild 打包 lxHost 失败: ' + (r.stderr || r.stdout))
   return outFile
 }
@@ -224,8 +242,8 @@ describe('A. evaluate 契约', () => {
     expect(elapsed).toBeLessThan(3000)
   })
 
-  it('A3 未注入执行器：同一份死循环脚本在子进程中挂死（超时被 kill 证明）', () => {
-    const bundle = lxHostBundleSource()
+  it('A3 未注入执行器：同一份死循环脚本在子进程中挂死（超时被 kill 证明）', (ctx) => {
+    const bundle = requireBundle(ctx)
     const r = spawnSync(process.execPath, [LXRUN_ENTRY, bundle, 'hang'], { timeout: 6000, encoding: 'utf8' })
     expect(r.stdout).toContain('child-enter')
     // 被 spawnSync 的超时强杀：进程在同步死循环里永远回不来
@@ -303,8 +321,8 @@ globalThis.liscript = {
     expect((globalThis as any).__unpacked).toBeUndefined()
   }, 30000)
 
-  it('A5b 素材事实核对：/tmp/lx-music-source 下的六音并不是 Liscript 包装脚本', () => {
-    const sixyin = readScript('sixyin/latest.js')
+  it('A5b 素材事实核对：pdone/lx-music-source 的六音并不是 Liscript 包装脚本', (ctx) => {
+    const sixyin = requireScript(ctx, 'sixyin/latest.js')
     // 事实：脚本里不存在 liscript 标识 / lz-string 解压逻辑，也没有可作为载荷的长字符串常量
     expect(sixyin).not.toMatch(/liscript/i)
     expect(sixyin).not.toMatch(/LZString|decompressFrom/i)
@@ -314,8 +332,8 @@ globalThis.liscript = {
     expect(sixyin.length).toBeGreaterThan(1e5)
   })
 
-  it('A5c 六音混淆脚本经注入执行器运行时：确实交给执行器，失败原因是脚本自身站点校验', async () => {
-    const sixyin = readScript('sixyin/latest.js')
+  it('A5c 六音混淆脚本经注入执行器运行时：确实交给执行器，失败原因是脚本自身站点校验', async (ctx) => {
+    const sixyin = requireScript(ctx, 'sixyin/latest.js')
     const { evaluate, calls } = recordingEvaluator()
     const out = await inspectLxSource(lxSource(sixyin, { name: '六音' }) as any, {
       request: countingRequest().request,
@@ -340,13 +358,13 @@ globalThis.liscript = {
     expect(Date.now() - started).toBeLessThan(3000)
   })
 
-  it('A7 scriptTimeoutMs 默认 10000；callTimeoutMs 默认 20000（子进程计时器观测）', async () => {
+  it('A7 scriptTimeoutMs 默认 10000；callTimeoutMs 默认 20000（子进程计时器观测）', async (ctx) => {
     const { evaluate, calls } = recordingEvaluator()
     await inspectLxSource(lxSource(stubScript()) as any, { request: countingRequest().request, evaluate })
     expect(calls[0].timeoutMs).toBe(10000)
 
     // 默认 call 超时无法用 20s 真等，改用子进程劫持 setTimeout 观测实际使用的毫秒数
-    const bundle = lxHostBundleSource()
+    const bundle = requireBundle(ctx)
     const r = spawnSync(process.execPath, [LXRUN_ENTRY, bundle, 'timer'], { timeout: 8000, encoding: 'utf8' })
     expect(r.stdout, r.stderr || '').toContain('child-enter')
     expect(r.stdout).toContain('TIMER=20000')
@@ -381,10 +399,10 @@ describe('B. 聚合搜索行为', () => {
     }
   })
 
-  it('B2 只有 musicUrl 的真实脚本（huibq）：不产出条目，但不得把整轮判失败', async () => {
+  it('B2 只有 musicUrl 的真实脚本（huibq）：不产出条目，但不得把整轮判失败', async (ctx) => {
     const fixture = await startAuroraFixture()
     try {
-      const huibq = readScript('huibq/latest.js')
+      const huibq = requireScript(ctx, 'huibq/latest.js')
       setLxHostDeps({ request: countingRequest().request })
       const out = await searchOnlineTracks('起风了', {
         sources: [
@@ -583,8 +601,8 @@ function createNodeRequest(): LxRequestFn {
 }
 
 describe('D. 真实脚本真直链（联网）', () => {
-  it('D1 huibq 脚本取酷我直链并实拉 Range 0-1023：HTTP 200/206 且 content-type 为 audio/*', async () => {
-    const huibq = readScript('huibq/latest.js')
+  it('D1 huibq 脚本取酷我直链并实拉 Range 0-1023：HTTP 200/206 且 content-type 为 audio/*', async (ctx) => {
+    const huibq = requireScript(ctx, 'huibq/latest.js')
     const { evaluate } = recordingEvaluator()
     setLxHostDeps({ request: createNodeRequest(), evaluate, scriptTimeoutMs: 10000, callTimeoutMs: 20000 })
     const source = lxSource(huibq, { id: 'huibq', name: 'Huibq_lxmusic源' })
