@@ -14,6 +14,14 @@ import { useUIStore } from '@/stores/uiStore'
  * - 遮罩点击关闭；抽屉 glass 材质 + safe-area 适配
  * - 抽屉开关全局化到 uiStore：App 层的系统返回键处理需要能收起它
  *
+ * ⚠️ 本组件**不得再写宽度断点**（原本的 `md:hidden` 已移除）。
+ * 是否挂载完全由 App 层的 `{showMobileNav && ...}` 决定，与本组件内部无关。
+ * 原因：坐标系不同。车机是像素密度极低的大屏——10 寸车机竖屏常见 1280×800 /
+ * 800×1280 像素，电容单位下宽度远超 md(768)。若这里再写 `md:hidden`，App 层按
+ * isMobile 挂了组件、组件自己却被宽度断点藏起来，顶部汉堡栏与左侧固定侧栏
+ * 会**同时消失**，整个导航入口归零（手机窄屏测不出，车机必现）。
+ * 同类教训见 MobileNowPlaying 的同名注释。
+ *
  * 视觉取 DS 语言：active 态用 surface 层级 + 1px 发丝描边标识选中，
  * 品牌 mint 收敛为图标强调色，不再整块铺色；圆角走 DS panel 档。
  * 抽屉开关、路由跳转与关闭逻辑一字未改。
@@ -70,7 +78,7 @@ export function MobileNav() {
     <>
       {/* 顶部栏：左上角菜单按钮 + 当前页面标题 */}
       <header
-        className="md:hidden relative z-40 flex items-center gap-2 pl-2 pr-4 h-[calc(3rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]"
+        className="relative z-40 flex items-center gap-2 pl-2 pr-4 h-[calc(3rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]"
         aria-label="顶部导航"
       >
         <button
@@ -89,7 +97,7 @@ export function MobileNav() {
       {/* 遮罩：点击关闭抽屉 */}
       {open && (
         <div
-          className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         />
       )}
@@ -97,7 +105,7 @@ export function MobileNav() {
       {/* 左侧抽屉菜单 */}
       <aside
         className={cn(
-          'md:hidden fixed top-0 left-0 bottom-0 z-[70] w-[280px] glass-regular glass-flush-top flex flex-col transition-transform duration-300 ease-apple border-r border-white/5',
+          'fixed top-0 left-0 bottom-0 z-[70] w-[280px] glass-regular glass-flush-top flex flex-col transition-transform duration-300 ease-apple border-r border-white/5',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
