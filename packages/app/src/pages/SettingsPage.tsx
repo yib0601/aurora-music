@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Settings as SettingsIcon, Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check, Github } from 'lucide-react'
+import { Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check, Github } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -49,6 +49,27 @@ const themeOptions = [
   { value: 'system' as const, label: '跟随系统', icon: Monitor },
 ]
 
+/**
+ * 端点预览压缩：弹窗可用宽度约 400px，整条 URL（host + 长密钥 + 占位符）必被
+ * truncate 砍成半截，看不到结构。这里把每条端点压成「路径 + 参数名」：
+ * host 与参数值本来就是用户自己填的（填了 key 至少两次），回显没有信息量，
+ * 值一律换成 …（占位符原样保留）。一行一眼看得全。
+ * 外层原来的 maskPreview / maskKey 仍保留：压缩后密钥已变成 …，它们通常不再命中，
+ * 只作为「压缩失败退回原串」时的第二层遮蔽兜底。
+ */
+function compactEndpointUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    const params = [...u.searchParams.entries()]
+      .map(([k, v]) => `${k}=${/^\{.*\}$/.test(v) ? v : '…'}`)
+      .join('&')
+    return params ? `${u.pathname}?${params}` : u.pathname
+  } catch {
+    // 不是合法 URL 就原样返回，交给外层 truncate 兜底
+    return url
+  }
+}
+
 /** 缓存容量合法区间（MB），与 store 侧钳制规则一致 */
 const CACHE_LIMIT_MIN_MB = 64
 const CACHE_LIMIT_MAX_MB = 102400
@@ -65,6 +86,204 @@ const downloadQualityOptions = [
   { value: '320' as const, label: '高品质 320k' },
   { value: 'flac' as const, label: '无损 FLAC' },
 ]
+
+/**
+ * 设置分区表：左侧导航、分区标题、滚动锚点三处共用这一份 id/名称，避免改一处漏两处。
+ * 顺序即用户的任务顺序：先调外观 → 再管曲库来源 → 再管落盘 → 再管在线源 → 最后是版本信息。
+ *
+ * 分区数刻意收在 5 个：原来的「下载」「缓存」「软件更新」「关于」四个卡片各自只有一两行内容，
+ * 平铺出来是四张等重卡片，用户扫读时要逐个读标题才知道哪个是哪个；合并后
+ * 「下载 + 缓存」同属落盘语义、「软件更新 + 关于」同属版本语义，导航一眼可辨。
+ */
+const SETTINGS_SECTIONS = [
+  { id: 'general', label: '通用' },
+  { id: 'library', label: LIBRARY_LABEL },
+  { id: 'storage', label: '下载与缓存' },
+  { id: 'sources', label: '在线源' },
+  { id: 'about', label: '关于' },
+] as const
+
+/** 分区 DOM id：导航、滚动定位与 spy 共用，禁止在别处拼字面量 */
+const settingsSectionId = (id: string) => `settings-${id}`
+
+/**
+ * 页头那句动态说明：每个分区一句，随导航选中项切换。
+ * 原先这些解释散在各卡片的第一行（每张卡都要一句"这卡是干什么的"），
+ * 收拢到页头后，卡片里只剩行标签与必要提示。
+ */
+const settingsSectionHint: Record<string, string> = {
+  general: '主题与播放设备',
+  library: '本地目录与网络存储，扫描入库的来源',
+  storage: '下载音质、落盘目录与播放缓存',
+  sources: '配置在线音源与歌词源',
+  about: '版本、更新与开源许可',
+}
+
+/**
+ * 分区导航：桌面端左侧常驻竖排，窄屏退化为顶部胶囊条。
+ * 窄屏用 flex-wrap 换行而非横向滚动：5 个中文标签在 390px 宽下会超出屏幕，
+ * 横向滚动条会把最后一项藏起来，用户不知道还有分区没看到。
+ * 桌面端 `self-start` 让 nav 高度只占内容高——不写死高度、也不依赖 sticky：
+ * 滚动发生在右侧内容列内部，整页并不滚动，sticky 在这里是死代码。
+ * 选中态**刻意与主导航不同**：主导航用低透 mint 底 + mint 字（全局方位锚点，要克制），
+ * 这里用实心 mint + 深墨字 —— 低透叠色在浅色主题下只有 2.84:1，达不到正文阈值。
+ */
+function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: string) => void }) {
+  return (
+    <nav
+      data-settings-nav
+      className="flex flex-wrap gap-1.5 pb-3 lg:w-[152px] lg:flex-shrink-0 lg:flex-col lg:flex-nowrap lg:self-start lg:gap-0.5 lg:pb-0"
+    >
+      {SETTINGS_SECTIONS.map(({ id, label }) => {
+        const on = active === id
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onSelect(id)}
+            aria-current={on ? 'true' : undefined}
+            // 选中态用实心 mint 底 + 深墨字：低透 mint 底 + mint 字（原做法）在浅色主题下
+            // 同色相叠加只有 2.84:1，达不到正文阈值。前景**刻意硬编码** #030608 而不是
+            // 用 `text-mint-fg`——那个 token 是为 Tailwind 的 bg-mint 设计的，浅色下翻成白字，
+            // 在白字 on #009C88 只有 3.44:1，会退化（与 globals.css 的 .btn-primary 同一理由）。
+            // 深墨字在两种主题的 mint 底上分别是 14.5:1 / 5.9:1。
+            className={`h-8 flex-shrink-0 whitespace-nowrap rounded-full border px-3 font-text text-[12px] tracking-[-0.2px] transition-colors duration-200 ease-mineradio lg:h-9 lg:rounded-ds-media lg:text-[13px] lg:text-left ${
+              on
+                ? 'border-transparent bg-mint font-semibold text-[#030608]'
+                : 'border-transparent text-white/55 hover:border-white/[0.10] hover:bg-white/[0.04] hover:text-white/85'
+            }`}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+/**
+ * 当前分区判定：取「内容列顶部下 96px」这条线以上最后一个分区的 id。
+ *
+ * 判定线不能用 window.innerHeight 的比例：应用外壳是 `h-screen overflow-hidden` 的固定布局，
+ * 可视高度由内容列决定，与窗口高度不成比例（窗口 900、内容列只有 690）。用的是**内容列**的
+ * 顶部基线 + 一个标题高度的偏移，两种滚动模式（桌面端列内滚动 / 窄屏整页滚动）都成立。
+ *
+ * 也不能用"最后滚不到顶就选它"的兜底：内容列最大滚动量有限，「在线源」「关于」永远滚不到
+ * 判定线以上，兜底会把 active 永久钉在最后一个分区、前半页导航全部失灵。
+ */
+function useSettingsSpy() {
+  const [active, setActive] = useState<string>(SETTINGS_SECTIONS[0].id)
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const lockUntilRef = useRef(0)
+
+  // 高亮跟随「判定线以上最后一个分区」，单调语义，与滚动手感一致。
+  // 唯一的例外是滚到底：内容不足时最后一个分区永远够不到判定线，
+  // 若不兜底，用户明明正看着「关于」、高亮却停在「在线源」。
+  const computeActive = () => {
+    const scroller = scrollerRef.current
+    const line = scroller
+      ? scroller.getBoundingClientRect().top + 96
+      : window.innerHeight * 0.2
+    let next: string = SETTINGS_SECTIONS[0].id
+    for (const { id } of SETTINGS_SECTIONS) {
+      const el = document.getElementById(settingsSectionId(id))
+      if (el && el.getBoundingClientRect().top <= line) next = id
+    }
+    if (scroller && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
+      next = SETTINGS_SECTIONS[SETTINGS_SECTIONS.length - 1].id
+    }
+    return next
+  }
+
+  useEffect(() => {
+    const sync = () => {
+      if (Date.now() < lockUntilRef.current) return
+      const next = computeActive()
+      setActive((prev) => (prev === next ? prev : next))
+    }
+    sync()
+    const scroller = scrollerRef.current
+    scroller?.addEventListener('scroll', sync, { passive: true })
+    window.addEventListener('scroll', sync, { passive: true })
+    window.addEventListener('resize', sync)
+    return () => {
+      scroller?.removeEventListener('scroll', sync)
+      window.removeEventListener('scroll', sync)
+      window.removeEventListener('resize', sync)
+    }
+    // 依赖为空：挂载时读一次 ref（此时已绑定），此后只由 scroll/resize 驱动
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /**
+   * 滚动到分区：**只滚动内容列**，用 scrollTo 而不是 scrollIntoView。
+   *
+   * scrollIntoView 会逐级滚动所有可滚祖先，而应用外壳是 `h-screen overflow-hidden` 的
+   * 固定布局——它一旦被滚走，页头与整个分区导航就永久移出视口（实测外壳 scrollTop
+   * 0 → 236、导航 top 82 → −154）。只动自己那一层，外壳永远不动。
+   */
+  const scrollTo = (id: string) => {
+    setActive(id)
+    // 锁定只覆盖平滑滚动的行程：内容列在窗口大小变化时会重排，留一个上限，避免永久锁死
+    lockUntilRef.current = Date.now() + 800
+    const el = document.getElementById(settingsSectionId(id))
+    const scroller = scrollerRef.current
+    if (!el) return
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const smooth: ScrollBehavior = reduceMotion ? 'auto' : 'smooth'
+    if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 1) {
+      // 窄屏：内容列不滚动，页面级锚点滚动（此时没有固定外壳被牵连的问题）
+      el.scrollIntoView({ behavior: smooth, block: 'start' })
+      return
+    }
+    // 桌面端：内容列内滚动。目标位置 = 分区相对内容列内容区的偏移 - 12px 顶部呼吸
+    const delta = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    const top = scroller.scrollTop + delta - 12
+    scroller.scrollTo({ top: Math.max(0, top), behavior: smooth })
+  }
+
+  return { active, scrollTo, scrollerRef }
+}
+
+/** 设置行：左标签（含一句说明）右控件。整页只用这一种行节奏，避免每项各写一套间距 */
+function SettingRow({
+  label,
+  hint,
+  control,
+  children,
+}: {
+  label: string
+  hint?: string
+  control?: React.ReactNode
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="inset-row px-3 py-3">
+      <div className="flex items-start justify-between gap-6">
+        <div className="min-w-0">
+          <p className="font-text text-caption-strong text-white/85">{label}</p>
+          {hint && <p className="font-text text-caption text-white/50 mt-1 leading-[1.5]">{hint}</p>}
+        </div>
+        {control && <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">{control}</div>}
+      </div>
+      {children && <div className="mt-2">{children}</div>}
+    </div>
+  )
+}
+
+/**
+ * 设置分区：卡片 + 标题 + 滚动锚点。
+ * 标题从 21px/600 收到 15px/500 —— 分区标题只需"比行标签大一档"，靠字号而非加粗建层级，
+ * 中文笔画密，21px 粗体连排五个会把整页压成一片黑。
+ */
+function SettingsSection({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+  return (
+    <section id={settingsSectionId(id)} data-settings-section={id} className="card-list p-2 pb-3 scroll-mt-2">
+      <h2 className="px-3 pt-3 pb-1 font-display text-[15px] font-medium tracking-[-0.2px] text-white/90">{title}</h2>
+      <div className="space-y-1">{children}</div>
+    </section>
+  )
+}
 
 /**
  * 单个音源卡片：默认仅展示名称 + 能力标签 + 启用开关；点击编辑展开草稿表单，校验通过后点保存才写入。
@@ -353,7 +572,9 @@ function SourceEditorCard({
               <p className="font-text text-caption text-coral/70 mt-1">{linkError}</p>
             ) : isService ? (
               <p className="font-text text-caption text-mint/70 mt-1">
-                服务地址已识别，搜索与歌单接口自动生成{parsed?.apiKey ? '，密钥已从链接中提取' : ''}
+                {parsed?.apiKey
+                  ? '已识别为服务地址，密钥已提取；搜索与歌单接口自动生成'
+                  : '已识别为服务地址；搜索与歌单接口自动生成，密钥可写在链接里'}
               </p>
             ) : parsed ? (
               <p className="font-text text-caption text-white/35 mt-1">按接口模板使用，占位符由软件替换</p>
@@ -410,8 +631,11 @@ function SourceEditorCard({
           )}
           {preview && (
             <div className="mt-2 space-y-0.5">
-              <p className="font-text text-caption text-white/35 truncate">搜索 {maskPreview(preview.search)}</p>
-              <p className="font-text text-caption text-white/35 truncate">歌单 {maskPreview(preview.playlist)}</p>
+              {/* 先回显软件从这条链接里提取出的服务地址：用户填的可能是裸域名、
+                  带 key 的域名，或一条完整端点地址，不写清楚他会以为判定错了 */}
+              <p className="font-text text-caption text-white/35 truncate">服务 {parsed?.baseUrl}</p>
+              <p className="font-text text-caption text-white/35 truncate">搜索 {maskPreview(compactEndpointUrl(preview.search))}</p>
+              <p className="font-text text-caption text-white/35 truncate">歌单 {maskPreview(compactEndpointUrl(preview.playlist))}</p>
             </div>
           )}
             </>
@@ -607,10 +831,10 @@ function SourceAddDialog({
           </DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
             {isLyrics
-              ? '接口地址需包含 {track} 与 {artist} 占位符，保存后立即生效'
+              ? '接口地址需含 {track} 与 {artist} 占位符'
               : isLx
-                ? '粘贴一条洛雪音源脚本链接：脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索'
-                : '填一条链接即可：服务地址会自动生成搜索与歌单解析接口，第三方接口地址原样使用'}
+                ? '粘贴脚本链接，脚本提供取址能力'
+                : '服务地址自动生成接口，接口模板原样使用'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -651,7 +875,7 @@ function SourceAddDialog({
                       >
                         {option.label}
                       </span>
-                      <span className="block font-text text-caption text-white/45 mt-0.5">{option.hint}</span>
+                      <span className="block font-text text-caption text-white/50 mt-0.5">{option.hint}</span>
                     </button>
                   )
                 })}
@@ -710,7 +934,9 @@ function SourceAddDialog({
               <p className="font-text text-caption text-coral/70 mt-1">{linkError}</p>
             ) : isService ? (
               <p className="font-text text-caption text-mint/70 mt-1">
-                服务地址已识别，搜索与歌单接口自动生成{parsed?.apiKey ? '，密钥已从链接中提取' : ''}
+                {parsed?.apiKey
+                  ? '已识别为服务地址，密钥已提取；搜索与歌单接口自动生成'
+                  : '已识别为服务地址；搜索与歌单接口自动生成，密钥可写在链接里'}
               </p>
             ) : parsed ? (
               <p className="font-text text-caption text-white/35 mt-1">按接口模板使用，占位符由软件替换</p>
@@ -767,8 +993,9 @@ function SourceAddDialog({
               </div>
               {preview && (
                 <div className="space-y-0.5">
-                  <p className="font-text text-caption text-white/35 truncate">搜索 {maskKey(preview.search)}</p>
-                  <p className="font-text text-caption text-white/35 truncate">歌单 {maskKey(preview.playlist)}</p>
+                  <p className="font-text text-caption text-white/35 truncate">服务 {parsed?.baseUrl}</p>
+                  <p className="font-text text-caption text-white/35 truncate">搜索 {maskKey(compactEndpointUrl(preview.search))}</p>
+                  <p className="font-text text-caption text-white/35 truncate">歌单 {maskKey(compactEndpointUrl(preview.playlist))}</p>
                 </div>
               )}
             </>
@@ -998,7 +1225,7 @@ function LibrarySourceCard({
         <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
         <div className="min-w-0 flex-1">
           <p className="font-text text-caption-strong text-white/85 truncate">{source.name}</p>
-          <p className="font-text text-caption text-white/45 truncate">
+          <p className="font-text text-caption text-white/50 truncate">
             WebDAV · {source.baseUrl}
             {source.rootPath ? `/${source.rootPath}` : ''}
           </p>
@@ -1422,26 +1649,34 @@ export function SettingsPage() {
     }
   }
 
+  const { active: activeSection, scrollTo: scrollToSection, scrollerRef } = useSettingsSpy()
+
   return (
-    <PageLayout header={
-      // 设置页内容列较窄（720px），居中放置与其他页面的 1200px 居中内容列共享同一视觉轴
-      <div className="flex items-center gap-5 mb-8 max-w-[720px] mx-auto w-full">
-        <div className="w-16 h-16 rounded-[16px] glass-regular border border-white/[0.08] flex items-center justify-center">
-          <SettingsIcon className="h-8 w-8 text-mint" strokeWidth={1.4} />
+    <PageLayout
+      // 只收窄内容列：底部留白沿用 PageLayout 默认值——内容列自己滚动后，
+      // 其底边仍落在悬浮播放条上方，去掉留白会让「关于」卡片滚到底时压在播放条下面
+      className="max-w-[980px]"
+      header={
+        // 页面头压到一行：标题 + 一句动态说明。原先是 64px 图标块 + 主标题 + 副标题三行，
+        // 只说明"这是设置页"，占掉首屏近 120px；分区导航本身已经承担了页面识别。
+        // 说明文案按当前分区变化，把原本铺在卡片里的解释收拢到一处。
+        <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 md:mb-5">
+          <h1 className="font-display text-[24px] font-medium tracking-[-0.02em] text-white/[0.98] leading-tight">
+            设置
+          </h1>
+          <p className="font-text text-[12px] text-white/50 tracking-[-0.2px]">
+            {settingsSectionHint[activeSection]}
+          </p>
         </div>
-        <div>
-          <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">设置</h1>
-          <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">自定义你的 Aurora Music</p>
-        </div>
-      </div>
-    }>
-      <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
-        <div className="w-full max-w-[720px] mx-auto space-y-5 pb-8">
-          <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">通用</h2>
-            <div className="space-y-6">
-              <div>
-                <p className="font-text text-caption-strong mb-3 text-white/80">主题</p>
+      }
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-8">
+        <SettingsNav active={activeSection} onSelect={scrollToSection} />
+        <div ref={scrollerRef} className="min-w-0 flex-1 overflow-y-auto scrollbar-thin lg:pr-2 lg:-mr-2">
+          <div className="space-y-3 pb-8">
+            <SettingsSection id="general" title="通用">
+              <div className="px-3 pt-1">
+                <p className="font-text text-caption text-white/50 mb-2">主题</p>
                 <div className="flex gap-2">
                   {themeOptions.map(({ value, label, icon: Icon }) => (
                     <button
@@ -1465,123 +1700,119 @@ export function SettingsPage() {
                   ))}
                 </div>
               </div>
-              {/* 输出设备：与主题同卡，用细分隔线区分两组设置 */}
-              <div className="border-t border-white/[0.06] pt-5">
-                <p className="font-text text-caption-strong mb-3 text-white/80">输出设备</p>
-                {devices.length === 0 ? (
-                  <p className="font-text text-caption text-white/60 py-2">未检测到可用的输出设备</p>
-                ) : (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="inset-field group w-full flex items-center justify-between gap-2 px-3.5 py-2.5 font-text text-caption text-white/80"
-                      >
-                        <span className="truncate text-left">
-                          {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '选择输出设备'}
-                        </span>
-                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-white/40 transition-transform duration-200 ease-mineradio group-data-[state=open]:rotate-180" strokeWidth={1.6} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-72 overflow-y-auto scrollbar-thin p-1">
-                      {devices.map((d) => (
-                        <DropdownMenuItem
-                          key={d.deviceId}
-                          onClick={() => handleDeviceChange(d.deviceId)}
-                          className="gap-2 rounded-xs px-2.5 py-2 text-[13px]"
-                        >
-                          <span className="truncate">{d.label}</span>
-                          {d.deviceId === selectedDeviceId && (
-                            <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-mint" strokeWidth={2} />
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">{LIBRARY_LABEL}</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-text text-caption-strong text-white/80">扫描目录</p>
-                  <p className="font-text text-caption text-white/60 mt-0.5">应用会扫描这些目录中的音乐文件</p>
-                </div>
-                <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickFolder}>
-                  <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                  添加目录
-                </Button>
-              </div>
-              {scanFolders.length === 0 ? (
-                <p className="font-text text-caption text-white/60 py-2">尚未添加任何目录</p>
-              ) : (
-                <div className="space-y-2">
-                  {scanFolders.map((folder) => (
-                    <div key={folder} className="inset-row flex items-center justify-between px-3.5 py-3">
-                      <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title={`移除目录（同时从${LIBRARY_LABEL}移除该目录下的歌曲）`}
-                        className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
-                        onClick={() => handleRemoveFolder(folder)}
-                      >
-                        <Trash2 className="h-4 w-4" strokeWidth={1.6} />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* 网络存储（仅桌面端）：与本地目录同属曲库来源，合并进本卡片，用细分隔线区分 */}
-              {supportsLibrarySources && (
-                <div className="border-t border-white/[0.06] pt-5">
-                  <div className="flex items-center justify-between">
-                    <p className="font-text text-caption-strong text-white/80">网络存储</p>
-                    <Button variant="secondary" size="sm" className="h-8 px-3" onClick={() => setAddLibraryOpen(true)}>
-                      <Plus className="h-4 w-4 mr-1.5" strokeWidth={1.6} />
-                      添加
-                    </Button>
-                  </div>
-                  <p className="font-text text-caption text-white/45 mt-0.5 mb-3">
-                    NAS / WebDAV 上的音乐会被扫描入库并长期保留
-                  </p>
-                  {librarySources.length === 0 ? (
-                    <p className="font-text text-caption text-white/60">
-                      尚未添加，支持群晖 / 威联通 / Nextcloud 等标准 WebDAV 服务
-                    </p>
+              <SettingRow
+                label="输出设备"
+                control={
+                  devices.length === 0 ? (
+                    <span className="font-text text-caption text-white/50">未检测到可用设备</span>
                   ) : (
-                    <div className="space-y-2">
-                      {librarySources.map((source) => (
-                        <LibrarySourceCard
-                          key={source.id}
-                          source={source}
-                          status={libraryStatus[source.id] || {}}
-                          onUpdate={(updates) => updateLibrarySource(source.id, updates)}
-                          onProbe={() => handleProbeLibrarySource(source)}
-                          onScan={() => handleScanLibrarySource(source)}
-                          onRemove={() => handleRemoveLibrarySource(source)}
-                        />
-                      ))}
-                    </div>
-                  )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inset-field group flex h-9 w-[220px] items-center justify-between gap-2 px-3 font-text text-caption text-white/80"
+                        >
+                          <span className="truncate text-left">
+                            {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '系统默认'}
+                          </span>
+                          <ChevronDown className="h-4 w-4 flex-shrink-0 text-white/40 transition-transform duration-200 ease-mineradio group-data-[state=open]:rotate-180" strokeWidth={1.6} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-72 overflow-y-auto scrollbar-thin p-1">
+                        {devices.map((d) => (
+                          <DropdownMenuItem
+                            key={d.deviceId}
+                            onClick={() => handleDeviceChange(d.deviceId)}
+                            className="gap-2 rounded-xs px-2.5 py-2 text-[13px]"
+                          >
+                            <span className="truncate">{d.label}</span>
+                            {d.deviceId === selectedDeviceId && (
+                              <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-mint" strokeWidth={2} />
+                            )}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                }
+              />
+            </SettingsSection>
+
+            <SettingsSection id="library" title={LIBRARY_LABEL}>
+              <SettingRow
+                label="扫描目录"
+                hint="应用自动扫描这些目录里的音乐文件"
+                control={
+                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickFolder}>
+                    <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                    添加
+                  </Button>
+                }
+              >
+                {scanFolders.length === 0 ? (
+                  <p className="font-text text-caption text-white/50">尚未添加目录</p>
+                ) : (
+                  <div className="space-y-2">
+                    {scanFolders.map((folder) => (
+                      <div key={folder} className="inset-row flex items-center justify-between px-3 py-2.5">
+                        <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={`移除目录（同时从${LIBRARY_LABEL}移除该目录下的歌曲）`}
+                          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
+                          onClick={() => handleRemoveFolder(folder)}
+                        >
+                          <Trash2 className="h-4 w-4" strokeWidth={1.6} />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </SettingRow>
+
+              {/* 网络存储（仅桌面端）：与本地目录同属曲库来源，合并进本分区，用细分隔线区分 */}
+              {supportsLibrarySources && (
+                <div className="border-t border-white/[0.06] mx-3 mt-1 pt-3">
+                  <SettingRow
+                    label="网络存储"
+                    hint="NAS / WebDAV 上的音乐会被扫描入库并长期保留"
+                    control={
+                      <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddLibraryOpen(true)}>
+                        <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                        添加
+                      </Button>
+                    }
+                  >
+                    {librarySources.length === 0 ? (
+                      <p className="font-text text-caption text-white/50">
+                        尚未添加，支持群晖 / 威联通 / Nextcloud 等标准 WebDAV
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {librarySources.map((source) => (
+                          <LibrarySourceCard
+                            key={source.id}
+                            source={source}
+                            status={libraryStatus[source.id] || {}}
+                            onUpdate={(updates) => updateLibrarySource(source.id, updates)}
+                            onProbe={() => handleProbeLibrarySource(source)}
+                            onScan={() => handleScanLibrarySource(source)}
+                            onRemove={() => handleRemoveLibrarySource(source)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </SettingRow>
                 </div>
               )}
-            </div>
-          </section>
+            </SettingsSection>
 
-          <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">下载</h2>
-            <div className="space-y-4">
-              <div>
-                <p className="font-text text-caption-strong text-white/80">默认下载音质</p>
-                <p className="font-text text-caption text-white/60 mt-0.5 mb-3">
-                  需歌源支持对应音质，不支持时按源默认地址下载
-                </p>
+            {/* 下载与缓存：同属"歌曲落盘"语义——下载音质/目录决定怎么存，
+                缓存大小决定播放时占多少磁盘。原先拆成两张卡，各自只有两行内容 */}
+            <SettingsSection id="storage" title="下载与缓存">
+              <div className="px-3 pt-1">
+                <p className="font-text text-caption text-white/50 mb-2">下载音质</p>
                 <div className="flex gap-2">
                   {downloadQualityOptions.map(({ value, label }) => (
                     <button
@@ -1596,146 +1827,119 @@ export function SettingsPage() {
                   ))}
                 </div>
               </div>
-              {/* 下载目录：桌面端设置后免保存对话框直存；移动端选的是手机存储内的相对目录，
-                  未设置时存入默认的 Music/Aurora Music */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-text text-caption-strong text-white/80">默认下载目录</p>
-                  <p className="font-text text-caption text-white/60 mt-0.5">
-                    {desktop
-                      ? '设置后在线歌曲直接存入该目录，不再弹保存对话框'
-                      : '设置后在线歌曲直接存入该目录'}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  {downloadDir && (
-                    <Button variant="ghost" size="sm" className="h-9 px-3.5" onClick={() => setDownloadDir(null)}>
-                      {desktop ? '清除' : '恢复默认'}
-                    </Button>
-                  )}
-                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
-                    <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    {downloadDir ? '更换目录' : '选择目录'}
-                  </Button>
-                </div>
-              </div>
-              <p className="inset-note font-text text-caption text-white/60 px-3.5 py-3 truncate font-mono">
-                {downloadDirLabel}
-              </p>
-            </div>
-          </section>
 
-          {/* 媒体缓存：桌面端与移动端均有实现，Web 等未实现的平台不显示 */}
-          {supportsAudioCache && (
-            <section className="card-list p-5">
-              <h2 className="font-display text-tagline mb-4 text-white">缓存</h2>
-              <div className="space-y-4">
-                <div>
-                  <p className="font-text text-caption-strong text-white/80">缓存大小</p>
-                  <p className="font-text text-caption text-white/60 mt-0.5">
-                    缓存上限可自由填写，默认 1 GB；超出上限时按最久未使用自动清理
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <button
-                      type="button"
-                      onClick={() => cacheLimitInputRef.current?.focus()}
-                      className={`pill pill-md ${
-                        audioCacheLimitCustomMB ? 'pill-mint' : 'pill-soft'
-                      }`}
-                    >
-                      {audioCacheLimitCustomMB ? '自定义' : '默认'}{' '}
-                      {formatBytes(audioCacheLimitMB * 1024 * 1024)}
-                    </button>
-                    <input
-                      ref={cacheLimitInputRef}
-                      type="number"
-                      min={CACHE_LIMIT_MIN_MB}
-                      max={CACHE_LIMIT_MAX_MB}
-                      step={64}
-                      inputMode="numeric"
-                      value={cacheLimitDraft}
-                      placeholder="MB 数字"
-                      onChange={(e) => {
-                        setCacheLimitDraft(e.target.value)
-                        setCacheLimitInvalid(false)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          commitCacheLimit()
-                        }
-                      }}
-                      onBlur={commitCacheLimit}
-                      className={`inset-field pill-md w-[7.5rem] px-4 text-center font-text text-caption tabular-nums text-white/85 ${
-                        cacheLimitInvalid ? 'is-invalid' : ''
-                      }`}
-                    />
-                    <span className="font-text text-caption text-white/50">MB</span>
-                    {audioCacheLimitCustomMB && (
+              {/* 下载目录：桌面端设置后免保存对话框直存；移动端选的是手机存储内的相对目录 */}
+              <SettingRow
+                label="下载目录"
+                hint={desktop ? '设置后不再弹保存对话框' : '设置后直接存入该目录'}
+                control={
+                  <>
+                    {downloadDir && (
+                      <Button variant="ghost" size="sm" className="h-9 px-3" onClick={() => setDownloadDir(null)}>
+                        {desktop ? '清除' : '恢复默认'}
+                      </Button>
+                    )}
+                    <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
+                      <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                      {downloadDir ? '更换' : '选择'}
+                    </Button>
+                  </>
+                }
+              >
+                <p className="inset-note font-text text-caption text-white/55 px-3 py-2 truncate font-mono">
+                  {downloadDirLabel}
+                </p>
+              </SettingRow>
+
+              {/* 媒体缓存：桌面端与移动端均有实现，Web 等未实现的平台不显示 */}
+              {supportsAudioCache && (
+                <div className="border-t border-white/[0.06] mx-3 mt-1 pt-3">
+                  <SettingRow
+                    label="缓存上限"
+                    hint={`超出上限时按最久未使用自动清理 · 默认 1 GB · 当前占用 ${formatBytes(cacheUsage.usedBytes)}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => cacheLimitInputRef.current?.focus()}
+                        className={`pill pill-md ${
+                          audioCacheLimitCustomMB ? 'pill-mint' : 'pill-soft'
+                        }`}
+                      >
+                        {audioCacheLimitCustomMB ? '自定义' : '默认'}{' '}
+                        {formatBytes(audioCacheLimitMB * 1024 * 1024)}
+                      </button>
+                      <input
+                        ref={cacheLimitInputRef}
+                        type="number"
+                        min={CACHE_LIMIT_MIN_MB}
+                        max={CACHE_LIMIT_MAX_MB}
+                        step={64}
+                        inputMode="numeric"
+                        value={cacheLimitDraft}
+                        placeholder="MB 数字"
+                        onChange={(e) => {
+                          setCacheLimitDraft(e.target.value)
+                          setCacheLimitInvalid(false)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitCacheLimit()
+                          }
+                        }}
+                        onBlur={commitCacheLimit}
+                        className={`inset-field pill-md w-[7rem] px-4 text-center font-text text-caption tabular-nums text-white/85 ${
+                          cacheLimitInvalid ? 'is-invalid' : ''
+                        }`}
+                      />
+                      <span className="font-text text-caption text-white/50">MB</span>
+                      {audioCacheLimitCustomMB && (
+                        <Button variant="ghost" size="sm" className="h-9 px-3" onClick={handleResetCacheLimit}>
+                          恢复默认
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-9 px-3.5"
-                        onClick={handleResetCacheLimit}
+                        className="h-9 px-3 text-white/60 hover:text-coral hover:bg-coral/10"
+                        onClick={handleClearCache}
+                        disabled={cacheUsage.count === 0}
+                        title="清空全部缓存"
                       >
-                        恢复默认
+                        <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                        清空
                       </Button>
-                    )}
-                  </div>
-                  {cacheLimitInvalid && (
-                    <p className="font-text text-caption text-coral/70 mt-2">
-                      请输入 {CACHE_LIMIT_MIN_MB} – {CACHE_LIMIT_MAX_MB} MB
-                    </p>
-                  )}
+                      {cacheLimitInvalid && (
+                        <span className="font-text text-caption text-coral/70">
+                          需填 {CACHE_LIMIT_MIN_MB} – {CACHE_LIMIT_MAX_MB} MB
+                        </span>
+                      )}
+                    </div>
+                  </SettingRow>
                 </div>
-                <div className="inset-note flex items-center justify-between px-3.5 py-3">
-                  <div>
-                    <p className="font-text text-caption-strong text-white/80">当前占用</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">
-                      {formatBytes(cacheUsage.usedBytes)} / 上限{' '}
-                      {formatBytes(audioCacheLimitMB * 1024 * 1024)}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 px-3.5 text-white/60 hover:text-coral hover:bg-coral/10"
-                    onClick={handleClearCache}
-                    disabled={cacheUsage.count === 0}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    清空缓存
-                  </Button>
-                </div>
-              </div>
-            </section>
-          )}
+              )}
+            </SettingsSection>
 
-          <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">在线源</h2>
-            <div className="space-y-5">
+            <SettingsSection id="sources" title="在线源">
               {/* 音源：应用不内置任何源，全部由用户按协议配置。
-                  一条音源可同时给出搜索接口与歌单解析接口（标准音源形态下由服务地址自动生成），歌单导入直接复用 */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="font-text text-caption-strong text-white/80">音源</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">
-                      填一条链接即可，在线搜索与歌单导入共用这一条音源
-                    </p>
-                  </div>
+                  一条音源可同时给出搜索接口与歌单解析接口（标准音源形态下由服务地址自动生成） */}
+              <SettingRow
+                label="音源"
+                hint="在线搜索与歌单导入共用这一条源"
+                control={
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddMusicOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
                     添加
                   </Button>
-                </div>
-
+                }
+              >
                 {onlineSources.length === 0 ? (
-                  <p className="font-text text-caption text-white/50 px-1 py-1">
-                    尚未配置，在线搜索与歌单链接导入暂不可用（纯文本导入不受影响）
+                  <p className="font-text text-caption text-white/50">
+                    尚未配置，在线搜索与歌单导入暂不可用
                   </p>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     {onlineSources.map((src) => (
                       <SourceEditorCard
                         key={src.id}
@@ -1755,25 +1959,23 @@ export function SettingsPage() {
                     ))}
                   </div>
                 )}
-              </div>
+              </SettingRow>
 
               {/* 歌词源：用户配置优先，未命中时回退到内置歌词源兜底 */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="font-text text-caption-strong text-white/80">歌词源</p>
-                    <p className="font-text text-caption text-white/60 mt-0.5">配置优先生效，未命中时回退内置歌词源</p>
-                  </div>
+              <SettingRow
+                label="歌词源"
+                hint="配置后优先生效，未命中回退内置源"
+                control={
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddLyricsOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
                     添加
                   </Button>
-                </div>
-
+                }
+              >
                 {lyricsSources.length === 0 ? (
-                  <p className="font-text text-caption text-white/50 px-1 py-1">尚未配置，自动回退到内置歌词源</p>
+                  <p className="font-text text-caption text-white/50">尚未配置，自动回退内置歌词源</p>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     {lyricsSources.map((src) => (
                       <SourceEditorCard
                         key={src.id}
@@ -1789,111 +1991,93 @@ export function SettingsPage() {
                     ))}
                   </div>
                 )}
-              </div>
-            </div>
-          </section>
+              </SettingRow>
+            </SettingsSection>
 
-          <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">软件更新</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-text text-caption-strong text-white/80">当前版本</p>
-                  <p className="font-text text-caption text-white/60 mt-0.5">v{APP_VERSION}</p>
-                </div>
-                <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handleCheckUpdate} disabled={checking}>
-                  <RefreshCw className={`h-4 w-4 mr-2 ${checking ? 'animate-spin' : ''}`} strokeWidth={1.6} />
-                  {checking ? '检查中…' : '检查更新'}
-                </Button>
-              </div>
-
-              {updateInfo && (
-                <div className="flex items-center justify-between bg-mint/[0.06] border border-mint/20 rounded-[10px] px-3.5 py-3">
-                  <div className="min-w-0 mr-3">
-                    <p className="font-text text-caption-strong text-white/90">
-                      发现新版本 <span className="text-mint font-semibold">v{updateInfo.version}</span>
-                    </p>
-                    <p className="font-text text-caption text-white/60 mt-0.5 truncate">
-                      {downloadPhase === 'downloading'
-                        ? '正在下载安装包，可关闭此窗口继续后台下载'
-                        : downloadPhase === 'done'
-                          ? '安装包已就绪，点击右侧继续安装'
-                          : updateInfo.assetLabel
-                            ? `将下载对应系统的安装包（${updateInfo.assetLabel}）`
-                            : '点击下载对应平台的安装包'}
-                    </p>
-                    {updateInfo.installHint && downloadPhase !== 'downloading' && downloadPhase !== 'done' && (
-                      <p className="font-text text-caption text-white/45 mt-1 truncate">{updateInfo.installHint}</p>
+            {/* 关于：版本、更新与许可同属"这套软件本身"，合并后不再平铺两张只读卡片 */}
+            <SettingsSection id="about" title="关于">
+              <SettingRow
+                label="版本"
+                hint={`v${APP_VERSION} · PolyForm Noncommercial 1.0.0`}
+                control={
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 px-3 text-white/60"
+                      title="查看源码与开源许可（禁止商业用途）"
+                      onClick={() => openExternalUrl(REPO_URL)}
+                    >
+                      <Github className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                      项目仓库
+                    </Button>
+                    <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handleCheckUpdate} disabled={checking}>
+                      <RefreshCw className={`h-4 w-4 mr-2 ${checking ? 'animate-spin' : ''}`} strokeWidth={1.6} />
+                      {checking ? '检查中…' : '检查更新'}
+                    </Button>
+                  </>
+                }
+              >
+                {updateInfo && (
+                  <div className="flex items-center justify-between bg-mint/[0.06] border border-mint/20 rounded-[10px] px-3.5 py-3">
+                    <div className="min-w-0 mr-3">
+                      <p className="font-text text-caption-strong text-white/90">
+                        发现新版本 <span className="text-mint font-semibold">v{updateInfo.version}</span>
+                      </p>
+                      <p className="font-text text-caption text-white/55 mt-0.5 truncate">
+                        {downloadPhase === 'downloading'
+                          ? '正在下载安装包，可关闭此窗口继续后台下载'
+                          : downloadPhase === 'done'
+                            ? '安装包已就绪，点击右侧继续安装'
+                            : updateInfo.assetLabel
+                              ? `将下载对应系统的安装包（${updateInfo.assetLabel}）`
+                              : '点击下载对应平台的安装包'}
+                      </p>
+                      {updateInfo.installHint && downloadPhase !== 'downloading' && downloadPhase !== 'done' && (
+                        <p className="font-text text-caption text-white/50 mt-1 truncate">{updateInfo.installHint}</p>
+                      )}
+                    </div>
+                    {downloadPhase === 'downloading' || downloadPhase === 'done' ? (
+                      <Button
+                        size="sm"
+                        variant={downloadPhase === 'done' ? 'primary' : 'secondary'}
+                        className="h-9 px-3.5"
+                        onClick={downloadShow}
+                      >
+                        <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                        {downloadPhase === 'done' ? '继续安装' : '下载中…'}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="h-9 px-3.5 bg-mint text-mint-fg font-semibold hover:bg-mint/90"
+                        onClick={handleDownloadUpdate}
+                      >
+                        <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                        下载更新
+                      </Button>
                     )}
                   </div>
-                  {downloadPhase === 'downloading' || downloadPhase === 'done' ? (
-                    <Button
-                      size="sm"
-                      variant={downloadPhase === 'done' ? 'primary' : 'secondary'}
-                      className="h-9 px-3.5"
-                      onClick={downloadShow}
-                    >
-                      <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                      {downloadPhase === 'done' ? '继续安装' : '下载中…'}
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="h-9 px-3.5 bg-mint text-mint-fg font-semibold hover:bg-mint/90"
-                      onClick={handleDownloadUpdate}
-                    >
-                      <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                      下载更新
-                    </Button>
-                  )}
-                </div>
-              )}
+                )}
 
-              {updateState === 'latest' && (
-                <div className="inset-note flex items-center gap-2 px-3.5 py-3">
-                  <CheckCircle2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
-                  <p className="font-text text-caption text-white/70">当前已是最新版本</p>
-                </div>
-              )}
+                {updateState === 'latest' && (
+                  <div className="inset-note flex items-center gap-2 px-3 py-2.5">
+                    <CheckCircle2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
+                    <p className="font-text text-caption text-white/70">当前已是最新版本</p>
+                  </div>
+                )}
 
-              {updateState === 'error' && (
-                <div className="inset-note flex items-center gap-2 px-3.5 py-3">
-                  <AlertCircle className="h-4 w-4 text-coral flex-shrink-0" strokeWidth={1.6} />
-                  <p className="font-text text-caption text-white/70">
-                    {updateError ? `检查失败：${updateError}` : '检查失败，请确认网络后重试'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* 关于本软件：软件标识、版本与项目地址 */}
-          <section className="card-list p-5">
-            <h2 className="font-display text-tagline mb-4 text-white">关于本软件</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 mr-3">
-                  <p className="font-text text-caption-strong text-white/80">Aurora Music</p>
-                  <p className="font-text text-caption text-white/60 mt-0.5">
-                    跨平台音乐播放器 · v{APP_VERSION}
-                  </p>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-9 px-3.5 flex-shrink-0"
-                  onClick={() => openExternalUrl(REPO_URL)}
-                >
-                  <Github className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                  项目仓库
-                </Button>
-              </div>
-
-              <p className="inset-note font-text text-caption text-white/60 px-3.5 py-3">
-                开源许可 PolyForm Noncommercial License 1.0.0 · 禁止商业用途
-              </p>
-            </div>
-          </section>
+                {updateState === 'error' && (
+                  <div className="inset-note flex items-center gap-2 px-3 py-2.5">
+                    <AlertCircle className="h-4 w-4 text-coral flex-shrink-0" strokeWidth={1.6} />
+                    <p className="font-text text-caption text-white/70">
+                      {updateError ? `检查失败：${updateError}` : '检查失败，请确认网络后重试'}
+                    </p>
+                  </div>
+                )}
+              </SettingRow>
+            </SettingsSection>
+          </div>
         </div>
       </div>
 
