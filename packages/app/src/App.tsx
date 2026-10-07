@@ -31,6 +31,8 @@ import {
   openAllFilesAccessSettings,
 } from '@/services/permission'
 import { useThemeColor } from '@/hooks/useThemeColor'
+import { useViewportMatch } from '@/hooks/useViewportMatch'
+import { resolveShellMode, LARGE_SCREEN_QUERY } from '@/lib/shellMode'
 import { syncSystemBars } from '@/services/systemBars'
 import { platform, setFolderPickerHandler } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
@@ -94,6 +96,23 @@ function AppLayout() {
   // 三处监听全部不注册（pickFolder 退化成 window.prompt，返回键直接退出应用）
   const nativeMobile = isMobile()
   const desktop = isDesktop()
+  // 外壳结构分档：侧栏与右侧封面瓷砖都是**固定宽度列**，塞不进手机视口，
+  // 所以「用固定侧栏还是抽屉」的判据是屏幕尺寸，不是平台名。
+  // 车机（10 寸竖屏常见 1280×800 / 800×1280 像素）Capacitor 报 mobile，
+  // 但横竖都比手机大得多：旧实现里顶部汉堡栏被自己的 `md:hidden` 吃掉、
+  // 固定侧栏又被 `!mobile` 挡掉，两者同时消失 → 车机上导航入口归零。
+  // 判据与阈值收敛到 lib/shellMode（宽 ≥1024 或宽高都 ≥520 即大屏）。
+  const largeScreen = useViewportMatch(LARGE_SCREEN_QUERY)
+  const shellMode = resolveShellMode({ mobile, largeScreen })
+  const shellWide = shellMode === 'wide'
+  const showMobileNav = mobile && !shellWide
+
+  // 宽档不渲染 MobileNav：若在窄档打开抽屉后转宽档（车机横竖屏旋转、平板转屏），
+  // uiStore 里的 mobileDrawerOpen 会残留为 true，App 的返回键分支④会白吞一次返回键
+  // （抽屉已经没了，用户看到的是"按了没反应"）。结构分档一变就强制收起。
+  useEffect(() => {
+    if (!showMobileNav) useUIStore.getState().setMobileDrawerOpen(false)
+  }, [showMobileNav])
   // 桌面外壳标题栏是否真的会渲染（与 TitleBar 内部判定同源）：
   // 内容列的 pt-11 留白必须跟着它走，否则没有标题栏时会凭空多出 44px 空白
   const hasTitleBar = hasDesktopTitleBar()
@@ -815,15 +834,18 @@ function AppLayout() {
       <ResizeHandles />
 
       {/* 移动端顶部导航：左上角汉堡菜单 + 左侧抽屉（替代底部 BottomTabBar） */}
-      {mobile && <MobileNav />}
+      {/* 移动端窄档顶部导航：左上角汉堡菜单 + 左侧抽屉
+          （宽档移动端不渲染：那时走固定侧栏，与桌面同构） */}
+      {showMobileNav && <MobileNav />}
 
       {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* 桌面端侧栏 — Liquid Glass 材质，悬浮于 ambient-backdrop 之上 */}
-        {/* 移动端导航改为顶部汉堡菜单 + 左侧抽屉（MobileNav），不再用底部 Tab 或固定侧栏 */}
+        {/* 导航形态按**可用宽度**分档（不是平台名，理由见上方 showMobileNav 注释）：
+            宽档 → 固定侧栏；窄档移动端 → 顶部汉堡 + 抽屉（MobileNav） */}
         {/* 详情页不卸载而是宽度折叠动画：直接卸载会让内容列宽度突变，
             居中的悬浮播放条瞬间横移（跳动）；折叠动画让播放条平滑过渡 */}
-        {!mobile && (
+        {!showMobileNav && (
           <aside
             className={cn(
               'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
@@ -948,7 +970,15 @@ function AppLayout() {
             {/* 不随 currentTrack / 路由卸载，而是宽度折叠动画：选中歌曲或进入详情页时
                 直接卸载会让内容列宽度突变，居中的悬浮播放条瞬间横移（跳动）；
                 折叠动画让播放条随布局平滑过渡。无歌曲时展示空态占位保持瓷砖常驻 */}
-            {!mobile && (
+            {/* 两层门控，职责不同，都在这里说明白：
+                ① 结构门 `!showMobileNav` —— 与左侧栏同源。左栏走抽屉时瓷砖也必须退场，
+                   否则会出现「抽屉 + 常驻瓷砖」这种两边不搭的外壳。
+                ② 宽度门 `hidden lg:block` —— 瓷砖自己的最小宽度要求：288px 固定列在
+                   窄视口里会把内容列挤到不可读（900×700 的窄桌面、800×1280 的车机
+                   竖屏都命中），此时不渲染瓷砖。
+                对 768–1023 的移动端大屏：① 让瓷砖保留、② 把它藏掉，结果是「常驻侧栏
+                + 无瓷砖」，与 1023px 以下的桌面窗口表现一致，不算参差。 */}
+            {!showMobileNav && (
               <aside
                 className={cn(
                   'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
