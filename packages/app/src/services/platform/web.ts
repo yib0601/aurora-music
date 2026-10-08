@@ -1,5 +1,11 @@
 import * as mm from 'music-metadata-browser'
-import type { FileInfo, LxSourceInspection, Track } from '@/types'
+import type { FileInfo, SourceProbeInput, SourceProbeResult, Track } from '@/types'
+import {
+  auroraProbeToResult,
+  parseSourceInput,
+  probeAuroraService,
+  unavailableProbe,
+} from '@aurora/shared'
 
 /**
  * Web 平台实现：基于 File System Access API（Chrome / Edge 支持）。
@@ -263,17 +269,22 @@ export function createWebPlatform() {
       return []
     },
 
-    // 洛雪脚本宿主需要 Node 网络栈与真实 crypto（且脚本是第三方不可控代码）：
-    // 浏览器端一律按「无该能力」处理，UI 据此回落既有取址路径并展示不可用提示
-    async fetchLxScript(): Promise<string> {
-      throw new Error('浏览器环境不支持洛雪音源脚本（请使用桌面端或手机端）')
+    // 脚本形态的源需要 Node 网络栈与真实 crypto（且脚本是第三方不可控代码）：
+    // 浏览器端一律按「该形态不可用」处理，UI 据此回落既有取址路径并展示提示；
+    // 服务形态的源可以直连探测（与桌面端渲染层同一实现）
+    async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
+      if ((input.kind || 'aurora') === 'lx') {
+        return unavailableProbe('lx', '浏览器环境不支持脚本音源（请使用桌面端或手机端）')
+      }
+      const parsed = parseSourceInput(input.sourceUrl)
+      const result = await probeAuroraService(
+        parsed?.baseUrl || input.sourceUrl,
+        parsed?.apiKey || input.apiKey
+      )
+      return auroraProbeToResult(result)
     },
 
-    async inspectLxSource(): Promise<LxSourceInspection> {
-      return { ok: false, platforms: {}, error: '浏览器环境不支持洛雪音源脚本' }
-    },
-
-    async resolveLxTrack(): Promise<Track | null> {
+    async resolveTrackAudio(): Promise<Track | null> {
       return null
     },
 

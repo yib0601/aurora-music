@@ -18,7 +18,10 @@ export type {
   MusicHallSource,
   MusicHallSourceInput,
   OnlineSourceKind,
-  LxTrackRef,
+  SourceTrackRef,
+  SourceCapability,
+  SourceProbeInput,
+  SourceProbeResult,
 } from './types'
 export {
   LX_KNOWN_PLATFORMS,
@@ -60,7 +63,9 @@ export type {
   LxScriptSource,
   LxSearchResult,
   LxSourceInspection,
+  LxTrackRef,
 } from './lxHost'
+export { lxInspectionToProbe, auroraProbeToResult, unavailableProbe } from './sourceProbe'
 export {
   searchOnlineTracks,
   searchMusicSource,

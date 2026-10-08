@@ -1,11 +1,12 @@
 /**
- * 洛雪脚本源的平台接口契约测试。
+ * 源探测与惰性取址的平台契约测试（形态差异收在平台层，上层只认原生语义）。
  *
- * 钉住的是「渲染层这条链路」的三条语义，它们在真机上只能靠肉眼，重构时极容易静默丢掉：
- *  1) 非脚本源（无 track.lx / 源 kind 不是 lx / 源已被删）一律返回 null，
+ * 钉住的是「渲染层这条链路」的语义，它们在真机上只能靠肉眼，重构时极容易静默丢掉：
+ *  1) 非惰性取址的源（无 trackRef / 源 kind 不匹配 / 源已被删）一律返回 null，
  *     调用方才能安全回落到既有取址路径（这里抛错就会直接弹到播放失败的 UI 上）；
  *  2) 取址成功后返回的是**副本**，原 track 不被改写（直链会过期，落库会写进死地址）；
- *  3) 浏览器端与未知环境按「无该能力」处理（返回 null / 可读错误），不崩。
+ *  3) 浏览器端与未知环境按「该形态不可用」处理（返回 null / 可读结论），不崩；
+ *  4) 探测对服务形态的源不经过脚本宿主，直接取端点自描述。
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { Track } from '@/types'
@@ -19,7 +20,7 @@ const state = vi.hoisted(() => ({
   })),
 }))
 
-// ─── 浏览器环境（web 平台）：两个入口都无脚本能力 ───
+// ─── 浏览器环境（web 平台）：脚本宿主无该能力 ───
 vi.mock('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' },
   CapacitorHttp: { request: async () => ({ status: 200, data: '' }) },
@@ -38,7 +39,7 @@ vi.mock('@/stores/libraryStore', () => ({
   },
 }))
 
-const lxTrack = (over: Partial<Track> = {}): Track =>
+const deferredTrack = (over: Partial<Track> = {}): Track =>
   ({
     id: 'k1',
     path: 'online:k1',
@@ -51,25 +52,49 @@ const lxTrack = (over: Partial<Track> = {}): Track =>
     liked: false,
     onlineSource: 'src-lx',
     onlineSourceName: 'Huibq 音源',
-    lx: { sourceId: 'src-lx', platform: 'kw', meta: { songmid: '91084746' } },
+    trackRef: { sourceId: 'src-lx', platform: 'kw', meta: { songmid: '91084746' } },
     ...over,
   }) as Track
 
-describe('web 平台：洛雪能力空实现', () => {
-  it('resolveLxTrack 恒返回 null，inspectLxSource 给可读错误而非抛错', async () => {
+describe('web 平台：脚本形态不可用', () => {
+  it('取址恒返回 null；探测给可读结论而非抛错', async () => {
     const { createWebPlatform } = await import('../web')
     const platform = createWebPlatform() as unknown as {
-      resolveLxTrack: (t: Track) => Promise<Track | null>
-      inspectLxSource: (s: unknown) => Promise<{ ok: boolean; error?: string }>
+      resolveTrackAudio: (t: Track) => Promise<Track | null>
+      probeSource: (i: { kind?: string; sourceUrl: string }) => Promise<{
+        ok: boolean
+        error?: string
+        capabilities: unknown[]
+      }>
     }
-    expect(await platform.resolveLxTrack(lxTrack())).toBeNull()
-    const inspection = await platform.inspectLxSource({ id: 'x', name: 'x', sourceUrl: '', enabled: true })
-    expect(inspection.ok).toBe(false)
-    expect(inspection.error).toContain('不支持')
+    expect(await platform.resolveTrackAudio(deferredTrack())).toBeNull()
+    const probe = await platform.probeSource({ kind: 'lx', sourceUrl: 'https://example.com/x.js' })
+    expect(probe.ok).toBe(false)
+    expect(probe.error).toContain('不支持')
+    expect(probe.capabilities).toEqual([])
+  })
+
+  it('服务形态的探测不经脚本宿主，直接读端点自描述', async () => {
+    const fetchStub = vi.fn(async () =>
+      new Response(JSON.stringify({ endpoints: { search: '/aurora?query={query}' } }), { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetchStub)
+    const { createWebPlatform } = await import('../web')
+    const platform = createWebPlatform() as unknown as {
+      probeSource: (i: { kind?: string; sourceUrl: string }) => Promise<{
+        ok: boolean
+        capabilities: Array<{ key: string; searchable: boolean }>
+      }>
+    }
+    const probe = await platform.probeSource({ kind: 'aurora', sourceUrl: 'https://music.example.com' })
+    vi.unstubAllGlobals()
+    expect(probe.ok).toBe(true)
+    expect(probe.capabilities.map((c) => c.key)).toContain('search')
+    expect(probe.capabilities.find((c) => c.key === 'search')?.searchable).toBe(true)
   })
 })
 
-describe('桌面端：resolveLxTrack 取址语义', () => {
+describe('桌面端：惰性取址语义', () => {
   it('回填 onlineUrl 并返回副本，不改写原 track', async () => {
     ;(globalThis as unknown as { window: unknown }).window = {
       electronAPI: { lxSource: { resolveUrl: state.resolveUrl } },
@@ -78,34 +103,34 @@ describe('桌面端：resolveLxTrack 取址语义', () => {
       { id: 'src-lx', name: 'Huibq 音源', kind: 'lx', sourceUrl: 'https://example.com/huibq.js', enabled: true },
     ]
     const { createDesktopPlatform } = await import('../index')
-    const platform = createDesktopPlatform() as unknown as { resolveLxTrack: (t: Track) => Promise<Track | null> }
+    const platform = createDesktopPlatform() as unknown as { resolveTrackAudio: (t: Track) => Promise<Track | null> }
 
-    const origin = lxTrack()
-    const out = await platform.resolveLxTrack(origin)
+    const origin = deferredTrack()
+    const out = await platform.resolveTrackAudio(origin)
     expect(out?.onlineUrl).toBe('http://bd-lw.kuwo.cn/x/6ac51e74/resource/30106/trackmedia/M800.mp3')
     expect(origin.onlineUrl).toBeUndefined()
     expect(out).not.toBe(origin)
     // 质量档位取用户设置的下载音质（App 默认 flac）
-    expect(state.resolveUrl).toHaveBeenCalledWith(origin.lx, state.onlineSources[0], 'flac')
+    expect(state.resolveUrl).toHaveBeenCalledWith(origin.trackRef, state.onlineSources[0], 'flac')
   })
 
-  it('无 lx 定位 / 源不是脚本源 / 源已删除时返回 null（不请求脚本）', async () => {
+  it('无定位令牌 / 源形态不匹配 / 源已删除时返回 null（不请求源）', async () => {
     state.resolveUrl.mockClear()
     ;(globalThis as unknown as { window: unknown }).window = {
       electronAPI: { lxSource: { resolveUrl: state.resolveUrl } },
     }
     const { createDesktopPlatform } = await import('../index')
-    const platform = createDesktopPlatform() as unknown as { resolveLxTrack: (t: Track) => Promise<Track | null> }
+    const platform = createDesktopPlatform() as unknown as { resolveTrackAudio: (t: Track) => Promise<Track | null> }
 
     state.onlineSources = [
       { id: 'src-lx', name: 'Aurora 源', kind: 'aurora', sourceUrl: 'https://example.com/aurora', enabled: true },
     ]
-    expect(await platform.resolveLxTrack(lxTrack())).toBeNull()
+    expect(await platform.resolveTrackAudio(deferredTrack())).toBeNull()
 
     state.onlineSources = []
-    expect(await platform.resolveLxTrack(lxTrack())).toBeNull()
+    expect(await platform.resolveTrackAudio(deferredTrack())).toBeNull()
 
-    expect(await platform.resolveLxTrack(lxTrack({ lx: undefined }))).toBeNull()
+    expect(await platform.resolveTrackAudio(deferredTrack({ trackRef: undefined }))).toBeNull()
     expect(state.resolveUrl).not.toHaveBeenCalled()
   })
 
@@ -124,26 +149,58 @@ describe('桌面端：resolveLxTrack 取址语义', () => {
       { id: 'src-lx', name: 'Huibq 音源', kind: 'lx', sourceUrl: 'https://example.com/huibq.js', enabled: true },
     ]
     const { createDesktopPlatform } = await import('../index')
-    const platform = createDesktopPlatform() as unknown as { resolveLxTrack: (t: Track) => Promise<Track | null> }
+    const platform = createDesktopPlatform() as unknown as { resolveTrackAudio: (t: Track) => Promise<Track | null> }
 
-    expect(await platform.resolveLxTrack(lxTrack())).toBeNull()
-    expect(await platform.resolveLxTrack(lxTrack())).toBeNull()
+    expect(await platform.resolveTrackAudio(deferredTrack())).toBeNull()
+    expect(await platform.resolveTrackAudio(deferredTrack())).toBeNull()
+  })
+
+  it('脚本形态探测：拉脚本 + 执行宿主 + 翻译成原生能力行', async () => {
+    const electronAPI = {
+      lxSource: {
+        fetchScript: vi.fn(async () => 'var lx = globalThis.lx'),
+        inspect: vi.fn(async () => ({
+          ok: true,
+          platforms: {
+            kw: { name: '酷我', actions: ['musicUrl'], qualitys: ['128k', '320k'] },
+            mg: { name: '咪咕', actions: ['musicUrl', 'search'], qualitys: ['128k'] },
+          },
+        })),
+      },
+    }
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI }
+    const { createDesktopPlatform } = await import('../index')
+    const platform = createDesktopPlatform() as unknown as {
+      probeSource: (i: { kind?: string; sourceUrl: string }) => Promise<{
+        ok: boolean
+        kind: string
+        capabilities: Array<{ key: string; label: string; searchable: boolean; qualityCount?: number }>
+      }>
+    }
+
+    const probe = await platform.probeSource({ kind: 'lx', sourceUrl: 'https://example.com/huibq.js' })
+    expect(probe.ok).toBe(true)
+    expect(probe.kind).toBe('lx')
+    expect(electronAPI.lxSource.fetchScript).toHaveBeenCalledWith('https://example.com/huibq.js')
+    const kw = probe.capabilities.find((c) => c.key === 'kw')
+    expect(kw).toEqual({ key: 'kw', label: '酷我', searchable: false, qualityCount: 2 })
+    // 自带 search 的平台在能力行里必须标成可检索，否则界面会把「搜索+取址」误报成「取址」
+    expect(probe.capabilities.find((c) => c.key === 'mg')?.searchable).toBe(true)
   })
 })
 
-describe('移动端：洛雪接口走 shared 直调', () => {
-  it('原生容器下 createMobilePlatform 暴露三个洛雪方法', async () => {
+describe('移动端：能力走 shared 直调', () => {
+  it('原生容器下暴露 probeSource 与 resolveTrackAudio，非惰性取址直接短路', async () => {
     vi.resetModules()
     ;(globalThis as unknown as { window: unknown }).window = {
       Capacitor: { isNativePlatform: () => true, getPlatform: () => 'android' },
     }
     const { createMobilePlatform } = await import('../mobile')
     const platform = createMobilePlatform() as unknown as Record<string, unknown>
-    for (const name of ['fetchLxScript', 'inspectLxSource', 'resolveLxTrack']) {
+    for (const name of ['probeSource', 'resolveTrackAudio']) {
       expect(typeof platform[name]).toBe('function')
     }
-    // 非脚本源直接短路，不触碰 shared
-    const resolve = platform.resolveLxTrack as (t: Track) => Promise<Track | null>
-    expect(await resolve(lxTrack({ lx: undefined }))).toBeNull()
+    const resolve = platform.resolveTrackAudio as (t: Track) => Promise<Track | null>
+    expect(await resolve(deferredTrack({ trackRef: undefined }))).toBeNull()
   })
 })

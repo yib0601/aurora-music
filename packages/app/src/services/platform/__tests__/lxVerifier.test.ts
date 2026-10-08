@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ─── 打桩：音频服务与平台层（hoisted，供 vi.mock 工厂使用） ──────────
 const h = vi.hoisted(() => ({
   audio: [] as { track: any; volume: number; muted: boolean; autoplay: boolean }[],
-  resolveLxTrack: null as null | ((t: any) => Promise<any>),
+  resolveTrackAudio: null as null | ((t: any) => Promise<any>),
   lxCalls: [] as any[],
 }))
 
@@ -68,9 +68,9 @@ vi.mock('@/services/mediaSession', () => ({
 vi.mock('@/services/platform', () => {
   const platform = {
     platform: 'desktop',
-    resolveLxTrack: (t: any) => {
+    resolveTrackAudio: (t: any) => {
       h.lxCalls.push(t)
-      return h.resolveLxTrack ? h.resolveLxTrack(t) : Promise.resolve(null)
+      return h.resolveTrackAudio ? h.resolveTrackAudio(t) : Promise.resolve(null)
     },
     searchOnlineTracks: async () => [],
   }
@@ -117,9 +117,9 @@ async function loadRealPlaylistIO() {
   vi.doMock('@/services/platform', () => {
     const platform = {
       platform: 'desktop',
-      resolveLxTrack: (t: any) => {
+      resolveTrackAudio: (t: any) => {
         h.lxCalls.push(t)
-        return h.resolveLxTrack ? h.resolveLxTrack(t) : Promise.resolve(null)
+        return h.resolveTrackAudio ? h.resolveTrackAudio(t) : Promise.resolve(null)
       },
       searchOnlineTracks: async () => [],
     }
@@ -146,7 +146,7 @@ beforeEach(() => {
   storage.map.clear()
   h.audio.length = 0
   h.lxCalls.length = 0
-  h.resolveLxTrack = null
+  h.resolveTrackAudio = null
   vi.stubGlobal('localStorage', storageImpl)
   vi.stubGlobal('window', {
     localStorage: storageImpl,
@@ -244,8 +244,8 @@ describe('1. 持久化白名单', () => {
 describe('2. 播放前取址闸门', () => {
   it('2a audioUrl 为空且带 lx 的条目：先取址再播放，地址回填队列与 currentTrack', async () => {
     const { usePlayerStore } = await loadStores()
-    h.resolveLxTrack = async (t: any) =>
-      t.lx
+    h.resolveTrackAudio = async (t: any) =>
+      t.trackRef
         ? { ...t, onlineUrl: 'http://real.test/from-script.mp3', onlineSource: 'lx-1', onlineQualityUrls: undefined }
         : null
 
@@ -253,7 +253,7 @@ describe('2. 播放前取址闸门', () => {
     const track = trackOf({
       id: 'online-1',
       onlineUrl: '',
-      lx: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '91084746' } },
+      trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '91084746' } },
     })
     await usePlayerStore.getState().playTrack(track)
 
@@ -269,9 +269,9 @@ describe('2. 播放前取址闸门', () => {
 
   it('2b 取址失败不阻断：曲目仍进队列且信息可见，但不拿空地址建播放器（队列不被吃）', async () => {
     const { usePlayerStore } = await loadStores()
-    h.resolveLxTrack = async () => null
+    h.resolveTrackAudio = async () => null
     usePlayerStore.setState({ queue: [], currentIndex: -1, currentTrack: null })
-    const track = trackOf({ id: 'online-2', onlineUrl: '', lx: { sourceId: 'lx-1', platform: 'kw', meta: {} } })
+    const track = trackOf({ id: 'online-2', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: {} } })
     await expect(usePlayerStore.getState().playTrack(track)).resolves.toBeUndefined()
     // 收口点从「建 Howl」前移到「进队列」：空地址一旦交给播放器，其 loaderror 会被
     // 下面的 error 监听当成本地文件损坏，这首歌（队列长度 1 时是整个队列）就被吃掉。
@@ -285,14 +285,14 @@ describe('2. 播放前取址闸门', () => {
 
   it('2c 零开销：有 path / onlineUrl / remoteUrl 的曲目不得触发任何取址调用', async () => {
     const { usePlayerStore } = await loadStores()
-    h.resolveLxTrack = async () => {
+    h.resolveTrackAudio = async () => {
       throw new Error('不应被调用')
     }
     for (const [id, over] of [
       ['local-1', { path: '/music/a.flac' }],
       ['online-3', { onlineUrl: 'http://x/a.mp3', onlineSource: 'lx-1' }],
       ['remote-1', { remoteUrl: 'aurora-remote://src/a.mp3' }],
-      ['online-4', { onlineUrl: 'http://y/b.mp3', lx: { sourceId: 'lx-1', platform: 'kw', meta: {} } }],
+      ['online-4', { onlineUrl: 'http://y/b.mp3', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: {} } }],
     ] as const) {
       h.lxCalls.length = 0
       usePlayerStore.setState({ queue: [], currentIndex: -1, currentTrack: null })
@@ -307,11 +307,11 @@ describe('2. 播放前取址闸门', () => {
 
   it('2d addToQueue 入队后空闲预取址：地址回填队列', async () => {
     const { usePlayerStore } = await loadStores()
-    h.resolveLxTrack = async (t: any) => ({ ...t, onlineUrl: 'http://real.test/prefetch.mp3' })
+    h.resolveTrackAudio = async (t: any) => ({ ...t, onlineUrl: 'http://real.test/prefetch.mp3' })
     usePlayerStore.setState({ queue: [], currentIndex: -1, currentTrack: null })
     usePlayerStore
       .getState()
-      .addToQueue(trackOf({ id: 'online-5', onlineUrl: '', lx: { sourceId: 'lx-1', platform: 'kw', meta: {} } }))
+      .addToQueue(trackOf({ id: 'online-5', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: {} } }))
     await new Promise((r) => setTimeout(r, 20))
     expect(h.lxCalls.length).toBe(1)
     expect(usePlayerStore.getState().queue[0].onlineUrl).toBe('http://real.test/prefetch.mp3')
@@ -325,7 +325,7 @@ describe('2. 播放前取址闸门', () => {
 describe('3. ensurePlayableTrack 真实链路', () => {
   it('3a 带 lx 的条目优先走脚本取址，地址与定位信息一并回填到当前曲目存储', async () => {
     const io = await loadRealPlaylistIO()
-    h.resolveLxTrack = async (t: any) => ({
+    h.resolveTrackAudio = async (t: any) => ({
       ...t,
       onlineUrl: 'http://real.test/from-script.mp3',
       onlineSource: 'lx-1',
@@ -334,7 +334,7 @@ describe('3. ensurePlayableTrack 真实链路', () => {
     const track = trackOf({
       id: 'io-1',
       onlineUrl: '',
-      lx: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '91084746' } },
+      trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '91084746' } },
     })
     const out = await io.ensurePlayableTrack(track)
     expect(h.lxCalls.length).toBe(1)
@@ -346,22 +346,22 @@ describe('3. ensurePlayableTrack 真实链路', () => {
 
   it('3b 脚本取址失败且无可用 aurora 源：返回 null，不抛错、不伪造地址', async () => {
     const io = await loadRealPlaylistIO()
-    h.resolveLxTrack = async () => null
+    h.resolveTrackAudio = async () => null
     const out = await io.ensurePlayableTrack(
-      trackOf({ id: 'io-2', onlineUrl: '', lx: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } } })
+      trackOf({ id: 'io-2', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } } })
     )
     expect(out).toBeNull()
   })
 
   it('3c 已有地址 / 本地路径的曲目直接返回原对象，零取址', async () => {
     const io = await loadRealPlaylistIO()
-    h.resolveLxTrack = async () => {
+    h.resolveTrackAudio = async () => {
       throw new Error('不应被调用')
     }
     const withUrl = trackOf({
       id: 'io-3',
       onlineUrl: 'http://x/a.mp3',
-      lx: { sourceId: 'lx-1', platform: 'kw', meta: {} },
+      trackRef: { sourceId: 'lx-1', platform: 'kw', meta: {} },
     })
     expect(await io.ensurePlayableTrack(withUrl)).toBe(withUrl)
     const local = trackOf({ id: 'io-4', path: '/music/a.flac' })
@@ -371,12 +371,12 @@ describe('3. ensurePlayableTrack 真实链路', () => {
 
   it('3d 批量解析 resolvePlayableTracks：只处理缺地址的曲目，其余原样保留', async () => {
     const io = await loadRealPlaylistIO()
-    h.resolveLxTrack = async (t: any) => ({ ...t, onlineUrl: 'http://real.test/' + t.id + '.mp3' })
+    h.resolveTrackAudio = async (t: any) => ({ ...t, onlineUrl: 'http://real.test/' + t.id + '.mp3' })
     const tracks = [
       trackOf({ id: 'b-1', path: '/music/a.flac' }),
-      trackOf({ id: 'b-2', onlineUrl: '', lx: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } } }),
+      trackOf({ id: 'b-2', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } } }),
       trackOf({ id: 'b-3', onlineUrl: 'http://y/b.mp3' }),
-      trackOf({ id: 'b-4', onlineUrl: '', lx: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '2' } } }),
+      trackOf({ id: 'b-4', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '2' } } }),
     ]
     const out = await io.resolvePlayableTracks(tracks)
     expect(out.length).toBe(4)

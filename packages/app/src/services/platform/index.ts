@@ -8,8 +8,8 @@ import type {
   OnlineSearchOptions,
   OnlineSourceConfig,
   DownloadQuality,
-  LxScriptSource,
-  LxSourceInspection,
+  SourceProbeInput,
+  SourceProbeResult,
   LyricsSearchOptions,
   LyricsSearchResult,
   Track,
@@ -26,7 +26,15 @@ import {
   DEFAULT_MOBILE_DOWNLOAD_DIR,
 } from './mobile'
 import { createWebPlatform, isFileSystemAccessSupported } from './web'
-import { encodeFilePathToUrl, encodePathSegments } from '@aurora/shared'
+import {
+  auroraProbeToResult,
+  encodeFilePathToUrl,
+  encodePathSegments,
+  lxInspectionToProbe,
+  parseSourceInput,
+  probeAuroraService,
+  unavailableProbe,
+} from '@aurora/shared'
 
 // 重新导出：UI 层（SettingsPage）注册移动端文件夹选择器回调，
 // 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）；
@@ -34,7 +42,7 @@ import { encodeFilePathToUrl, encodePathSegments } from '@aurora/shared'
 export { setFolderPickerHandler, DEFAULT_MOBILE_DOWNLOAD_DIR }
 
 /**
- * 取音源配置与下载音质的信源（供洛雪取址用）：渲染层各处的音源列表最终都来自
+ * 取音源配置与下载音质的信源（供惰性取址用）：渲染层各处的音源列表最终都来自
  * libraryStore 的持久化状态，这里惰性动态导入以避开「store ← platform」的
  * 初始化环（store 顶层 import platform）。
  */
@@ -47,11 +55,11 @@ async function loadLibraryState(): Promise<{
     const state = mod.useLibraryStore?.getState?.()
     return {
       sources: Array.isArray(state?.onlineSources) ? state.onlineSources : [],
-      // 与下载音质设置一致：脚本源的档位由脚本自己声明，用户设置的档位是唯一意图来源
+      // 与下载音质设置一致：脚本形态的源档位由脚本自己声明，用户设置的档位是唯一意图来源
       quality: state?.downloadQuality || 'flac',
     }
   } catch (err) {
-    console.warn('[Lx] 读取音源配置失败:', err)
+    console.warn('[音源] 读取音源配置失败:', err)
     return { sources: [], quality: 'flac' }
   }
 }
@@ -274,34 +282,57 @@ export function createDesktopPlatform(): Platform {
       return api.searchOnlineTracks(query, options)
     },
 
-    // ─── 洛雪音源（kind='lx'）：转发到主进程脚本宿主 ───
-    // 宿主实现里含函数（request / utils），无法经 IPC 序列化，因此宿主只在主进程装配；
-    // 渲染层只传「音源配置 + 查询词 + 定位信息」这类纯数据。
-    async fetchLxScript(url: string): Promise<string> {
-      if (!api?.lxSource?.fetchScript) throw new Error('当前版本不支持洛雪音源脚本')
-      return api.lxSource.fetchScript(url)
+    // ─── 源探测与惰性取址：形态差异收在平台适配器内部 ───
+    // 脚本形态的宿主实现里含函数（request / utils），无法经 IPC 序列化，因此宿主只在
+    // 主进程装配；渲染层只传「源地址 + 查询词 + 定位令牌」这类纯数据。
+    async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
+      if ((input.kind || 'aurora') === 'lx') {
+        if (!api?.lxSource?.fetchScript || !api?.lxSource?.inspect) {
+          return unavailableProbe('lx', '当前版本不支持脚本音源（请更新桌面端）')
+        }
+        try {
+          // 脚本源码只存在于本次探测过程，绝不写进配置（配置里只留脚本链接）
+          const script = input.script?.trim() || (await api.lxSource.fetchScript(input.sourceUrl))
+          const inspection = await api.lxSource.inspect({
+            id: input.id || 'probe-draft',
+            name: input.name || '',
+            kind: 'lx',
+            sourceUrl: input.sourceUrl,
+            headers: input.headers,
+            enabled: true,
+            script,
+          })
+          return lxInspectionToProbe(inspection)
+        } catch (err) {
+          return unavailableProbe('lx', (err as Error)?.message || String(err))
+        }
+      }
+      // 服务形态：直连取端点自描述并验密钥（只读，不写配置）
+      const parsed = parseSourceInput(input.sourceUrl)
+      const result = await probeAuroraService(
+        parsed?.baseUrl || input.sourceUrl,
+        parsed?.apiKey || input.apiKey
+      )
+      return auroraProbeToResult(result)
     },
 
-    async inspectLxSource(source: LxScriptSource): Promise<LxSourceInspection> {
-      if (!api?.lxSource?.inspect) return { ok: false, platforms: {}, error: '当前版本不支持洛雪音源脚本' }
-      return api.lxSource.inspect(source)
-    },
-
-    async resolveLxTrack(track: Track): Promise<Track | null> {
-      if (!track?.lx) return null // 非脚本源（或条目缺定位信息）：调用方回落既有取址路径
+    async resolveTrackAudio(track: Track): Promise<Track | null> {
+      // 没有定位令牌的条目不走这条路：调用方回落既有搜索取址路径
+      const ref = track?.trackRef
+      if (!ref) return null
       if (!api?.lxSource?.resolveUrl) return null
       // 音源配置只在调用时读：用户可能在设置页刚改过脚本地址或删过源
       const { sources, quality } = await loadLibraryState()
-      const source = sources.find((s) => s.id === track.lx!.sourceId)
-      // 找不到音源配置或该源不是脚本源时同样返回 null：不猜、不拿别的源硬取
+      const source = sources.find((s) => s.id === ref.sourceId)
+      // 找不到音源配置或形态对不上时同样返回 null：不猜、不拿别的源硬取
       if (!source || source.kind !== 'lx') return null
       try {
-        const { url } = await api.lxSource.resolveUrl(track.lx, source, quality)
+        const { url } = await api.lxSource.resolveUrl(ref, source, quality)
         if (!url || !/^https?:\/\//i.test(url)) return null
         // 只回填副本：直链会过期，不落盘、不写库（持久化时 onlineUrl 本就剥离）
         return { ...track, onlineUrl: url }
       } catch (err) {
-        console.warn('[Lx] 脚本取址失败:', track.lx.sourceId, err)
+        console.warn('[音源] 取址失败:', ref.sourceId, err)
         return null
       }
     },
@@ -459,12 +490,12 @@ export function createPlatform(): Platform {
     async saveLyrics() { return '' },
     async readLyrics() { return null },
     async searchOnlineTracks() { return [] },
-    // 未知环境无脚本宿主能力：按空能力处理，调用方回落既有取址路径而不崩
-    async fetchLxScript() { throw new Error('当前平台不支持洛雪音源脚本') },
-    async inspectLxSource(): Promise<LxSourceInspection> {
-      return { ok: false, platforms: {}, error: '当前平台不支持洛雪音源脚本' }
+    // 未知环境没有脚本宿主能力：探测给可读结论、取址返回 null，
+    // 调用方据此回落既有取址路径而不崩
+    async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
+      return unavailableProbe(input.kind || 'aurora', '当前环境不支持脚本音源')
     },
-    async resolveLxTrack() { return null },
+    async resolveTrackAudio() { return null },
     database: new NoopDatabase(),
     windowControls: new NoopWindowControls(),
   }

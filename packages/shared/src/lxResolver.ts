@@ -21,10 +21,16 @@
  * 缺字段策略：映射不出必要字段就返回失败并带原因，**绝不猜一个 id 硬发请求**。
  */
 
-import { getLxHostDeps, resolveLxSourceUrl, searchLxSource, type LxHostDeps, type LxScriptSource } from './lxHost'
+import {
+  getLxHostDeps,
+  resolveLxSourceUrl,
+  searchLxSource,
+  type LxHostDeps,
+  type LxScriptSource,
+  type LxTrackRef,
+} from './lxHost'
 import type {
   DownloadQuality,
-  LxTrackRef,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
 } from './types'

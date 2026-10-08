@@ -110,7 +110,7 @@ describe('lx 源条目形态', () => {
     expect(out).toHaveLength(2)
     expect(out[0].audioUrl).toBe('')
     expect(out[0].audioQuality).toBeUndefined()
-    expect(out[0].lx).toEqual({
+    expect(out[0].trackRef).toEqual({
       sourceId: 'lx-a',
       platform: 'kw',
       meta: { name: '歌曲-a', singer: '歌手', albumName: '专辑', songmid: 'mid-a', interval: 240 },

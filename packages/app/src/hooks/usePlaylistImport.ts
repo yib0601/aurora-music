@@ -55,8 +55,8 @@ function toImportedTrack(r: OnlineTrackSearchResult): Track {
     onlineSource: r.source,
     onlineSourceName: r.sourceName,
     onlineId: r.id,
-    // 洛雪脚本源的结果可能只给元信息（直链按需再取），定位信息必须随曲目留存
-    lx: r.lx,
+    // 源的条目可能只给元信息（地址按需再取），定位令牌必须随曲目留存
+    trackRef: r.trackRef,
   }
 }
 

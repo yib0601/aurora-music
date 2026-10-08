@@ -206,13 +206,20 @@ export function clearSearchCache(): void {
 }
 
 /**
- * 洛雪源是否具备搜索所需的最小条件（脚本源没有 aurora 端点，不能沿用 searchEndpointOf 判空）
+ * ─── 形态分派（翻译层入口）─────────────────────────────────────
+ *
+ * 本文件其余部分是**原生协议**的执行：端点组装、响应解析、聚合。源形态差异
+ * （服务协议 / 脚本宿主）只允许出现在下面这三个函数里，上层（UI / 播放 / 下载 /
+ * 歌单导入）永远只拿到同一份 OnlineTrackSearchResult 与同一套语义。
+ * 新增源形态时改这里 + sourceProbe（探测）+ 平台层的 resolveTrackAudio（取址）。
  */
+
+/** 脚本形态是否具备检索所需的最小条件（它没有 aurora 端点，不能沿用端点判空） */
 function isLxUsable(source: OnlineSourceConfig): boolean {
   return source.kind === 'lx' && !!source.enabled && !!String(source.sourceUrl || '').trim()
 }
 
-/** 源是否应参与聚合搜索：lx 源走脚本宿主，其余走既有端点判定 */
+/** 源是否应参与聚合搜索：脚本形态走宿主，其余走端点判定 */
 export function isSearchableSource(source: OnlineSourceConfig | null | undefined): boolean {
   if (!source) return false
   if (source.kind === 'lx') return isLxUsable(source)
@@ -222,13 +229,28 @@ export function isSearchableSource(source: OnlineSourceConfig | null | undefined
 /**
  * 单源搜索的缓存键前缀（纯函数，便于单测）。
  *
- * lx 源必须用「id + kind + 脚本地址」兜底：脚本源没有 aurora 端点，若继续拿
- * searchEndpointOf 拼键，多个 lx 源会一起退化成同一个空端点前缀 → 缓存串味。
- * 非 lx 源键形不变（仍是解析出的端点地址），保证既有缓存语义与测试口径不漂移。
+ * 脚本形态必须用「id + kind + 脚本地址」兜底：它没有 aurora 端点，若继续拿
+ * searchEndpointOf 拼键，多个脚本源会一起退化成同一个空端点前缀 → 缓存串味。
+ * 其余形态键形不变（仍是解析出的端点地址），保证既有缓存语义与测试口径不漂移。
  */
 export function sourceCacheKeyOf(source: OnlineSourceConfig): string {
   if (source.kind === 'lx') return `lx\u0001${source.id}\u0001${String(source.sourceUrl || '').trim()}`
   return searchEndpointOf(source)
+}
+
+/**
+ * 单源检索分派：脚本形态交给宿主（结果同样被包成原生结构后返回），其余走协议端点。
+ * 脚本形态的条目可能只有元信息（`audioUrl` 为空串 + `trackRef` 令牌），
+ * 地址由取址门面按需向源索取 —— 这一点对上层是透明的。
+ */
+function searchOneSource(
+  source: OnlineSourceConfig,
+  query: string,
+  quality?: DownloadQuality
+): Promise<OnlineTrackSearchResult[]> {
+  return source.kind === 'lx'
+    ? searchLxSourceForAggregate(source, query, getLxHostDeps())
+    : searchMusicSource(source, query, quality)
 }
 
 /** 单源搜索 + 缓存。命中内存直接返回；同刻同键并发共享同一次网络执行（后到的等前一个）。
@@ -253,10 +275,7 @@ function searchSourceCached(
   const running = searchInFlight.get(key)
   if (running) return running
 
-  const exec =
-    source.kind === 'lx'
-      ? searchLxSourceForAggregate(source, query, getLxHostDeps())
-      : searchMusicSource(source, query, quality)
+  const exec = searchOneSource(source, query, quality)
 
   const task = exec
     .then((value: OnlineTrackSearchResult[]) => {

@@ -27,16 +27,21 @@ export type DownloadQuality = '128' | '320' | 'flac'
 export type OnlineSourceKind = 'aurora' | 'lx'
 
 /**
- * 洛雪脚本源的曲目定位信息：脚本多数只有 musicUrl（取址）而没有搜索接口，
- * 因此曲目由本应用搜索得到（音源服务的 search，或脚本自带的 search 能力），
- * 重取直链时把这份定位信息原样回喂脚本（脚本按自己的字段取 id）。
+ * 源私有的曲目定位令牌（不透明）。
+ *
+ * 部分源形态没有可供批量检索的公共搜索接口（洛雪脚本源是典型：绝大多数脚本只实现
+ * musicUrl 取址），这类源在搜索阶段只给得出元信息，音频地址必须带着「源自己的定位信息」
+ * 在播放 / 下载时现取。
+ *
+ * 应用只负责**携带**这份令牌、不解释其内容：取址时原样交回源适配器
+ * （见 PlatformInterface.resolveTrackAudio），因此上层代码不需要知道源是哪种形态。
  */
-export interface LxTrackRef {
-  /** 洛雪音源（脚本）id */
+export interface SourceTrackRef {
+  /** 音源（源配置的 id） */
   sourceId: string
-  /** 平台标识（kw / kg / tx / wy / mg / git …） */
+  /** 源内部的平台标识（脚本源为 kw / kg / tx / wy / mg / git …；其它形态由适配器自定） */
   platform: string
-  /** 脚本返回的原始曲目对象（原样回传，脚本按自己的字段名取值） */
+  /** 源返回的原始曲目对象（原样回传，源按自己的字段名取值） */
   meta: Record<string, unknown>
 }
 
@@ -106,6 +111,10 @@ export interface OnlineTrackSearchResult {
   album: string
   duration: number
   coverUrl?: string
+  /**
+   * 播放地址。**空串表示该条由源惰性取址**：源只给得出元信息，地址在播放 / 下载时
+   * 由平台的取址门面按 `trackRef` 向源索取（见 PlatformInterface.resolveTrackAudio）。
+   */
   audioUrl: string
   /** 多音质地址（源提供时才有；键为音质档位 128 / 320 / flac） */
   qualityUrls?: Partial<Record<DownloadQuality, string>>
@@ -118,11 +127,10 @@ export interface OnlineTrackSearchResult {
   /** 来源展示名（源配置的 name） */
   sourceName: string
   /**
-   * 洛雪脚本源的取址定位信息（kind='lx' 的源才有）。
-   * 带该字段的条目 `audioUrl` 可能为空串——脚本源的直链必须回喂脚本按需取
-   * （见 lxHost.resolveLxSourceUrl），搜索阶段不取址。
+   * 源私有的定位令牌：仅惰性取址的源会带（此时 `audioUrl` 为空串）。
+   * 应用只携带、不解释；取址时原样交回源适配器。
    */
-  lx?: LxTrackRef
+  trackRef?: SourceTrackRef
 }
 
 // ─── 在线音乐（在线推荐歌单 / 排行榜，只读浏览） ─────────────────
@@ -282,4 +290,65 @@ export interface PlaylistParseResult {
   /** 歌单标题（源未提供时为空字符串） */
   name: string
   songs: ParsedSong[]
+}
+
+// ─── 源探测（设置页「测试」的原生结果形态） ─────────────────────
+// 源形态差异（脚本源要拉脚本并在宿主里执行、服务源要打 HTTP）全部由平台适配器吸收，
+// UI 只消费这份形态无关的结果：能力行 + 端点 + 结论文案。
+
+/** 源能力行：一条源可提供多项能力（检索 / 歌单解析 / 榜单 …） */
+export interface SourceCapability {
+  /** 能力键（脚本源：kw / kg / tx / wy / mg；服务源：search / playlist / recommend / toplists / toplist） */
+  key: string
+  /** 展示名 */
+  label: string
+  /** 该能力是否可检索 */
+  searchable: boolean
+  /** 可选音质档位数（脚本源才有；服务源不适用） */
+  qualityCount?: number
+}
+
+/** 源探测入参：设置页在保存前也能探（草稿地址 + 可选密钥 / 已拉到的脚本） */
+export interface SourceProbeInput {
+  /** 源形态，缺省视为 aurora */
+  kind?: OnlineSourceKind
+  /** 源地址：aurora = 服务地址或接口模板；lx = 脚本链接 */
+  sourceUrl: string
+  /** aurora 服务地址形态的密钥（链接里 ?key= 的解析结果，草稿探测也要能探） */
+  apiKey?: string
+  /** 脚本形态：已拉到的脚本源码（有则复用，不再下载一次） */
+  script?: string
+  headers?: Record<string, string>
+  /** 探错时的展示标识（草稿可省略） */
+  id?: string
+  name?: string
+}
+
+/** 源探测结果：三端同一份结构，UI 不区分源形态 */
+export interface SourceProbeResult {
+  ok: boolean
+  kind: OnlineSourceKind
+  /** 面向用户的结论文案 */
+  message?: string
+  /** 失败原因（ok=false 时给） */
+  error?: string
+  /** 该源可提供的能力行 */
+  capabilities: SourceCapability[]
+  /** 服务地址形态：服务端自描述的端点模板（探测成功后回写配置） */
+  endpoints?: {
+    search?: string
+    playlist?: string
+    recommend?: string
+    toplists?: string
+    toplist?: string
+  }
+  /** 脚本形态：脚本自报元信息 */
+  scriptInfo?: {
+    name?: string
+    version?: string
+    description?: string
+    author?: string
+    homepage?: string
+    packed?: boolean
+  }
 }
