@@ -8,6 +8,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { LyricsView } from '@/components/lyrics/LyricsView'
 import { cn, formatTime } from '@/lib/utils'
+import { useLocale, useT } from '@/i18n'
+import { formatBytes, formatDate, type AppTranslator, type MessageKey } from '@aurora/shared'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { LibrarySourceConfig } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -17,7 +19,6 @@ import { loadLyricsForTrack } from '@/services/lyrics.service'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { isDownloadableOnlineTrack } from '@/lib/onlineTrack'
 import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
-import { LIBRARY_LABEL } from '@/lib/routes'
 // 歌曲详情页没有独立页头：本页唯一的 h1 是黑胶旁的歌名，故用一级页头档
 import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
@@ -41,37 +42,31 @@ import type { Track } from '@/types'
  * - 更多信息折叠面板：播放次数/文件大小/添加时间/最后播放/文件路径
  * - 底部内嵌播放控制台（与全局悬浮播放条同款）
  */
-function formatBytes(bytes?: number): string {
-  if (!bytes || bytes <= 0) return '—'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let v = bytes
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v.toFixed(i === 0 ? 0 : v >= 100 ? 0 : 1)} ${units[i]}`
-}
+/**
+ * 体积与日期的格式化交给 shared（Intl）：两者都随界面语言走——日期尤其明显
+ * （中文「2024年1月1日」、英文 "Jan 1, 2024"），本地手写会把形态冻结成一种。
+ * 缺失值仍用两种语言通用的破折号，不进字典。
+ */
 
-function formatDate(ts?: number): string {
-  if (!ts) return '—'
-  const d = new Date(ts)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function sourceLabel(track: Track, librarySources: LibrarySourceConfig[]): string {
+/**
+ * 来源展示名。**必须在渲染期调用**：用户给来源起的名字与旧数据的源名是
+ * 领域数据（原样透出），内置来源给的是文案键，再由 t 按当前语言取值——
+ * 在这里返回中文字面量会把语言冻结在模块加载那一刻。
+ */
+function sourceName(track: Track, librarySources: LibrarySourceConfig[], t: AppTranslator): string {
   // 网络存储曲目：显示用户给该来源起的名字（如「家里的群晖」）。
   // 必须放在 onlineSource 判断之前——远端曲目没有 onlineSource，
   // 落到最后的兜底分支会被显示成「本地」，与事实完全相反
   if (track.sourceId) {
-    return librarySources.find((s) => s.id === track.sourceId)?.name || '网络存储'
+    const named = librarySources.find((s) => s.id === track.sourceId)?.name
+    return named || t('nav.source.webdav')
   }
   // 存量数据兼容：旧版本内置源的 onlineSource 值仍可识别展示
   if (track.onlineSourceName) return track.onlineSourceName
-  if (track.onlineSource === 'netease') return '网易云'
-  if (track.onlineSource === 'qq') return 'QQ 音乐'
-  if (track.onlineSource === 'kugou') return '酷狗'
-  return track.onlineSource ? '在线音乐' : '本地'
+  if (track.onlineSource === 'netease') return t('player.source.netease')
+  if (track.onlineSource === 'qq') return t('player.source.qqMusic')
+  if (track.onlineSource === 'kugou') return t('player.source.kugou')
+  return track.onlineSource ? t('player.source.onlineMusic') : t('nav.source.local')
 }
 
 /**
@@ -88,6 +83,7 @@ function displayLocation(track: Track): string {
 
 /** 歌词预览：按所查看曲目加载歌词，自身订阅进度以同步高亮 */
 function TrackLyrics({ track, onLineClick, className, large }: { track: Track; onLineClick: (time: number) => void; className?: string; large?: boolean }) {
+  const t = useT()
   // null = 加载中，'' = 无歌词，其他 = 歌词文本
   const [lrc, setLrc] = useState<string | null>(null)
 
@@ -106,7 +102,7 @@ function TrackLyrics({ track, onLineClick, className, large }: { track: Track; o
   if (lrc === null) {
     return (
       <p className="font-text text-[14px] text-white/30 py-10 text-center tracking-[-0.15px]">
-        搜索歌词中…
+        {t('player.lyrics.searching')}
       </p>
     )
   }
@@ -157,6 +153,8 @@ function VinylCover({ track, spinning }: { track: Track; spinning: boolean }) {
 export function SongDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const t = useT()
+  const locale = useLocale()
   // 返回兜底：历史栈底（冷启动直达详情等）时 navigate(-1) 是 no-op，回主屏
   const goBack = useGoBack()
   // 专辑列表点当前曲不重复 push 同路径，避免返回时「退回」同一页
@@ -254,27 +252,46 @@ export function SongDetailPage() {
   }
 
   // 歌曲属性（展示区直接可见）：年份 / 流派 / 时长 / 音轨号，
-  // 缺失项不渲染，避免出现「流派 —」这类空占位
-  const quickFacts = useMemo(() => {
-    if (!track) return [] as { icon: LucideIcon; label: string; value: string }[]
-    const facts: { icon: LucideIcon; label: string; value: string }[] = []
-    if (track.year) facts.push({ icon: Calendar, label: '年份', value: String(track.year) })
-    if (track.genre) facts.push({ icon: Tag, label: '流派', value: track.genre })
-    if (track.duration) facts.push({ icon: Clock, label: '时长', value: formatTime(track.duration) })
-    if (track.trackNumber) facts.push({ icon: Layers, label: '音轨', value: `#${track.trackNumber}` })
+  // 缺失项不渲染，避免出现「流派 —」这类空占位。
+  // ⚠️ label 存**文案键**而不是译文：useMemo 只在 track 变化时重算，
+  // 存字符串会把语言冻结在首次渲染的那一刻（切语言后属性名不跟着变）
+  const quickFacts = useMemo<{ icon: LucideIcon; label: MessageKey; value: string }[]>(() => {
+    if (!track) return []
+    const facts: { icon: LucideIcon; label: MessageKey; value: string }[] = []
+    if (track.year) facts.push({ icon: Calendar, label: 'player.facts.year', value: String(track.year) })
+    if (track.genre) facts.push({ icon: Tag, label: 'player.facts.genre', value: track.genre })
+    if (track.duration) facts.push({ icon: Clock, label: 'common.label.duration', value: formatTime(track.duration) })
+    if (track.trackNumber) facts.push({ icon: Layers, label: 'player.facts.trackNumber', value: `#${track.trackNumber}` })
     return facts
   }, [track])
 
-  // 曲库属性（默认收起，展开后可见）
-  const statItems = useMemo(() => {
-    if (!track) return [] as { icon: LucideIcon; label: string; value: string }[]
+  // 曲库属性（默认收起，展开后可见）。label 同样存键；数值里三处依赖语言：
+  // 播放次数（{count} 的复数形态）、文件大小与两个日期（Intl 格式化）
+  const statItems = useMemo<{ icon: LucideIcon; label: MessageKey; value: string }[]>(() => {
+    if (!track) return []
     return [
-      { icon: BarChart3, label: '播放次数', value: `${track.playCount || 0} 次` },
-      { icon: HardDrive, label: '文件大小', value: formatBytes(track.fileSize) },
-      { icon: History, label: '添加时间', value: formatDate(track.addedAt) },
-      { icon: History, label: '最后播放', value: track.lastPlayedAt ? formatDate(track.lastPlayedAt) : '从未播放' },
+      {
+        icon: BarChart3,
+        label: 'player.facts.playCount',
+        value: t('player.facts.playCount', { count: track.playCount || 0 }),
+      },
+      {
+        icon: HardDrive,
+        label: 'player.facts.fileSize',
+        value: track.fileSize ? formatBytes(track.fileSize, locale) : '—',
+      },
+      {
+        icon: History,
+        label: 'player.facts.addedAt',
+        value: track.addedAt ? formatDate(track.addedAt, locale) : '—',
+      },
+      {
+        icon: History,
+        label: 'player.facts.lastPlayed',
+        value: track.lastPlayedAt ? formatDate(track.lastPlayedAt, locale) : t('player.facts.neverPlayed'),
+      },
     ]
-  }, [track])
+  }, [track, t, locale])
 
   if (!track) {
     return (
@@ -286,16 +303,18 @@ export function SongDetailPage() {
               <Music2 className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
-          <EmptyTitle>{tracks.length === 0 ? '正在加载歌曲…' : '未找到这首歌曲'}</EmptyTitle>
+          <EmptyTitle>{tracks.length === 0 ? t('player.detail.loading') : t('player.detail.notFound')}</EmptyTitle>
           <EmptyText className="text-white/40">
-            {tracks.length === 0 ? `请稍候，${LIBRARY_LABEL}正在加载` : '歌曲可能已被移除'}
+            {tracks.length === 0
+              ? t('player.detail.loadingHint', { library: t('nav.item.library') })
+              : t('player.detail.removed')}
           </EmptyText>
           <button
             onClick={goBack}
             className="pill pill-lg pill-mint"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
-            返回上一页
+            {t('player.detail.goBack')}
           </button>
         </div>
       </div>
@@ -312,8 +331,8 @@ export function SongDetailPage() {
         {/* 返回：圆形玻璃按钮，绝对定位悬浮左上角，与 Hero 同行，不独占一行以压缩纵向空间 */}
         <button
           onClick={goBack}
-          aria-label="返回"
-          title="返回"
+          aria-label={t('common.action.back')}
+          title={t('common.action.back')}
           className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-[calc(var(--titleband-h)+16px)] z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
         >
           <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={1.6} />
@@ -334,7 +353,7 @@ export function SongDetailPage() {
           <div className="flex-1 min-w-0 flex flex-col items-center md:items-start text-center md:text-left lg:items-center lg:text-center">
             <p className="inline-flex items-center gap-1.5 font-text text-[11px] font-semibold uppercase tracking-[0.16em] text-mint/80 mb-3">
               <Radio className="h-3 w-3" strokeWidth={1.8} />
-              {sourceLabel(track, librarySources)} · 歌曲详情
+              {t('player.detail.tagline', { source: sourceName(track, librarySources, t) })}
             </p>
             <PageTitle className="break-words">{track.title}</PageTitle>
             <p className="font-text text-[15px] md:text-[16px] text-white/55 mt-2 tracking-[-0.224px]">
@@ -350,7 +369,7 @@ export function SongDetailPage() {
                 ) : (
                   <Play className="h-4 w-4 mr-1.5 ml-0.5" fill="currentColor" strokeWidth={1.5} />
                 )}
-                {isCurrent && isPlaying ? '暂停' : '播放'}
+                {isCurrent && isPlaying ? t('common.action.pause') : t('common.action.play')}
               </Button>
 
               <Button
@@ -358,25 +377,25 @@ export function SongDetailPage() {
                 size="icon"
                 className={cn('h-11 w-11', isLiked && 'text-coral')}
                 onClick={() => toggleLike(track.id)}
-                title={isLiked ? '取消收藏' : '收藏'}
+                title={isLiked ? t('player.like.remove') : t('player.like.add')}
               >
                 <Heart className={cn('h-[18px] w-[18px]', isLiked && 'fill-coral')} strokeWidth={1.6} />
               </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="utility" size="icon" className="h-11 w-11" title="更多操作">
+                  <Button variant="utility" size="icon" className="h-11 w-11" title={t('player.detail.moreActions')}>
                     <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={1.6} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-52">
                   <DropdownMenuItem onClick={handlePlayNext}>
                     <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                    下一首播放
+                    {t('player.detail.playNext')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleAddToQueue}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                    添加到队列
+                    {t('player.detail.addToQueue')}
                   </DropdownMenuItem>
                   {/* 下载：在线曲目才提供（本地曲目已在磁盘上）。判据不看 onlineUrl——
                       最近播放/歌单导入的在线曲目快照按约定剥离了过期的直链，
@@ -391,7 +410,7 @@ export function SongDetailPage() {
                       ) : (
                         <Download className="h-4 w-4 mr-2" strokeWidth={1.5} />
                       )}
-                      下载歌曲
+                      {t('player.detail.download')}
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
@@ -404,12 +423,12 @@ export function SongDetailPage() {
                     ))}
                   <DropdownMenuItem onClick={() => setShowNewPlaylistDialog(true)}>
                     <Plus className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
-                    新建播放列表并添加
+                    {t('player.detail.newPlaylistAndAdd')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => toggleLike(track.id)}>
                     <Heart className={cn('h-4 w-4 mr-2', isLiked && 'fill-coral text-coral')} strokeWidth={1.5} />
-                    {isLiked ? '取消收藏' : '收藏'}
+                    {isLiked ? t('player.like.remove') : t('player.like.add')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -424,7 +443,7 @@ export function SongDetailPage() {
                     className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-3 rounded-full bg-white/[0.04] border border-white/[0.08]"
                   >
                     <Icon className="h-3.5 w-3.5 text-mint/60 flex-shrink-0" strokeWidth={1.6} />
-                    <span className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</span>
+                    <span className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{t(label)}</span>
                     <span className="font-text text-[12px] font-semibold text-white/85 tracking-[-0.12px]">{value}</span>
                   </span>
                 ))}
@@ -444,7 +463,7 @@ export function SongDetailPage() {
                 track={track}
                 className="h-full"
                 large
-                onLineClick={(t) => usePlayerStore.getState().seekTo(t)}
+                onLineClick={(time) => usePlayerStore.getState().seekTo(time)}
               />
             </div>
           </section>
@@ -460,7 +479,7 @@ export function SongDetailPage() {
               className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
               strokeWidth={1.8}
             />
-            更多信息
+            {t('player.detail.moreInfo')}
           </button>
           {showMoreInfo && (
             <div className="mt-4 rounded-[16px] bg-white/[0.03] border border-white/[0.08] backdrop-blur-ds p-5">
@@ -469,7 +488,7 @@ export function SongDetailPage() {
                   <div key={label} className="flex items-center gap-3 min-w-0">
                     <Icon className="h-4 w-4 text-mint/60 flex-shrink-0" strokeWidth={1.5} />
                     <div className="min-w-0">
-                      <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{label}</p>
+                      <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{t(label)}</p>
                       <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
                         {value}
                       </p>
@@ -495,16 +514,18 @@ export function SongDetailPage() {
         {albumTracks.length > 0 && (
           <section className="mt-8 md:mt-10">
             <h2 className="font-text text-[12px] font-semibold text-white/55 uppercase tracking-wider mb-3">
-              来自专辑「{track.album}」
+              {t('player.detail.fromAlbum', { album: track.album })}
             </h2>
             <div className="card-solid overflow-hidden">
               <div className="max-h-[340px] md:max-h-[420px] overflow-y-auto scrollbar-thin">
-                {albumTracks.map((t, idx) => (
+                {/* ⚠️ 回调参数不叫 t：会把上面 useT() 的翻译函数遮蔽掉，
+                    title 里再调 t() 就变成「调用 Track」的运行时崩溃 */}
+                {albumTracks.map((albumTrack, idx) => (
                   <div
-                    key={t.id}
+                    key={albumTrack.id}
                     className={cn(
                       'row-hover group flex items-center gap-3 px-4 py-2 cursor-pointer border-b border-white/[0.05] last:border-0',
-                      t.id === track.id && 'bg-white/[0.05]'
+                      albumTrack.id === track.id && 'bg-white/[0.05]'
                     )}
                     onDoubleClick={() => {
                       usePlayerStore.getState().playQueue(albumTracks, idx)
@@ -518,35 +539,35 @@ export function SongDetailPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        openSongDetail(t.id)
+                        openSongDetail(albumTrack.id)
                       }}
                       className="w-10 h-10 rounded-[10px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden transition-transform duration-200 ease-apple hover:scale-105"
-                      title="查看歌曲详情"
+                      title={t('player.track.viewDetail')}
                     >
                       <CoverImage
-                        track={t}
+                        track={albumTrack}
                         className="w-full h-full object-cover product-shadow"
                         fallback={<Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
                       />
                     </button>
                     <button
-                      onClick={() => openSongDetail(t.id)}
+                      onClick={() => openSongDetail(albumTrack.id)}
                       className="flex-1 min-w-0 text-left"
                     >
                       <p
                         className={cn(
                           'font-text text-[14px] font-semibold truncate tracking-[-0.224px]',
-                          t.id === track.id ? 'text-mint' : 'text-white/92'
+                          albumTrack.id === track.id ? 'text-mint' : 'text-white/92'
                         )}
                       >
-                        {t.title}
+                        {albumTrack.title}
                       </p>
                       <p className="font-text text-[12px] text-white/45 truncate tracking-[-0.12px]">
-                        {t.artist}
+                        {albumTrack.artist}
                       </p>
                     </button>
                     <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
-                      {formatTime(t.duration)}
+                      {formatTime(albumTrack.duration)}
                     </span>
                   </div>
                 ))}
@@ -562,11 +583,11 @@ export function SongDetailPage() {
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>新建播放列表</DialogTitle>
+            <DialogTitle>{t('player.detail.newPlaylist')}</DialogTitle>
           </DialogHeader>
           <Input
             autoFocus
-            placeholder="播放列表名称"
+            placeholder={t('player.detail.newPlaylistPlaceholder')}
             value={newPlName}
             onChange={(e) => setNewPlName(e.target.value)}
             onKeyDown={(e) => {
@@ -575,9 +596,9 @@ export function SongDetailPage() {
           />
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowNewPlaylistDialog(false)}>
-              取消
+              {t('common.action.cancel')}
             </Button>
-            <Button variant="primary" onClick={handleCreateAndAdd}>创建并添加</Button>
+            <Button variant="primary" onClick={handleCreateAndAdd}>{t('player.detail.createAndAdd')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

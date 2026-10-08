@@ -2,6 +2,7 @@ import type { PlaylistParseResult, ParsedSong } from './types'
 import type { SourceEndpointInput } from './auroraPreset'
 import { playlistEndpointOf } from './auroraPreset'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
+import { auroraError, toErrorInfo } from './i18n/errors'
 
 /**
  * 歌单解析协议执行器（与音乐源/歌词源同一架构）：
@@ -95,9 +96,10 @@ export async function resolvePlaylistUrl(
   shareUrl: string
 ): Promise<PlaylistParseResult> {
   const endpoint = playlistEndpointOf(source)
-  const label = source.name || '音源'
+  // 源没填名字时给空串：兜底名是界面文案，在数据层写死等于把它冻在一种语言上
+  const label = source.name || ''
   if (!endpoint) {
-    throw new Error(`音源「${label}」未配置歌单解析接口地址，需包含 {url} 占位符`)
+    throw auroraError('core.error.playlistUrlMissing', { name: label, url: '{url}' })
   }
   const url = endpoint.replace('{url}', encodeURIComponent(shareUrl))
   let resp: Response
@@ -109,10 +111,18 @@ export async function resolvePlaylistUrl(
     )
   } catch (err) {
     // 超时文案自解释（底层 AbortError 的英文 message 对用户毫无信息量）
-    if (isTimeoutError(err)) throw new Error(`音源「${label}」请求超时（${PLAYLIST_TIMEOUT_MS}ms）`)
-    throw new Error(`音源「${label}」请求失败：${(err as Error).message}`)
+    if (isTimeoutError(err)) {
+      throw auroraError('core.error.playlistTimeout', { name: label, ms: PLAYLIST_TIMEOUT_MS })
+    }
+    // reason 取归一后的技术原文（嵌套结构化错误时 message 是编码串，不能进句子）
+    const info = toErrorInfo(err)
+    throw auroraError(
+      'core.error.playlistRequestFailed',
+      { name: label, reason: info.detail || info.code },
+      String(err)
+    )
   }
-  if (!resp.ok) throw new Error(`音源「${label}」返回 HTTP ${resp.status}`)
+  if (!resp.ok) throw auroraError('core.error.playlistHttpStatus', { name: label, status: resp.status })
   const json = (await resp.json()) as any
 
   const songs: ParsedSong[] = []
@@ -121,7 +131,7 @@ export async function resolvePlaylistUrl(
     if (song) songs.push(song)
   }
   if (songs.length === 0) {
-    throw new Error(`音源「${label}」未返回任何歌曲`)
+    throw auroraError('core.error.playlistEmpty', { name: label })
   }
   const name =
     typeof json?.name === 'string' && json.name.trim()
@@ -143,7 +153,7 @@ export async function parsePlaylistLink(
 ): Promise<PlaylistParseResult> {
   const enabled = (sources || []).filter((s) => s && s.enabled && playlistEndpointOf(s))
   if (enabled.length === 0) {
-    throw new Error('尚未配置可解析歌单的音源，请在设置页添加音源（填一条音源地址即可），或改用纯文本粘贴导入')
+    throw auroraError('core.error.playlistNoSource')
   }
   let lastError: unknown = null
   for (const source of enabled) {
@@ -151,8 +161,8 @@ export async function parsePlaylistLink(
       return await resolvePlaylistUrl(source, shareUrl)
     } catch (err) {
       lastError = err
-      console.warn(`[歌单解析] 「${source.name || '音源'}」解析失败:`, err)
+      console.warn(`[歌单解析] 「${source.name || '未命名'}」解析失败:`, err)
     }
   }
-  throw lastError instanceof Error ? lastError : new Error('歌单解析失败')
+  throw lastError instanceof Error ? lastError : auroraError('core.error.playlistFailed')
 }

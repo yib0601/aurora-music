@@ -6,7 +6,8 @@ import { dedupeTracksForDisplay } from '@aurora/shared'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
-import { LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
+import { LIBRARY_ROUTE, NAV_LABEL_KEYS } from '@/lib/routes'
+import { useT } from '@/i18n'
 import { PageLayout } from '@/components/PageLayout'
 import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/context-menu'
 
 export function RecentPage() {
+  const t = useT()
   const navigate = useNavigate()
   const allTracks = useLibraryStore((s) => s.tracks)
   const recentPlayedTracks = useLibraryStore((s) => s.recentPlayedTracks)
@@ -71,7 +73,7 @@ export function RecentPage() {
         // 与曲库页同款头部：标题左；搜索入口已上移到应用顶栏（全局常驻）
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
-            <PageTitle>最近播放</PageTitle>
+            <PageTitle>{t('library.recent.title')}</PageTitle>
           </div>
           {/* 搜索入口已上移到应用顶栏（全局常驻），页头不再放置 */}
         </div>
@@ -85,14 +87,14 @@ export function RecentPage() {
               <Clock className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
-          <EmptyTitle>还没有播放记录</EmptyTitle>
-          <EmptyText>导入音乐后，你播放的歌曲会出现在这里</EmptyText>
+          <EmptyTitle>{t('library.recent.empty.title')}</EmptyTitle>
+          <EmptyText>{t('library.recent.empty.hint')}</EmptyText>
           <button
             onClick={() => navigate(LIBRARY_ROUTE)}
             className="pill pill-lg pill-mint"
           >
             <Music className="h-4 w-4" strokeWidth={1.6} />
-            去{LIBRARY_LABEL}
+            {t('library.action.goToLibrary', { label: t(NAV_LABEL_KEYS.library) })}
           </button>
         </div>
       ) : (
@@ -101,10 +103,10 @@ export function RecentPage() {
               {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
               <thead className="hidden md:table-header-group">
                 <tr className="border-b border-white/[0.08]">
-                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">标题</th>
-                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">艺术家</th>
-                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">专辑</th>
-                  <th className="text-right py-2.5 px-3 font-semibold text-white/50 text-caption w-16">时长</th>
+                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.title')}</th>
+                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.artist')}</th>
+                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.album')}</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-white/50 text-caption w-16">{t('common.label.duration')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -127,7 +129,7 @@ export function RecentPage() {
                                   usePlaylistStore.getState().setMobileNowPlaying(true)
                                 }
                               }}
-                              title="查看歌曲详情"
+                              title={t('library.action.viewDetails')}
                               className="w-11 h-11 rounded-[12px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
                             >
                               <CoverImage
@@ -151,25 +153,25 @@ export function RecentPage() {
                     <ContextMenuContent className="w-52">
                       <ContextMenuItem onClick={() => handlePlay(track, idx)}>
                         <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                        立即播放
+                        {t('common.action.play')}
                       </ContextMenuItem>
                       <ContextMenuItem onClick={() => handlePlayNext(track)}>
                         <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                        下一首播放
+                        {t('library.action.playNext')}
                       </ContextMenuItem>
                       <ContextMenuItem onClick={() => handleAddToQueue(track)}>
                         <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                        添加到队列
+                        {t('library.action.addToQueue')}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuSub>
                         <ContextMenuSubTrigger>
                           <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                          添加到播放列表
+                          {t('library.action.addToPlaylist')}
                         </ContextMenuSubTrigger>
                         <ContextMenuSubContent className="w-48">
                           {playlists.length === 0 ? (
-                            <div className="px-2 py-1.5 text-sm text-white/50">暂无播放列表</div>
+                            <div className="px-2 py-1.5 text-sm text-white/50">{t('library.playlist.empty')}</div>
                           ) : (
                             playlists.map((pl) => (
                               <ContextMenuItem key={pl.id} onClick={() => handleAddToPlaylist(track.id, pl.id)}>
@@ -183,7 +185,7 @@ export function RecentPage() {
                       <ContextMenuSeparator />
                       <ContextMenuItem onClick={() => toggleLike(track.id)}>
                         <Heart className={cn('h-4 w-4 mr-2', likedTracks.has(track.id) && 'fill-coral text-coral')} strokeWidth={1.5} />
-                        {likedTracks.has(track.id) ? '取消收藏' : '收藏'}
+                        {likedTracks.has(track.id) ? t('library.action.unlike') : t('library.action.like')}
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>

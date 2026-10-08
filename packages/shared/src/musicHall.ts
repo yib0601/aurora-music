@@ -6,6 +6,7 @@ import type {
 } from './types'
 import { fillEndpointTemplate, hallEndpointOf } from './auroraPreset'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
+import { auroraError, toErrorInfo } from './i18n/errors'
 
 /**
  * 在线音乐读取执行器（协议执行器，与 musicSource 同构）
@@ -58,7 +59,7 @@ function endpointFor(source: MusicHallSource, which: 'recommend' | 'toplists' | 
   return hallEndpointOf(source, which)
 }
 
-/** 执行一次 GET 并解析 JSON；失败抛带源名的中文错误 */
+/** 执行一次 GET 并解析 JSON；失败抛结构化错误（文案由显示端按语言渲染） */
 async function requestJson(source: MusicHallSource, url: string): Promise<any> {
   let resp: Response
   try {
@@ -68,18 +69,24 @@ async function requestJson(source: MusicHallSource, url: string): Promise<any> {
       HALL_TIMEOUT_MS
     )
   } catch (err) {
-    // 超时单独成句：音源服务较慢时「请求失败：请求超时（10000ms）」已能自解释，
+    // 超时单独成句：音源服务较慢时「请求超时（10000ms）」已能自解释，
     // 不给用户看底层 fetch 的英文 AbortError（见 fetchWithTimeout 的说明）
     if (isTimeoutError(err)) {
-      throw new Error(`音源「${source.name}」请求超时（${HALL_TIMEOUT_MS}ms）`)
+      throw auroraError('core.error.hallTimeout', { name: source.name, ms: HALL_TIMEOUT_MS })
     }
-    throw new Error(`音源「${source.name}」请求失败：${(err as Error).message}`)
+    // reason 取归一后的技术原文（嵌套结构化错误时 message 是编码串，不能进句子）
+    const info = toErrorInfo(err)
+    throw auroraError(
+      'core.error.hallRequestFailed',
+      { name: source.name, reason: info.detail || info.code },
+      String(err)
+    )
   }
-  if (!resp.ok) throw new Error(`音源「${source.name}」返回 HTTP ${resp.status}`)
+  if (!resp.ok) throw auroraError('core.error.hallHttpStatus', { name: source.name, status: resp.status })
   try {
     return await resp.json()
   } catch {
-    throw new Error(`音源「${source.name}」返回的不是 JSON`)
+    throw auroraError('core.error.hallNotJson', { name: source.name })
   }
 }
 
@@ -181,7 +188,9 @@ export async function fetchToplistGroups(
     if (briefs.length === 0) continue
     out.push({
       groupId: group.groupId == null ? undefined : num(group.groupId),
-      groupName: str(group.groupName) || str(group.name) || '榜单',
+      // 上游没给组名时给空串：兜底展示名是界面文案，由渲染层按语言补
+      // （给中文字面量等于把语言冻在数据层，英文界面下会冒出中文）
+      groupName: str(group.groupName) || str(group.name) || '',
       toplists: briefs,
     })
   }
@@ -235,6 +244,8 @@ export async function fetchToplistSongs(
     const title = str(core.songname) || str(core.title) || str(core.name)
     if (!title) continue
     const singer = core.singer
+    // i18n-exempt: 匹配数据 —— 与 coverMatch.PLACEHOLDER_ARTISTS 同源的占位歌手名，
+    // 参与匹配判定，翻译它会让封面匹配行为随界面语言漂移
     const artist =
       str(core.artist) ||
       str(core.singerName) ||

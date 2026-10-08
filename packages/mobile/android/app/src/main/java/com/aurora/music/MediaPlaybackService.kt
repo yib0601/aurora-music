@@ -213,7 +213,7 @@ class MediaPlaybackService : Service() {
             startCurrent(wasPlaying, posMs)
             return true
         } catch (e: Throwable) {
-            Log.e(TAG, "restoreFromPrefs 失败", e)
+            Log.e(TAG, "restoreFromPrefs 失败", e) 
             return false
         }
     }
@@ -239,7 +239,7 @@ class MediaPlaybackService : Service() {
             if (p != null && currentIndex >= 0) {
                 val now = SystemClock.elapsedRealtime()
                 if (prepareStartedAt > 0 && now - prepareStartedAt > 30_000) {
-                    Log.w(TAG, "watchdog: prepare 超时，重建播放器重试")
+                    Log.w(TAG, "watchdog: prepare 超时，重建播放器重试") 
                     prepareStartedAt = 0
                     mainHandler.post { if (prepareStartedAt == 0L && player != null) startCurrent(true, 0) }
                 } else {
@@ -253,14 +253,14 @@ class MediaPlaybackService : Service() {
                             // 连续 2 次（约 20s）停滞才判定卡死，避免缓冲场景误跳
                             stallTicks++
                             if (stallTicks >= 2 && !completionForced) {
-                                Log.w(TAG, "watchdog: 进度停滞于 ${pos}ms，强制推进")
+                                Log.w(TAG, "watchdog: 进度停滞于 ${pos}ms，强制推进") 
                                 stallTicks = 0
                                 lastWatchPositionMs = -2
                                 completionForced = true
                                 mainHandler.post { handleCompletion() }
                             }
                         } else if (!playing && dur > 0 && pos in (dur - 2000)..dur && !completionForced) {
-                            Log.w(TAG, "watchdog: 已到结尾但 onCompletion 未触发，强制推进")
+                            Log.w(TAG, "watchdog: 已到结尾但 onCompletion 未触发，强制推进") 
                             stallTicks = 0
                             lastWatchPositionMs = -2
                             completionForced = true
@@ -331,10 +331,12 @@ class MediaPlaybackService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // 频道名/描述取自资源（values/ 是英文默认，values-zh/ 是中文）：
+            // 同一 id 重复创建会刷新这两项，故切换系统语言后冷启动即更新。
             val channel = NotificationChannel(
-                CHANNEL_ID, "音乐播放", NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, getString(R.string.aurora_notification_channel_name), NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Aurora Music 媒体播放控制"
+                description = getString(R.string.aurora_notification_channel_description)
                 setShowBadge(false)
             }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
@@ -479,7 +481,7 @@ class MediaPlaybackService : Service() {
 
     private fun startCurrent(autoplay: Boolean, positionMs: Long) {
         val item = queue.getOrNull(currentIndex) ?: run {
-            Log.w(TAG, "startCurrent: 队列为空或索引越界 index=$currentIndex size=${queue.size}")
+            Log.w(TAG, "startCurrent: 队列为空或索引越界 index=$currentIndex size=${queue.size}") 
             return
         }
         Log.i(TAG, "startCurrent: index=$currentIndex title=${item.title} autoplay=$autoplay pos=$positionMs")
@@ -511,7 +513,7 @@ class MediaPlaybackService : Service() {
                 }
                 if (autoplay) {
                     try { prepared.start() } catch (e: Throwable) {
-                        Log.e(TAG, "start() 失败", e)
+                        Log.e(TAG, "start() 失败", e) 
                     }
                     acquirePlaybackResources()
                     emitEvent("play", mapOf("position" to (prepared.currentPosition / 1000.0)))
@@ -683,7 +685,7 @@ class MediaPlaybackService : Service() {
                 val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(attrs)
                     .setOnAudioFocusChangeListener { focusChange ->
-                        Log.i(TAG, "音频焦点变化: $focusChange (isPlaying=${try { player?.isPlaying } catch (_: Throwable) { false }})")
+                        Log.i(TAG, "音频焦点变化: $focusChange (isPlaying=${try { player?.isPlaying } catch (_: Throwable) { false }})") 
                     }
                     .build()
                 focusRequest = req
@@ -722,7 +724,7 @@ class MediaPlaybackService : Service() {
         // START_STICKY 重建（进程被系统杀死后由系统重新拉起）时 intent 为 null：
         // 从持久化快照恢复队列并从上次进度续播，避免锁屏播放中断后控件失效
         if (intent == null && queue.isEmpty()) {
-            Log.i(TAG, "onStartCommand: START_STICKY 重建，尝试从持久化状态恢复播放")
+            Log.i(TAG, "onStartCommand: START_STICKY 重建，尝试从持久化状态恢复播放") 
             restoreFromPrefs()
         }
         return START_STICKY
@@ -756,7 +758,8 @@ class MediaPlaybackService : Service() {
     private fun updateMetadata(item: QueueItem? = queue.getOrNull(currentIndex)) {
         if (item == null) return
         val builder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, item.title.ifEmpty { "Aurora Music" })
+            // 标题缺失时兜底成品牌名（app_name 标了 translatable="false"，不翻译）
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, item.title.ifEmpty { getString(R.string.app_name) })
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, item.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, item.album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs())
@@ -798,7 +801,7 @@ class MediaPlaybackService : Service() {
                 // 解码期间又切了歌：结果作废，防止封面串台
                 if (token != artworkToken) return@post
                 if (bitmap == null) {
-                    Log.w(TAG, "封面加载失败: key=$key")
+                    Log.w(TAG, "封面加载失败: key=$key") 
                     return@post
                 }
                 artworkCache.put(key, bitmap)
@@ -846,7 +849,7 @@ class MediaPlaybackService : Service() {
             else -> null
         }
     } catch (e: Throwable) {
-        Log.w(TAG, "封面解析失败: $src", e)
+        Log.w(TAG, "封面解析失败: $src", e) 
         null
     }
 
@@ -867,7 +870,7 @@ class MediaPlaybackService : Service() {
             }
             conn.inputStream.use { BitmapFactory.decodeStream(it) }?.let { limitArtwork(it) }
         } catch (e: Throwable) {
-            Log.w(TAG, "封面下载失败: $url", e)
+            Log.w(TAG, "封面下载失败: $url", e) 
             null
         } finally {
             try { conn?.disconnect() } catch (_: Throwable) {}
@@ -883,7 +886,7 @@ class MediaPlaybackService : Service() {
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { limitArtwork(it) }
             }
         } catch (e: Throwable) {
-            Log.w(TAG, "内嵌封面提取失败: $audioPath", e)
+            Log.w(TAG, "内嵌封面提取失败: $audioPath", e) 
             null
         } finally {
             try { retriever.release() } catch (_: Throwable) {}
@@ -945,17 +948,18 @@ class MediaPlaybackService : Service() {
             .setMediaSession(mediaSession?.sessionToken)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(title ?: "Aurora Music")
+            .setContentTitle(title ?: getString(R.string.app_name))
             .setContentText(artist ?: "")
             .setSmallIcon(R.drawable.ic_stat_play)
             .setContentIntent(contentPI)
-            .addAction(R.drawable.ic_stat_prev, "上一首", actionPI(ACTION_PREV, 1))
+            // 三个动作文案走资源：中文系统取 values-zh/，其余语言取默认（英文）
+            .addAction(R.drawable.ic_stat_prev, getString(R.string.aurora_notification_action_previous), actionPI(ACTION_PREV, 1))
             .addAction(
                 if (isPlaying) R.drawable.ic_stat_pause else R.drawable.ic_stat_play,
-                if (isPlaying) "暂停" else "播放",
+                getString(if (isPlaying) R.string.aurora_notification_action_pause else R.string.aurora_notification_action_play),
                 actionPI(if (isPlaying) ACTION_PAUSE else ACTION_PLAY, 2)
             )
-            .addAction(R.drawable.ic_stat_next, "下一首", actionPI(ACTION_NEXT, 3))
+            .addAction(R.drawable.ic_stat_next, getString(R.string.aurora_notification_action_next), actionPI(ACTION_NEXT, 3))
             .setStyle(style)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)

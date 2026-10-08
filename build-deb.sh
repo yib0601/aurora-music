@@ -28,11 +28,16 @@ echo "输出目录: $OUTPUT_DIR"
 
 # 使用 fpm 打包 (Ubuntu 原生 deb 格式)
 # 注意：依赖项用 Ubuntu 实际包名（libxtst6/libuuid1 等带数字后缀）
+# 描述字段的本地化：默认（英文）走 --description，中文走 Description-zh_CN 自定义字段。
+# 实测 dpkg-deb 接受并保留该字段（`dpkg-deb -f <pkg>.deb Description-zh_CN` 可读回）；
+# 但 apt / 软件中心不显示包描述的语言变体——那由仓库的 DDTP 翻译索引或 AppStream
+# metainfo 提供。这里保留中文只为包内自描述完整，可读英文仍是唯一默认值。
 fpm -s dir -t deb \
   -n "$APP_NAME" \
   -v "$VERSION" \
   --architecture amd64 \
-  --description "Aurora Music - 跨平台音乐播放器" \
+  --description "Aurora Music - Cross-platform music player" \
+  --deb-field "Description-zh_CN: Aurora Music - 跨平台音乐播放器" \
   --url "https://github.com/aurora-music/aurora-music" \
   --vendor "Aurora Music" \
   --maintainer "Aurora Music <aurora-music@example.com>" \

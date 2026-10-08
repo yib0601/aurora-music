@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
 import { app } from 'electron'
-import { buildRemoteAudioUrl } from '@aurora/shared'
+import { auroraError, buildRemoteAudioUrl } from '@aurora/shared'
 import { forgetCachedFile, forgetCachedFiles } from './mediaCache'
 import type { Track, Album } from '../types'
 
@@ -24,7 +24,8 @@ export function initDatabase(): Database.Database {
     // 完整性检查：数据库损坏时备份并重建，避免应用无法启动
     const check = db.pragma('integrity_check') as Array<{ integrity_check: string }>
     if (check[0]?.integrity_check !== 'ok') {
-      throw new Error(`数据库完整性检查失败: ${check[0]?.integrity_check}`)
+      // 仅进日志：这一层抛出的错误被下方 catch 接住，用户看到的是「备份并重建」的结果
+      throw new Error(`数据库完整性检查失败: ${check[0]?.integrity_check}`) // i18n-exempt: 开发者日志，不进界面
     }
   } catch (err) {
     console.error('数据库打开失败，备份损坏文件并重建:', err)
@@ -122,7 +123,7 @@ function migrateSchema(db: Database.Database): void {
 }
 
 export function getDb(): Database.Database {
-  if (!db) throw new Error('Database not initialized')
+  if (!db) throw auroraError('desktop.error.common.databaseUnavailable')
   return db
 }
 
@@ -423,8 +424,8 @@ function rowToTrack(row: any): Track {
     sourceId,
     remoteUrl,
     title: row.title,
-    artist: row.artist || '未知艺术家',
-    album: row.album || '未知专辑',
+    artist: row.artist || '未知艺术家', // i18n-exempt: 落库哨兵值，参与匹配
+    album: row.album || '未知专辑', // i18n-exempt: 落库哨兵值，参与匹配
     year: row.year || undefined,
     genre: row.genre || undefined,
     duration: row.duration || 0,
@@ -442,7 +443,7 @@ function rowToAlbum(row: any): Album {
   return {
     id: row.id,
     name: row.name,
-    artist: row.artist || '未知艺术家',
+    artist: row.artist || '未知艺术家', // i18n-exempt: 落库哨兵值，参与匹配
     coverPath: row.cover_path || undefined,
     year: row.year || undefined,
     trackCount: 0,

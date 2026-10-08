@@ -1,7 +1,9 @@
 import { isDesktop, isMobile } from '@/lib/utils'
+import type { MessageKey } from '@aurora/shared'
 import {
-  ASSET_LABEL,
-  assetInstallHint,
+  ASSET_LABEL_KEYS,
+  assetInstallCommand,
+  assetInstallHintKey,
   assetPreferenceOrder,
   pickAsset,
   type AssetKind,
@@ -43,10 +45,20 @@ export interface UpdateInfo {
   assetSize: number | null
   /** 安装包 sha256 摘要，下载完成后端到端校验内容 */
   assetDigest: string | null
-  /** 安装包类型展示名（如「RPM 包」），无匹配包时为 null */
-  assetLabel: string | null
-  /** 覆盖安装命令提示（仅当前是系统包管理器安装时给出），否则 null */
-  installHint: string | null
+  /**
+   * 安装包类型展示名（**文案键**，如 `update.asset.rpm`），无匹配包时为 null。
+   * 直接展示会露出裸键：渲染期必须 `t(assetLabel)`。
+   * 存键不存译文的原因：本结构在「检查更新完成」时构造一次，之后长期驻留在
+   * 横幅 / 设置页上；存字符串会让包类型名冻在检查那一刻，切语言不刷新。
+   */
+  assetLabel: MessageKey | null
+  /**
+   * 覆盖安装提示（**文案键**，仅当前是系统包管理器安装时给出），否则 null。
+   * 与 `installCommand` 配套：`t(installHint, { command: installCommand })`。
+   */
+  installHint: MessageKey | null
+  /** 覆盖安装命令行原文（语言无关，不进字典），仅 installHint 非空时有值 */
+  installCommand: string | null
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -100,6 +112,8 @@ async function checkViaGithub(): Promise<UpdateInfo | null> {
 
   const { order, system } = await currentAssetOrder()
   const picked = pickAsset(Array.isArray(data.assets) ? data.assets : [], order, system?.arch)
+  // 提示与命令分开产出：提示是文案键（要翻译），命令是语言无关的原文
+  const hintKey = picked ? assetInstallHintKey(picked.kind, system) : null
 
   return {
     version: latest,
@@ -110,8 +124,9 @@ async function checkViaGithub(): Promise<UpdateInfo | null> {
     assetKind: picked?.kind ?? null,
     assetSize: picked?.size ?? null,
     assetDigest: picked?.digest ?? null,
-    assetLabel: picked ? ASSET_LABEL[picked.kind] : null,
-    installHint: picked ? assetInstallHint(picked.kind, system) : null,
+    assetLabel: picked ? ASSET_LABEL_KEYS[picked.kind] : null,
+    installHint: hintKey,
+    installCommand: picked && hintKey ? assetInstallCommand(picked.kind) : null,
   }
 }
 

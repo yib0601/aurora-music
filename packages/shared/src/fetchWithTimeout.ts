@@ -17,17 +17,31 @@
  * 前者统一转成 TimeoutError，后者原样抛出（取消语义由调用方处理）。
  */
 
+import { encodeErrorInfo } from './i18n/errors'
+
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 /**
- * 请求超时错误：中文 message + 可判定的 name（跨 IPC 后 message 仍带中文结论）。
+ * 请求超时错误：可判定的 name + **结构化 message**。
+ *
+ * message 走 `AURORA_ERR:{...}` 编码载荷（而不是写死一句中文），理由：
+ *   1. 这是跨进程错误的**源头**——主进程执行器抛出后经 IPC 回传，渲染层要按
+ *      当前语言渲染。写死中文会让英文界面出现中文（写死英文则反过来）；
+ *   2. 编码载荷不依赖关键词猜测：渲染层的 `toErrorInfo` 能直接解出
+ *      `errors.network.timeout`，而靠 "timeout/timed out" 正则去认中文字面量
+ *      是认不出来的（中文里只有「超时」二字）；
+ *   3. `detail` 里保留人类可读的技术细节（`timeout after 15000ms`），
+ *      供日志、诊断与「把底层原因嵌进上层句子」的场景使用——
+ *      注意**不要**把 `error.message` 直接当参数插进别的模板（那会插进编码串），
+ *      要用 `toErrorInfo(err).detail`。
+ *
  * timeoutMs 随错误带出，调用方要展示「等待了多久」时无需另传参数。
  */
 export class TimeoutError extends Error {
   readonly timeoutMs: number
 
   constructor(timeoutMs: number) {
-    super(`请求超时（${timeoutMs}ms）`)
+    super(encodeErrorInfo({ code: 'errors.network.timeout', params: { ms: timeoutMs }, detail: `timeout after ${timeoutMs}ms` }))
     this.name = 'TimeoutError'
     this.timeoutMs = timeoutMs
   }

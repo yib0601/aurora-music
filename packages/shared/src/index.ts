@@ -28,6 +28,7 @@ export {
   setLxHostDeps,
   getLxHostDeps,
   LX_PLATFORM_LABELS,
+  LX_PLATFORM_LABEL_KEYS,
   clearLxSourceCache,
   fetchLxScript,
   inspectLxSource,
@@ -209,3 +210,4 @@ export {
   testWebdavConnection,
   openWebdavRange,
 } from './webdav'
+export * from './i18n'

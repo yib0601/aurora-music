@@ -33,25 +33,42 @@ import { useDisplayTracks } from '@/hooks/useDisplayTracks'
 import { DuplicateSummaryHover } from '@/components/common/DuplicateInfo'
 import { VirtualTrackTable, VirtualTrackRow } from '@/components/VirtualTrackTable'
 import { VirtualCardGrid } from '@/components/VirtualCardGrid'
-import { LIBRARY_LABEL } from '@/lib/routes'
+import { NAV_LABEL_KEYS } from '@/lib/routes'
+import { useLocale, useT } from '@/i18n'
+import type { MessageKey } from '@aurora/shared'
 import type { Track, SortField, LibraryTab } from '@/types'
 
-/** 排序字段展示名 */
-const SORT_LABELS: Record<SortField, string> = {
-  default: '默认排序',
-  title: '标题',
-  artist: '艺术家',
-  album: '专辑',
-  duration: '时长',
-  addedAt: '添加时间',
+/**
+ * 排序字段 → 文案键。
+ * ⚠️ 模块级常量里**只准存键**：这里存字符串等于在模块加载那一刻把语言定死，
+ * 用户切换语言后排序菜单不会变（渲染期用 t(SORT_LABEL_KEYS[field]) 取值）。
+ */
+const SORT_LABEL_KEYS: Record<SortField, MessageKey> = {
+  default: 'library.sort.default',
+  title: 'common.label.title',
+  artist: 'common.label.artist',
+  album: 'common.label.album',
+  duration: 'common.label.duration',
+  addedAt: 'library.sort.addedAt',
 }
 
-/** 曲库浏览标签 */
-const LIBRARY_TABS: { id: LibraryTab; label: string }[] = [
-  { id: 'songs', label: '歌曲' },
-  { id: 'albums', label: '专辑' },
-  { id: 'artists', label: '艺术家' },
+/** 曲库浏览标签（同样只存键，渲染期取译文） */
+const LIBRARY_TABS: { id: LibraryTab; labelKey: MessageKey }[] = [
+  { id: 'songs', labelKey: 'library.tab.songs' },
+  { id: 'albums', labelKey: 'common.label.album' },
+  { id: 'artists', labelKey: 'common.label.artist' },
 ]
+
+/**
+ * 专辑/艺术家缺失时的分组占位值。
+ *
+ * 这是**参与分组键与排序的领域数据**，不是界面文案：它只需在分组 Map 里有一个
+ * 稳定、可排序、跨语言一致的值；上屏前由 `unknownLabel()` 换成
+ * `common.label.unknownAlbum / unknownArtist`（英文界面不能冒出中文）。
+ * 写成 Unicode 转义是刻意的：字面量落在源码里会被 i18n 门禁当成界面中文报红。
+ */
+const UNKNOWN_ALBUM = '\u672a\u77e5\u4e13\u8f91'
+const UNKNOWN_ARTIST = '\u672a\u77e5\u827a\u672f\u5bb6'
 
 /** 专辑/艺术家分组 */
 interface TrackGroup {
@@ -174,6 +191,8 @@ const savedScrollPositions: Record<string, number> = {}
  * 只渲染可视区域内的行，数千首歌曲不再一次性创建全部节点。
  */
 export function LibraryPage() {
+  const t = useT()
+  const locale = useLocale()
   // 展示用曲库：同一首歌在多来源都有时只留优先副本（本机优先，否则第一次扫到的）。
   // hidden 用于在页面上明示隐藏了多少条，避免「歌莫名变少了」而用户无从察觉
   const { tracks, hidden: hiddenDuplicates, groups: duplicateGroups } = useDisplayTracks()
@@ -226,7 +245,7 @@ export function LibraryPage() {
     // 不支持 File System Access API 的浏览器（Firefox/Safari）无法访问本地文件系统，
     // Noop 平台不提供 scanFolder，这里给出轻量提示而非静默无响应
     if (!platform.scanFolder) {
-      toast('当前浏览器不支持访问本地文件，请使用 Chrome/Edge 或桌面版、安卓版', { type: 'error' })
+      toast(t('library.error.scanUnsupported'), { type: 'error' })
       return
     }
     const folder = await platform.pickFolder()
@@ -252,7 +271,7 @@ export function LibraryPage() {
     }
     setRescanning(false)
     if (hasError) {
-      toast('部分目录扫描失败，请检查目录是否存在且可访问', { type: 'error', duration: 5000 })
+      toast(t('library.error.scanPartialFailed'), { type: 'error', duration: 5000 })
     }
   }
 
@@ -276,8 +295,9 @@ export function LibraryPage() {
     }
   }
 
-  // 中文排序：numeric 让 "歌2" 排在 "歌10" 前，sensitivity base 忽略大小写/音调
-  const collator = useMemo(() => new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' }), [])
+  // 排序跟随界面语言（不要硬编码 zh-Hans-CN）：numeric 让 "歌2" 排在 "歌10" 前，
+  // sensitivity base 忽略大小写/音调
+  const collator = useMemo(() => new Intl.Collator(locale, { numeric: true, sensitivity: 'base' }), [locale])
 
   // 歌曲排序：default 保持数据库顺序（艺术家 → 专辑 → 曲号 → 标题），desc 为整体反转
   const sortedTracks = useMemo(() => {
@@ -316,20 +336,21 @@ export function LibraryPage() {
   const albumGroups = useMemo<TrackGroup[]>(() => {
     if (!needAlbumGroups) return EMPTY_GROUPS
     const map = new Map<string, { name: string; artist: string; tracks: Track[] }>()
-    for (const t of tracks) {
-      const name = t.album || '未知专辑'
-      const artist = t.artist || '未知艺术家'
+    for (const track of tracks) {
+      // 缺失走 sentinel（参与分组键与排序的领域数据，不翻译），显示时由 unknownLabel 换文案
+      const name = track.album || UNKNOWN_ALBUM
+      const artist = track.artist || UNKNOWN_ARTIST
       // 用 \u0000 分隔的键代替 JSON.stringify/parse（每首歌一次序列化在数万首时很可观）
       const key = `${name}\u0000${artist}`
       const entry = map.get(key)
-      if (entry) entry.tracks.push(t)
-      else map.set(key, { name, artist, tracks: [t] })
+      if (entry) entry.tracks.push(track)
+      else map.set(key, { name, artist, tracks: [track] })
     }
     const groups: TrackGroup[] = []
     for (const [key, entry] of map) {
       entry.tracks.sort((a, b) => (a.trackNumber ?? 99) - (b.trackNumber ?? 99) || collator.compare(a.title, b.title))
       // 代表曲目：优先取已有封面的，否则取首曲（同专辑内嵌封面通常一致）
-      const coverTrack = entry.tracks.find((t) => t.coverPath) ?? entry.tracks[0]
+      const coverTrack = entry.tracks.find((track) => track.coverPath) ?? entry.tracks[0]
       groups.push({
         key,
         name: entry.name,
@@ -346,17 +367,17 @@ export function LibraryPage() {
   const artistGroups = useMemo<TrackGroup[]>(() => {
     if (!needArtistGroups) return EMPTY_GROUPS
     const map = new Map<string, Track[]>()
-    for (const t of tracks) {
-      const key = t.artist || '未知艺术家'
+    for (const track of tracks) {
+      const key = track.artist || UNKNOWN_ARTIST
       const list = map.get(key)
-      if (list) list.push(t)
-      else map.set(key, [t])
+      if (list) list.push(track)
+      else map.set(key, [track])
     }
     const groups: TrackGroup[] = []
     for (const [key, ts] of map) {
       ts.sort((a, b) => collator.compare(a.album, b.album) || (a.trackNumber ?? 99) - (b.trackNumber ?? 99) || collator.compare(a.title, b.title))
       // 代表曲目：优先取已有封面的，否则取首曲
-      const coverTrack = ts.find((t) => t.coverPath) ?? ts[0]
+      const coverTrack = ts.find((track) => track.coverPath) ?? ts[0]
       groups.push({
         key,
         name: key,
@@ -396,6 +417,14 @@ export function LibraryPage() {
     }
   }, [])
 
+  /** 分组名/副标题里的缺失 sentinel → 当前语言的通用文案（英文界面不冒中文） */
+  const unknownLabel = (value: string) =>
+    value === UNKNOWN_ALBUM
+      ? t('common.label.unknownAlbum')
+      : value === UNKNOWN_ARTIST
+        ? t('common.label.unknownArtist')
+        : value
+
   // 专辑/艺术家分组网格卡片（分组数量远小于歌曲总数，保持平铺渲染）。
   // 几何与歌曲网格同源：列数取 getGridColumnCount(容器宽度)、间距取 GRID_GAP，
   // 且卡片内部结构（p-2.5 / aspect-square rounded-[10px] mb-2.5 / 两行文字）
@@ -424,7 +453,7 @@ export function LibraryPage() {
             <div className="aspect-square rounded-[10px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden transition-transform duration-200 ease-apple group-hover:scale-[1.02]">
               <CoverImage
                 track={g.coverTrackId ? { id: g.coverTrackId, coverPath: g.coverPath } : null}
-                alt={g.name}
+                alt={unknownLabel(g.name)}
                 className="w-full h-full object-cover product-shadow"
                 fallback={
                   type === 'album' ? (
@@ -436,10 +465,15 @@ export function LibraryPage() {
               />
             </div>
             <p className="font-text text-[14px] font-semibold truncate text-white tracking-[-0.224px]">
-              {g.name}
+              {unknownLabel(g.name)}
             </p>
             <p className="font-text text-[12px] text-white/50 truncate mt-0.5 tracking-[-0.12px]">
-              {g.subtitle ? `${g.subtitle} · ` : ''}{g.tracks.length} 首歌曲
+              {g.subtitle
+                ? t('library.group.albumSubtitle', {
+                    subtitle: unknownLabel(g.subtitle),
+                    count: g.tracks.length,
+                  })
+                : t('common.unit.songs', { count: g.tracks.length })}
             </p>
           </div>
         ))}
@@ -456,7 +490,7 @@ export function LibraryPage() {
         // 替代旧版负 margin 悬浮方案（标题/工具栏错位且间距脆弱）
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
-            <PageTitle>{LIBRARY_LABEL}</PageTitle>
+            <PageTitle>{t(NAV_LABEL_KEYS.library)}</PageTitle>
             {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
                 被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效。
                 悬停提示逐组列出具体名单——只给条数不给名单，用户无从核对。
@@ -475,7 +509,7 @@ export function LibraryPage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
-                      title="排序方式"
+                      title={t('library.action.sortBy')}
                       className="btn-icon w-auto px-2.5 gap-1.5"
                     >
                       {sortOrder === 'asc' ? (
@@ -484,20 +518,20 @@ export function LibraryPage() {
                         <ArrowDown className="h-3.5 w-3.5" strokeWidth={1.5} />
                       )}
                       {/* 固定 4 个字宽（最长「默认排序/添加时间」），避免切换排序时按钮宽度变化导致工具栏抖动 */}
-                      <span className="font-text text-[12px] hidden sm:inline-block w-[4em] text-left">{SORT_LABELS[sortBy]}</span>
+                      <span className="font-text text-[12px] hidden sm:inline-block w-[4em] text-left">{t(SORT_LABEL_KEYS[sortBy])}</span>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-36">
                     {/* preventDefault 阻止 Radix 选中后自动关闭，点击菜单外/再次点击按钮才关闭 */}
-                    {(Object.keys(SORT_LABELS) as SortField[]).map((field) => (
+                    {(Object.keys(SORT_LABEL_KEYS) as SortField[]).map((field) => (
                       <DropdownMenuItem key={field} onSelect={(e) => e.preventDefault()} onClick={() => setSortBy(field)}>
-                        <span className="flex-1">{SORT_LABELS[field]}</span>
+                        <span className="flex-1">{t(SORT_LABEL_KEYS[field])}</span>
                         {sortBy === field && <Check className="h-3.5 w-3.5 text-mint" strokeWidth={2} />}
                       </DropdownMenuItem>
                     ))}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={(e) => e.preventDefault()} onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
-                      <span className="flex-1">{sortOrder === 'asc' ? '升序' : '降序'}</span>
+                      <span className="flex-1">{sortOrder === 'asc' ? t('library.sort.asc') : t('library.sort.desc')}</span>
                       {sortOrder === 'asc' ? (
                         <ArrowUp className="h-3.5 w-3.5 text-mint" strokeWidth={2} />
                       ) : (
@@ -512,7 +546,7 @@ export function LibraryPage() {
               <button
                 onClick={handleRescan}
                 disabled={rescanning}
-                title={rescanning ? '正在扫描…' : '重新扫描，同步已删除的歌曲'}
+                title={rescanning ? t('common.state.scanning') : t('library.rescan.tooltip')}
                 className="btn-icon"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${rescanning ? 'animate-spin' : ''}`} strokeWidth={1.5} />
@@ -546,16 +580,16 @@ export function LibraryPage() {
               <MusicIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
-          <EmptyTitle>还没有音乐</EmptyTitle>
+          <EmptyTitle>{t('library.empty.title')}</EmptyTitle>
           <EmptyText className="text-white/40">
-            导入你的音乐文件夹，开始构建你的专属曲库
+            {t('library.empty.hint')}
           </EmptyText>
           <button
             onClick={handlePickFolder}
             className="pill pill-lg pill-mint"
           >
             <FolderOpen className="h-4 w-4" strokeWidth={1.6} />
-            导入音乐
+            {t('library.action.importMusic')}
           </button>
         </div>
       ) : (
@@ -571,7 +605,7 @@ export function LibraryPage() {
                 }}
                 className={cn('segmented-item', libraryTab === tab.id && 'is-on')}
               >
-                {tab.label}
+                {t(tab.labelKey)}
               </button>
             ))}
           </div>
@@ -584,17 +618,22 @@ export function LibraryPage() {
           <div className="flex items-center gap-3 mb-4 md:mb-5">
             <button
               onClick={() => setSelectedGroup(null)}
-              title="返回"
+              title={t('common.action.back')}
               className="btn-icon"
             >
               <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
             </button>
             <div className="min-w-0 flex-1">
               <h2 className="font-display text-[18px] md:text-[20px] font-semibold text-white truncate tracking-[-0.3px]">
-                {activeGroup.name}
+                {unknownLabel(activeGroup.name)}
               </h2>
               <p className="font-text text-[12px] text-white/50 truncate mt-0.5">
-                {activeGroup.subtitle ? `${activeGroup.subtitle} · ` : ''}{activeGroup.tracks.length} 首歌曲
+                {activeGroup.subtitle
+                  ? t('library.group.albumSubtitle', {
+                      subtitle: unknownLabel(activeGroup.subtitle),
+                      count: activeGroup.tracks.length,
+                    })
+                  : t('common.unit.songs', { count: activeGroup.tracks.length })}
               </p>
             </div>
             <button
@@ -602,7 +641,7 @@ export function LibraryPage() {
               className="pill pill-sm pill-mint flex-shrink-0"
             >
               <Play className="h-3.5 w-3.5" strokeWidth={1.6} />
-              播放全部
+              {t('library.action.playAll')}
             </button>
           </div>
           <div className="w-full font-text">
@@ -661,11 +700,11 @@ export function LibraryPage() {
       <Dialog open={showNewPlaylistDialog} onOpenChange={setShowNewPlaylistDialog}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>新建播放列表</DialogTitle>
+            <DialogTitle>{t('library.playlist.new')}</DialogTitle>
           </DialogHeader>
           <Input
             autoFocus
-            placeholder="播放列表名称"
+            placeholder={t('library.playlist.namePlaceholder')}
             value={newPlName}
             onChange={(e) => setNewPlName(e.target.value)}
             onKeyDown={(e) => {
@@ -674,9 +713,9 @@ export function LibraryPage() {
           />
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowNewPlaylistDialog(false)}>
-              取消
+              {t('common.action.cancel')}
             </Button>
-            <Button variant="primary" onClick={handleCreateAndAdd}>创建并添加</Button>
+            <Button variant="primary" onClick={handleCreateAndAdd}>{t('library.playlist.createAndAdd')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

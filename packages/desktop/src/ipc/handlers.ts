@@ -24,9 +24,11 @@ import { watchFolder, unwatchFolder } from './watcher'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
 import { registerLxSourceIpc } from './lxSource'
+import { mainErrorText, mainTranslate, registerI18nIpc } from '../i18n'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, Track, LibrarySourceConfig } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource } from '@aurora/shared'
 import {
+  auroraError,
   searchOnlineTracks,
   searchLyrics,
   sanitizeFileName,
@@ -199,7 +201,7 @@ async function runScan(folderPath: string): Promise<Track[]> {
         sendToRenderer('scan:folder-missing', { folder: folderPath, removed })
         return remaining
       }
-      throw new Error('文件夹不存在或不可访问')
+      throw auroraError('desktop.error.scan.folderUnavailable')
     }
     allowedRoots.add(path.resolve(folderPath))
     // 渐进式扫描：每解析完一首立即推送到渲染进程，UI 端追加显示而非等全部完成
@@ -215,10 +217,11 @@ async function runScan(folderPath: string): Promise<Track[]> {
     return allTracks
   } catch (err) {
     console.error('扫描失败:', folderPath, err)
-    // 静默后台扫描：仅通知渲染进程记录日志，不向用户展示
+    // 静默后台扫描：仅通知渲染进程记录日志，不向用户展示。
+    // 走事件通道的错误不会被 translateError 解码，所以这里直接渲染成当前语言的成品句
     sendToRenderer('scan:error', {
       folder: folderPath,
-      message: `扫描失败：文件夹「${folderPath}」不存在或无法读取`,
+      message: mainTranslate()('desktop.error.scan.folderUnreadable', { folder: folderPath }),
     })
     throw err
   }
@@ -248,6 +251,8 @@ function enqueueLibraryScan(sourceId: string): Promise<{ tracks: Track[]; comple
 
 export function registerIpcHandlers() {
   initDatabase()
+  // 语言同步通道：渲染层确定语言后把结果推给主进程（托盘 / 原生对话框 / 通知据此渲染）
+  registerI18nIpc()
   // 系统环境探测（发行版包格式 / 安装形态）：渲染层据此挑选匹配的安装包
   registerSystemIpc()
   // 内置更新：安装包下载（进度事件）与安装（启动安装器 / 打开终端执行命令）
@@ -285,7 +290,8 @@ export function registerIpcHandlers() {
     if (!mainWindow || mainWindow.isDestroyed()) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
-      title: '选择音乐文件夹',
+      // 对话框标题必须现取：模块级缓存会把语言冻结在加载那一刻
+      title: mainTranslate()('desktop.dialog.pickMusicFolder'),
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
@@ -353,8 +359,11 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('scan:start', async (_event, folderPath: string) => {
     if (typeof folderPath !== 'string' || !folderPath.trim()) {
-      sendToRenderer('scan:error', { folder: '', message: '扫描失败：未指定文件夹' })
-      throw new Error('empty folder path')
+      sendToRenderer('scan:error', {
+        folder: '',
+        message: mainTranslate()('desktop.error.scan.noFolder'),
+      })
+      throw auroraError('desktop.error.scan.noFolder')
     }
     // 进入串行队列执行；失败时 runScan 已发送 scan:error 事件
     return enqueueScan(folderPath)
@@ -373,19 +382,26 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle('library-source:probe', async (_event, sourceId: string) => {
-    if (typeof sourceId !== 'string' || !sourceId) return { ok: false, message: '来源无效' }
+    if (typeof sourceId !== 'string' || !sourceId) {
+      return { ok: false, message: mainTranslate()('desktop.error.source.invalid') }
+    }
     return probeLibrarySource(sourceId)
   })
 
   ipcMain.handle('library-source:scan', async (_event, sourceId: string) => {
     if (typeof sourceId !== 'string' || !sourceId) {
-      sendToRenderer('scan:error', { folder: '', message: '扫描失败：未指定媒体库来源' })
-      throw new Error('empty source id')
+      sendToRenderer('scan:error', {
+        folder: '',
+        message: mainTranslate()('desktop.error.scan.noSource'),
+      })
+      throw auroraError('desktop.error.scan.noSource')
     }
     try {
       return await enqueueLibraryScan(sourceId)
     } catch (err) {
-      const message = (err as Error).message || '扫描失败'
+      // 事件通道的 message 由渲染层直接透传展示，所以这里先渲染成当前语言的成品句；
+      // reject 侧保持结构化错误（原样抛出），交给渲染层 translateError 按语言渲染
+      const message = mainErrorText(err)
       console.error('[LibrarySource] 扫描失败:', sourceId, message)
       sendToRenderer('scan:error', { folder: sourceId, message })
       throw err
@@ -470,7 +486,7 @@ export function registerIpcHandlers() {
   // 保存歌词到本地并登记进缓存配额，返回保存的文件路径
   ipcMain.handle('lyrics:save', async (_event, lyrics: string, trackId: string): Promise<string> => {
     if (typeof trackId !== 'string' || !isValidTrackId(trackId)) {
-      throw new Error('invalid track id')
+      throw auroraError('desktop.error.common.trackIdInvalid')
     }
     if (typeof lyrics !== 'string') lyrics = ''
     return writeCachedLyrics(trackId, lyrics)
@@ -530,11 +546,14 @@ export function registerIpcHandlers() {
       downloadDir?: string
     ): Promise<{ savedPath: string }> => {
       if (!track || typeof track.audioUrl !== 'string' || !/^https?:\/\//i.test(track.audioUrl)) {
-        throw new Error('下载地址无效')
+        throw auroraError('desktop.error.common.urlInvalid')
       }
-      if (!mainWindow || mainWindow.isDestroyed()) throw new Error('窗口不可用')
+      if (!mainWindow || mainWindow.isDestroyed()) throw auroraError('desktop.error.common.windowUnavailable')
 
-      const baseName = sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)
+      // 文件名兜底沿用曲库里的占位哨兵值（"未知艺术家"/"未知歌曲" 同时参与匹配，
+      // 见 shared/coverMatch 的 PLACEHOLDER_ARTISTS）：本地化会让同一首歌在不同语言下
+      // 落成不同文件名，因此保持字面量
+      const baseName = sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`) // i18n-exempt: 落库哨兵值，参与匹配
 
       // 目标目录：默认目录直存 vs 对话框选择（对话框的扩展名此时只能按 URL 猜，最终以响应为准）
       let fixedDir: string | null = null
@@ -542,15 +561,15 @@ export function registerIpcHandlers() {
       if (typeof downloadDir === 'string' && downloadDir.trim()) {
         const dir = downloadDir.trim()
         // 渲染层下传的目录必须是绝对路径，防相对路径/盘符异常
-        if (!path.isAbsolute(dir)) throw new Error('默认下载目录无效，请在设置中重新选择')
+        if (!path.isAbsolute(dir)) throw auroraError('desktop.error.download.dirInvalid')
         // 目录可能不存在（用户手动删了）或不可写（权限/只读盘/中文路径拼写错误）。
         // 直接让 mkdir 的 errno 冒泡会给用户看到 `EACCES: permission denied, mkdir '/中文目录'`
-        // 这种英文系统报错，故这里捕获后统一转成中文可读提示。
+        // 这种英文系统报错，故这里捕获后统一转成结构化错误（显示端按语言渲染）。
         try {
           await fs.promises.mkdir(dir, { recursive: true })
         } catch (err: any) {
           console.error('创建下载目录失败:', dir, err)
-          throw new Error('默认下载目录不可用（无法创建或没有写入权限），请在设置中重新选择')
+          throw auroraError('desktop.error.download.dirUnusable')
         }
         // mkdir 成功不代表可写：目录可能已存在但只读（recursive 对已存在目录是空操作）。
         // 用 access(W_OK) 显式校验，避免下载到最后一步写盘才失败。
@@ -558,7 +577,7 @@ export function registerIpcHandlers() {
           await fs.promises.access(dir, fs.constants.W_OK)
         } catch (err: any) {
           console.error('下载目录不可写:', dir, err)
-          throw new Error('默认下载目录不可写，请在设置中重新选择')
+          throw auroraError('desktop.error.download.dirNotWritable')
         }
         fixedDir = dir
       } else {
@@ -570,10 +589,10 @@ export function registerIpcHandlers() {
           }
         })()
         const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-          title: '保存歌曲',
+          title: mainTranslate()('desktop.dialog.saveSong'),
           defaultPath: path.join(systemMusicDir, `${baseName}${inferAudioExtension(track.audioUrl)}`),
         })
-        if (canceled || !filePath) throw new Error('已取消保存')
+        if (canceled || !filePath) throw auroraError('desktop.error.download.canceled')
         dialogFilePath = filePath
       }
 
@@ -589,10 +608,10 @@ export function registerIpcHandlers() {
           signal: AbortSignal.timeout(600000),
         })
       } catch {
-        throw new Error('下载失败，请检查网络连接或稍后重试')
+        throw auroraError('desktop.error.download.networkFailed')
       }
       if (!resp.ok || !resp.body) {
-        throw new Error(`下载失败：服务器返回 HTTP ${resp.status}`)
+        throw auroraError('desktop.error.download.httpStatus', { status: resp.status })
       }
 
       // 扩展名以实际响应的 Content-Type 为准（对话框时只能按 URL 猜测）
@@ -609,7 +628,7 @@ export function registerIpcHandlers() {
         // 写盘失败时清理残留的部分文件
         try { fs.unlinkSync(savePath) } catch {}
         console.error('歌曲下载失败:', err)
-        throw new Error('下载失败，写入文件时出错')
+        throw auroraError('desktop.error.download.writeFailed')
       }
 
       // 源直链的音频大多不带内嵌封面（实测仅有文本标签），下载后无封面可提取。

@@ -1,5 +1,14 @@
 import { buildAuroraEndpoints, parseSourceInput } from './auroraPreset'
+import { translateDefault } from './i18n'
 import type { OnlineSourceConfig, PlaylistResolverConfig } from './types'
+
+/**
+ * 迁移时给无名音源补的默认名，一律走 `translateDefault`（源语言 zh-CN）**在调用时**取值：
+ * 这两个函数写出的是**持久化数据**（用户可改名，随后落库），同一份配置在切换界面语言后
+ * 不该改名 —— 否则同一张音源卡片会在中英界面下显示成两个名字，引用它的地方各说各话。
+ * 模块级不许求值文案，因此这里只写键，取值发生在每次迁移调用里（函数仍是纯函数：
+ * 同入参必得同结果，idempotent 往返的既有测试口径不变）。
+ */
 
 /** 迁移中间形态：老字段与目标字段并存，只在 persist migrate 里出现 */
 type RawSource = Record<string, any>
@@ -51,7 +60,7 @@ export function mergeLegacyPlaylistSources(
 
     merged.push({
       id: p.id || makeId(),
-      name: p.name || '歌单解析源',
+      name: p.name || translateDefault('core.sourceName.playlist'),
       apiUrl: '',
       playlistUrl: apiUrl,
       ...(p.headers ? { headers: p.headers } : {}),
@@ -90,7 +99,7 @@ export function migrateOnlineSources(sources: unknown): OnlineSourceConfig[] {
     if (s.kind === 'lx') {
       const lx: OnlineSourceConfig = {
         id: typeof s.id === 'string' && s.id ? s.id : defaultId(),
-        name: typeof s.name === 'string' && s.name ? s.name : '洛雪音源',
+        name: typeof s.name === 'string' && s.name ? s.name : translateDefault('core.sourceName.lx'),
         kind: 'lx',
         sourceUrl,
         enabled: s.enabled !== false,
@@ -104,7 +113,7 @@ export function migrateOnlineSources(sources: unknown): OnlineSourceConfig[] {
 
     const migrated: OnlineSourceConfig = {
       id: typeof s.id === 'string' && s.id ? s.id : defaultId(),
-      name: typeof s.name === 'string' && s.name ? s.name : '音源',
+      name: typeof s.name === 'string' && s.name ? s.name : translateDefault('core.sourceName.default'),
       sourceUrl,
       enabled: s.enabled !== false,
     }

@@ -7,7 +7,7 @@ import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
 import { registerCoverFile } from './mediaCache'
 import { isUsableCoverFile } from './coverFile'
-import { searchOnlineTracks, fetchWithTimeout, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate } from '@aurora/shared'
+import { auroraError, searchOnlineTracks, fetchWithTimeout, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate } from '@aurora/shared'
 import type { OnlineSearchOptions } from '@aurora/shared'
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus'])
@@ -97,7 +97,7 @@ async function processFile(
       if (existing.fileSize === stat.size) {
         // 老版本未按「艺术家 - 歌名」拆分文件名留下的占位记录，
         // 重扫时补一次重解析修正元数据（幂等，修正后即不再触发）
-        const legacyUntagged = existing.artist === '未知艺术家' && existing.title.includes('-')
+        const legacyUntagged = existing.artist === '未知艺术家' && existing.title.includes('-') // i18n-exempt: 落库哨兵值，参与匹配
         if (!legacyUntagged) return existing
       }
     }
@@ -122,8 +122,8 @@ async function processFile(
         if (!metadata.common.title) title = m[2].trim()
       }
     }
-    if (!artist) artist = '未知艺术家'
-    const album = metadata.common.album || '未知专辑'
+    if (!artist) artist = '未知艺术家' // i18n-exempt: 落库哨兵值，参与匹配
+    const album = metadata.common.album || '未知专辑' // i18n-exempt: 落库哨兵值，参与匹配
 
     if (metadata.common.title && /[\u0000-\u001f]/.test(metadata.common.title)) {
       // GBK 兜底：标签在文件头部，只读前 64KB，避免把整个大文件读进内存
@@ -197,7 +197,7 @@ export async function scanFolder(
     const known = countTracksByFolder(rootPath)
     if (known > 0) {
       console.warn(
-        `scanFolder: 未发现任何音频文件但库中有 ${known} 条记录，已跳过缺失清理（疑似共享未挂载或权限异常）:`,
+        `scanFolder: 未发现任何音频文件但库中有 ${known} 条记录，已跳过缺失清理（疑似共享未挂载或权限异常）:`, // i18n-exempt: 开发者日志，不进界面
         rootPath
       )
       return []
@@ -278,7 +278,9 @@ export async function ensureCover(track: Track, userData: string): Promise<strin
   }
 }
 
-const META_PLACEHOLDERS = new Set(['未知艺术家', '未知专辑', '未知歌曲'])
+// 落库哨兵值：与 shared/coverMatch 的 PLACEHOLDER_ARTISTS 同一组取值，
+// 本地化会让匹配失效（另见下方 fetchOnlineCover 的查询词清洗）
+const META_PLACEHOLDERS = new Set(['未知艺术家', '未知专辑', '未知歌曲']) // i18n-exempt: 参与匹配的领域数据
 
 /**
  * 在线补齐封面：文件无内嵌封面时的兜底。
@@ -322,9 +324,9 @@ export async function fetchOnlineCover(
     },
     15000
   )
-  if (!resp.ok) throw new Error(`封面下载失败：HTTP ${resp.status}`)
+  if (!resp.ok) throw auroraError('desktop.error.source.coverHttpStatus', { status: resp.status })
   const buf = new Uint8Array(await resp.arrayBuffer())
-  if (buf.length < 100) throw new Error('封面下载失败：内容不是有效图片')
+  if (buf.length < 100) throw auroraError('desktop.error.source.coverInvalid')
 
   const coverDest = getCoverCachePath(userData, track.id, coverExtensionFor(buf))
   await fs.promises.writeFile(coverDest, buf)

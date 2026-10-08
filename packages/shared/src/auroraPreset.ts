@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from './fetchWithTimeout'
+import { encodeErrorInfo } from './i18n/errors'
 
 /**
  * 标准音源（aurora 协议）端点约定与运行时组装
@@ -148,11 +149,14 @@ export interface AuroraFormCheck {
   parsed: ParsedSourceInput | null
   /** 链接被判为服务地址形态（仅音乐源有服务端组装约定） */
   isService: boolean
-  /** 链接本身的错误（格式错 / 缺占位符），无错为 null */
+  /**
+   * 链接本身的错误（格式错 / 缺占位符），无错为 null。
+   * 形态：结构化信封（`AURORA_ERR:{code,params}`），显示端 `translateError(linkError, t)` 渲染。
+   */
   linkError: string | null
   /** 是否需要手填歌单解析接口——服务地址形态的该端点由软件派生 */
   showPlaylist: boolean
-  /** 歌单解析接口的错误，无错为 null */
+  /** 歌单解析接口的错误（同 linkError 的形态），无错为 null */
   playlistError: string | null
   /** 能否保存 */
   canSave: boolean
@@ -182,15 +186,24 @@ export function checkSourceForm(opts: {
     : 'https://lrclib.net/api/search?track_name={track}'
   let linkError: string | null = null
   if (linkText && !parsed) {
-    linkError = `地址格式不正确，示例：${example}`
+    linkError = encodeErrorInfo({ code: 'core.error.formLinkInvalid', params: { example } })
   } else if (linkText && !isService) {
     const missing = required.filter((p) => !linkText.includes(p))
-    if (missing.length) linkError = `地址需包含占位符：${missing.join('、')}`
+    if (missing.length) {
+      // 列表用「, 」连接：占位符名是技术记号（{query}），语言无关，
+      // 且在字典侧无法按语言选连接词（句子里只有一个 {placeholders} 占位符）
+      linkError = encodeErrorInfo({
+        code: 'core.error.formLinkPlaceholder',
+        params: { placeholders: missing.join(', ') },
+      })
+    }
   }
 
   const showPlaylist = isMusic && !isService
   const playlistError =
-    showPlaylist && playlistText && !playlistText.includes('{url}') ? '地址需包含占位符：{url}' : null
+    showPlaylist && playlistText && !playlistText.includes('{url}')
+      ? encodeErrorInfo({ code: 'core.error.formLinkPlaceholder', params: { placeholders: '{url}' } })
+      : null
   const playlistOnly = showPlaylist && !linkText && playlistText.length > 0
 
   return {
@@ -374,7 +387,10 @@ export function parseAuroraEndpoints(json: unknown): Partial<AuroraEndpoints> | 
 
 export interface AuroraProbeResult {
   ok: boolean
-  /** 面向用户的结论文案（设置页「测试连接」直接展示） */
+  /**
+   * 面向用户的结论文案（设置页「测试连接」直接展示）。
+   * 形态：结构化信封（`AURORA_ERR:{code,params}`），显示端 `translateError(message, t)` 渲染。
+   */
   message: string
   /** 服务端自描述的端点模板（读到才有） */
   endpoints?: Partial<AuroraEndpoints>
@@ -396,17 +412,21 @@ export async function probeAuroraService(
   timeoutMs = 8000
 ): Promise<AuroraProbeResult> {
   const base = normalizeSourceBase(baseUrl)
-  if (!base) return { ok: false, message: '服务地址格式不正确', selfDescribed: false }
+  if (!base) return { ok: false, message: encodeErrorInfo({ code: 'core.error.serviceUrlInvalid' }), selfDescribed: false }
 
   const headers = { Accept: 'application/json' }
   let rootResp: Response
   try {
     rootResp = await fetchWithTimeout(`${base}/`, { headers }, timeoutMs)
   } catch {
-    return { ok: false, message: '连接失败：地址不可达或端口不正确', selfDescribed: false }
+    return { ok: false, message: encodeErrorInfo({ code: 'core.error.serviceUnreachable' }), selfDescribed: false }
   }
   if (!rootResp.ok) {
-    return { ok: false, message: `服务返回 ${rootResp.status}，请确认服务地址`, selfDescribed: false }
+    return {
+      ok: false,
+      message: encodeErrorInfo({ code: 'core.error.serviceStatus', params: { status: rootResp.status } }),
+      selfDescribed: false,
+    }
   }
 
   let rootJson: unknown = null
@@ -435,7 +455,7 @@ export async function probeAuroraService(
           if (!endpoints && fromHealth) {
             return {
               ok: true,
-              message: '连接正常，密钥有效',
+              message: encodeErrorInfo({ code: 'core.probe.serviceKeyOk' }),
               endpoints: fromHealth,
               capabilities: caps || undefined,
               selfDescribed: true,
@@ -447,7 +467,7 @@ export async function probeAuroraService(
       } else if (health.status === 401 || health.status === 403) {
         return {
           ok: false,
-          message: '密钥不正确（服务端拒绝了该密钥）',
+          message: encodeErrorInfo({ code: 'core.error.serviceKeyRejected' }),
           endpoints: endpoints || undefined,
           capabilities: caps || undefined,
           selfDescribed: Boolean(endpoints),
@@ -457,7 +477,7 @@ export async function probeAuroraService(
       /* /health 不可达但根路径可达：仍算服务在线，仅未校验密钥 */
       return {
         ok: true,
-        message: '服务在线，但未能校验密钥（/health 不可达）',
+        message: encodeErrorInfo({ code: 'core.probe.serviceKeyUnverified' }),
         endpoints: endpoints || undefined,
         capabilities: caps || undefined,
         selfDescribed: Boolean(endpoints),
@@ -467,11 +487,14 @@ export async function probeAuroraService(
 
   return {
     ok: true,
-    message: endpoints
-      ? key
-        ? '连接正常，密钥有效'
-        : '服务在线（未填密钥）'
-      : '服务在线，但未读到端点自描述，将按默认 /aurora 路径组装',
+    // 三种形态各占一条整句（不拼「主句 + 补语」）
+    message: encodeErrorInfo({
+      code: endpoints
+        ? key
+          ? 'core.probe.serviceKeyOk'
+          : 'core.probe.serviceOnline'
+        : 'core.probe.serviceOnlineNoSelfDescription',
+    }),
     endpoints: endpoints || undefined,
     capabilities: caps || undefined,
     selfDescribed: Boolean(endpoints),

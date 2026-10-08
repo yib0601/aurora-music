@@ -269,6 +269,18 @@
   }
 }
 
+/* ===== 语言作用域：英文字体栈 =====
+ * 中文界面沿用上面的中文优先栈（CJK 走 Noto Sans SC），此处不重复声明；
+ * 英文界面必须把 Inter 提到最前——Noto Sans SC / PingFang SC 等 CJK 字体自带
+ * 拉丁字形，排在前面时浏览器逐字符回退会先用它们渲染英文，Inter 永远轮不到。
+ * 只覆盖字体栈：字号、字距、间距体系与 --ds-* token 一律不动。
+ * 该属性的真值由首屏脚本与 I18nProvider 维护（见 packages/app/index.html）。 */
+@layer base {
+  html[data-locale="en"] {
+    --font-sans: "Inter","Noto Sans SC","PingFang SC","HarmonyOS Sans SC","Alibaba PuHuiTi",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  }
+}
+
 /* ===== 浅色主题：html 未带 .dark 时整体翻转 =====
  * 深色为默认（:root 中是暗色值）；用户选择浅色/系统浅色时，
  * App.tsx 移除 .dark 类，此块翻转所有主题感知变量。

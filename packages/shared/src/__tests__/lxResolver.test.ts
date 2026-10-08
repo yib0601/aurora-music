@@ -18,6 +18,7 @@ import {
   type LxResolveOutcome,
 } from '../lxResolver'
 import { clearLxSourceCache, type LxHostDeps, type LxRequestOptions } from '../lxHost'
+import { expectCode } from './i18nAssert'
 import type { OnlineSourceConfig } from '../types'
 
 // ─── 桩：脚本与宿主依赖 ───────────────────────────────────────────
@@ -185,12 +186,14 @@ describe('元信息 → 脚本字段映射', () => {
     expect(noId.ok).toBe(false)
     if (noId.ok) return
     expect(noId.missing).toEqual(['hash', 'songmid'])
-    expect(noId.reason).toContain('酷我')
+    // 原因是结构化载荷：平台用**协议标识**（kw）而非中文名，文案由显示端按语言渲染
+    expectCode(noId.reason, 'core.error.lxMetaMissing', { platform: 'kw', fields: 'hash, songmid' })
 
     const mgNoSinger = toLxMusicInfo('mg', { title: '歌' })
     expect(mgNoSinger.ok).toBe(false)
     if (mgNoSinger.ok) return
     expect(mgNoSinger.missing).toContain('singer')
+    expectCode(mgNoSinger.reason, 'core.error.lxMetaMissing', { platform: 'mg', fields: 'singer' })
   })
 
   it('未登记平台按兜底字段名映射（给了就写全）', () => {
@@ -220,7 +223,7 @@ describe('resolveLxTrack 失败路径（一律返回原因，不抛错）', () =
     const noPlatform = await resolveLxTrack({ lx: { sourceId: 'lx-1', platform: '', meta: {} } })
     expect(noPlatform.url).toBeNull()
     if (noPlatform.url !== null) return
-    expect(noPlatform.reason).toContain('定位信息')
+    expectCode(noPlatform.reason, 'core.error.lxTrackRefMissing')
   })
 
   it('按 id 找不到源配置', async () => {
@@ -230,7 +233,7 @@ describe('resolveLxTrack 失败路径（一律返回原因，不抛错）', () =
     })
     expect(out.url).toBeNull()
     if (out.url !== null) return
-    expect(out.reason).toContain('ghost')
+    expectCode(out.reason, 'core.error.lxSourceNotFound', { id: 'ghost' })
   })
 
   it('源不是洛雪源 / 源已停用', async () => {
@@ -241,7 +244,7 @@ describe('resolveLxTrack 失败路径（一律返回原因，不抛错）', () =
     })
     expect(notLx.url).toBeNull()
     if (notLx.url !== null) return
-    expect(notLx.reason).toContain('不是洛雪脚本源')
+    expectCode(notLx.reason, 'core.error.lxNotScriptSource', { name: '普通源', kind: 'aurora' })
 
     const disabled = await resolveLxTrack({
       lx: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } },
@@ -249,7 +252,7 @@ describe('resolveLxTrack 失败路径（一律返回原因，不抛错）', () =
     })
     expect(disabled.url).toBeNull()
     if (disabled.url !== null) return
-    expect(disabled.reason).toContain('已停用')
+    expectCode(disabled.reason, 'core.error.lxSourceDisabled')
   })
 
   it('脚本源码不可得（未内联且无供应器）时给出可读原因', async () => {
@@ -259,7 +262,7 @@ describe('resolveLxTrack 失败路径（一律返回原因，不抛错）', () =
     })
     expect(out.url).toBeNull()
     if (out.url !== null) return
-    expect(out.reason).toContain('脚本源码不可得')
+    expectCode(out.reason, 'core.error.lxScriptUnavailable')
   })
 
   it('映射不出必要字段时直接失败，一次请求都不发', async () => {
@@ -271,7 +274,7 @@ describe('resolveLxTrack 失败路径（一律返回原因，不抛错）', () =
     })
     expect(out.url).toBeNull()
     if (out.url !== null) return
-    expect(out.reason).toContain('缺少必要字段')
+    expectCode(out.reason, 'core.error.lxMetaMissing')
     expect(calls).toHaveLength(0)
   })
 
@@ -283,7 +286,7 @@ describe('resolveLxTrack 失败路径（一律返回原因，不抛错）', () =
     })
     expect(out.url).toBeNull()
     if (out.url !== null) return
-    expect(out.reason).toContain('宿主未初始化')
+    expectCode(out.reason, 'core.error.lxHostNotReady')
   })
 })
 

@@ -8,6 +8,7 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.net.URLEncoder
 
 /**
  * Capacitor 插件：把 Android 原生播放引擎（MediaPlaybackService）暴露给 JS。
@@ -26,9 +27,27 @@ import com.getcapacitor.annotation.CapacitorPlugin
  *   - updateArtwork(opts): 补写当前曲目锁屏封面（封面异步就绪后调用）
  *   - getState(): 查询播放快照
  *   - addListener("playbackevent", cb): 监听播放状态事件（同步 UI）
+ *
+ * 错误约定：reject 回传的**永远是错误码**（`media_error_xxx`），不含给用户看的句子——
+ * 文案由 JS 侧按当前语言渲染，见 packages/shared/src/i18n/messages/{zh-CN,en}/mobile.ts
+ * 的 `media.error.*` 与 docs/development.md「多语言开发」的码→键映射说明。
  */
 @CapacitorPlugin(name = "MediaSession")
 class MediaSessionPlugin : Plugin() {
+
+    /**
+     * 拼装原生错误码（与 UpdatePlugin.err 同一协议）。码是**机器可读**的：
+     * 不含任何给用户看的文案，文案由 JS 侧按当前语言渲染（字典 `media.error.*`）。
+     * 形式 `<域>_error_<小驼峰名>`，参数以查询串追加（值做 URL 编码）；
+     * JS 侧键路径 = `mobile.` + 码把 `_` 换成 `.`。
+     */
+    private fun err(code: String, vararg params: Pair<String, String?>): String {
+        if (params.isEmpty()) return code
+        val query = params.joinToString("&") { (key, value) ->
+            "$key=" + URLEncoder.encode(value.orEmpty(), "UTF-8")
+        }
+        return "$code?$query"
+    }
 
     override fun load() {
         super.load()
@@ -64,7 +83,7 @@ class MediaSessionPlugin : Plugin() {
             }
             call.resolve()
         } catch (e: Exception) {
-            call.reject("启动媒体服务失败: ${e.message}")
+            call.reject(err("media_error_serviceStartFailed", "detail" to e.message))
         }
     }
 
@@ -74,7 +93,7 @@ class MediaSessionPlugin : Plugin() {
             context.stopService(Intent(context, MediaPlaybackService::class.java))
             call.resolve()
         } catch (e: Exception) {
-            call.reject("停止媒体服务失败: ${e.message}")
+            call.reject(err("media_error_serviceStopFailed", "detail" to e.message))
         }
     }
 
@@ -120,7 +139,7 @@ class MediaSessionPlugin : Plugin() {
     fun playQueue(call: PluginCall) {
         val svc = MediaPlaybackService.instance
         if (svc == null) {
-            call.reject("媒体服务未启动")
+            call.reject(err("media_error_serviceNotRunning"))
             return
         }
         try {
@@ -136,7 +155,7 @@ class MediaSessionPlugin : Plugin() {
             )
             call.resolve()
         } catch (e: Exception) {
-            call.reject("设置播放队列失败: ${e.message}")
+            call.reject(err("media_error_playQueueFailed", "detail" to e.message))
         }
     }
 
@@ -160,7 +179,7 @@ class MediaSessionPlugin : Plugin() {
             )
             call.resolve()
         } catch (e: Exception) {
-            call.reject("同步队列失败: ${e.message}")
+            call.reject(err("media_error_syncQueueFailed", "detail" to e.message))
         }
     }
 

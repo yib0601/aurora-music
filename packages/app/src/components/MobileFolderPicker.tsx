@@ -3,6 +3,7 @@ import { ChevronRight, ChevronLeft, Folder, Check, AlertCircle, Loader2 } from '
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { platform } from '@/services/platform'
+import { useLocale, useT } from '@/i18n'
 import type { FileInfo } from '@/types'
 
 interface MobileFolderPickerProps {
@@ -10,7 +11,12 @@ interface MobileFolderPickerProps {
   /** 用户确认选择时回调，参数为相对 ExternalStorage 的路径（如 'Music'） */
   onSelected: (path: string) => void
   onClose: () => void
-  /** 文案：同一个选择器承载「扫描目录」「下载目录」等不同用途，默认按扫描目录展示 */
+  /**
+   * 文案：同一个选择器承载「扫描目录」「下载目录」等不同用途。
+   * 传 string 即覆盖；不传则按「扫描目录」取字典。
+   * ⚠️ 不在这里写默认参数值——默认参数是在**调用前**求值的字面量，
+   *    等于把语言烧死在组件签名上，切语言后不会更新。
+   */
   title?: string
   description?: string
   confirmLabel?: string
@@ -25,10 +31,16 @@ export function MobileFolderPicker({
   open,
   onSelected,
   onClose,
-  title = '选择扫描目录',
-  description = '浏览并选择包含音乐文件的文件夹',
-  confirmLabel = '选择此目录',
+  title,
+  description,
+  confirmLabel,
 }: MobileFolderPickerProps) {
+  const t = useT()
+  const locale = useLocale()
+  // 缺省文案在渲染期取：切语言即时生效
+  const titleText = title ?? t('library.folderPicker.title')
+  const descriptionText = description ?? t('library.folderPicker.description')
+  const confirmText = confirmLabel ?? t('library.folderPicker.confirm')
   const [currentPath, setCurrentPath] = useState<string>('') // 相对路径，'' 表示根
   const [entries, setEntries] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -39,19 +51,19 @@ export function MobileFolderPicker({
     setError(null)
     try {
       const result = await platform.readDir(dir)
-      // 仅展示目录（文件对选目录无意义），按字母排序
+      // 仅展示目录（文件对选目录无意义），按当前界面语言排序
       const dirs = result
         .filter((e) => e.isDirectory)
-        .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans'))
+        .sort((a, b) => a.name.localeCompare(b.name, locale))
       setEntries(dirs)
     } catch (err) {
       console.warn('[MobileFolderPicker] readDir 失败:', dir, err)
-      setError('无法读取该目录，请检查存储权限')
+      setError(t('library.error.readDirFailed'))
       setEntries([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [locale, t])
 
   useEffect(() => {
     if (open) {
@@ -85,9 +97,9 @@ export function MobileFolderPicker({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="w-[92vw] max-w-md h-[75vh] max-h-[640px] flex flex-col p-0 gap-0">
         <DialogHeader className="px-5 pt-5 pb-3">
-          <DialogTitle className="text-white">{title}</DialogTitle>
+          <DialogTitle className="text-white">{titleText}</DialogTitle>
           <p className="font-text text-caption text-white/60 mt-1">
-            {description}
+            {descriptionText}
           </p>
         </DialogHeader>
 
@@ -97,7 +109,7 @@ export function MobileFolderPicker({
             onClick={() => { setCurrentPath(''); loadDir('') }}
             className="font-text hover:text-mint transition-colors whitespace-nowrap"
           >
-            存储
+            {t('library.folderPicker.storage')}
           </button>
           {breadcrumbs.map((seg, i) => {
             const p = breadcrumbs.slice(0, i + 1).join('/')
@@ -120,21 +132,23 @@ export function MobileFolderPicker({
           {loading ? (
             <div className="flex items-center justify-center h-full text-white/50">
               <Loader2 className="h-5 w-5 animate-spin mr-2" strokeWidth={1.8} />
-              读取中…
+              {t('common.state.loading')}
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center h-full text-white/60 gap-3 px-6 text-center">
               <AlertCircle className="h-8 w-8 text-coral" strokeWidth={1.6} />
               <p className="font-text text-caption">{error}</p>
               <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => loadDir(currentPath)}>
-                重试
+                {t('common.action.retry')}
               </Button>
             </div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-white/50 gap-2 px-6 text-center">
               <Folder className="h-8 w-8" strokeWidth={1.6} />
-              <p className="font-text text-caption">此目录下没有子文件夹</p>
-              <p className="font-text text-caption text-white/40">可点击下方「{confirmLabel}」直接使用当前位置</p>
+              <p className="font-text text-caption">{t('library.folderPicker.noSubfolders')}</p>
+              <p className="font-text text-caption text-white/40">
+                {t('library.folderPicker.emptyHint', { label: confirmText })}
+              </p>
             </div>
           ) : (
             <ul className="space-y-1 pb-2">
@@ -145,7 +159,7 @@ export function MobileFolderPicker({
                     className="w-full flex items-center gap-2 px-3 py-2.5 rounded-ds-media hover:bg-white/[0.06] transition-colors text-white/60"
                   >
                     <ChevronLeft className="h-4 w-4" strokeWidth={1.8} />
-                    <span className="font-text text-caption">返回上级</span>
+                    <span className="font-text text-caption">{t('library.folderPicker.up')}</span>
                   </button>
                 </li>
               )}
@@ -170,11 +184,13 @@ export function MobileFolderPicker({
         {/* 底部操作 */}
         <DialogFooter className="px-5 py-4 border-t border-white/[0.08] flex items-center justify-between gap-3 sm:justify-between">
           <span className="font-text text-caption text-white/60 truncate flex-1">
-            当前：{currentPath || '存储根目录'}
+            {t('library.folderPicker.current', {
+              path: currentPath || t('library.folderPicker.storage'),
+            })}
           </span>
           <div className="flex gap-2 flex-shrink-0">
             <Button variant="ghost" size="sm" onClick={onClose} className="h-9 px-3.5 text-white/70">
-              取消
+              {t('common.action.cancel')}
             </Button>
             <Button
               variant="secondary"
@@ -184,7 +200,7 @@ export function MobileFolderPicker({
               className="h-9 px-3.5 bg-mint text-mint-fg hover:bg-mint/90"
             >
               <Check className="h-4 w-4 mr-1.5" strokeWidth={1.8} />
-              {confirmLabel}
+              {confirmText}
             </Button>
           </div>
         </DialogFooter>

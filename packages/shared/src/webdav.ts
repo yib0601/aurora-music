@@ -11,6 +11,9 @@
  */
 
 import { fetchWithTimeout } from './fetchWithTimeout'
+import { encodeErrorInfo, parseErrorInfo, toErrorInfo } from './i18n/errors'
+import type { MessageKey } from './i18n'
+import type { TranslateParams } from './i18n/core'
 
 /** 媒体库来源配置（区别于在线歌源的 OnlineSourceConfig） */
 export interface LibrarySourceConfig {
@@ -369,11 +372,38 @@ const PROPFIND_BODY = `<?xml version="1.0" encoding="utf-8"?>
   </D:prop>
 </D:propfind>`
 
+/**
+ * 传输层错误（断网 / 超时 / 401 / 路径不存在）。
+ *
+ * `message` 的形态：本模块抛出的是**结构化载荷**（`AURORA_ERR:{code,params,detail}`，
+ * 由 i18n/errors.ts 的信封承载，显示端 `translateError(err, t)` 按语言渲染）；
+ * 平台侧（desktop 的 librarySource）自己构造的实例可能是自由文本。
+ * 两种形态都被 errors.ts 的归一链接受，`status` 与 `instanceof WebdavError` 语义不变。
+ */
 export class WebdavError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message)
     this.name = 'WebdavError'
   }
+}
+
+/** 结构化错误 → WebdavError（文案不在这里落地：只给码 + 参数 + 技术细节） */
+function webdavErrorOf(code: MessageKey, params?: TranslateParams, status?: number, detail?: string): WebdavError {
+  return new WebdavError(encodeErrorInfo({ code, params, detail }), status)
+}
+
+/**
+ * 底层异常 → 可插进句子的**技术原文**。
+ *
+ * 直接把 `err.message` 当参数会在嵌套结构化错误时把 `AURORA_ERR:{...}` 编码串
+ * 插进用户看到的句子里（超时就是最常见的这条路径：fetchWithTimeout 抛的就是载荷）。
+ * 所以：自由文本原样用，编码载荷取归一后的 detail，detail 也缺就退回码。
+ */
+function reasonTextOf(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? '')
+  if (raw && !parseErrorInfo(raw)) return raw
+  const info = toErrorInfo(err)
+  return info.detail || info.code
 }
 
 /** 单个目录列举（Depth: 1）。超时按媒体库规模放宽到 20s（大目录 + 慢 NAS） */
@@ -391,22 +421,37 @@ export async function listWebdavDir(
       timeoutMs
     )
   } catch (err) {
-    throw new WebdavError(`无法连接到网络存储「${cfg.name}」：${(err as Error).message}`)
+    throw webdavErrorOf(
+      'core.error.webdavConnect',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
   }
   if (resp.status === 401 || resp.status === 403) {
-    throw new WebdavError(`网络存储「${cfg.name}」鉴权失败（HTTP ${resp.status}），请检查用户名与口令`, resp.status)
+    throw webdavErrorOf('core.error.webdavAuth', { name: cfg.name, status: resp.status }, resp.status)
   }
   if (resp.status === 404) {
-    throw new WebdavError(`网络存储「${cfg.name}」路径不存在：${cfg.rootPath || '/'}`, 404)
+    throw webdavErrorOf(
+      'core.error.webdavPathMissing',
+      { name: cfg.name, path: cfg.rootPath || '/' },
+      404
+    )
   }
   if (resp.status !== 207 && resp.status !== 200) {
-    throw new WebdavError(`网络存储「${cfg.name}」返回异常状态 HTTP ${resp.status}`, resp.status)
+    throw webdavErrorOf('core.error.webdavStatus', { name: cfg.name, status: resp.status }, resp.status)
   }
   const xml = await resp.text()
   return parseMultiStatus(xml, cfg.baseUrl || '', cfg.rootPath || '', relPath)
 }
 
-/** 探测连接：列举根目录并返回前几个音频文件，供设置页「测试连接」使用 */
+/**
+ * 探测连接：列举根目录并返回前几个音频文件，供设置页「测试连接」使用。
+ *
+ * `message` 是**结构化信封**（成功结论走 core.probe.webdavOk*，失败是 WebdavError 的
+ * 载荷或自由文本），显示端统一 `translateError(result.message, t)` 渲染 —— 成功与失败
+ * 共一种载体，调用方不必分支。
+ */
 export async function testWebdavConnection(
   cfg: LibrarySourceConfig
 ): Promise<{ ok: boolean; message: string; sample?: string[] }> {
@@ -417,7 +462,10 @@ export async function testWebdavConnection(
     const audio = entries.filter((e) => !e.isDirectory && isAudioFileName(e.name)).map((e) => e.name)
     return {
       ok: true,
-      message: `连接成功：根目录下 ${dirs} 个子目录、${files} 个文件${audio.length ? `，其中 ${audio.length} 个音频` : ''}`,
+      // 两种形态各占一条整句（不做「主句 + 条件补语」的拼接，英文语序不同必然翻车）
+      message: audio.length
+        ? encodeErrorInfo({ code: 'core.probe.webdavOkWithAudio', params: { dirs, files, audio: audio.length } })
+        : encodeErrorInfo({ code: 'core.probe.webdavOk', params: { dirs, files } }),
       sample: audio.slice(0, 5),
     }
   } catch (err) {
@@ -447,10 +495,15 @@ export async function openWebdavRange(
   } catch (err) {
     // 统一包成 WebdavError：调用方据此区分「传输层失败（可重试，不应写库）」
     // 与「文件内容解析失败（格式问题，该用文件名兜底入库）」
-    throw new WebdavError(`无法读取网络存储「${cfg.name}」：${(err as Error).message}`)
+    throw webdavErrorOf(
+      'core.error.webdavRead',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
   }
   if (resp.status === 401 || resp.status === 403) {
-    throw new WebdavError(`网络存储「${cfg.name}」鉴权失败（HTTP ${resp.status}）`, resp.status)
+    throw webdavErrorOf('core.error.webdavAuth', { name: cfg.name, status: resp.status }, resp.status)
   }
   return resp
 }

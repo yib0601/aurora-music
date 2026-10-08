@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Compass, RefreshCw, Music2, TrendingUp, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
 import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { cn } from '@/lib/utils'
-import { HALL_LABEL, LIBRARY_LABEL, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
+import { NAV_LABEL_KEYS, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
+import { useT, useLocale } from '@/i18n'
+import { formatNumber, type Locale } from '@aurora/shared'
 import type { RecommendPlaylist, ToplistBrief, ToplistGroup, ToplistPreviewSong } from '@/types'
 
 /**
@@ -16,9 +18,13 @@ import type { RecommendPlaylist, ToplistBrief, ToplistGroup, ToplistPreviewSong 
  *
  * 视觉遵循 DS：长列表卡片用 `.card-solid`（无 blur，避免滚动时逐帧重采样），
  * 一屏只有一个强调色（mint，仅用于选中/焦点），hover 只改背景与描边、不做位移。
+ *
+ * 文案全部走字典：页面名取 `nav.item.hall`（英文 Discover，选词理由见 lib/routes.ts），
+ * 「去我的音乐」这类带页面名的句子用占位符注入名字，不在字典里复制第二份名字。
  */
 export function MusicHallPage() {
   const navigate = useNavigate()
+  const t = useT()
   const recommend = useMusicHallStore((s) => s.recommend)
   const toplists = useMusicHallStore((s) => s.toplists)
   const loadRecommend = useMusicHallStore((s) => s.loadRecommend)
@@ -30,7 +36,8 @@ export function MusicHallPage() {
     void loadToplists()
   }, [loadRecommend, loadToplists])
 
-  const unavailable = hallUnavailableReason()
+  // 传 t 而不是让它读 store 快照：组件要订阅语言变化，切语言后台词立刻跟着变
+  const unavailable = hallUnavailableReason(t)
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -45,13 +52,13 @@ export function MusicHallPage() {
       header={
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
-            <PageTitle>{HALL_LABEL}</PageTitle>
+            <PageTitle>{t(NAV_LABEL_KEYS.hall)}</PageTitle>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 pb-1 page-toolbar">
             <button
               type="button"
               className="btn-icon"
-              title="刷新"
+              title={t('common.action.refresh')}
               onClick={handleRefresh}
               disabled={loading || Boolean(unavailable)}
             >
@@ -63,26 +70,29 @@ export function MusicHallPage() {
     >
       {unavailable ? (
         <HallEmpty
-          title={`${HALL_LABEL}暂不可用`}
+          title={t('hall.empty.title', { hall: t(NAV_LABEL_KEYS.hall) })}
           desc={unavailable}
-          action={{ label: '去配置音源', onClick: () => navigate(ROUTES.settings) }}
+          action={{ label: t('hall.empty.configureSource'), onClick: () => navigate(ROUTES.settings) }}
           // 本页是应用首屏：空态必须给出「不配也能用」的出路，否则冷启动像坏掉
-          secondaryAction={{ label: `去${LIBRARY_LABEL}`, onClick: () => navigate(LIBRARY_ROUTE) }}
+          secondaryAction={{
+            label: t('hall.empty.goLibrary', { library: t(NAV_LABEL_KEYS.library) }),
+            onClick: () => navigate(LIBRARY_ROUTE),
+          }}
         />
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           {/* ── 推荐歌单 ── */}
           <Section
             icon={<Sparkles className="h-4 w-4 text-mint" strokeWidth={1.6} />}
-            title="推荐歌单"
-            subtitle={recommend.data.length > 0 ? `${recommend.data.length} 个` : undefined}
+            title={t('hall.recommend.title')}
+            subtitle={recommend.data.length > 0 ? t('hall.recommend.count', { count: recommend.data.length }) : undefined}
           >
             {recommend.loading && recommend.data.length === 0 ? (
               <SkeletonRow />
             ) : recommend.error ? (
               <InlineError message={recommend.error} onRetry={() => void loadRecommend(true)} />
             ) : recommend.data.length === 0 ? (
-              <p className="font-text text-[13px] text-white/50 py-3">暂无推荐歌单</p>
+              <p className="font-text text-[13px] text-white/50 py-3">{t('hall.recommend.empty')}</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {recommend.data.map((pl) => (
@@ -99,8 +109,8 @@ export function MusicHallPage() {
           {/* ── 排行榜 ── */}
           <Section
             icon={<TrendingUp className="h-4 w-4 text-mint" strokeWidth={1.6} />}
-            title="排行榜"
-            subtitle={toplists.data.length > 0 ? `${totalBoards(toplists.data)} 个榜单` : undefined}
+            title={t('hall.toplist.title')}
+            subtitle={toplists.data.length > 0 ? t('hall.toplist.count', { count: totalBoards(toplists.data) }) : undefined}
             className="mt-10"
           >
             {toplists.loading && toplists.data.length === 0 ? (
@@ -108,13 +118,14 @@ export function MusicHallPage() {
             ) : toplists.error ? (
               <InlineError message={toplists.error} onRetry={() => void loadToplists(true)} />
             ) : toplists.data.length === 0 ? (
-              <p className="font-text text-[13px] text-white/50 py-3">暂无榜单</p>
+              <p className="font-text text-[13px] text-white/50 py-3">{t('hall.toplist.empty')}</p>
             ) : (
               <div className="flex flex-col gap-8">
                 {toplists.data.map((group) => (
                   <div key={`${group.groupId ?? group.groupName}`}>
                     <h3 className="font-text text-[12px] font-semibold text-white/65 uppercase tracking-wider mb-3">
-                      {group.groupName}
+                      {/* 组名由音源服务提供；上游缺名时数据层给空串（不再烧「榜单」这类展示名），这里补字典兜底 */}
+                      {group.groupName || t('hall.toplist.fallbackName')}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                       {group.toplists.map((board) => (
@@ -168,6 +179,8 @@ function Section({
 
 /** 推荐歌单卡片：封面 + 名称 + 播放量 */
 function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpen: () => void }) {
+  const t = useT()
+  const locale = useLocale()
   const [failed, setFailed] = useState(false)
   const cover = playlist.coverUrl
   useEffect(() => setFailed(false), [cover])
@@ -198,7 +211,13 @@ function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpe
         {playlist.name}
       </p>
       <p className="font-text text-[11px] text-white/45 mt-1 truncate tracking-[-0.12px]">
-        {playlist.listenNum ? `${formatCount(playlist.listenNum)} 次播放` : playlist.creatorName || '推荐歌单'}
+        {playlist.listenNum
+          ? // count 只用于选复数形态，plays 是已按语言压缩的显示值（万 / 亿 与 K / M 不同形）
+            t('hall.recommend.plays', {
+              count: playlist.listenNum,
+              plays: compactCount(playlist.listenNum, locale),
+            })
+          : playlist.creatorName || t('hall.recommend.title')}
       </p>
     </button>
   )
@@ -206,6 +225,7 @@ function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpe
 
 /** 榜单卡片：榜单名 + 前几首预览（带排名序号） */
 function ToplistCard({ board, onOpen }: { board: ToplistBrief; onOpen: () => void }) {
+  const t = useT()
   return (
     <button
       type="button"
@@ -223,7 +243,7 @@ function ToplistCard({ board, onOpen }: { board: ToplistBrief; onOpen: () => voi
         )}
       </div>
       {board.songs.length === 0 ? (
-        <p className="font-text text-[12px] text-white/40 py-1">点击查看完整榜单</p>
+        <p className="font-text text-[12px] text-white/40 py-1">{t('hall.toplist.viewFull')}</p>
       ) : (
         <ol className="flex flex-col gap-1.5">
           {board.songs.slice(0, 3).map((song, i) => (
@@ -258,11 +278,15 @@ function PreviewRow({ song, index }: { song: ToplistPreviewSong; index: number }
   )
 }
 
-/** 播放量：上万折算为「万 / 亿」，避免长数字撑破卡片 */
-export function formatCount(n: number): string {
-  if (n >= 100000000) return `${(n / 100000000).toFixed(1)}亿`
-  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`
-  return String(n)
+/**
+ * 播放量：走 Intl 的 compact 记数法（中文「万 / 亿」、英文 K / M / B），避免长数字撑破卡片。
+ *
+ * 不手写单位表：换算基数本来就随语言不同（中文四位一进、英文三位一进），
+ * Intl 各语言的 compact 形态就是这件事的真源；手写等于在界面层再放一份语言数据，
+ * 而且字面量中文还会被 i18n 扫描判成「未国际化的界面文案」。
+ */
+function compactCount(n: number, locale: Locale): string {
+  return formatNumber(n, locale, { notation: 'compact', maximumFractionDigits: 1 })
 }
 
 function SkeletonRow() {
@@ -280,6 +304,7 @@ function SkeletonRow() {
 }
 
 function InlineError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const t = useT()
   return (
     <div className="inset-note flex items-center justify-between gap-3 px-4 py-3">
       <span className="font-text text-[12px] text-white/60 truncate">{message}</span>
@@ -288,7 +313,7 @@ function InlineError({ message, onRetry }: { message: string; onRetry: () => voi
         onClick={onRetry}
         className="font-text text-[12px] text-mint hover:text-mint/80 flex-shrink-0 transition-colors"
       >
-        重试
+        {t('common.action.retry')}
       </button>
     </div>
   )

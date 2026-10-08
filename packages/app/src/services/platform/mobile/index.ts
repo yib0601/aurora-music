@@ -49,12 +49,15 @@ import {
 } from './lxHost'
 import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, encodeFilePathToUrl } from '@aurora/shared'
 import {
+  auroraError,
   auroraProbeToResult,
   lxInspectionToProbe,
   parseSourceInput,
   probeAuroraService,
   unavailableProbe,
 } from '@aurora/shared'
+import { appTranslate } from '@/i18n'
+import { renderErrorMessage } from '@/lib/utils'
 import {
   requestMediaPermissions,
   checkAllFilesAccess,
@@ -167,7 +170,7 @@ async function embedCoverIntoDownloaded(
   // 走 shared 的逐段 encode：文件名含中文/空格/`#` 时，裸路径拼进
   // convertFileSrc 生成的 URL 会被 WebView 当成 fragment 截断，fetch 到错误路径
   const fileRes = await fetch(Capacitor.convertFileSrc(encodeFilePathToUrl(abs)))
-  if (!fileRes.ok) throw new Error(`读取下载文件失败: ${fileRes.status}`)
+  if (!fileRes.ok) throw auroraError('runtime.error.downloadFileReadFailed', { status: fileRes.status })
   const fileData = new Uint8Array(await fileRes.arrayBuffer())
   if (fileData.length > 100 * 1024 * 1024) return
 
@@ -269,7 +272,7 @@ async function runScan(folderPath: string): Promise<Track[]> {
         emitFolderMissing({ folder: folderPath, removed })
         return remaining
       }
-      throw new Error('文件夹不存在或不可访问')
+      throw auroraError('runtime.error.scanFolderMissing')
     }
     // 渐进式扫描：每解析完一首立即通知 UI 追加显示
     await mobileScanFolder(folderPath, db, (track) => {
@@ -284,7 +287,8 @@ async function runScan(folderPath: string): Promise<Track[]> {
     console.error('[Mobile] 扫描失败:', folderPath, err)
     emitScanError({
       folder: folderPath,
-      message: `扫描失败：文件夹「${folderPath}」不存在或无法读取（可能未授予存储权限）`,
+      // 事件负载是给人看的结论（不是抛错）：取值在触发时进行，跟随当前界面语言
+      message: appTranslate()('runtime.scan.folderUnreadable', { folder: folderPath }),
     })
     throw err
   }
@@ -349,11 +353,7 @@ export function createMobilePlatform(): PlatformInterface & {
       // 选择器目录树会是空的（用户会误以为手机里没有文件夹）
       const granted = await requestMediaPermissions()
       if (!granted) {
-        alert(
-          '未授予存储权限，无法浏览本地文件夹。\n' +
-            '请授予「音乐和音频」权限后重试；若系统不再弹出授权窗口，' +
-            '可在 系统设置 → 应用 → Aurora Music → 权限 中手动开启。'
-        )
+        alert(appTranslate()('runtime.permission.mediaDenied'))
         return null
       }
       // 走 UI 层注册的文件夹选择器（MobileFolderPicker），用户在目录树中点选，
@@ -367,9 +367,7 @@ export function createMobilePlatform(): PlatformInterface & {
         }
       }
       // 降级路径：UI 未注册时使用旧 prompt 行为
-      const hint =
-        '请输入音乐目录的相对路径（相对于 storage/emulated/0）。\n常见目录：\n' +
-        '  Music\n  Download/Music\n  Documents/Music\n  DCIM/Music'
+      const hint = appTranslate()('runtime.permission.dirPathHint')
       const input = window.prompt(hint, 'Music')
       if (input === null) return null
       const trimmed = input.trim()
@@ -379,7 +377,7 @@ export function createMobilePlatform(): PlatformInterface & {
         return trimmed
       } catch (err) {
         console.warn('[Mobile] pickFolder 目录不可访问:', trimmed, err)
-        alert(`无法访问目录「${trimmed}」\n请检查路径是否正确，或确认已授予存储权限。`)
+        alert(appTranslate()('runtime.permission.folderUnreachable', { path: trimmed }))
         return null
       }
     },
@@ -548,7 +546,9 @@ export function createMobilePlatform(): PlatformInterface & {
           })
           return lxInspectionToProbe(inspection)
         } catch (err) {
-          return unavailableProbe('lx', (err as Error)?.message || String(err))
+          // 底层错误可能是 AuroraError（码 + 参数）：走 renderErrorMessage 渲染成当前语言，
+          // 直接读 message 会把编码载荷（AURORA_ERR:{...}）当结论上屏
+          return unavailableProbe('lx', renderErrorMessage(err))
         }
       }
       const parsed = parseSourceInput(input.sourceUrl)
@@ -609,28 +609,28 @@ export function createMobilePlatform(): PlatformInterface & {
      */
     async downloadOnlineTrack(track, headers, downloadDir) {
       if (!track || typeof track.audioUrl !== 'string' || !/^https?:\/\//i.test(track.audioUrl)) {
-        throw new Error('下载地址无效')
+        throw auroraError('runtime.error.downloadUrlInvalid')
       }
       // Android 11+ 写公共目录需 MANAGE_EXTERNAL_STORAGE
       const hasAllFiles = await checkAllFilesAccess()
       if (!hasAllFiles) {
-        alert(
-          '下载歌曲到手机存储需要「所有文件访问」权限。\n请在系统设置中授予该权限后重试。'
-        )
+        alert(appTranslate()('runtime.permission.allFilesRequired'))
         await openAllFilesAccessSettings()
-        throw new Error('缺少存储权限')
+        throw auroraError('runtime.error.storagePermissionMissing')
       }
 
-      const baseName = sanitizeFileName(`${track.artist || '未知艺术家'} - ${track.title || '未知歌曲'}`)
+      const baseName = sanitizeFileName(
+        `${track.artist || appTranslate()('runtime.download.unknownArtist')} - ${track.title || appTranslate()('runtime.download.unknownTitle')}`
+      )
       const ext = inferAudioExtFromUrl(track.audioUrl)
       const dir = await normalizeDownloadDir(downloadDir)
       try {
         await Filesystem.mkdir({ path: dir, directory: Directory.ExternalStorage, recursive: true })
       } catch (err: any) {
-        // 目录已存在不算错误；其余（无权限、存储卸载）转成中文可读提示
+        // 目录已存在不算错误；其余（无权限、存储卸载）转成结构化错误码，文案由显示端渲染
         if (!err?.message || !/exist/i.test(err.message)) {
           console.error('[Mobile] 创建下载目录失败:', err)
-          throw new Error('无法创建下载目录（存储不可用或缺少权限），请检查存储权限后重试')
+          throw auroraError('runtime.error.downloadDirCreateFailed')
         }
       }
 
@@ -661,7 +661,7 @@ export function createMobilePlatform(): PlatformInterface & {
         })
       } catch (err) {
         console.error('[Mobile] 下载失败:', err)
-        throw new Error('下载失败，请检查网络连接或稍后重试')
+        throw auroraError('runtime.error.downloadFailed', undefined, err instanceof Error ? err.message : String(err))
       }
 
       // 源直链的音频大多不带内嵌封面，下载后用搜索结果里的 coverUrl 嵌入封面
@@ -721,7 +721,7 @@ export function createMobilePlatform(): PlatformInterface & {
 
     async scanFolder(folderPath: string) {
       if (typeof folderPath !== 'string' || !folderPath.trim()) {
-        emitScanError({ folder: '', message: '扫描失败：未指定文件夹' })
+        emitScanError({ folder: '', message: appTranslate()('runtime.scan.folderUnspecified') })
         throw new Error('empty folder path')
       }
       return enqueueScan(folderPath)

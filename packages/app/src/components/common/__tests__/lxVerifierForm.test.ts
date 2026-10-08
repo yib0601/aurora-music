@@ -8,6 +8,14 @@
  * 运行：cd packages/app && npx vitest run src/components/common/__tests__/lxVerifierForm.test.ts
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createAppTranslator } from '@aurora/shared'
+
+/**
+ * 文案来源说明（i18n 改造后）：runLxProbe 产出的结论文案按**调用方注入的翻译器**渲染
+ * （组件传 useT()，事件回调缺省走 appTranslate）。这里显式注入中文翻译器，
+ * 让断言不随测试运行环境的系统语言漂移。
+ */
+const zh = createAppTranslator('zh-CN')
 
 const h = vi.hoisted(() => ({
   probe: null as null | ((input: any) => Promise<any>),
@@ -31,14 +39,14 @@ beforeEach(() => {
     ok: true,
     kind: 'lx',
     message: '脚本可用',
-    capabilities: [{ key: 'kw', label: '酷我', searchable: false, qualityCount: 1 }],
+    capabilities: [{ key: 'kw', label: 'core.platform.kw', searchable: false, qualityCount: 1 }],
   })
 })
 
 describe('runLxProbe 探测编排（独立验证）', () => {
   it('成功路径：探测入参只带链接与请求头，脚本源码不经界面流转', async () => {
     const { runLxProbe } = await import('@/components/common/lxSourceForm')
-    const state = await runLxProbe('lx-1', '  https://example.com/latest.js  ', { 'X-A': 'b' })
+    const state = await runLxProbe('lx-1', '  https://example.com/latest.js  ', { 'X-A': 'b' }, { t: zh })
     expect(state.loading).toBe(false)
     expect(state.ok).toBe(true)
     expect(state.message).toBe('脚本可用')
@@ -54,7 +62,7 @@ describe('runLxProbe 探测编排（独立验证）', () => {
   it('链接非法：连平台都不调，直接给可读文案', async () => {
     const { runLxProbe } = await import('@/components/common/lxSourceForm')
     for (const bad of ['', '   ', 'ftp://x/a.js', 'javascript:alert(1)']) {
-      const state = await runLxProbe('lx-1', bad)
+      const state = await runLxProbe('lx-1', bad, undefined, { t: zh })
       expect(state.ok).toBe(false)
       expect(typeof state.message).toBe('string')
       expect(state.message!.length).toBeGreaterThan(0)
@@ -67,7 +75,7 @@ describe('runLxProbe 探测编排（独立验证）', () => {
       throw new Error('脚本下载失败：HTTP 502')
     }
     const { runLxProbe } = await import('@/components/common/lxSourceForm')
-    const state = await runLxProbe('lx-1', 'https://example.com/latest.js')
+    const state = await runLxProbe('lx-1', 'https://example.com/latest.js', undefined, { t: zh })
     expect(state.ok).toBe(false)
     expect(state.message).toContain('HTTP 502')
   })

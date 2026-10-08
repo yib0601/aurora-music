@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/common/Toast'
 import { usePlaylistImport, type ImportPreview } from '@/hooks/usePlaylistImport'
+import { useT } from '@/i18n'
 
 interface PlaylistImportDialogProps {
   open: boolean
@@ -20,6 +21,7 @@ interface PlaylistImportDialogProps {
  * 自行配置的音源（其中的歌单解析接口），纯文本导入完全在本地处理、零网络请求。
  */
 export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialogProps) {
+  const t = useT()
   const navigate = useNavigate()
   const { phase, progress, parse, confirm, cancel } = usePlaylistImport()
   const [text, setText] = useState('')
@@ -44,7 +46,8 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
     const result = await parse(text)
     if (result) {
       setPreview(result)
-      if (!playlistName.trim() && result.suggestedName !== '导入的播放列表') {
+      // 只有解析源给出歌单名时才回填输入框（默认名不该覆盖用户输入）
+      if (!playlistName.trim() && result.nameFromSource) {
         setPlaylistName(result.suggestedName)
       }
     }
@@ -55,10 +58,32 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
     const result = await confirm(preview, playlistName)
     if (!result) return
     onOpenChange(false)
-    let msg = `成功导入 ${result.importedCount} 首（本地 ${result.localCount} 首`
-    if (result.onlineCount > 0) msg += `，在线 ${result.onlineCount} 首`
-    msg += '）'
-    if (result.unmatched.length > 0) msg += `\n${result.unmatched.length} 首未找到，已跳过`
+    // 有无在线曲目 × 有无未找到曲目：四种组合各一条整句，避免拼接
+    const skipped = result.unmatched.length
+    const hasOnline = result.onlineCount > 0
+    const msg = skipped > 0
+      ? hasOnline
+        ? t('library.import.toast.resultMixedSkipped', {
+            count: result.importedCount,
+            local: result.localCount,
+            online: result.onlineCount,
+            skipped,
+          })
+        : t('library.import.toast.resultLocalSkipped', {
+            count: result.importedCount,
+            local: result.localCount,
+            skipped,
+          })
+      : hasOnline
+        ? t('library.import.toast.resultMixed', {
+            count: result.importedCount,
+            local: result.localCount,
+            online: result.onlineCount,
+          })
+        : t('library.import.toast.resultLocal', {
+            count: result.importedCount,
+            local: result.localCount,
+          })
     toast(msg, { duration: 6000 })
     navigate(`/playlist/${result.playlistId}`)
   }
@@ -67,10 +92,9 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
     <Dialog open={open} onOpenChange={(v) => { if (!busy) onOpenChange(v) }}>
       <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>导入歌单</DialogTitle>
+          <DialogTitle>{t('library.import.title')}</DialogTitle>
           <DialogDescription className="font-text text-[12px] leading-relaxed">
-            粘贴歌单分享链接或纯文本（每行一首：歌名 - 歌手）。
-            应用不内置任何平台的抓取器：链接解析由你配置的音源提供（设置里填好音源的服务地址与密钥即可），纯文本导入无需任何配置。
+            {t('library.import.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -81,27 +105,27 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
               onChange={(e) => setText(e.target.value)}
               disabled={busy}
               rows={7}
-              placeholder={'粘贴歌单分享链接，或按行粘贴歌曲列表：\n七里香 - 周杰伦\n晴天 - 周杰伦'}
+              placeholder={t('library.import.textPlaceholder')}
               className="w-full resize-none bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3 py-2.5 font-text text-[13px] text-white/85 outline-none focus:border-mint/50 transition-colors duration-200 placeholder:text-white/25"
             />
             <Input
               value={playlistName}
               onChange={(e) => setPlaylistName(e.target.value)}
               disabled={busy}
-              placeholder="歌单名称（可选，默认「导入的播放列表」）"
+              placeholder={t('library.import.namePlaceholder', { name: t('library.playlist.defaultImportName') })}
             />
             <div className="flex items-center justify-between gap-3">
               <p className="font-text text-[11px] text-white/35 leading-snug flex-1">
-                仅导入歌名/歌手等元数据；在线歌曲只展示与在线播放，不会下载
+                {t('library.import.notice')}
               </p>
               {phase === 'parsing' ? (
                 <Button variant="secondary" disabled>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" strokeWidth={1.6} />
-                  解析中…
+                  {t('library.import.parsing')}
                 </Button>
               ) : (
                 <Button variant="primary" onClick={handleParse} disabled={!text.trim()}>
-                  解析并预览
+                  {t('library.import.parse')}
                 </Button>
               )}
             </div>
@@ -117,8 +141,16 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
                 className="max-w-[240px]"
               />
               <p className="font-text text-[12px] text-white/50 tabular-nums">
-                共 {preview.songs.length} 首 · 本地 {localMatched} 首
-                {pendingOnline > 0 && ` · 待在线匹配 ${pendingOnline} 首`}
+                {pendingOnline > 0
+                  ? t('library.import.summaryPending', {
+                      total: preview.songs.length,
+                      local: localMatched,
+                      pending: pendingOnline,
+                    })
+                  : t('library.import.summary', {
+                      total: preview.songs.length,
+                      local: localMatched,
+                    })}
               </p>
             </div>
 
@@ -143,7 +175,7 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
                       )}
                     </div>
                     <span className="font-text text-[11px] text-white/35 flex-shrink-0">
-                      {matched ? '本地' : phase === 'importing' ? '匹配中' : '在线'}
+                      {matched ? t('common.label.local') : phase === 'importing' ? t('library.import.matching') : t('common.label.online')}
                     </span>
                   </div>
                 )
@@ -152,23 +184,23 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
 
             {phase === 'importing' && progress[1] > 0 && (
               <p className="font-text text-[12px] text-white/50 tabular-nums">
-                在线匹配中 {progress[0]}/{progress[1]}…
+                {t('library.import.progress', { done: progress[0], total: progress[1] })}
               </p>
             )}
 
             <div className="flex items-center justify-end gap-2">
               {phase === 'importing' ? (
                 <Button variant="secondary" onClick={() => { cancel(); onOpenChange(false) }}>
-                  取消
+                  {t('common.action.cancel')}
                 </Button>
               ) : (
                 <>
                   <Button variant="secondary" onClick={() => setPreview(null)}>
-                    重新粘贴
+                    {t('library.import.repaste')}
                   </Button>
                   <Button variant="primary" onClick={handleConfirm} className="min-w-[120px]">
                     <ListMusic className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    创建歌单
+                    {t('library.import.create')}
                   </Button>
                 </>
               )}

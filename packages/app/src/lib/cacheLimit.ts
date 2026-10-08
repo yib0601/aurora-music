@@ -1,9 +1,16 @@
+import { formatNumber } from '@aurora/shared'
+import { appTranslate } from '@/i18n'
+import { currentLocale } from '@/stores/localeStore'
+
 /**
- * 媒体缓存容量档位的换算与校验（纯逻辑，无 React 依赖）。
+ * 媒体缓存容量档位的换算与校验（纯逻辑，无 React 渲染依赖）。
  *
  * 落盘与下发给主进程的唯一载体始终是 store 的 `audioCacheLimitMB`（整数 MB），
  * 而设置页对用户展示的档位一律是 GB —— 换算只在这里发生，页面里不再散落 1024 运算，
  * 否则「输入框按 GB、落盘按 MB、胶囊按 GB」三处各写一遍，极易漂移。
+ *
+ * 文案与数字格式在**每次调用时**取（`appTranslate()` / `currentLocale()`）：
+ * 本模块没有渲染周期，把译文缓存成模块级常量会把语言冻结在加载那一刻。
  *
  * 0 = 不限制容量（不驱逐、照常缓存）：这不是一个「容量数值」，而是一个档位标记，
  * 由 store 的专用入口写入，换算函数只负责把它展示成「不限制」，不参与钳制。
@@ -31,11 +38,14 @@ export function gbToMb(gb: number): number {
  * 展示用文案：0（及非正数）→「不限制」，其余按 GB 显示并去掉多余的零。
  * 最多保留两位小数：MB 是整数，GB 最多三位小数，两位足够表达 0.5 / 1.5 这类档位，
  * 也用 `Number()` 一次抹掉 `toFixed` 补出的尾随零（1.00 → 1、0.50 → 0.5）。
+ *
+ * 单位符号 GB 是国际单位（两种语言同形），只有数字部分走 Intl；
+ * 「不限制」是文案，走字典（见 runtime.cache.unlimited）。
  */
 export function formatCacheLimit(mb: number): string {
-  if (!Number.isFinite(mb) || mb <= 0) return '不限制'
+  if (!Number.isFinite(mb) || mb <= 0) return appTranslate()('runtime.cache.unlimited')
   const gb = Number(mbToGb(mb).toFixed(2))
-  return `${gb} GB`
+  return `${formatNumber(gb, currentLocale())} GB`
 }
 
 /**

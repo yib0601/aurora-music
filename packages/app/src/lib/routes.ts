@@ -12,6 +12,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react'
+import type { MessageKey } from '@aurora/shared'
 
 /** 页面路径（静态段） */
 export const ROUTES = {
@@ -45,13 +46,20 @@ export const ROUTES = {
  * `SongDetailPage` 的来源标签（`'在线音乐' : '本地'`）。那是「曲目来自哪个源」的标签，
  * 与页面名不是一层语义，故不随页面改名而动。
  *
- * 注意 `LIBRARY_LABEL` 是**页面名**，不能代入「构建你的专属 X」一类修饰句
- * （「专属我的音乐」不通）；那类文案改用「曲库」这个普通名词。
+ * 多语言改造后的关键变化（别再退回字符串常量）：
+ *   名字不再以**字面量**形式存在，而是以**文案键**形式存在（见 `NAV_LABEL_KEYS`）。
+ *   原因：这两个名字被十几个模块引用，其中两个导航表是模块级常量数组；
+ *   若在这里导出字符串，那些数组会在模块加载时把语言冻结（切语言不刷新）。
+ *   取值必须在**渲染期**做：`const t = useT(); t(NAV_LABEL_KEYS.library)`。
+ *
+ * 英文选词：我的音乐 → My Music，音乐库 → Discover。
+ * 直译成 Music Library 会让英文用户再次掉进「两个库分不清」的坑
+ * （中文版两次改名的根因就是这个），所以英文挑「发现」这一轴。
  */
-export const LIBRARY_LABEL = '我的音乐'
-
-/** 音乐库页（在线推荐歌单 + 排行榜）的用户可见名称，标识符仍沿用 MusicHall* */
-export const HALL_LABEL = '音乐库'
+export const NAV_LABEL_KEYS = {
+  library: 'nav.item.library',
+  hall: 'nav.item.hall',
+} as const
 
 /** 我的音乐页的路由：从各处跳回「本地曲库」用它，不要用 HOME_ROUTE（主屏已换到音乐库） */
 export const LIBRARY_ROUTE = ROUTES.library
@@ -108,10 +116,17 @@ export function isRoute(pattern: string, pathname: string): boolean {
   return patternSegs.every((seg, i) => (seg.startsWith(':') ? pathSegs[i].length > 0 : seg === pathSegs[i]))
 }
 
-/** 导航条目：两处导航表（侧栏 / 移动端抽屉）共用同一份形状 */
+/**
+ * 导航条目：两处导航表（侧栏 / 移动端抽屉）共用同一份形状。
+ *
+ * `labelKey` 而不是 `label: string` 是刻意的：这两张表都是**模块级常量数组**，
+ * 存字符串就等于在模块加载时把语言定死。存键、在渲染期取译文，
+ * 语言切换才能即时生效（无需刷新、无需重建模块）。
+ */
 export interface NavItem {
   to: string
   /** lucide 图标组件（不可写成自定的 {className,strokeWidth} 窄类型：strokeWidth 允许 string | number） */
   icon: LucideIcon
-  label: string
+  /** 文案键：渲染期用 t(labelKey) 取，勿在模块级求值 */
+  labelKey: MessageKey
 }

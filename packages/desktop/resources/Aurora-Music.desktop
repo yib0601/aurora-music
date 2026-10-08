@@ -1,6 +1,11 @@
 [Desktop Entry]
+# 默认值（英文）：未知语言环境的兜底。各语言的本地化键由桌面环境按 LANG 选择，
+# 与 electron-builder 的 build.linux.desktop.entry 保持同一份文案
+# （中文用户日常看到的就是 Name[zh_CN] 那条）。
 Name=Aurora Music
+Name[zh_CN]=Aurora Music
 Comment=An elegant cross-platform music player
+Comment[zh_CN]=优雅的跨平台音乐播放器
 # ⚠️ --ozone-platform=x11 不能删：窗口是无边框窗，边缘缩放靠渲染层 ResizeHandles
 # 调 setBounds 改窗口位置；Wayland 原生后端下位置由合成器决定、客户端设不了，
 # 拖上/左边缘会退化成「从底部/右侧缩放」。详见 src/main.ts 顶部注释。

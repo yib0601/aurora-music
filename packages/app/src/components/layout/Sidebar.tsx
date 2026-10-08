@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Library, Radio } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
-import { HALL_LABEL, LIBRARY_LABEL, ROUTES, type NavItem } from '@/lib/routes'
+import { NAV_LABEL_KEYS, ROUTES, type NavItem } from '@/lib/routes'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -10,6 +10,7 @@ import { pickM3UFile, parseM3U, matchTracksByPaths } from '@/services/playlistIO
 import { APP_VERSION } from '@/services/update.service'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
+import { useT } from '@/i18n'
 import {
   Dialog,
   DialogContent,
@@ -34,20 +35,24 @@ import {
  * 导航首位与主屏保持一致，用户按「第一位 = 首屏」的直觉操作不会错位。
  * 我的音乐（本地曲库）紧随其后。
  *
- * 名称沿革见 lib/routes.ts 的 LIBRARY_LABEL 处注释：曾用「音乐库 / 音乐馆」，
+ * 名称沿革见 lib/routes.ts 的 NAV_LABEL_KEYS 处注释：曾用「音乐库 / 音乐馆」，
  * 再改「我的音乐 / 在线音乐」+「我的 / 在线」分组，现取消分组且「音乐库」改指在线页。
  * 「收藏 / 最近播放」跨来源（最近播放统一登记本地与在线；收藏入口对在线曲目开放但当前空转），
  * 取消分组后它们与两个内容页平级，不再需要为分组标题措辞纠结。
+ *
+ * 表里存的是**键**（`NavItem.labelKey`）而不是译文：模块级常量数组若存字符串，
+ * 语言会在模块加载那一刻被冻结，用户切语言后导航项不会跟着变。译文一律在渲染期取。
+ * 「设置」不在此表，由 footerItems 单独给出（它是应用配置，不是内容项）。
  */
 const navItems: NavItem[] = [
-  { to: ROUTES.hall, icon: Radio, label: HALL_LABEL },
-  { to: ROUTES.library, icon: Library, label: LIBRARY_LABEL },
-  { to: ROUTES.liked, icon: Heart, label: '收藏' },
-  { to: ROUTES.recent, icon: Clock, label: '最近播放' },
+  { to: ROUTES.hall, icon: Radio, labelKey: NAV_LABEL_KEYS.hall },
+  { to: ROUTES.library, icon: Library, labelKey: NAV_LABEL_KEYS.library },
+  { to: ROUTES.liked, icon: Heart, labelKey: 'nav.item.liked' },
+  { to: ROUTES.recent, icon: Clock, labelKey: 'nav.item.recent' },
 ]
 
 /** 独立入口（设置是应用配置，不是内容），与内容项用间距区隔 */
-const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, label: '设置' }]
+const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, labelKey: 'nav.item.settings' }]
 
 /**
  * 导航项样式。抽成一处：内容项与组外项两条渲染路径共用，
@@ -73,6 +78,7 @@ const navLinkClass = (isActive: boolean, spaced = false) =>
  * - 导航项圆角走 DS media 档（10px），间距走 DS 阶梯
  */
 export function Sidebar() {
+  const t = useT()
   const navigate = useNavigate()
   const playlists = usePlaylistStore((s) => s.playlists)
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
@@ -107,17 +113,18 @@ export function Sidebar() {
     if (!content) return
     const paths = parseM3U(content)
     if (paths.length === 0) {
-      toast('文件中没有找到有效的音乐路径', { type: 'error' })
+      toast(t('shell.playlist.importNoPath'), { type: 'error' })
       return
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      toast(`没有匹配到${LIBRARY_LABEL}中的歌曲，请先扫描包含这些歌曲的目录`, { type: 'error' })
+      // 页面名走占位符：英文下「我的音乐」是 My Music，拼句子必然翻车
+      toast(t('shell.playlist.importNoMatch', { library: t(NAV_LABEL_KEYS.library) }), { type: 'error' })
       return
     }
-    const newPlaylist = createPlaylist('导入的播放列表')
-    addTracksToPlaylist(newPlaylist.id, matchedTracks.map((t) => t.id))
-    toast(`已导入 ${matchedTracks.length} 首歌曲`)
+    const newPlaylist = createPlaylist(t('shell.playlist.importedName'))
+    addTracksToPlaylist(newPlaylist.id, matchedTracks.map((track) => track.id))
+    toast(t('shell.playlist.imported', { count: matchedTracks.length }))
   }
 
   return (
@@ -129,27 +136,27 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col">
           <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-white/[0.96] leading-tight">
-            Aurora
+            {t('nav.brand.name')}
           </span>
           <span className="font-text text-[11px] text-white/65 leading-tight mt-0.5">
-            Music Player
+            {t('nav.brand.subtitle')}
           </span>
         </div>
       </div>
 
       {/* 主导航：音乐库（在线发现）居首，与主屏一致 */}
       <nav className="flex flex-col gap-px px-3 mt-1">
-        {navItems.map(({ to, icon: Icon, label }) => (
+        {navItems.map(({ to, icon: Icon, labelKey }) => (
           <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive)}>
             <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
-            {label}
+            {t(labelKey)}
           </NavLink>
         ))}
         {/* 设置：应用配置，不属于内容项，用间距区隔 */}
-        {footerItems.map(({ to, icon: Icon, label }) => (
+        {footerItems.map(({ to, icon: Icon, labelKey }) => (
           <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive, true)}>
             <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
-            {label}
+            {t(labelKey)}
           </NavLink>
         ))}
       </nav>
@@ -158,23 +165,23 @@ export function Sidebar() {
       <div className="mt-5 flex-1 overflow-y-auto scrollbar-thin min-h-0 px-3">
         <div className="flex items-center justify-between px-3 py-1.5">
           <span className="font-text text-[11px] font-semibold text-white/65 uppercase tracking-wider">
-            播放列表
+            {t('nav.item.playlists')}
           </span>
           <div className="flex items-center gap-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" className="btn-icon" title="导入播放列表">
+                <button type="button" className="btn-icon" title={t('shell.playlist.importLink')}>
                   <Upload className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
                   <Link2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                  导入歌单（链接/文本）
+                  {t('shell.playlist.importLinkText')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleImportPlaylist}>
                   <FileText className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                  导入 M3U 文件
+                  {t('shell.playlist.importFile')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -182,7 +189,7 @@ export function Sidebar() {
               type="button"
               className="btn-icon"
               onClick={() => setShowCreateDialog(true)}
-              title="新建播放列表"
+              title={t('shell.playlist.create')}
             >
               <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
@@ -190,7 +197,7 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col gap-px">
           {playlists.length === 0 ? (
-            <p className="px-3 py-2 text-[12px] text-white/65 leading-relaxed">点击 + 创建你的第一个播放列表</p>
+            <p className="px-3 py-2 text-[12px] text-white/65 leading-relaxed">{t('shell.playlist.empty')}</p>
           ) : (
             playlists.map((pl) => (
               <div key={pl.id} className="group flex items-center gap-0.5">
@@ -243,7 +250,7 @@ export function Sidebar() {
                       }}
                     >
                       <Pencil className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                      重命名
+                      {t('common.action.rename')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -251,7 +258,7 @@ export function Sidebar() {
                       onClick={() => deletePlaylist(pl.id)}
                     >
                       <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                      删除
+                      {t('common.action.delete')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -261,19 +268,21 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 版本号 */}
+      {/* 版本号：品牌名与版本号是产品标识串，不进字典（与 nav.brand.name 同源） */}
       <div className="px-4 py-3 border-t border-white/5">
-        <p className="font-text text-[11px] text-white/65 tracking-[-0.12px]">Aurora Music v{APP_VERSION}</p>
+        <p className="font-text text-[11px] text-white/65 tracking-[-0.12px]">
+          {t('shell.brand.full')} v{APP_VERSION}
+        </p>
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>新建播放列表</DialogTitle>
+            <DialogTitle>{t('shell.playlist.create')}</DialogTitle>
           </DialogHeader>
           <Input
             autoFocus
-            placeholder="播放列表名称"
+            placeholder={t('shell.playlist.namePlaceholder')}
             value={newPlaylistName}
             onChange={(e) => setNewPlaylistName(e.target.value)}
             onKeyDown={(e) => {
@@ -282,9 +291,9 @@ export function Sidebar() {
           />
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowCreateDialog(false)}>
-              取消
+              {t('common.action.cancel')}
             </Button>
-            <Button variant="primary" onClick={handleCreatePlaylist}>创建</Button>
+            <Button variant="primary" onClick={handleCreatePlaylist}>{t('shell.playlist.submit')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

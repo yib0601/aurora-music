@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Menu, X, Heart, Clock, Settings, Link2, Library, Radio } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { HALL_LABEL, LIBRARY_LABEL, ROUTES, type NavItem } from '@/lib/routes'
+import { NAV_LABEL_KEYS, ROUTES, type NavItem } from '@/lib/routes'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { useUIStore } from '@/stores/uiStore'
+import { useT } from '@/i18n'
 
 /**
  * 移动端导航：顶部汉堡菜单 + 左侧抽屉（DS 化）
@@ -30,17 +31,19 @@ import { useUIStore } from '@/stores/uiStore'
 /**
  * 主导航表（扁平，无分组标题；与桌面侧栏 Sidebar 同源同顺序，仅样式不同）。
  * 路径一律取 `@/lib/routes` 的常量，不在本文件写路径字面量。
+ * 表里存**键**不存译文（理由见 Sidebar 同名注释与 NavItem.labelKey）：
+ * 模块级数组存字符串会把语言冻在模块加载那一刻。
  * 顺序与取名理由见 Sidebar 同名注释：音乐库（在线）居首并与主屏一致。
  */
 const navItems: NavItem[] = [
-  { to: ROUTES.hall, icon: Radio, label: HALL_LABEL },
-  { to: ROUTES.library, icon: Library, label: LIBRARY_LABEL },
-  { to: ROUTES.liked, icon: Heart, label: '收藏' },
-  { to: ROUTES.recent, icon: Clock, label: '最近播放' },
+  { to: ROUTES.hall, icon: Radio, labelKey: NAV_LABEL_KEYS.hall },
+  { to: ROUTES.library, icon: Library, labelKey: NAV_LABEL_KEYS.library },
+  { to: ROUTES.liked, icon: Heart, labelKey: 'nav.item.liked' },
+  { to: ROUTES.recent, icon: Clock, labelKey: 'nav.item.recent' },
 ]
 
 /** 独立入口（设置是应用配置，不是内容），与内容项用间距区隔 */
-const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, label: '设置' }]
+const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, labelKey: 'nav.item.settings' }]
 
 /**
  * 抽屉导航项样式。抽成一处：内容项与组外项两条渲染路径共用，
@@ -56,6 +59,7 @@ const drawerLinkClass = (isActive: boolean, spaced = false) =>
   )
 
 export function MobileNav({ children }: { children?: ReactNode }) {
+  const t = useT()
   const open = useUIStore((s) => s.mobileDrawerOpen)
   const setOpen = useUIStore((s) => s.setMobileDrawerOpen)
 
@@ -80,18 +84,18 @@ export function MobileNav({ children }: { children?: ReactNode }) {
       {/* 顶部栏：左上角菜单按钮 + 当前页面标题 */}
       <header
         className="relative z-40 flex items-center gap-2 pl-2 pr-4 h-[calc(3rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]"
-        aria-label="顶部导航"
+        aria-label={t('shell.nav.topBar')}
       >
         <button
           onClick={() => setOpen(true)}
-          aria-label="打开菜单"
+          aria-label={t('shell.nav.openMenu')}
           className="w-10 h-10 flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition"
         >
           <Menu className="h-5 w-5" strokeWidth={1.8} />
         </button>
         {/* 顶栏展示品牌名而非页面标题：页面内容区已有同名大标题，重复展示显得冗余 */}
         <span className="font-display text-[15px] font-semibold text-white/[0.90] tracking-[-0.2px]">
-          Aurora
+          {t('nav.brand.name')}
         </span>
         {/* 右侧：App 注入的常驻控件（全局搜索入口；设置页不注入则为空）。
             ml-auto 把它推到右缘，与汉堡按钮分列两端，中间留出拖拽/点击空白 */}
@@ -115,11 +119,11 @@ export function MobileNav({ children }: { children?: ReactNode }) {
       >
         <div className="flex items-center justify-between pl-4 pr-2 h-[calc(3rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] shrink-0">
           <span className="font-display font-semibold text-[16px] text-white/[0.96] tracking-[-0.2px]">
-            Aurora Music
+            {t('shell.brand.full')}
           </span>
           <button
             onClick={() => setOpen(false)}
-            aria-label="关闭菜单"
+            aria-label={t('shell.nav.closeMenu')}
             className="w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
           >
             <X className="h-5 w-5" strokeWidth={1.8} />
@@ -127,16 +131,16 @@ export function MobileNav({ children }: { children?: ReactNode }) {
         </div>
 
         <nav className="flex flex-col gap-px px-3 mt-2 pb-[env(safe-area-inset-bottom)]">
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {navItems.map(({ to, icon: Icon, labelKey }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive)}>
               <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
-              {label}
+              {t(labelKey)}
             </NavLink>
           ))}
-          {footerItems.map(({ to, icon: Icon, label }) => (
+          {footerItems.map(({ to, icon: Icon, labelKey }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive, true)}>
               <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
-              {label}
+              {t(labelKey)}
             </NavLink>
           ))}
           <button
@@ -148,7 +152,7 @@ export function MobileNav({ children }: { children?: ReactNode }) {
             className="flex items-center gap-3 px-3 py-3 rounded-ds-panel text-[14px] tracking-[-0.2px] text-white/70 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"
           >
             <Link2 className="h-5 w-5" strokeWidth={1.6} />
-            导入歌单
+            {t('shell.playlist.importLink')}
           </button>
         </nav>
       </aside>

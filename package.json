@@ -21,7 +21,9 @@
     "preview": "pnpm --filter @aurora/app preview",
     "install:all": "pnpm install",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "verify:hall-error": "node scripts/verify-hall-error-message.cjs"
+    "verify:hall-error": "node scripts/verify-hall-error-message.cjs",
+    "verify:i18n": "node scripts/check-i18n.mjs",
+    "verify:i18n:strict": "node scripts/check-i18n.mjs --strict"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",

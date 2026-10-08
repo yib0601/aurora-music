@@ -27,6 +27,7 @@ import {
 } from './mobile'
 import { createWebPlatform, isFileSystemAccessSupported } from './web'
 import {
+  auroraError,
   auroraProbeToResult,
   encodeFilePathToUrl,
   encodePathSegments,
@@ -35,6 +36,8 @@ import {
   probeAuroraService,
   unavailableProbe,
 } from '@aurora/shared'
+import { appTranslate } from '@/i18n'
+import { renderErrorMessage } from '@/lib/utils'
 
 // 重新导出：UI 层（SettingsPage）注册移动端文件夹选择器回调，
 // 桌面端此函数为空操作（pickFolder 走 electronAPI 的原生对话框）；
@@ -288,7 +291,8 @@ export function createDesktopPlatform(): Platform {
     async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
       if ((input.kind || 'aurora') === 'lx') {
         if (!api?.lxSource?.fetchScript || !api?.lxSource?.inspect) {
-          return unavailableProbe('lx', '当前版本不支持脚本音源（请更新桌面端）')
+          // 探测结论直接上屏（不是抛错）：文案在调用时取，跟随当前界面语言
+          return unavailableProbe('lx', appTranslate()('runtime.platform.scriptUnsupportedDesktop'))
         }
         try {
           // 脚本源码只存在于本次探测过程，绝不写进配置（配置里只留脚本链接）
@@ -304,7 +308,9 @@ export function createDesktopPlatform(): Platform {
           })
           return lxInspectionToProbe(inspection)
         } catch (err) {
-          return unavailableProbe('lx', (err as Error)?.message || String(err))
+          // 底层错误可能是 AuroraError（码 + 参数），交给 renderErrorMessage 按当前语言渲染；
+          // 直接读 message 会把编码载荷（AURORA_ERR:{...}）当结论上屏
+          return unavailableProbe('lx', renderErrorMessage(err))
         }
       }
       // 服务形态：直连取端点自描述并验密钥（只读，不写配置）
@@ -405,7 +411,7 @@ export function createDesktopPlatform(): Platform {
       return api.searchLyrics(query, artist, album, duration, options)
     },
     async downloadOnlineTrack(track, headers, downloadDir) {
-      if (!api?.downloadOnlineTrack) throw new Error('当前版本不支持下载')
+      if (!api?.downloadOnlineTrack) throw auroraError('runtime.error.downloadUnsupported')
       return api.downloadOnlineTrack(track, headers, downloadDir)
     },
 
@@ -415,11 +421,14 @@ export function createDesktopPlatform(): Platform {
       return api.syncLibrarySources(sources)
     },
     async scanLibrarySource(sourceId: string) {
-      if (!api?.scanLibrarySource) throw new Error('当前平台不支持网络存储')
+      if (!api?.scanLibrarySource) throw auroraError('runtime.error.storageUnsupported')
       return api.scanLibrarySource(sourceId)
     },
     async probeLibrarySource(sourceId: string) {
-      if (!api?.probeLibrarySource) return { ok: false, message: '当前平台不支持网络存储' }
+      if (!api?.probeLibrarySource) {
+        // 探测结论直接上屏：取值在调用时进行，跟随当前界面语言
+        return { ok: false, message: appTranslate()('runtime.error.storageUnsupported') }
+      }
       return api.probeLibrarySource(sourceId)
     },
     async removeLibrarySource(sourceId: string) {
@@ -493,7 +502,7 @@ export function createPlatform(): Platform {
     // 未知环境没有脚本宿主能力：探测给可读结论、取址返回 null，
     // 调用方据此回落既有取址路径而不崩
     async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
-      return unavailableProbe(input.kind || 'aurora', '当前环境不支持脚本音源')
+      return unavailableProbe(input.kind || 'aurora', appTranslate()('runtime.platform.scriptUnsupportedEnv'))
     },
     async resolveTrackAudio() { return null },
     database: new NoopDatabase(),

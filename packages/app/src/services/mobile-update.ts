@@ -1,3 +1,4 @@
+import { auroraError } from '@aurora/shared'
 import { isMobile } from '@/lib/utils'
 
 /**
@@ -8,6 +9,9 @@ import { isMobile } from '@/lib/utils'
  * 两者在 updateDownloadStore 里被统一成同一套 phase/task 状态，UI 无需区分平台。
  *
  * 桌面端与 Web 端调用本模块时所有函数返回空/失败值，由调用方回退浏览器下载。
+ *
+ * 错误约定：抛 `AuroraError`（码是消息树键路径），不在这里拼中文句子——
+ * 这些异常会经 updateDownloadStore 直接进下载对话框的错误区，渲染层按语言翻译。
  */
 
 export type MobileUpdatePhase = 'idle' | 'pending' | 'downloading' | 'done' | 'error'
@@ -76,7 +80,7 @@ export async function downloadApk(
   altUrls?: string[]
 ): Promise<{ filePath: string }> {
   const plugin = getPlugin()
-  if (!plugin) throw new Error('当前版本不支持应用内更新')
+  if (!plugin) throw auroraError('update.error.notSupported')
   return plugin.download({
     url,
     altUrls: altUrls?.length ? altUrls : undefined,
@@ -87,7 +91,7 @@ export async function downloadApk(
 /** 查询下载进度 */
 export async function queryProgress(): Promise<MobileProgress> {
   const plugin = getPlugin()
-  if (!plugin) throw new Error('当前版本不支持应用内更新')
+  if (!plugin) throw auroraError('update.error.notSupported')
   const res = await plugin.progress()
   return {
     phase: res.phase,
@@ -112,7 +116,7 @@ export async function cancelDownload(): Promise<void> {
 /** 调起系统安装器；未授权时返回 needPermission=true */
 export async function installApk(filePath: string): Promise<MobileInstallResult> {
   const plugin = getPlugin()
-  if (!plugin) throw new Error('当前版本不支持应用内安装')
+  if (!plugin) throw auroraError('update.error.installNotSupported')
   return plugin.install({ filePath })
 }
 

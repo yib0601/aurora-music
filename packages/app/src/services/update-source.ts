@@ -11,7 +11,14 @@
  * 由调用方按原有逻辑展示失败提示。
  *
  * 注意：加速前缀只拼接 GitHub 域名的原始链接（公开、无凭证），不承载任何用户数据。
+ *
+ * 错误约定：本模块**只抛结构化错误**（`AuroraError`，码为消息树键路径，见 shared 的
+ * i18n/errors.ts），绝不在这里拼中文句子。原因：这些异常会被 UI 直接渲染上屏
+ * （下载对话框的错误区），一旦在抛出点烧成中文，英文界面上就会冒出中文。
+ * 渲染层用 `translateError(err, t)` 按当前语言出文案。
  */
+
+import { auroraError, isAuroraError } from '@aurora/shared'
 
 /**
  * 公共加速前缀候选：都接受「前缀 + 原始 GitHub 链接」的拼接形式。
@@ -111,13 +118,15 @@ export async function fetchWithFallback<T>(
   parse: (res: Response) => Promise<T>,
   opts: { timeoutMs: number; headers?: Record<string, string>; signal?: AbortSignal }
 ): Promise<T> {
-  let lastError: unknown = new Error('网络不可用')
+  // 兜底错误：候选为空（或首个候选就 abort）时用它收场，而不是抛一个无码的裸 Error
+  let lastError: unknown = auroraError('update.error.offline')
   for (const url of candidates) {
     if (opts.signal?.aborted) throw lastError
     try {
       const res = await fetchWithTimeout(url, { timeoutMs: opts.timeoutMs, signal: opts.signal, headers: opts.headers })
       if (!res.ok) {
-        lastError = new Error(`HTTP ${res.status}`)
+        // 状态码进 detail（诊断用），文案由显示端按语言渲染
+        lastError = auroraError('errors.network.unreachable', undefined, `HTTP ${res.status}`)
         continue
       }
       return await parse(res)
@@ -140,8 +149,8 @@ export async function fetchFastest<T>(
   opts: { timeoutMs: number; headers?: Record<string, string>; signal?: AbortSignal }
 ): Promise<T> {
   const list = candidates.filter(Boolean)
-  if (!list.length) throw new Error('网络不可用')
-  if (opts.signal?.aborted) throw new Error('已取消')
+  if (!list.length) throw auroraError('update.error.offline')
+  if (opts.signal?.aborted) throw auroraError('update.error.canceled')
 
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs)
@@ -160,8 +169,9 @@ export async function fetchFastest<T>(
         if (done) return
         if (--pending > 0) return
         done = true
-        // 优先回传带状态码的错误：比 AbortError / TypeError 更能说明是限流还是不通
-        const httpError = errors.find((e) => e instanceof Error && /^HTTP \d+/.test(e.message))
+        // 优先回传带状态码的错误：比 AbortError / TypeError 更能说明是限流还是不通。
+        // 结构化错误把状态码放在 detail 里，所以这里按 detail 判定，而不是 message。
+        const httpError = errors.find((e) => isAuroraError(e) && /^HTTP \d+/.test(e.detail ?? ''))
         reject(httpError ?? errors[errors.length - 1] ?? err)
       }
 
@@ -169,7 +179,7 @@ export async function fetchFastest<T>(
         void (async () => {
           try {
             const res = await fetch(url, { signal: ctrl.signal, headers: opts.headers })
-            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+            if (!res.ok) throw auroraError('errors.network.unreachable', undefined, `HTTP ${res.status}`)
             const parsed = await parse(res)
             if (done) return
             done = true

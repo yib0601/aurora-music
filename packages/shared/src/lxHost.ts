@@ -24,6 +24,8 @@
 
 import LZString from 'lz-string'
 import { fetchWithTimeout } from './fetchWithTimeout'
+import { auroraError, describeError, toErrorInfo } from './i18n/errors'
+import type { MessageKey } from './i18n'
 import type { DownloadQuality, OnlineSourceConfig, OnlineTrackSearchResult, SourceTrackRef } from './types'
 
 /**
@@ -84,16 +86,30 @@ export type LxScriptSource = OnlineSourceConfig & {
 /** 洛雪脚本声明的平台集合（桌面端支持面） */
 export const LX_KNOWN_PLATFORMS = ['kw', 'kg', 'tx', 'wy', 'mg', 'git', 'local'] as const
 
-/** 平台展示名（脚本未自报时用） */
-export const LX_PLATFORM_LABELS: Record<string, string> = {
-  kw: '酷我',
-  kg: '酷狗',
-  tx: 'QQ',
-  wy: '网易',
-  mg: '咪咕',
-  git: 'Git',
-  local: '本地',
+/**
+ * 平台展示名：**协议标识 → 文案键**（不是中文名）。
+ *
+ * 值必须是键：平台名是界面文案（英文界面下要显示 Kuwo/Kugou…），在模块级求值
+ * 会把语言冻结在模块加载那一刻（i18n.md 硬规则 1）。取键的时机是**渲染期**。
+ * `LX_KNOWN_PLATFORMS` 里的标识串（kw/kg/wy…）是**协议标识**，参与脚本能力匹配，
+ * 一律不翻译。
+ */
+export const LX_PLATFORM_LABEL_KEYS: Record<string, MessageKey> = {
+  kw: 'core.platform.kw',
+  kg: 'core.platform.kg',
+  tx: 'core.platform.tx',
+  wy: 'core.platform.wy',
+  mg: 'core.platform.mg',
+  git: 'core.platform.git',
+  local: 'core.platform.local',
 }
+
+/**
+ * @deprecated 兼容别名，值与 LX_PLATFORM_LABEL_KEYS 同一个对象（桶文件仍在导出旧名）。
+ * 语义已变：**值是文案键，不再是中文名** —— 直接上屏会露出键名，
+ * 调用方须改用 `t(LX_PLATFORM_LABEL_KEYS[key] ?? key)`；新代码请直接用新名。
+ */
+export const LX_PLATFORM_LABELS = LX_PLATFORM_LABEL_KEYS
 
 export interface LxSourceInspection {
   ok: boolean
@@ -105,7 +121,11 @@ export interface LxSourceInspection {
   homepage?: string
   /** 各平台能力 */
   platforms: Record<string, LxPlatformCapability>
-  /** 加载失败原因（ok=false 时） */
+  /**
+   * 加载失败原因（ok=false 时）。
+   * 形态：结构化错误载荷（`AURORA_ERR:{code,params,detail}`）或第三方脚本抛出的自由文本；
+   * 两者都交给显示端的 `translateError(error, t)` 渲染（自由文本按原样透出，不吞信息）。
+   */
   error?: string
   /** 是否经过 liscript 自解压包装 */
   packed?: boolean
@@ -161,10 +181,13 @@ const DEFAULT_CALL_TIMEOUT_MS = 20_000
 /** 脚本首次执行（boot）的默认超时：只覆盖同步段，正常脚本在毫秒级返回 */
 const DEFAULT_EVAL_TIMEOUT_MS = 10_000
 
-/** 给任意 Promise 加超时：超时抛可读错误，不吞掉原始异常 */
-function withTimeout<T>(task: Promise<T>, ms: number, what: string): Promise<T> {
+/**
+ * 给任意 Promise 加超时：超时抛调用方给的错误（文案在这里不落地，由调用方按
+ * 结构化错误码组装），不吞掉原始异常 —— 原始的 reject 原样透出。
+ */
+function withTimeout<T>(task: Promise<T>, ms: number, timeoutError: () => Error): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${what}超时（${ms}ms）`)), ms)
+    const timer = setTimeout(() => reject(timeoutError()), ms)
     task.then(
       (v) => {
         clearTimeout(timer)
@@ -265,7 +288,7 @@ function normDeps(deps?: LxHostDeps | null): LxHostDeps {
   const base = deps || globalDeps
   if (base && typeof base.request === 'function') return base
   const missingRequest = (() => {
-    throw new Error('洛雪音源宿主未初始化（缺少 lx.request 实现）')
+    throw auroraError('core.error.lxHostNotReady')
   }) as unknown as LxRequestFn
   return { ...(base || {}), request: missingRequest }
 }
@@ -341,10 +364,14 @@ function createHost(deps?: LxHostDeps | null) {
           effective.utils?.buffer?.bufToString?.(buf, format) ?? '',
       },
       zlib: {
+        // 脚本宿主能力缺失：面向脚本开发者（脚本自己决定要不要用 zlib），
+        // 不是界面文案，故保持英文原文，不进字典。
         inflate: (buf: unknown) =>
-          effective.utils?.zlib?.inflate?.(buf) ?? Promise.reject(new Error('zlib 不可用')),
+          effective.utils?.zlib?.inflate?.(buf) ??
+          Promise.reject(new Error('zlib unavailable: host provided no utils.zlib.inflate')),
         deflate: (data: unknown) =>
-          effective.utils?.zlib?.deflate?.(data) ?? Promise.reject(new Error('zlib 不可用')),
+          effective.utils?.zlib?.deflate?.(data) ??
+          Promise.reject(new Error('zlib unavailable: host provided no utils.zlib.deflate')),
       },
     },
   }
@@ -519,11 +546,11 @@ async function bootLxScript(
     inspection,
     state,
     call: async (source, action, info) => {
-      if (!events.request) throw new Error('脚本未注册 request 事件')
+      if (!events.request) throw auroraError('core.error.lxNoRequestHandler')
       return await withTimeout(
         Promise.resolve(events.request({ source, action, info })),
         timeoutMs,
-        `脚本「${source}」处理 ${action} `
+        () => auroraError('core.error.lxCallTimeout', { source, action, ms: timeoutMs })
       )
     },
   }
@@ -542,7 +569,7 @@ function inspectInited(
   }
   const inited = state.inited
   if (!inited || typeof inited !== 'object' || !inited.sources || typeof inited.sources !== 'object') {
-    out.error = '脚本未完成初始化（未收到 inited）'
+    out.error = auroraError('core.error.lxNotInited').message
     return out
   }
   for (const [platform, raw] of Object.entries<any>(inited.sources)) {
@@ -558,7 +585,7 @@ function inspectInited(
     }
   }
   out.ok = Object.keys(out.platforms).length > 0
-  if (!out.ok) out.error = '脚本未声明任何可用平台'
+  if (!out.ok) out.error = auroraError('core.error.lxNoPlatforms').message
   return out
 }
 
@@ -593,7 +620,7 @@ export async function inspectLxSource(
   deps?: LxHostDeps | null
 ): Promise<LxSourceInspection> {
   const script = String(source.script || '')
-  if (!script.trim()) return { ok: false, platforms: {}, error: '脚本内容为空' }
+  if (!script.trim()) return { ok: false, platforms: {}, error: auroraError('core.error.lxScriptEmpty').message }
   const packed = unpackLiscript(script, deps)
   const code = packed ? packed.code : script
   try {
@@ -618,11 +645,15 @@ async function boxOf(source: LxScriptSource, deps?: LxHostDeps | null): Promise<
   const hit = boxCache.get(key)
   if (hit) return hit
   const script = String(source.script || '')
-  if (!script.trim()) throw new Error(`洛雪音源「${source.name}」没有脚本内容`)
+  if (!script.trim()) throw auroraError('core.error.lxSourceNoScript', { name: source.name })
   const task = (async () => {
     const packed = unpackLiscript(script, deps)
     const box = await bootLxScript(packed ? packed.code : script, deps, packed ? packed.meta : null)
-    if (!box.inspection.ok) throw new Error(box.inspection.error || '脚本初始化失败')
+    // inspection.error 本身就是「码载荷或脚本自由文本」，原样转成可抛错误即可：
+    // 再包一层会把第三方脚本的真实报错吞掉（那是排查脚本问题唯一的线索）。
+    if (!box.inspection.ok) {
+      throw box.inspection.error ? new Error(box.inspection.error) : auroraError('core.error.lxInitFailed')
+    }
     return box
   })()
   // 失败不缓存，允许用户改配置后重试
@@ -714,7 +745,7 @@ export async function searchLxSource(
   const box = await boxOf(source, deps)
   const limit = options?.limit ?? 30
   const out: LxSearchResult[] = []
-  const failures: string[] = []
+  const failures: Array<{ platform: string; error: unknown }> = []
 
   for (const [platform, cap] of Object.entries(box.inspection.platforms)) {
     const action = cap.actions.includes('search')
@@ -732,6 +763,8 @@ export async function searchLxSource(
         out.push({
           id: `${source.id}-${platform}-${lxKeyOf(item)}`,
           title,
+          // i18n-exempt: 匹配数据 —— coverMatch.PLACEHOLDER_ARTISTS 拿这个串判定「歌手未知」，
+          // 按语言翻译它会让英文界面下的封面匹配门禁行为漂移
           artist: String(item.singer || item.artist || item.artists || '未知艺术家'),
           album: String(item.albumName || item.album || ''),
           duration: lxDurationOf(item),
@@ -745,12 +778,22 @@ export async function searchLxSource(
         })
       }
     } catch (err) {
-      failures.push(`${platform}: ${(err as Error)?.message || String(err)}`)
+      // 单平台失败只记录不中断（其它平台可能仍有结果）。原始异常**整个留着**：
+      // 下面要按它的码决定上抛什么，诊断串则交给 describeError 现场生成。
+      failures.push({ platform, error: err })
     }
   }
 
   if (out.length === 0 && failures.length > 0) {
-    throw new Error(failures.join('；'))
+    const detail = failures.map((f) => `${f.platform}: ${describeError(f.error)}`).join('; ')
+    // 全是同一种原因时**原样上抛那个码**：超时就该显示超时，别被概括成「没有结果」
+    // （那是把可行动的信息抹平）。多种原因并存才收成一句概括，明细放 detail。
+    const infos = failures.map((f) => toErrorInfo(f.error))
+    const first = infos[0]
+    if (first && infos.every((info) => info.code === first.code)) {
+      throw auroraError(first.code, first.params, detail)
+    }
+    throw auroraError('core.error.lxSearchFailed', { count: failures.length }, detail)
   }
   return out
 }
@@ -767,7 +810,7 @@ export async function resolveLxSourceUrl(
 ): Promise<{ url: string; quality: string }> {
   const box = await boxOf(source, deps)
   const cap = box.inspection.platforms[ref.platform]
-  if (!cap) throw new Error(`脚本「${source.name}」不支持平台 ${ref.platform}`)
+  if (!cap) throw auroraError('core.error.lxPlatformUnsupported', { name: source.name, platform: ref.platform })
   const available = cap.qualitys.length > 0 ? cap.qualitys : ['128k']
   const wanted = lxQualityFor(available, quality)
   // 高优先档位失败时向下回落（脚本对不同档位的上游可用性差异很大）
@@ -777,17 +820,23 @@ export async function resolveLxSourceUrl(
     try {
       const url = await box.call(ref.platform, 'musicUrl', { type: q, musicInfo: ref.meta })
       if (typeof url === 'string' && /^https?:/i.test(url)) return { url, quality: q }
-      lastErr = new Error('脚本返回的地址无效')
+      lastErr = auroraError('core.error.lxUrlInvalid')
     } catch (err) {
       lastErr = err
     }
   }
-  throw new Error((lastErr as Error)?.message || '取址失败')
+  // 原样抛出最后一次失败：它可能是脚本自己抛的错误（自由文本），也可能是上面那几条
+  // 结构化错误 —— 两者都比「取址失败」四个字信息量大，不用概括句把它抹平。
+  if (lastErr) throw lastErr
+  throw auroraError('core.error.lxResolveFailed')
 }
 
 // ─── 脚本拉取 ─────────────────────────────────────────────────────
 
-/** 拉取远程脚本源码（用户填脚本链接时用）；失败抛中文错误 */
+/** 脚本源码体积上限（MB）：脚本不该比这更大，超了多半是拉到了网页而不是脚本 */
+const LX_SCRIPT_MAX_MB = 4
+
+/** 拉取远程脚本源码（用户填脚本链接时用）；失败抛结构化错误，文案由显示端按语言渲染 */
 export async function fetchLxScript(url: string, timeoutMs = 15000): Promise<string> {
   const resp = await fetchWithTimeout(
     url,
@@ -800,9 +849,11 @@ export async function fetchLxScript(url: string, timeoutMs = 15000): Promise<str
     },
     timeoutMs
   )
-  if (!resp.ok) throw new Error(`脚本下载失败：HTTP ${resp.status}`)
+  if (!resp.ok) throw auroraError('core.error.lxScriptDownload', { status: resp.status })
   const text = await resp.text()
-  if (!text.trim()) throw new Error('脚本内容为空')
-  if (text.length > 4 * 1024 * 1024) throw new Error('脚本体积异常（>4MB），已放弃加载')
+  if (!text.trim()) throw auroraError('core.error.lxScriptEmpty')
+  if (text.length > LX_SCRIPT_MAX_MB * 1024 * 1024) {
+    throw auroraError('core.error.lxScriptTooLarge', { limit: LX_SCRIPT_MAX_MB })
+  }
   return text
 }

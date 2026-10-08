@@ -183,7 +183,9 @@ describe('桌面端：惰性取址语义', () => {
     expect(probe.kind).toBe('lx')
     expect(electronAPI.lxSource.fetchScript).toHaveBeenCalledWith('https://example.com/huibq.js')
     const kw = probe.capabilities.find((c) => c.key === 'kw')
-    expect(kw).toEqual({ key: 'kw', label: '酷我', searchable: false, qualityCount: 2 })
+    // 标签是**文案键**（shared 的 LX_PLATFORM_LABEL_KEYS：协议标识 → Key），
+    // 界面在渲染期 t() 取译文；这里断言键，防止有人退回写死中文名
+    expect(kw).toEqual({ key: 'kw', label: 'core.platform.kw', searchable: false, qualityCount: 2 })
     // 自带 search 的平台在能力行里必须标成可检索，否则界面会把「搜索+取址」误报成「取址」
     expect(probe.capabilities.find((c) => c.key === 'mg')?.searchable).toBe(true)
   })

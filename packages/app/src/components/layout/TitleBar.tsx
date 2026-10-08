@@ -1,6 +1,7 @@
 import React, { useState, useEffect, type ReactNode } from 'react'
 import { Minus, Square, PanelTopClose, X } from 'lucide-react'
 import { isDesktop } from '@/lib/utils'
+import { useT } from '@/i18n'
 
 /**
  * 桌面外壳标题栏是否可用。
@@ -36,8 +37,12 @@ export function hasDesktopTitleBar(): boolean {
  *   - close hover 用语义危险色（--tw-coral）
  * 颜色一律走 token，不在此硬编码色值。
  * 仅视觉调整：onClick 绑定、title、图标与条件渲染逻辑均未改动。
+ *
+ * 按钮 title 走字典（`shell.chrome.*`）：这些是原生 tooltip，用户悬停即可见，
+ * 与界面其余文案同属「用户可见中文」，必须跟随语言切换。
  */
 export function TitleBar({ trailing }: { trailing?: ReactNode }) {
+  const t = useT()
   const api = (window as any).electronAPI
   const [isMaximized, setIsMaximized] = useState(false)
 
@@ -82,14 +87,14 @@ export function TitleBar({ trailing }: { trailing?: ReactNode }) {
       <div className="titlebar-no-drag flex items-center gap-1.5">
         <button
           onClick={handleMinimize}
-          title="最小化"
+          title={t('shell.chrome.minimize')}
           className={`${btnBase} hover:text-fc-accent-2`}
         >
           <Minus className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
         <button
           onClick={handleMaximize}
-          title={isMaximized ? '还原' : '最大化'}
+          title={t(isMaximized ? 'shell.chrome.restore' : 'shell.chrome.maximize')}
           className={`${btnBase} hover:text-fc-accent-2`}
         >
           {isMaximized ? (
@@ -100,7 +105,7 @@ export function TitleBar({ trailing }: { trailing?: ReactNode }) {
         </button>
         <button
           onClick={handleClose}
-          title="关闭（最小化到托盘）"
+          title={t('shell.chrome.closeToTray')}
           className={`${btnBase} hover:text-coral`}
         >
           <X className="h-3.5 w-3.5" strokeWidth={2} />

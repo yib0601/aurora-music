@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN" data-locale="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -7,9 +7,66 @@
     <meta name="theme-color" content="#0A0A0A" />
     <title>Aurora Music</title>
     <script>
-      // 首屏主题脚本：在 React 挂载前读取持久化的主题偏好并设置 <html> 的 dark 类，
-      // 避免浅色主题用户看到深色首屏后再闪烁切换。与 libraryStore 的 persist key 保持一致。
+      // 首屏脚本（React 挂载前执行）：语言 + 主题。
+      //
+      // 为什么必须放在这里而不是交给 React：
+      // 1. <html lang> 决定首屏字体回退、断词与屏幕阅读器发音，等 React 挂载再改
+      //    会让首屏用错字形（英文界面下先按 CJK 字形排一遍再重排，肉眼可见跳动）；
+      // 2. 语言判定规则必须与 packages/shared/src/i18n/locale.ts 完全一致
+      //    （zh* → zh-CN、en* → en、其余 → 默认 zh-CN），所以下面这段是那份规则的
+      //    等价实现，改一处必须同步另一处；
+      // 3. localStorage key 与 packages/app/src/stores/localeStore.ts 的持久化 key
+      //    一致（aurora-locale）；存储形状是 { state: { language }, version: 1 }，
+      //    localeStore 是**同步手写**持久化（不是 zustand persist 中间件，理由见该文件注释）。
+      // <html> 标签上的 lang / data-locale 静态初值与 DEFAULT_LOCALE 一致：
+      // 脚本执行前与 JS 不可用时，语言作用域样式也不会落到「无属性」状态。
       ;(function () {
+        // 语言判定规则（与 localeStore 一致）：zh* → zh-CN，en* → en，其余 → 默认 zh-CN
+        var normalize = function (tag) {
+          if (typeof tag !== 'string') return null
+          var primary = tag.trim().toLowerCase().replace(/_/g, '-').split('-')[0]
+          if (primary === 'zh') return 'zh-CN'
+          if (primary === 'en') return 'en'
+          return null
+        }
+        var fromSystem = function () {
+          var candidates =
+            navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]
+          for (var i = 0; i < candidates.length; i++) {
+            var matched = normalize(candidates[i])
+            if (matched) return matched
+          }
+          return 'zh-CN'
+        }
+        // 读取偏好：localStorage 里可能是坏 JSON、也可能被写成非法值。
+        // 这里**必须**用局部 try 包住：整段共用一个 try 时，一次 JSON.parse 抛错
+        // 会让后面的语言与主题设置全部跳过（曾经就是这样：英文系统上首屏按
+        // zh-CN 静态初值渲染，React 首帧再切英文，肉眼可见一次闪烁）。
+        var readLocale = function () {
+          try {
+            var raw = localStorage.getItem('aurora-locale')
+            if (!raw) return fromSystem()
+            var parsed = JSON.parse(raw)
+            var saved = parsed && parsed.state && parsed.state.language
+            if (saved === 'zh-CN' || saved === 'en') return saved
+            // 'system' 或脏值：跟随系统（与 localeStore 的回退一致）
+            return fromSystem()
+          } catch (e) {
+            return fromSystem()
+          }
+        }
+        var applyLocale = function (locale) {
+          document.documentElement.setAttribute('lang', locale)
+          document.documentElement.setAttribute('data-locale', locale)
+        }
+
+        try {
+          applyLocale(readLocale())
+        } catch (e) {
+          // 连 navigator 都不可用（极端环境）：静态初值 zh-CN 已在 <html> 上
+        }
+
+        // ---- 主题 ----
         try {
           var theme = 'dark'
           var raw = localStorage.getItem('aurora-library-state')
@@ -37,7 +94,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- 字体保持项目原有方案（Noto Sans SC + Inter + JetBrains Mono）。
          设计稿不引入任何外部品牌字体：Host Grotesk / DM Sans / Fragment Mono
-         均为商业授权字体，存在版权风险，故不使用。 -->
+         均为商业授权字体，存在版权风险，故不使用。
+
+         三者的分工由 CSS 的 --font-sans 栈按 html[data-locale] 切换
+         （见 src/styles/globals.css）：中文界面 CJK 优先 Noto Sans SC；
+         英文界面西文优先 Inter——Noto Sans SC 自带拉丁字形，排在前面会把
+         英文也接管，所以英文作用域必须把它后移。JetBrains Mono 走
+         --font-mono，两种语言共用。三个 family 一次请求，不随语言二次加载。 -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
   </head>
   <body class="desktop-shell">

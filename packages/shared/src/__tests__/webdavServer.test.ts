@@ -9,6 +9,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openWebdavRange, walkWebdavAudio, listWebdavDir, WebdavError, type LibrarySourceConfig } from '../webdav'
+import { expectCode, rejectionOf } from './i18nAssert'
 
 const USER = 'bob'
 const PASS = 'p@ss word'
@@ -177,12 +178,17 @@ describe('WebDAV 端到端', () => {
   })
 
   it('口令错误时抛出可读的鉴权错误（而不是空曲库）', async () => {
+    // WebdavError 的 instanceof 语义与 status 字段保持不变，message 换成结构化载荷
     await expect(listWebdavDir(cfg({ password: 'wrong' }), '')).rejects.toThrow(WebdavError)
-    await expect(walkWebdavAudio(cfg({ password: 'wrong' }))).rejects.toThrow(/鉴权失败/)
+    const err = await rejectionOf(walkWebdavAudio(cfg({ password: 'wrong' })))
+    expect(err).toBeInstanceOf(WebdavError)
+    expectCode(err, 'core.error.webdavAuth', { name: '测试 NAS', status: 401 })
   })
 
   it('根目录不存在时抛错，避免被误判成空曲库', async () => {
-    await expect(walkWebdavAudio(cfg({ rootPath: 'NoSuchDir' }))).rejects.toThrow(/路径不存在/)
+    const err = await rejectionOf(walkWebdavAudio(cfg({ rootPath: 'NoSuchDir' })))
+    expectCode(err, 'core.error.webdavPathMissing', { name: '测试 NAS', path: 'NoSuchDir' })
+    expect((err as WebdavError).status).toBe(404)
   })
 
   it('根目录可访问但无音频时返回空数组（与"连不上"区分开）', async () => {

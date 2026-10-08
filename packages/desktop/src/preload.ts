@@ -165,6 +165,15 @@ const electronAPI = {
     close: () => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
   },
+  // 语言同步：渲染层是语言的权威来源（用户可选「跟随系统」或指定语言，只有它知道最终结果）。
+  // I18nProvider 在语言确定后单向推给主进程，主进程据此渲染托盘菜单、原生对话框标题、
+  // 通知正文与错误文案。用单向 send 而非 invoke：主进程没有回执需求，也不需要渲染层
+  // 去处理一个可能被拒绝的 Promise。
+  i18n: {
+    setLocale: (locale: string): void => {
+      ipcRenderer.send('i18n:set-locale', locale)
+    },
+  },
   getBounds: (): Promise<{ x: number; y: number; width: number; height: number } | null> =>
     ipcRenderer.invoke('window:getBounds'),
   setBounds: (bounds: { x: number; y: number; width: number; height: number }) =>

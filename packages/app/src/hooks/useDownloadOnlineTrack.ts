@@ -4,6 +4,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { toast, dismissToast } from '@/components/common/Toast'
 import { isDesktop } from '@/lib/utils'
 import { runOnlineDownload } from '@/services/onlineDownload.service'
+import { appTranslate } from '@/i18n'
 import type { Track } from '@/types'
 
 /** 音质回退链、下载地址挑选与「是否给下载入口」的判据见 @/lib/onlineTrack（带单测） */
@@ -30,17 +31,20 @@ export function useDownloadOnlineTrack() {
 
   const download = useCallback(async (track: Track) => {
     if (downloadingIdsRef.current.has(track.id)) return
+    // 事件回调（没有渲染周期）：每次调用读当前语言快照，切语言后立刻生效，
+    // 同时让 download 的引用保持稳定（memo 化的结果行不因语言键变化而重渲染）
+    const t = appTranslate()
     // 平台不支持内置下载时不静默吞掉：说清原因，避免「点了没反应」
     const downloadFile = platform.downloadOnlineTrack
     if (!downloadFile) {
-      toast('当前平台不支持下载歌曲', { type: 'error' })
+      toast(t('runtime.error.downloadUnsupported'), { type: 'error' })
       return
     }
 
     setDownloadingIds((prev) => new Set(prev).add(track.id))
     // 下载发起即提示（桌面端无下载进度回调，这是唯一的过程反馈）；
     // 后续完成/失败/取消提示出现时自动收起，避免多首连下时残留堆叠
-    const startToastId = toast(`正在下载「${track.title}」…`, { type: 'info', duration: 60000 })
+    const startToastId = toast(t('hall.download.starting', { title: track.title }), { type: 'info', duration: 60000 })
     try {
       await runOnlineDownload(track, {
         // 动态导入 playlistIO：它与 stores 互相引用，静态引入会拉进详情页首屏包

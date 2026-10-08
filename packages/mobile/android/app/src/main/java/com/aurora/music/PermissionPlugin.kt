@@ -147,7 +147,12 @@ class PermissionPlugin : Plugin() {
                 ret.put("opened", true)
                 call.resolve(ret)
             } catch (e2: Exception) {
-                call.reject("无法打开权限设置页: ${e2.message}")
+                // 错误码 + 查询串参数（值 URL 编码）：文案在 JS 侧按语言渲染，
+                // 见 mobile.ts 的 permission.error.settingsUnavailable
+                call.reject(
+                    "permission_error_settingsUnavailable?detail=" +
+                        java.net.URLEncoder.encode(e2.message.orEmpty(), "UTF-8")
+                )
             }
         }
     }

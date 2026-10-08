@@ -1,5 +1,6 @@
 import type { LyricsSourceConfig, LyricsSearchOptions, LyricsSearchResult } from './types'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
+import { auroraError, toErrorInfo } from './i18n/errors'
 
 // 统一默认请求头，可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -11,10 +12,14 @@ const DEFAULT_HEADERS: Record<string, string> = {
  * 内置歌词源（LRCLIB，开放免费接口，返回 syncedLyrics / plainLyrics / duration 字段，
  * 与本协议解析规则天然兼容）。
  * 外部不可调整：不进入用户配置列表、不出现在设置页，仅作为所有用户源未命中时的兜底。
+ *
+ * 名称用**品牌名**而不是「内置歌词源」这类中文短语：本字段是配置数据（也会出现在
+ * 「歌词源「X」请求失败」这类诊断文案里），在模块级写成中文文案会把语言冻结在
+ * 模块加载那一刻；品牌名与语言无关，任何界面语言下都读得通。
  */
 export const BUILTIN_LYRICS_SOURCE: LyricsSourceConfig = {
   id: 'builtin-lrclib',
-  name: '内置歌词源',
+  name: 'LRCLIB',
   sourceUrl: 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}',
   enabled: true,
 }
@@ -72,7 +77,11 @@ export async function searchLyricsSource(
   duration?: number
 ): Promise<LyricsSearchResult | null> {
   if (!source.sourceUrl || !/\{(track|query)\}/.test(source.sourceUrl)) {
-    throw new Error(`歌词源「${source.name}」的接口地址无效，必须包含 {track} 或 {query} 占位符`)
+    throw auroraError('core.error.lyricsUrlNoPlaceholder', {
+      name: source.name,
+      track: '{track}',
+      query: '{query}',
+    })
   }
 
   const url = source.sourceUrl
@@ -90,10 +99,18 @@ export async function searchLyricsSource(
       LYRICS_TIMEOUT_MS
     )
   } catch (err) {
-    if (isTimeoutError(err)) throw new Error(`歌词源「${source.name}」请求超时（${LYRICS_TIMEOUT_MS}ms）`)
-    throw new Error(`歌词源「${source.name}」请求失败：${(err as Error).message}`)
+    if (isTimeoutError(err)) {
+      throw auroraError('core.error.lyricsTimeout', { name: source.name, ms: LYRICS_TIMEOUT_MS })
+    }
+    // reason 取归一后的技术原文（嵌套结构化错误时 message 是编码串，不能进句子）
+    const info = toErrorInfo(err)
+    throw auroraError(
+      'core.error.lyricsRequestFailed',
+      { name: source.name, reason: info.detail || info.code },
+      String(err)
+    )
   }
-  if (!resp.ok) throw new Error(`歌词源「${source.name}」返回 HTTP ${resp.status}`)
+  if (!resp.ok) throw auroraError('core.error.lyricsHttpStatus', { name: source.name, status: resp.status })
 
   const json = (await resp.json()) as any
   const candidates = extractItems(json)

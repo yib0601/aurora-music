@@ -15,6 +15,7 @@ import {
   searchEndpointOf,
 } from '../auroraPreset'
 import { setCustomFetch } from '../fetchWithTimeout'
+import { expectCode } from './i18nAssert'
 
 /** 用户手里流传的真实形态：老端口 + 完整占位符 + 明文密钥 */
 const OLD_LINK =
@@ -174,13 +175,13 @@ describe('checkSourceForm', () => {
       link: 'https://api.example.com/s?q={query}',
       playlistUrl: 'https://api.example.com/resolve',
     })
-    expect(bad.playlistError).toBe('地址需包含占位符：{url}')
+    expectCode(bad.playlistError, 'core.error.formLinkPlaceholder', { placeholders: '{url}' })
     expect(bad.canSave).toBe(false)
   })
 
   it('音乐源 + 接口模板缺占位符：报缺失项且不可保存', () => {
     const f = checkSourceForm({ kind: 'music', link: 'https://api.example.com/search?q=abc' })
-    expect(f.linkError).toContain('{query}')
+    expectCode(f.linkError, 'core.error.formLinkPlaceholder', { placeholders: '{query}' })
     expect(f.canSave).toBe(false)
   })
 
@@ -208,20 +209,20 @@ describe('checkSourceForm', () => {
     expect(ok.canSave).toBe(true)
 
     const bad = checkSourceForm({ kind: 'lyrics', link: 'https://lrclib.net/api/search?track_name={track}' })
-    expect(bad.linkError).toContain('{artist}')
+    expectCode(bad.linkError, 'core.error.formLinkPlaceholder', { placeholders: '{artist}' })
     expect(bad.canSave).toBe(false)
   })
 
   it('歌词源填裸域名：没有服务端组装约定，按缺占位符报错', () => {
     const f = checkSourceForm({ kind: 'lyrics', link: 'https://lrclib.net' })
     expect(f.isService).toBe(false)
-    expect(f.linkError).toContain('{track}')
+    expectCode(f.linkError, 'core.error.formLinkPlaceholder', { placeholders: '{track}, {artist}' })
     expect(f.canSave).toBe(false)
   })
 
   it('链接非法：报格式错误', () => {
     const f = checkSourceForm({ kind: 'music', link: 'http://' })
-    expect(f.linkError).toContain('地址格式不正确')
+    expectCode(f.linkError, 'core.error.formLinkInvalid', { example: 'https://music.lighthouses.top' })
     expect(f.canSave).toBe(false)
   })
 
@@ -479,6 +480,7 @@ describe('probeAuroraService', () => {
     const res = await probeAuroraService('music.lighthouses.top', KEY)
     expect(res.ok).toBe(true)
     expect(res.selfDescribed).toBe(true)
+    expectCode(res.message, 'core.probe.serviceKeyOk')
     expect(res.endpoints?.playlist).toBe('/aurora/playlist?url={url}&key=<API_KEY>')
     expect(seen[0]).toBe('https://music.lighthouses.top/')
     expect(seen[1]).toContain('/health?key=' + KEY)
@@ -490,7 +492,7 @@ describe('probeAuroraService', () => {
     )
     const res = await probeAuroraService('https://music.lighthouses.top', 'bad-key')
     expect(res.ok).toBe(false)
-    expect(res.message).toContain('密钥')
+    expectCode(res.message, 'core.error.serviceKeyRejected')
   })
 
   it('地址不可达 → 失败', async () => {
@@ -499,7 +501,7 @@ describe('probeAuroraService', () => {
     })
     const res = await probeAuroraService('https://nope.invalid')
     expect(res.ok).toBe(false)
-    expect(res.message).toContain('连接失败')
+    expectCode(res.message, 'core.error.serviceUnreachable')
   })
 
   it('服务在线但无端点自描述 → 成功且标注未自描述', async () => {
@@ -507,7 +509,7 @@ describe('probeAuroraService', () => {
     const res = await probeAuroraService('https://x.com', 'K1')
     expect(res.ok).toBe(true)
     expect(res.selfDescribed).toBe(false)
-    expect(res.message).toContain('默认')
+    expectCode(res.message, 'core.probe.serviceOnlineNoSelfDescription')
   })
 
   it('未填密钥时只探根路径', async () => {

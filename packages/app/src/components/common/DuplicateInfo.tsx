@@ -2,7 +2,9 @@ import { memo, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Copy } from 'lucide-react'
 import type { DuplicateGroup } from '@aurora/shared'
+import { formatList } from '@aurora/shared'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { useLocale, useT } from '@/i18n'
 import type { Track } from '@/types'
 
 /**
@@ -21,10 +23,13 @@ import type { Track } from '@/types'
 /** 副本来源展示名：本机文件 / 「来源名」 */
 function useSourceLabel() {
   const librarySources = useLibraryStore((s) => s.librarySources)
-  return (t: Track) =>
-    t.sourceId
-      ? `「${librarySources.find((s) => s.id === t.sourceId)?.name || '网络存储'}」`
-      : '本机文件'
+  const translate = useT()
+  return (track: Track) =>
+    track.sourceId
+      ? translate('library.source.quoted', {
+          name: librarySources.find((s) => s.id === track.sourceId)?.name || translate('nav.source.webdav'),
+        })
+      : translate('library.source.localFile')
 }
 
 /** 悬停锚点：记录锚点 rect 供浮层定位，移开即清空 */
@@ -66,6 +71,8 @@ export function DuplicateDetails({ groups, intro }: {
   intro?: string
 }) {
   const sourceLabel = useSourceLabel()
+  const t = useT()
+  const locale = useLocale()
   return (
     <div className="glass-floating rounded-[10px] p-3">
       {intro && (
@@ -79,7 +86,10 @@ export function DuplicateDetails({ groups, intro }: {
               <span className="font-normal text-white/65"> · {g.kept.artist}</span>
             </p>
             <p className="font-text text-[11px] text-white/65 mt-0.5 truncate">
-              保留 {sourceLabel(g.kept)} · 隐藏 {g.hiddenCopies.map((c) => sourceLabel(c)).join('、')}
+              {t('library.duplicate.keptHidden', {
+                kept: sourceLabel(g.kept),
+                hidden: formatList(g.hiddenCopies.map((c) => sourceLabel(c)), locale),
+              })}
             </p>
           </li>
         ))}
@@ -94,18 +104,19 @@ export function DuplicateSummaryHover({ hidden, groups }: {
   groups: DuplicateGroup<Track>[]
 }) {
   const { rect, onEnter, onLeave } = useHoverRect()
+  const t = useT()
   return (
     <span
       className="ml-2 text-white/35 cursor-help underline decoration-dotted decoration-white/20 underline-offset-4"
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
-      · 已隐藏 {hidden} 首重复曲目
+      {t('library.duplicate.summary', { count: hidden })}
       {rect && (
         <PortalPanel rect={rect}>
           <DuplicateDetails
             groups={groups}
-            intro="以下歌曲在多个来源中存在副本，列表只展示一份（本机文件优先）。记录没有删除，歌单/收藏引用仍有效："
+            intro={t('library.duplicate.introSummary')}
           />
         </PortalPanel>
       )}
@@ -120,6 +131,7 @@ export const DuplicateBadge = memo(function DuplicateBadge({
   group: DuplicateGroup<Track>
 }) {
   const { rect, onEnter, onLeave } = useHoverRect()
+  const t = useT()
   return (
     <span
       // 徽标只读：点击/双击不触发行的播放与详情跳转
@@ -130,12 +142,12 @@ export const DuplicateBadge = memo(function DuplicateBadge({
       className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.12] px-1.5 py-[1px] font-text text-[10px] text-white/55 cursor-help"
     >
       <Copy className="h-2.5 w-2.5" strokeWidth={1.8} />
-      重复
+      {t('library.duplicate.badge')}
       {rect && (
         <PortalPanel rect={rect}>
           <DuplicateDetails
             groups={[group]}
-            intro="这首歌曲存在多个副本，列表只展示一份。记录没有删除："
+            intro={t('library.duplicate.introBadge')}
           />
         </PortalPanel>
       )}
