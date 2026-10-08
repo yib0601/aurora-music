@@ -20,15 +20,18 @@ export function hasDesktopTitleBar(): boolean {
  *   与底边的柔折返光一样贴着窗口边界；若标题栏占位 44px，这条顶边线会被顶到
  *   y=44 裸露成「两段悬空白线」（左侧栏 224px + 右栏 288px，中间断开）。
  *   浮层方案下主区域用 pt-11 补回高度，内容位置与占位时逐像素一致。
- * - 极简：移除品牌名，仅保留右侧窗口控制按钮
+ * - 极简：品牌名移除，左侧留给 App 注入的常驻控件（全局搜索入口）
  * - 拖拽区域：titlebar-drag / titlebar-no-drag
+ *   ⚠️ 注入内容必须包在 no-drag 里才可点；容器本身**不能**整条变成 no-drag，
+ *   否则标题栏左侧的空白区不再能拖动窗口。这里用「外层 flex-1 保持 drag、
+ *   内层包住实际控件」的夹层写法，让可拖区域与控件边界一致。
  * - 按钮规格：38×30px + 圆角对齐 DS media 档（10px）+ 1px 发丝描边 hover
  *   - min/max hover 用辅助色（--fc-accent-2，体系内唯一辅助色相）
  *   - close hover 用语义危险色（--tw-coral）
  * 颜色一律走 token，不在此硬编码色值。
  * 仅视觉调整：onClick 绑定、title、图标与条件渲染逻辑均未改动。
  */
-export function TitleBar() {
+export function TitleBar({ children }: { children?: React.ReactNode }) {
   const api = (window as any).electronAPI
   const [isMaximized, setIsMaximized] = useState(false)
 
@@ -58,9 +61,15 @@ export function TitleBar() {
     'transition-all active:scale-95'
 
   return (
-    <div className="titlebar-drag absolute top-0 left-0 right-0 h-11 flex items-center justify-between pl-[18px] pr-3 select-none z-50">
-      {/* 左侧留空：标题栏透明，让 ambient 光晕透过 */}
-      <div className="flex-1" />
+    <div className="titlebar-drag absolute top-0 left-0 right-0 h-11 flex items-center justify-between pr-3 select-none z-50">
+      {/* 左侧：App 注入的常驻控件（全局搜索入口；设置页不注入则为空）。
+          外层 flex-1 仍是 drag 区 —— 左侧空白照样能拖动窗口，
+          只有控件本体是 no-drag。
+          ⚠️ 这里**不设**左侧内边距：注入内容的横向落点由调用方决定
+          （当前与内容列左缘对齐），若在此再写 pl-*，两处数字会互相打架。 */}
+      <div className="flex-1 flex items-center gap-2 min-w-0">
+        <div className="titlebar-no-drag flex items-center">{children}</div>
+      </div>
 
       {/* 右侧窗口控制按钮 */}
       <div className="titlebar-no-drag flex items-center gap-1.5">

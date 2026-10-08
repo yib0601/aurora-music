@@ -29,7 +29,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
 import { HOME_ROUTE, LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
-import { SearchEntry } from '@/components/common/SearchEntry'
+import { SubPageTitle } from '@/components/PageHeading'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
 import {
@@ -135,16 +135,15 @@ export function PlaylistPage() {
     // 与其他页面共享 1200px 居中内容轴（PageLayout 同款），避免全屏拉伸
     <div className="flex flex-col h-full overflow-hidden mx-auto w-full max-w-[1200px]">
       <div className="px-4 pt-4 md:px-8 md:pt-8 pb-6">
-        {/* 返回在左、搜索在右：搜索入口与其他页面一样固定在头部右上角原位置 */}
-        {/* page-toolbar：手机端把 28px 的返回按钮提到 36px，与右侧搜索入口同为一行网格 */}
-        <div className="page-toolbar flex items-center justify-between mb-4">
+        {/* 返回按钮独占页头左侧：搜索入口已上移到应用顶栏（全局常驻），此处不再放置 */}
+        {/* page-toolbar：手机端把 28px 的返回按钮提到 36px 触控尺寸 */}
+        <div className="page-toolbar flex items-center mb-4">
           <button
             className="btn-icon"
             onClick={goBack}
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.7} />
           </button>
-          <SearchEntry />
         </div>
         <div className="flex items-center gap-6 max-w-4xl">
           <div className="w-44 h-44 rounded-[24px] glass-regular border border-white/[0.08] flex items-center justify-center flex-shrink-0">
@@ -152,9 +151,7 @@ export function PlaylistPage() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-text text-caption text-white/50 mb-2">播放列表</p>
-            <h1 className="font-display text-[34px] font-semibold tracking-[-0.374px] text-white leading-tight mb-3">
-              {playlist.name}
-            </h1>
+            <SubPageTitle className="mb-3">{playlist.name}</SubPageTitle>
             <div className="flex items-center gap-3 font-text text-caption text-white/50">
               <span>{playlistTracks.length} 首歌曲</span>
               {totalDuration > 0 && (

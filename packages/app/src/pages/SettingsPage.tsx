@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PageLayout } from '@/components/PageLayout'
+import { PageTitle } from '@/components/PageHeading'
 import { useLibraryStore, defaultAudioCacheLimitMB } from '@/stores/libraryStore'
 import type { LibrarySourceConfig } from '@/types'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
@@ -1706,9 +1707,7 @@ export function SettingsPage() {
         // 本身就能传达的信息（导航高亮已经告诉你当前在哪一区），挂在页头上只是噪音。
         // 说明文案已下线；下面内容的首个子元素就是分区标题，与标题之间无需再加第二行。
         <div className="mb-4 md:mb-5">
-          <h1 className="font-display text-[24px] font-medium tracking-[-0.02em] text-white/[0.98] leading-tight">
-            设置
-          </h1>
+          <PageTitle>设置</PageTitle>
         </div>
       }
     >

@@ -25,7 +25,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn } from '@/lib/utils'
 import { GRID_GAP, getGridColumnCount } from '@/lib/gridLayout'
 import { PageLayout } from '@/components/PageLayout'
-import { SearchEntry } from '@/components/common/SearchEntry'
+import { PageTitle, PageSubtitle } from '@/components/PageHeading'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { toast } from '@/components/common/Toast'
@@ -464,22 +464,19 @@ export function LibraryPage() {
         // 替代旧版负 margin 悬浮方案（标题/工具栏错位且间距脆弱）
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
-            <h1 className="font-display text-[26px] md:text-[36px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
-              {LIBRARY_LABEL}
-            </h1>
-            <p className="font-text text-[13px] text-white/65 mt-1 tracking-[-0.2px]">
-              {librarySummary}
+            <PageTitle>{LIBRARY_LABEL}</PageTitle>
+            <PageSubtitle>{librarySummary}
               {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
                   被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效。
                   悬停提示逐组列出具体名单——只给条数不给名单，用户无从核对 */}
               {hiddenDuplicates > 0 && (
                 <DuplicateSummaryHover hidden={hiddenDuplicates} groups={duplicateGroups} />
               )}
-            </p>
+            </PageSubtitle>
           </div>
-          {/* 工具栏：搜索入口常驻（本地无歌时也可用在线搜索）；重扫/视图切换仅列表态显示 */}
+          {/* 工具栏：重扫/视图切换仅列表态显示。搜索入口已上移到应用顶栏（全局常驻），
+              不在页头重复放置 */}
           <div className="page-toolbar flex items-center gap-2 flex-shrink-0 pb-1">
-            <SearchEntry />
             {tracks.length > 0 && libraryTab === 'songs' && (
               <>
                 <DropdownMenu>

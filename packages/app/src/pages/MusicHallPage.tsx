@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Compass, RefreshCw, Music2, TrendingUp, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
-import { SearchEntry } from '@/components/common/SearchEntry'
+import { PageTitle, PageSubtitle } from '@/components/PageHeading'
 import { cn } from '@/lib/utils'
 import { HALL_LABEL, LIBRARY_LABEL, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
@@ -45,15 +45,10 @@ export function MusicHallPage() {
       header={
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
-            <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
-              {HALL_LABEL}
-            </h1>
-            <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
-              推荐歌单与排行榜，来自你配置的音源，点开即可试听
-            </p>
+            <PageTitle>{HALL_LABEL}</PageTitle>
+            <PageSubtitle>推荐歌单与排行榜，来自你配置的音源，点开即可试听</PageSubtitle>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 pb-1 page-toolbar">
-            <SearchEntry />
             <button
               type="button"
               className="btn-icon"
