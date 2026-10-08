@@ -306,14 +306,15 @@ export function SongDetailPage() {
     <div className="relative flex flex-col min-h-full">
       {/* 沉浸式封面背景已提升到 App 层（覆盖标题栏区域），此处仅渲染前景内容 */}
       {/* 前景内容：收窄居中成列，Hero/歌词/专辑共用同一视觉轴，避免宽屏下内容松散 */}
-      {/* 桌面端滚动容器上延到窗口顶（裁切边移出可视区），故 md 以上需补 44px 标题栏高度的顶部留白 */}
-      <div className="relative mx-auto w-full max-w-[1160px] 2xl:max-w-[1400px] px-4 md:px-8 pt-4 md:pt-[76px] pb-32">
+      {/* 桌面端滚动容器上延到窗口顶（裁切边移出可视区），故 md 以上需补一条浮层带
+          的高度（--titleband-h）加上本页自己的 pt-8，返回按钮同理下移 16px */}
+      <div className="relative mx-auto w-full max-w-[1160px] 2xl:max-w-[1400px] px-4 md:px-8 pt-4 md:pt-[calc(var(--titleband-h)+32px)] pb-32">
         {/* 返回：圆形玻璃按钮，绝对定位悬浮左上角，与 Hero 同行，不独占一行以压缩纵向空间 */}
         <button
           onClick={goBack}
           aria-label="返回"
           title="返回"
-          className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-[60px] z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
+          className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-[calc(var(--titleband-h)+16px)] z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
         >
           <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={1.6} />
         </button>

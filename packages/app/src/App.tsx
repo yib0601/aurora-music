@@ -57,17 +57,17 @@ import type { Track, FolderPickerOptions } from '@/types'
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
 let initialScanTriggered = false
 
+/**
+ * 顶栏工具带「左入口 + 右更新胶囊」并排所需的最小内联宽度（px）。
+ * 组成：入口 380 + 两端间距 16 + 更新胶囊约 250 ≈ 646，取 700 留出余量
+ * （带子在 1200px 内容列上内联宽约 1136，在 600px 窄桌面窗口上只剩约 344）。
+ */
+const TOP_BAND_MIN_INLINE = 700
+
 // 扫描增量入库的批量阈值：攒满 SCAN_BATCH_SIZE 首、或距首次入队超过 SCAN_FLUSH_MS 毫秒，
 // 才写一次 store。逐首写入意味着「N 首歌 = N 次整表重渲染」，是歌曲多时卡顿的主因。
 const SCAN_BATCH_SIZE = 80
 const SCAN_FLUSH_MS = 300
-
-/**
- * 顶栏工具带「左入口 + 右更新胶囊」并排所需的最小内联宽度（px）。
- * 组成：入口 280 + 两端间距 16 + 更新胶囊 237 ≈ 533，取 620 留出余量
- * （带子在 1200px 内容列上内联宽约 1136，在 600px 窄桌面窗口上只剩约 344）。
- */
-const TOP_BAND_MIN_INLINE = 620
 let pendingScanned: Track[] = []
 let scanFlushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -122,9 +122,9 @@ function AppLayout() {
     if (!showMobileNav) useUIStore.getState().setMobileDrawerOpen(false)
   }, [showMobileNav])
   // 桌面外壳标题栏是否真的会渲染（与 TitleBar 内部判定同源）：
-  // 内容列的 pt-11 留白必须跟着它走，否则没有标题栏时会凭空多出 44px 空白
+  // 内容列的顶部留白（--titleband-h）必须跟着它走，否则没有标题栏时会凭空多出那段空白
   const hasTitleBar = hasDesktopTitleBar()
-  // 窗口顶部是否有一条 44px 的浮层带（不占文档流，内容列需 pt-11 补偿）。
+  // 窗口顶部是否有一条浮层带（不占文档流，内容列需按 --titleband-h 补偿）。
   // 判据必须唯一：桌面是窗口标题栏占着这条带；无 Electron 窗口控制的宽档
   // （浏览器预览 / 车机横屏 / 平板横屏）由内容列自己渲染一行顶栏搜索占着它。
   // 手机窄档走 MobileNav 的常规流顶栏，不需要补偿。
@@ -139,11 +139,11 @@ function AppLayout() {
   const setSearchOpen = useUIStore((s) => s.setSearchOpen)
   const isSettings = isRoute(ROUTES.settings, location.pathname)
   // 搜索入口两副形态，互斥渲染（同一个组件、同一份浮层，只是落点与宽度不同）：
-  // - 宽档：顶栏工具带左端（下方 JSX），加宽到 280px —— 它上面没有任何容器边界，
-  //   用自然宽度（约 183px）会在 1200px 内容列上显得像一枚孤零零的小胶囊
-  // - 窄档手机：MobileNav 顶栏右缘，保持自然宽度（<640px 会退化成 36px 图标按钮）
-  // 宽档用 compact 档（30px 高 + 280px 宽，与同带的窗口控制按钮/更新胶囊同网格；
-  // 宽度写在 .search-entry-compact 里，避免 Tailwind 宽度类反过来压掉窄窗压缩态）。
+  // - 宽档：顶栏工具带左端（下方 JSX），固定在 380×44 —— 它上面没有任何容器边界，
+  //   太窄会在 1200px 内容列上显得像一枚孤零零的小胶囊，太矮则顶不住整条窗口顶栏
+  // - 窄档手机：MobileNav 顶栏右缘，保持自然宽度（<640px 会退化成 44px 方形图标按钮）
+  // 宽档只给形态类，尺寸（380×44）写在 .search-entry-compact 里统一管：
+  // Tailwind 的尺寸类在 utilities 层，会压过 CSS 里窄窗那道压缩态（见 globals.css）。
   const topSearch = isSettings ? null : <SearchEntry className="search-entry-compact" />
   const mobileSearch = isSettings ? null : <SearchEntry />
   // 顶栏工具带能否同时容下「左入口 + 右更新胶囊」：按**实测可用宽度**分档，
@@ -890,9 +890,9 @@ function AppLayout() {
               isSongDetail ? 'w-0' : 'w-56',
             )}
           >
-            {/* pt-11 补回标题栏高度：玻璃面板自身从窗口顶 y=0 起铺，其顶边高光因此
-                贴着窗口上沿；内容仍从标题栏下方开始，位置与标题栏占位时逐像素一致 */}
-            <div className={cn('w-56 h-full flex flex-col', hasFloatingTopBar && 'pt-11')}>
+            {/* pt 补回浮层带高度（--titleband-h）：玻璃面板自身从窗口顶 y=0 起铺，其顶边高光因此
+                贴着窗口上沿；内容仍从带子下方开始，位置与占位时逐像素一致 */}
+            <div className={cn('w-56 h-full flex flex-col', hasFloatingTopBar && 'pt-[var(--titleband-h)]')}>
               <Sidebar />
             </div>
           </aside>
@@ -911,13 +911,13 @@ function AppLayout() {
         >
           <div className={cn('flex-1 flex min-h-0', isSongDetail && !mobile ? 'overflow-visible' : 'overflow-hidden')}>
             {/* 内容列：页面路由 + 悬浮播放条（播放条相对内容列居中，避免压到右侧歌词瓷砖） */}
-            {/* pt-11 补回标题栏高度：标题栏已改为绝对定位浮层（不占文档流），主区域从窗口顶
-                y=0 起算。padding 加在本列而非 main 上，才能让同处 main 内的右侧封面瓷砖
-                也跟着铺到窗口顶（玻璃顶边高光因此落在窗口上沿，不再裸露在标题栏下方）；
-                内容仍从标题栏下方 y=44 开始，与占位时逐像素一致，详情页滚动容器的
-                -top-11 也仍相对本 padding 盒定位、上延到窗口顶的行为不变 */}
-            <div className={cn('relative flex-1 flex flex-col min-w-0', hasFloatingTopBar && 'pt-11', isSongDetail && !mobile && 'min-h-0')}>
-              {/* 顶栏工具带：落在窗口顶部那 44px 浮层带里（内容列以 pt-11 让位）。
+            {/* pt 补回浮层带高度（--titleband-h）：标题栏与顶栏工具带都已改为绝对定位浮层
+                （不占文档流），主区域从窗口顶 y=0 起算。padding 加在本列而非 main 上，
+                才能让同处 main 内的右侧封面瓷砖也跟着铺到窗口顶（玻璃顶边高光因此落在
+                窗口上沿，不再裸露在标题栏下方）；内容仍从带子下方开始，与占位时逐像素一致，
+                详情页滚动容器的负向上延也仍相对本 padding 盒定位、上延到窗口顶的行为不变 */}
+            <div className={cn('relative flex-1 flex flex-col min-w-0', hasFloatingTopBar && 'pt-[var(--titleband-h)]', isSongDetail && !mobile && 'min-h-0')}>
+              {/* 顶栏工具带：落在窗口顶部那条浮层带里（高度 --titleband-h，内容列以等量 pt 让位）。
                   带子两端对齐 —— 左端搜索入口，右端照样是「真正属于应用」的控件
                   （桌面端更新提示挂在 TitleBar 尾部插槽，与这条带同高同行；无外壳
                   标题栏的宽档则由本带右端承接同一枚胶囊）。
@@ -927,6 +927,8 @@ function AppLayout() {
                   （mx-auto w-full max-w-[1200px] px-4 md:px-8），所以窗口再宽
                   （内容列限宽居中）、右侧封面瓷砖展开、详情页侧栏折叠成 0 宽，
                   入口都始终与页面大标题左缘同轴，不必按外壳逐档维护偏移值。
+                  **居中（items-center + 带高 68px）**：44px 入口上下各留 12px，
+                  重心落在带子中线上；若改成底对齐，入口会随着带高增加再次贴回窗口顶，等于没下移。
                   条本身不拦截点击（pointer-events-none），只有两端实体可交互。
                   ⚠️ z 必须高于 TitleBar（z-50）：外壳标题栏是**全宽 z-50 的拖拽层**，
                   压在下面的话命中测试会落在 .titlebar-drag 上，入口永远收不到点击
@@ -936,13 +938,16 @@ function AppLayout() {
                   按钮），宽档移动端（车机 / 平板）同样有这条带 —— 不主动让位就会
                   盖住播放页自己的顶栏，故该浮层打开期间整条带子不渲染。 */}
               {hasFloatingTopBar && !nowPlayingOpen && (
-                <div className="absolute top-0 left-0 right-0 h-11 z-[60] flex items-center pointer-events-none">
+                <div
+                  className="absolute top-0 left-0 right-0 z-[60] flex items-center pointer-events-none"
+                  style={{ height: 'var(--titleband-h)' }}
+                >
                   <div
                     ref={topBandRef}
-                    className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex items-center justify-between h-full"
+                    className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex items-center justify-between"
                   >
                     {topSearch && (
-                      <div className="titlebar-no-drag pointer-events-auto flex items-center h-full">{topSearch}</div>
+                      <div className="titlebar-no-drag pointer-events-auto">{topSearch}</div>
                     )}
                     {/* 更新胶囊：外壳标题栏已代为承载时不重复渲染（二者同高同行，
                         只是落在窗口控制按钮左侧——那里是窗口级的右端）；
@@ -978,13 +983,13 @@ function AppLayout() {
                   <LibraryPage />
                 </div>
                 {/* 其他路由按需渲染，绝对定位铺满容器，与常驻的我的音乐层共存互不影响 */}
-                {/* 桌面端详情页：滚动容器上延 44px（标题栏高度）到窗口顶，裁切边移到窗口边界，
-                    内容阴影/光晕滚过标题栏底边时不再形成横向断层线 */}
+                {/* 桌面端详情页：滚动容器上延一条浮层带的高度（--titleband-h）到窗口顶，
+                    裁切边移到窗口边界，内容阴影/光晕滚过带子下沿时不再形成横向断层线 */}
                 {location.pathname !== KEEP_ALIVE_ROUTE && (
                   <div
                     className={cn(
                       'absolute left-0 right-0 bottom-0 overflow-y-auto scrollbar-thin',
-                      isSongDetail && hasFloatingTopBar ? '-top-11' : 'top-0',
+                      isSongDetail && hasFloatingTopBar ? 'top-[calc(-1*var(--titleband-h))]' : 'top-0',
                     )}
                   >
                     <Routes>
@@ -1060,8 +1065,8 @@ function AppLayout() {
                   'hidden lg:block',
                 )}
               >
-                {/* pt-11 与左侧栏同理：玻璃面板铺到窗口顶，内容仍从标题栏下方开始 */}
-                <div className={cn('w-72 h-full flex flex-col', hasFloatingTopBar && 'pt-11')}>
+                {/* pt 与左侧栏同理：玻璃面板铺到窗口顶，内容仍从浮层带下方开始 */}
+                <div className={cn('w-72 h-full flex flex-col', hasFloatingTopBar && 'pt-[var(--titleband-h)]')}>
                   <div className="p-6 flex flex-col gap-4">
                     {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
                     <button
