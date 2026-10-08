@@ -1,6 +1,5 @@
 import {
   mergeLegacyPlaylistSources,
-  migrateLyricsSources,
   migrateOnlineSources,
 } from '../sourceMigration'
 import type { PlaylistResolverConfig } from '../types'
@@ -193,35 +192,5 @@ describe('migrateOnlineSources（v10 音源地址归一）', () => {
     expect(out[0].name).toBe('音源')
     expect(migrateOnlineSources(null)).toEqual([])
     expect(migrateOnlineSources([null, 42, 'x'])).toEqual([])
-  })
-})
-
-describe('migrateLyricsSources（v10 字段统一）', () => {
-  it('apiUrl 平移到 sourceUrl，其余字段保留', () => {
-    const out = migrateLyricsSources([
-      {
-        id: 'lrc-1',
-        name: 'LRCLIB',
-        apiUrl: 'https://lrclib.net/api/search?track_name={track}',
-        headers: { 'X-Test': 'b' },
-        enabled: false,
-      },
-    ])
-    expect(out).toEqual([
-      {
-        id: 'lrc-1',
-        name: 'LRCLIB',
-        sourceUrl: 'https://lrclib.net/api/search?track_name={track}',
-        headers: { 'X-Test': 'b' },
-        enabled: false,
-      },
-    ])
-  })
-
-  it('幂等且非法入参安全', () => {
-    const list = [{ id: 'a', name: 'b', sourceUrl: 'https://x.example/y', enabled: true }]
-    const once = migrateLyricsSources(list)
-    expect(migrateLyricsSources(once)).toEqual(once)
-    expect(migrateLyricsSources(undefined)).toEqual([])
   })
 })

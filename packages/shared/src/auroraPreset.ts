@@ -23,6 +23,12 @@ export interface AuroraEndpoints {
   search: string
   /** 歌单解析端点模板，含 {url} / key */
   playlist: string
+  /**
+   * 歌词端点模板，含 {track} / {artist} / {duration} / key。
+   * 歌词由音源服务提供（而不是另配一条「歌词源」）：服务端自描述里有它就说明这条源会出词，
+   * 详见 shared/src/lyricsSource.ts 的聚合执行与 app 的 lyrics.service.ts。
+   */
+  lyric: string
   /** 推荐歌单列表端点模板（在线音乐，只读浏览） */
   recommend: string
   /** 榜单列表端点模板（在线音乐，只读浏览） */
@@ -35,6 +41,7 @@ export interface AuroraEndpoints {
 export const AURORA_ENDPOINT_FALLBACK: AuroraEndpoints = {
   search: '/aurora?query={query}&quality={quality}&key=<API_KEY>',
   playlist: '/aurora/playlist?url={url}&key=<API_KEY>',
+  lyric: '/aurora/lyric?track={track}&artist={artist}&duration={duration}&key=<API_KEY>',
   recommend: '/aurora/recommend?categoryId={categoryId}&sortId={sortId}&page={page}&limit={limit}&key=<API_KEY>',
   toplists: '/aurora/toplists?preview={preview}&key=<API_KEY>',
   toplist: '/aurora/toplist?id={id}&page={page}&limit={limit}&key=<API_KEY>',
@@ -44,7 +51,7 @@ export const AURORA_ENDPOINT_FALLBACK: AuroraEndpoints = {
  * 端点自描述的字段白名单（服务端 `GET /` 的 `endpoints` 里认哪些键）。
  * 新端点不加进来，服务端自描述就会被**静默丢弃** —— 不报错、页面永远空，最难查的一类问题。
  */
-const ENDPOINT_KEYS = ['search', 'playlist', 'recommend', 'toplists', 'toplist'] as const
+const ENDPOINT_KEYS = ['search', 'playlist', 'lyric', 'recommend', 'toplists', 'toplist'] as const
 
 /** 链接形态：service = 服务地址（端点由本模块组装）；endpoint = 用户手写的接口模板 */
 export type AuroraSourceKind = 'service' | 'endpoint'
@@ -247,10 +254,22 @@ export function buildAuroraEndpoints(
 export interface SourceEndpointInput {
   /** 用户填的那条链接 */
   sourceUrl?: string
+  /**
+   * 源形态。脚本源（kind='lx'）的地址是脚本链接、没有 aurora 端点，
+   * 派生函数一律返回空串 —— 否则会把脚本地址当成服务地址，拼出一个不存在的路径。
+   */
+  kind?: 'aurora' | 'lx'
   /** 接口模板形态下手填的歌单解析地址 */
   playlistUrl?: string
   /** 服务端自描述的端点模板缓存 */
-  endpoints?: { search?: string; playlist?: string; recommend?: string; toplists?: string; toplist?: string } | null
+  endpoints?: {
+    search?: string
+    playlist?: string
+    lyric?: string
+    recommend?: string
+    toplists?: string
+    toplist?: string
+  } | null
 }
 
 /**
@@ -275,6 +294,37 @@ export function playlistEndpointOf(source: SourceEndpointInput | null | undefine
   }
   const own = String(source?.playlistUrl || '').trim()
   return own.includes('{url}') ? own : ''
+}
+
+/**
+ * 取一条音源的**歌词端点模板**（执行时解析，不落盘）。无该能力返回空串。
+ *
+ * 歌词能力随音源走：服务端在自描述里给出 endpoints.lyric，客户端执行时把它拼成完整地址
+ * （占位符 {track}/{artist}/{album}/{duration} 由歌词执行器替换）。
+ * 服务端没自描述时逐键回落默认路径（见 AURORA_ENDPOINT_FALLBACK）——
+ * 所以「服务端还没升级」与「已经升级」两种情况，老配置都能直接用，不需要用户重存音源。
+ * 非服务地址形态（第三方接口模板、洛雪脚本源）没有歌词能力，返回空串。
+ */
+export function lyricEndpointOf(source: SourceEndpointInput | null | undefined): string {
+  // 脚本源没有端点可派生（调用方通常已按 kind 分流，这里再兜一道）
+  if (source?.kind === 'lx') return ''
+  const parsed = parseSourceInput(source?.sourceUrl || '')
+  if (parsed?.kind !== 'service') return ''
+  return buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, source?.endpoints)?.lyric || ''
+}
+
+/**
+ * 服务端能力清单（`GET /` 与 `/health` 的 capabilities）。
+ *
+ * 这是「这条源能做什么」的权威答案，客户端据此判断有没有歌词 / 歌单解析等能力，
+ * 不必去试探端点是否存在。读不到（老服务端没这个字段）返回 null —— 调用方按
+ * 「未知即回落到端点模板判断」处理，不要当成「没有能力」。
+ */
+export function parseAuroraCapabilities(json: unknown): string[] | null {
+  const raw = (json as { capabilities?: unknown } | null | undefined)?.capabilities
+  if (!Array.isArray(raw)) return null
+  const out = raw.filter((v): v is string => typeof v === 'string' && Boolean(v.trim()))
+  return out.length > 0 ? out : null
 }
 
 /**
@@ -328,6 +378,8 @@ export interface AuroraProbeResult {
   message: string
   /** 服务端自描述的端点模板（读到才有） */
   endpoints?: Partial<AuroraEndpoints>
+  /** 服务端声明的能力清单（读到才有；老服务端没有这个字段） */
+  capabilities?: string[]
   /** 服务地址是否给出了端点自描述 */
   selfDescribed: boolean
 }
@@ -364,6 +416,8 @@ export async function probeAuroraService(
     rootJson = null
   }
   const endpoints = parseAuroraEndpoints(rootJson)
+  // 能力清单可能与自描述同处（服务端 GET / 就带），也可能只在 /health 里，两处都读
+  let caps = parseAuroraCapabilities(rootJson)
 
   const key = String(apiKey || '').trim()
   if (key) {
@@ -377,8 +431,15 @@ export async function probeAuroraService(
         try {
           const healthJson = await health.json()
           const fromHealth = parseAuroraEndpoints(healthJson)
+          if (!caps) caps = parseAuroraCapabilities(healthJson)
           if (!endpoints && fromHealth) {
-            return { ok: true, message: '连接正常，密钥有效', endpoints: fromHealth, selfDescribed: true }
+            return {
+              ok: true,
+              message: '连接正常，密钥有效',
+              endpoints: fromHealth,
+              capabilities: caps || undefined,
+              selfDescribed: true,
+            }
           }
         } catch {
           /* /health 响应不是 JSON 也不影响连通结论 */
@@ -388,6 +449,7 @@ export async function probeAuroraService(
           ok: false,
           message: '密钥不正确（服务端拒绝了该密钥）',
           endpoints: endpoints || undefined,
+          capabilities: caps || undefined,
           selfDescribed: Boolean(endpoints),
         }
       }
@@ -397,6 +459,7 @@ export async function probeAuroraService(
         ok: true,
         message: '服务在线，但未能校验密钥（/health 不可达）',
         endpoints: endpoints || undefined,
+        capabilities: caps || undefined,
         selfDescribed: Boolean(endpoints),
       }
     }
@@ -410,6 +473,7 @@ export async function probeAuroraService(
         : '服务在线（未填密钥）'
       : '服务在线，但未读到端点自描述，将按默认 /aurora 路径组装',
     endpoints: endpoints || undefined,
+    capabilities: caps || undefined,
     selfDescribed: Boolean(endpoints),
   }
 }

@@ -1,5 +1,5 @@
 import { buildAuroraEndpoints, parseSourceInput } from './auroraPreset'
-import type { LyricsSourceConfig, OnlineSourceConfig, PlaylistResolverConfig } from './types'
+import type { OnlineSourceConfig, PlaylistResolverConfig } from './types'
 
 /** 迁移中间形态：老字段与目标字段并存，只在 persist migrate 里出现 */
 type RawSource = Record<string, any>
@@ -128,34 +128,6 @@ export function migrateOnlineSources(sources: unknown): OnlineSourceConfig[] {
     out.push(migrated)
   }
 
-  return out
-}
-
-/**
- * 歌词源地址迁移（持久化数据 v10）：字段随音源一起统一为 sourceUrl。
- * 歌词源没有「服务地址组装」一说，地址本身原样保留。纯函数。
- */
-export function migrateLyricsSources(sources: unknown): LyricsSourceConfig[] {
-  const list = Array.isArray(sources) ? sources : []
-  const out: LyricsSourceConfig[] = []
-  for (const raw of list) {
-    if (!raw || typeof raw !== 'object') continue
-    const s = raw as RawSource
-    const sourceUrl =
-      typeof s.sourceUrl === 'string' && s.sourceUrl
-        ? s.sourceUrl
-        : typeof s.apiUrl === 'string'
-          ? s.apiUrl
-          : ''
-    const migrated: LyricsSourceConfig = {
-      id: typeof s.id === 'string' && s.id ? s.id : defaultId(),
-      name: typeof s.name === 'string' && s.name ? s.name : '歌词源',
-      sourceUrl,
-      enabled: s.enabled !== false,
-    }
-    if (s.headers && typeof s.headers === 'object') migrated.headers = s.headers
-    out.push(migrated)
-  }
   return out
 }
 
