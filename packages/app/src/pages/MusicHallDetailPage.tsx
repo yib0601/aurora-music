@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Play, Loader2, Music2, TrendingUp, Sparkles, RefreshCw } from 'lucide-react'
 import { PageLayout } from '@/components/PageLayout'
-import { SearchEntry } from '@/components/common/SearchEntry'
+import { PageSubtitle, SubPageTitle } from '@/components/PageHeading'
 import { HallEmpty, formatCount } from '@/pages/MusicHallPage'
 import { cn, formatTime } from '@/lib/utils'
 import { useGoBack } from '@/lib/navigation'
@@ -243,19 +243,17 @@ function DetailHeader({
           <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
         </button>
         <div className="min-w-0">
-          <h1 className="font-display text-[22px] md:text-[28px] font-semibold tracking-[-0.374px] text-white/98 leading-tight truncate flex items-center gap-2">
+          <SubPageTitle className="truncate flex items-center gap-2">
             {icon}
             {title}
-          </h1>
-          {subtitle && (
-            <p className="font-text text-[13px] text-white/50 mt-0.5 tracking-[-0.2px]">{subtitle}</p>
-          )}
+          </SubPageTitle>
+          {subtitle && <PageSubtitle className="mt-0.5">{subtitle}</PageSubtitle>}
         </div>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0 pb-1 page-toolbar">
-        <SearchEntry />
-        {action}
-      </div>
+      {/* 右侧动作区：搜索入口已上移到应用顶栏，这里只在调用方给了动作时渲染 */}
+      {action && (
+        <div className="flex items-center gap-2 flex-shrink-0 pb-1 page-toolbar">{action}</div>
+      )}
     </div>
   )
 }

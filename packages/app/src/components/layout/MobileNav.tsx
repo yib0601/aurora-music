@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Menu, X, Heart, Clock, Settings, Link2, Library, Radio } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,7 @@ import { useUIStore } from '@/stores/uiStore'
  * 移动端导航：顶部汉堡菜单 + 左侧抽屉（DS 化）
  * - 左上角菜单按钮，点击滑出左侧抽屉（替代底部 BottomTabBar）
  * - 顶栏展示品牌名（页面内容区已有大标题，不重复展示页面标题）
+ * - 顶栏右缘是 App 注入的常驻控件插槽（当前为全局搜索入口；设置页不注入）
  * - 抽屉含 5 个主导航入口，点击切换路由并关闭抽屉
  * - 遮罩点击关闭；抽屉 glass 材质 + safe-area 适配
  * - 抽屉开关全局化到 uiStore：App 层的系统返回键处理需要能收起它
@@ -54,7 +55,7 @@ const drawerLinkClass = (isActive: boolean, spaced = false) =>
       : 'border-transparent text-white/70 hover:text-white hover:bg-white/[0.05]',
   )
 
-export function MobileNav() {
+export function MobileNav({ children }: { children?: ReactNode }) {
   const open = useUIStore((s) => s.mobileDrawerOpen)
   const setOpen = useUIStore((s) => s.setMobileDrawerOpen)
 
@@ -92,6 +93,9 @@ export function MobileNav() {
         <span className="font-display text-[15px] font-semibold text-white/[0.90] tracking-[-0.2px]">
           Aurora
         </span>
+        {/* 右侧：App 注入的常驻控件（全局搜索入口；设置页不注入则为空）。
+            ml-auto 把它推到右缘，与汉堡按钮分列两端，中间留出拖拽/点击空白 */}
+        {children && <div className="ml-auto flex items-center">{children}</div>}
       </header>
 
       {/* 遮罩：点击关闭抽屉 */}
