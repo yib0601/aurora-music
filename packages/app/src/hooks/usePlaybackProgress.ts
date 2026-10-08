@@ -134,6 +134,8 @@ export function usePlaybackProgress({ duration, active }: Options): PlaybackProg
       displayRef.current = 0
       pendingSeekRef.current = null
       seekingRef.current = false
+      // 拖动中被打断（面板收起 / 曲目清空）时不能把抓取点留在轨道上
+      sliderRef.current?.classList.remove('is-dragging')
       writeFrame(0, durationRef.current, false)
       return
     }
@@ -191,9 +193,35 @@ export function usePlaybackProgress({ duration, active }: Options): PlaybackProg
     return () => cancelAnimationFrame(raf)
   }, [active])
 
+  /**
+   * 拖动中标记（抓取点显形，见 globals.css 的 .seek-lg）
+   *
+   * 判据刻意不用 pointer 序列：触摸拖动 range 时浏览器会把这段手势收归自带的
+   * slider 拖动，页面侧可能只拿到 pointerdown + pointercancel（拖动本身照常
+   * 工作，但 :active 全程为假，handler 也再收不到后续事件）。
+   * input / change 是 range 的标准交互语义 —— 拖动中连续 input、松手 change ——
+   * 鼠标、触摸、键盘都成立；而程序化写 value（本 hook 每帧都写）不触发 input，
+   * 不会把外推帧误判成用户拖动。
+   */
+  useEffect(() => {
+    const slider = sliderRef.current
+    if (!slider || !active) return
+    const mark = () => slider.classList.add('is-dragging')
+    const clear = () => slider.classList.remove('is-dragging')
+    slider.addEventListener('input', mark)
+    slider.addEventListener('change', clear)
+    return () => {
+      slider.removeEventListener('input', mark)
+      slider.removeEventListener('change', clear)
+      clear()
+    }
+  }, [active])
+
   const onSeekStart = useCallback(() => {
     seekingRef.current = true
     pendingSeekRef.current = null
+    // 手指落下那一刻就把抓取点显出来，不必等第一次 input
+    sliderRef.current?.classList.add('is-dragging')
   }, [])
 
   const onSeekCommit = useCallback(() => {
@@ -204,6 +232,8 @@ export function usePlaybackProgress({ duration, active }: Options): PlaybackProg
     displayRef.current = target
     anchorRef.current = { position: target, at: performance.now() }
     pendingSeekRef.current = { position: target, at: performance.now() }
+    // 这里不摘 is-dragging：pointercancel 走的是同一个回调，而它出现时拖动
+    // 往往还在继续。摘除交给上面的 change 监听
     usePlayerStore.getState().seekTo(target)
   }, [])
 

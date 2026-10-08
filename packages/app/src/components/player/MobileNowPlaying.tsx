@@ -196,7 +196,9 @@ export function MobileNowPlaying({ open, onClose }: Props) {
       </div>
       </div>
 
-      {/* 进度条：32px 触控高度 + 常显圆形滑块（seek-lg 专属，见 globals.css）。
+      {/* 进度条：32px 触控高度（seek-lg 档，见 globals.css）。静止态与桌面播放条
+          同一套语汇——薄荷渐变填充 + 播放头柔白光斑；白点作为抓取点只在按下/
+          拖动时显形，不做常显。
           限宽居中：平板/折叠屏展开后整屏拉通会让时间标签离轨道过远。
           值与 --seek 全部由 usePlaybackProgress 的 rAF 命令式写入（input 非受控），
           所以这里不接 value / style —— 进度每帧推进不再重渲染整页 */}

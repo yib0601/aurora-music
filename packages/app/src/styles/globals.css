@@ -1090,12 +1090,27 @@ input[type='range'].seek-bar::-webkit-slider-thumb {
   background: transparent;
   box-shadow: none;
 }
-/* 移动端加大版：32px 触控高度 + 更粗轨道 + **常显实心滑块**
- * 桌面那档是「无圆点，靠填充末端的柔白光斑示意位置」——鼠标下有 hover 提示、
- * 光斑够用；但手指拖拽时缺一个明确的抓取点（光斑 12px 且静止时只有 .35 亮度）。
- * 所以 .seek-lg 这一档恢复白色圆点滑块，拖动瞬间再放大一档给反馈。 */
+/* 移动端加大版：32px 触控高度 + 更粗轨道 + **按下才显形的抓取点**
+ *
+ * 静止态与桌面档共用同一套视觉语汇（薄荷渐变填充 + 填充末端的柔白光斑），
+ * 白点只在手指按下/拖动时淡入，充当明确的抓取点。
+ *
+ * 历史：桌面档在 e5c9a0c 去掉圆点后，这里又在 940f22d 单独把白点加了回来
+ * （理由：触摸屏没有 hover，静止光斑不足以当抓取点）。代价是同一首歌在手机
+ * 与大屏上长期两副面孔，移动端看起来「没跟上优化」。抓取点改成「按下显形」
+ * 后两个诉求同时成立：静止态与桌面同语汇，手指落下有 14px 实心点可抓。
+ *
+ * --tip 静止档比桌面(0.35)高一档到 0.5：触摸屏没有 hover 兜底，光斑再淡下去
+ * 静止时的播放头位置就彻底不可读；按下后由 .seek-bar:active 的 0.8 接管。
+ * 白点不用 :hover 触发 —— 移动端 tap 后 :hover 会残留到下一次点击别处。 */
 input[type='range'].seek-bar.seek-lg {
   height: 32px;
+}
+input[type='range'].seek-bar.seek-lg:not(:active):not(.is-dragging) {
+  --tip: 0.5;
+}
+input[type='range'].seek-bar.seek-lg.is-dragging {
+  --tip: 0.8;
 }
 input[type='range'].seek-bar.seek-lg::-webkit-slider-runnable-track {
   height: 6px;
@@ -1105,14 +1120,21 @@ input[type='range'].seek-bar.seek-lg::-webkit-slider-thumb {
   height: 14px;
   /* (6px 轨道 - 14px 滑块) / 2，保证圆点与轨道中线对齐 */
   margin-top: -4px;
-  opacity: 1;
+  opacity: 0;
+  transform: scale(.6);
   border-radius: 999px;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .05);
-  transition: transform .16s var(--ease-mineradio);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+  transition: opacity .14s var(--ease-mineradio), transform .14s var(--ease-mineradio);
 }
-input[type='range'].seek-bar.seek-lg:active::-webkit-slider-thumb {
-  transform: scale(1.18);
+/* 按下 / 拖动中：白点淡入并放大一档 —— 手指落下的那一刻才需要抓取点。
+   .is-dragging 由 usePlaybackProgress 挂（input / change 驱动），比只看 :active
+   稳：触摸拖动 range 时浏览器会把这段手势收归自带的 slider 拖动，:active 全程不成立，
+   指针滑出 32px 热区的那几帧也会掉 */
+input[type='range'].seek-bar.seek-lg:active::-webkit-slider-thumb,
+input[type='range'].seek-bar.seek-lg.is-dragging::-webkit-slider-thumb {
+  opacity: 1;
+  transform: scale(1);
 }
 /* 浅色主题：轨道是浅灰，纯白滑块会糊进轨道里，补一圈描边拉出轮廓 */
 html:not(.dark) input[type='range'].seek-bar.seek-lg::-webkit-slider-thumb {
