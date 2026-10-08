@@ -165,6 +165,22 @@ describe('fetchToplistGroups', () => {
     setCustomFetch(async () => new Response('<html>502</html>', { status: 200 }))
     await expect(fetchToplistGroups(SOURCE)).rejects.toThrow(/不是 JSON/)
   })
+
+  it('上游超过 10s 超时：抛带源名的中文超时错误，不是英文 AbortError', async () => {
+    // 复现用户侧现象：音源服务慢于 HALL_TIMEOUT_MS，底层抛 AbortError
+    // 本用例真等满 10s 超时预算，故单独放宽 vitest 默认 5s 上限
+    setCustomFetch(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError'))
+          )
+        })
+    )
+    const err = await fetchToplistGroups(SOURCE).catch((e) => e as Error)
+    expect(err.message).toBe('音源「我的音源」请求超时（10000ms）')
+    expect(err.message).not.toMatch(/aborted/i)
+  }, 20000)
 })
 
 describe('fetchToplistSongs', () => {
