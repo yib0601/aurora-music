@@ -5,7 +5,7 @@ import type {
   ToplistGroup,
 } from './types'
 import { fillEndpointTemplate, hallEndpointOf } from './auroraPreset'
-import { fetchWithTimeout } from './fetchWithTimeout'
+import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 
 /**
  * 在线音乐读取执行器（协议执行器，与 musicSource 同构）
@@ -68,6 +68,11 @@ async function requestJson(source: MusicHallSource, url: string): Promise<any> {
       HALL_TIMEOUT_MS
     )
   } catch (err) {
+    // 超时单独成句：音源服务较慢时「请求失败：请求超时（10000ms）」已能自解释，
+    // 不给用户看底层 fetch 的英文 AbortError（见 fetchWithTimeout 的说明）
+    if (isTimeoutError(err)) {
+      throw new Error(`音源「${source.name}」请求超时（${HALL_TIMEOUT_MS}ms）`)
+    }
     throw new Error(`音源「${source.name}」请求失败：${(err as Error).message}`)
   }
   if (!resp.ok) throw new Error(`音源「${source.name}」返回 HTTP ${resp.status}`)

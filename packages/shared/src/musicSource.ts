@@ -1,6 +1,6 @@
 import type { DownloadQuality, OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
 import { searchEndpointOf } from './auroraPreset'
-import { fetchWithTimeout } from './fetchWithTimeout'
+import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { getLxHostDeps } from './lxHost'
 import { resolveLxScript, searchLxSourceForAggregate } from './lxResolver'
 
@@ -61,6 +61,11 @@ function extractQualityUrls(item: any): Partial<Record<DownloadQuality, string>>
 }
 
 /**
+ * 单个音乐源搜索超时：与在线音乐的 10s 预算同量级（搜索是并发多源，单源不该拖长首屏）
+ */
+const SEARCH_TIMEOUT_MS = 10000
+
+/**
  * 单个音乐源搜索（协议执行器核心）
  * - 端点由音源地址在执行时解析（searchEndpointOf），其中 {query} 替换为 URL 编码后的搜索词；
  *   可选 {quality} 替换为音质档位（128/320/flac）
@@ -79,11 +84,18 @@ export async function searchMusicSource(
   const url = endpoint
     .replace('{query}', encodeURIComponent(query))
     .replace('{quality}', quality || '128')
-  const resp = await fetchWithTimeout(
-    url,
-    { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
-    10000
-  )
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
+      SEARCH_TIMEOUT_MS
+    )
+  } catch (err) {
+    // 超时给中文结论：搜索是并发多源的，哪个源超时了要一眼看出
+    if (isTimeoutError(err)) throw new Error(`源「${source.name}」请求超时（${SEARCH_TIMEOUT_MS}ms）`)
+    throw new Error(`源「${source.name}」请求失败：${(err as Error).message}`)
+  }
   if (!resp.ok) throw new Error(`源「${source.name}」返回 HTTP ${resp.status}`)
 
   const json = (await resp.json()) as any

@@ -1,4 +1,4 @@
-import { fetchWithTimeout, setCustomFetch } from '../fetchWithTimeout'
+import { fetchWithTimeout, isTimeoutError, setCustomFetch, TimeoutError } from '../fetchWithTimeout'
 
 describe('fetchWithTimeout', () => {
   afterEach(() => setCustomFetch(null))
@@ -34,5 +34,40 @@ describe('fetchWithTimeout', () => {
     // 模拟原生 HTTP 层忽略 signal 的场景：永不 resolve
     setCustomFetch(() => new Promise<Response>(() => {}))
     await expect(fetchWithTimeout('https://example.test/slow', {}, 30)).rejects.toThrow()
+  })
+
+  it('超时抛中文 TimeoutError，而不是底层 fetch 的英文 AbortError', async () => {
+    // 真实场景：本机音源服务慢于超时预算，renderer 的 AbortController 中止请求，
+    // 原生 fetch 抛 DOMException('The operation was aborted.', 'AbortError')
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        )
+      })
+    }) as typeof fetch
+    await expect(fetchWithTimeout('https://example.test/slow', {}, 30)).rejects.toThrow('请求超时（30ms）')
+    try {
+      await fetchWithTimeout('https://example.test/slow', {}, 30)
+    } catch (err) {
+      expect(err).toBeInstanceOf(TimeoutError)
+      expect((err as Error).name).toBe('TimeoutError')
+      expect((err as Error).message).not.toMatch(/aborted/i)
+      expect(isTimeoutError(err)).toBe(true)
+    }
+  })
+
+  it('调用方自己的 signal 中止时原样抛出取消错误，不误报超时', async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        const abort = () => reject(new DOMException('The operation was aborted.', 'AbortError'))
+        if (init?.signal?.aborted) abort()
+        else init?.signal?.addEventListener('abort', abort)
+      })
+    }) as typeof fetch
+    const external = new AbortController()
+    const pending = fetchWithTimeout('https://example.test/slow', { signal: external.signal }, 5000)
+    external.abort()
+    await expect(pending).rejects.toThrow(/aborted/) // 取消语义保留，不等 5s
   })
 })
