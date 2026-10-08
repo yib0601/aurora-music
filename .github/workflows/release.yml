@@ -74,7 +74,35 @@ jobs:
   build-linux:
     name: Build Linux (AppImage/deb/rpm)
     runs-on: ubuntu-latest
+    # 固定 glibc 基线：编译环境决定产物的符号下限。
+    # AppImage 目录（appimage.github.io）在 ubuntu-22.04（glibc 2.35、libstdc++
+    # 6.0.30）上逐个测试包，Debian 12 用户是 glibc 2.36。跑在 ubuntu-latest
+    # （24.04）上时，原生模块会被编成需要 GLIBC_2.38 与 GLIBCXX_3.4.31，这些
+    # 系统上 dlopen 直接失败（version `GLIBC_2.38' not found），主进程随之异常、
+    # 界面起不来（目录 CI 报 error-glibc-too-new / error-no-window）。
+    # better-sqlite3 v12.11.1 没有 Electron 43（ABI 148）的 prebuild，必然本地
+    # 编译，所以容器基线就是兼容性下限；打包后由 scripts/check-linux-baseline.sh 把关。
+    #
+    # 编译器必须用 clang：Electron 43 的 V8 头文件写成
+    #   class V8_DEPRECATED("...") V8_EXPORT Value {
+    # 属性宏出现在类名之前，GCC 11/12 在这里直接报
+    #   error: expected identifier before '__attribute__'
+    # 编译不过；clang-15 正常，且链接的仍是 22.04 的 libstdc++（6.0.30），
+    # 产物符号不超出基线。
+    container:
+      image: ubuntu:22.04
+    env:
+      CC: clang-15
+      CXX: clang++-15
     steps:
+      - name: Install build dependencies
+        # 容器里先补齐工具链，再 checkout（基础镜像不含 git）
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git python3 build-essential clang-15 \
+            rpm cpio binutils xz-utils
+
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -108,6 +136,15 @@ jobs:
         run: pnpm --filter @aurora/desktop exec electron-builder --linux --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify glibc baseline (Ubuntu 22.04 / Debian 12)
+        # 产物里任何引用超过 GLIBC_2.35 / GLIBCXX_3.4.30 的库，都会让老系统
+        # （含 AppImage 目录的测试机）在 dlopen 时失败，这里直接挡住发布
+        run: |
+          bash scripts/check-linux-baseline.sh \
+            packages/desktop/release/*.AppImage \
+            packages/desktop/release/*.deb \
+            packages/desktop/release/*.rpm
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
