@@ -184,4 +184,75 @@ describe('parsePlaylistLink（音源合并后）', () => {
       parsePlaylistLink([makeSource({ playlistUrl: 'https://a.example/playlist?url={url}' })], SHARE_URL)
     ).rejects.toThrow(/HTTP 500/)
   })
+
+  // ── 扩展字段（专辑 / 时长 / 封面 / songmid）：歌单详情页的时长与序号靠它们 ──
+  // 回归背景：协议最初只归一 title/artist，音源服务补齐 album/duration/coverUrl/songmid 后，
+  // 歌单详情页仍只显示歌名 + 歌手（榜单页一直是全字段）。
+  it('新版音源服务给的扩展字段原样带出', async () => {
+    setCustomFetch(async () =>
+      jsonResponse({
+        name: '甜度爆表 | 旋律说唱狙击少女心',
+        songs: [
+          {
+            title: '你的',
+            artist: 'DouDou/Viva宋佩豫',
+            album: '你的',
+            duration: 163,
+            coverUrl: 'https://y.gtimg.cn/music/photo_new/T002R300x300M0000023VbHy1oT80v_3.jpg',
+            songmid: '002xTzGb2UBQRk',
+          },
+        ],
+      })
+    )
+    const out = await parsePlaylistLink(
+      [makeSource({ playlistUrl: 'https://api.example/playlist?url={url}' })],
+      SHARE_URL
+    )
+    expect(out.songs[0]).toEqual({
+      title: '你的',
+      artist: 'DouDou/Viva宋佩豫',
+      album: '你的',
+      duration: 163,
+      coverUrl: 'https://y.gtimg.cn/music/photo_new/T002R300x300M0000023VbHy1oT80v_3.jpg',
+      songmid: '002xTzGb2UBQRk',
+    })
+  })
+
+  it('老音源只回最小集时字段直接缺席，不补空串 / 0', async () => {
+    setCustomFetch(async () => jsonResponse([{ title: '晴天', artist: '周杰伦' }]))
+    const out = await parsePlaylistLink(
+      [makeSource({ playlistUrl: 'https://api.example/playlist?url={url}' })],
+      SHARE_URL
+    )
+    expect(out.songs[0]).toEqual({ title: '晴天', artist: '周杰伦' })
+    // 「源没给」必须与「源给了空值」可区分：歌单页据此隐藏时长列
+    expect('duration' in out.songs[0]).toBe(false)
+    expect('album' in out.songs[0]).toBe(false)
+  })
+
+  it('专辑三种形状（字符串 / album.name / albumname）与封面两个位置都认', async () => {
+    setCustomFetch(async () =>
+      jsonResponse({
+        songs: [
+          // 酷我：album 是字符串、duration 是秒
+          { title: '夜曲', artist: '周杰伦', album: '十一月的萧邦', duration: 227, pic: 'https://img4.kuwo.cn/c/1.jpg' },
+          // QQ：album 是对象、时长在 interval、曲目 id 在 mid
+          { title: '你的', artist: 'DouDou', album: { name: '你的' }, interval: 163, mid: '002xTzGb2UBQRk' },
+          // 网易云：封面在 album.picUrl、曲目 id 在 id
+          { title: '起风了', artist: '买辣椒也用券', album: { name: '起风了', picUrl: 'https://p1.music.126.net/1.jpg' }, duration: 325, id: 1001 },
+          // 老式字段名 + 时长为 0（视为源没给）
+          { title: '旧曲', artist: '旧歌手', albumname: '旧专辑', duration: 0 },
+        ],
+      })
+    )
+    const out = await parsePlaylistLink(
+      [makeSource({ playlistUrl: 'https://api.example/playlist?url={url}' })],
+      SHARE_URL
+    )
+    expect(out.songs[0]).toMatchObject({ album: '十一月的萧邦', duration: 227, coverUrl: 'https://img4.kuwo.cn/c/1.jpg' })
+    expect(out.songs[1]).toMatchObject({ album: '你的', duration: 163, songmid: '002xTzGb2UBQRk' })
+    expect(out.songs[2]).toMatchObject({ album: '起风了', duration: 325, coverUrl: 'https://p1.music.126.net/1.jpg', songmid: '1001' })
+    expect(out.songs[3].album).toBe('旧专辑')
+    expect(out.songs[3].duration).toBeUndefined()
+  })
 })

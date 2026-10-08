@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { musicHallSourceOf, searchEndpointOf } from '@aurora/shared'
-import type { MusicHallSource, RecommendPlaylist, ToplistGroup, ToplistDetail } from '@/types'
+import type { MusicHallSource, ParsedSong, RecommendPlaylist, ToplistGroup, ToplistDetail } from '@/types'
 import { hallRecommend, hallToplists, hallToplistSongs, supportsMusicHall } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { HALL_LABEL, LIBRARY_LABEL } from '@/lib/routes'
@@ -34,6 +34,19 @@ interface Resource<T> {
 
 const emptyResource = <T,>(data: T): Resource<T> => ({ loading: false, error: null, data })
 
+/**
+ * 歌单详情数据：歌单名 + 曲目。
+ *
+ * 曲目**原样**用歌单解析协议的结果（ParsedSong）——不再裁剪成 `{title, artist}`。
+ * 裁剪会让新版音源服务带出的专辑 / 时长 / 封面全部流失，歌单详情页因此只剩歌名 + 歌手
+ * （榜单详情页一直有完整字段，两页厚度对不上）。协议最小集之外的字段缺席时，
+ * 由页面按 `?? 0` 兜底，不在这一层补空值。
+ */
+export interface PlaylistDetailData {
+  name: string
+  songs: ParsedSong[]
+}
+
 interface MusicHallState {
   /** 推荐歌单 */
   recommend: Resource<RecommendPlaylist[]>
@@ -44,7 +57,7 @@ interface MusicHallState {
   /** 榜单详情：按 topId 缓存（会话内） */
   toplistDetail: Record<string, Resource<ToplistDetail | null>>
   /** 歌单详情（来自歌单解析端点）：按歌单号缓存 */
-  playlistDetail: Record<string, Resource<{ name: string; songs: Array<{ title: string; artist: string }> } | null>>
+  playlistDetail: Record<string, Resource<PlaylistDetailData | null>>
 
   setQuery: (patch: Partial<RecommendQuery>) => void
   loadRecommend: (force?: boolean) => Promise<void>
@@ -207,6 +220,10 @@ export const useMusicHallStore = create<MusicHallState>()((set, get) => ({
   /**
    * 歌单详情：复用**既有**歌单解析端点（`{url}` 协议，支持 `?server=qq&id=` 直取）。
    * 走 shared 的 parsePlaylistLink 而非新端点，避免为同一能力再定义一套协议。
+   *
+   * 曲目字段与榜单详情**同名同义**（album / duration / coverUrl / songmid）：音源服务侧
+   * 的 /aurora/playlist 与 /aurora/toplist 由同一份口径描述，客户端不因「这是歌单」
+   * 就少认字段——过去正是在这一层把曲目裁成两个字段，歌单详情页才只剩歌名 + 歌手。
    */
   loadPlaylistDetail: async (id, force = false) => {
     const key = String(id)
@@ -238,7 +255,8 @@ export const useMusicHallStore = create<MusicHallState>()((set, get) => ({
           [key]: {
             loading: false,
             error: null,
-            data: { name: result.name || '', songs: result.songs.map((s) => ({ title: s.title, artist: s.artist })) },
+            // 整份曲目透传：源给多少字段就留多少（见 PlaylistDetailData 的说明）
+            data: { name: result.name || '', songs: result.songs },
           },
         },
       })
