@@ -18,6 +18,8 @@ import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { isDownloadableOnlineTrack } from '@/lib/onlineTrack'
 import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
 import { LIBRARY_LABEL } from '@/lib/routes'
+// 歌曲详情页没有独立页头：本页唯一的 h1 是黑胶旁的歌名，故用一级页头档
+import { PageTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -335,9 +337,7 @@ export function SongDetailPage() {
               <Radio className="h-3 w-3" strokeWidth={1.8} />
               {sourceLabel(track, librarySources)} · 歌曲详情
             </p>
-            <h1 className="font-display text-[26px] md:text-[36px] xl:text-[40px] font-bold text-white/98 leading-tight tracking-[-0.5px] break-words">
-              {track.title}
-            </h1>
+            <PageTitle className="break-words">{track.title}</PageTitle>
             <p className="font-text text-[15px] md:text-[16px] text-white/55 mt-2 tracking-[-0.224px]">
               {track.artist}
               {track.album ? <span className="text-white/45"> · {track.album}</span> : null}

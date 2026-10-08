@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
 import { LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
 import { PageLayout } from '@/components/PageLayout'
-import { SearchEntry } from '@/components/common/SearchEntry'
+import { PageTitle, PageSubtitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
 import {
   ContextMenu,
@@ -54,19 +54,15 @@ export function LikedPage() {
   return (
     <PageLayout
       header={
-        // 与曲库页同款头部：标题左、工具栏右；搜索入口固定在标题右侧原位置
+        // 与曲库页同款头部：标题左；搜索入口已上移到应用顶栏（全局常驻）
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
-            <h1 className="font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight">
-              我喜欢的音乐
-            </h1>
-            <p className="font-text text-[13px] text-white/50 mt-1 tracking-[-0.2px]">
+            <PageTitle>我喜欢的音乐</PageTitle>
+            <PageSubtitle>
               {tracks.length === 0 ? '收藏你喜欢的歌曲' : `${tracks.length} 首歌曲`}
-            </p>
+            </PageSubtitle>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0 pb-1">
-            <SearchEntry />
-          </div>
+          {/* 搜索入口已上移到应用顶栏（全局常驻），页头不再放置 */}
         </div>
       }
     >
