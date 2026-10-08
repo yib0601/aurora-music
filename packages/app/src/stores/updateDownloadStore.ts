@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { toErrorInfo, type ErrorInfo } from '@aurora/shared'
 import { isDesktop, isMobile } from '@/lib/utils'
 import type { AssetKind } from '@/services/update-asset'
 import {
@@ -16,6 +17,11 @@ import {
  * - 桌面端：Electron 主进程流式下载，进度/完成/失败经 updater 事件通道推进；
  * - Android：系统 DownloadManager 下载，按固定间隔轮询 progress() 推进。
  * UI（横幅 / 设置页 / 下载对话框）无需区分平台。
+ *
+ * 错误约定：`error` 存**结构化载荷**（码 + 参数 + detail），不存已渲染的句子。
+ * 三条来源（主进程事件通道的 message、原生插件的 error 文本、JS 异常）统一经
+ * `toErrorInfo()` 归一，渲染层用 `translateError(error, t)` 按当前语言出文案。
+ * 这样英文界面上不会冒出中文错误，中文界面也不会冒出英文栈。
  */
 
 export type UpdatePhase = 'idle' | 'downloading' | 'done' | 'error'
@@ -45,8 +51,8 @@ interface UpdateDownloadState {
   route: string | null
   /** 下载完成后的安装包路径（done 阶段） */
   filePath: string | null
-  /** error 阶段的原因 */
-  error: string | null
+  /** error 阶段的原因：结构化载荷，渲染期走 translateError(error, t) */
+  error: ErrorInfo | null
   /** 详情对话框是否可见（下载中可收起，完成/失败时自动重新弹出） */
   visible: boolean
   start: (task: UpdateTask) => void
@@ -63,6 +69,47 @@ function teardownEvents() {
   eventCleanups = []
 }
 
+/**
+ * 归一一条失败原因：任何来源都收敛成结构化载荷。
+ *
+ * 三条来源各自的样子不同，这里做唯一一次收口：
+ * - 主进程事件通道回传的多是技术原文（`HTTP 502`、校验失败原因）；
+ * - Android 原生插件回传中文短句（`已取消`）——那是**状态**不是文案，
+ *   必须在这里认出来换成码，否则英文界面上会直接出现中文；
+ * - JS 异常（fetch/AuroraError）走 shared 的 `toErrorInfo` 已经是结构化载荷。
+ *
+ * 导出是为了可单测：它把三条异构来源收敛成一套码，是整个更新链路
+ * 「不把抛出点的语言烧到界面上」的收口点。
+ */
+export function normalizeFailure(err: unknown): ErrorInfo {
+  if (err === null || err === undefined) return { code: 'update.error.downloadFailed' }
+  const raw = err instanceof Error ? err.message : String(err)
+  if (!raw.trim()) return { code: 'update.error.downloadFailed' }
+
+  // 取消：用户主动中止不是故障，给专属码而不是「下载失败」
+  if (!/AURORA_ERR:/.test(raw) && /取消|cancel/i.test(raw)) return { code: 'update.error.canceled' }
+
+  // 主进程把 HTTP 状态码当原因回传（`HTTP 403`）：shared 的 NATIVE_PATTERNS 只认
+  // fetch 抛出的英文网络异常，认不出裸状态码字符串，这里补一条，让它是「网络不可达」
+  // 而不是泛泛的「下载失败」，状态码留在 detail 里。
+  const httpMatch = /^HTTP \d{3}$/.exec(raw.trim())
+  if (httpMatch) {
+    const code = Number(raw.trim().slice(5))
+    if (code === 408 || code === 504) return { code: 'errors.network.timeout', detail: raw.trim() }
+    if (code >= 500 || code === 403 || code === 429) {
+      return { code: 'errors.network.unreachable', detail: raw.trim() }
+    }
+  }
+
+  const info = toErrorInfo(err)
+  // 未识别的裸文本会落到 errors.raw（模板 `{message}`）把原文透出上屏；
+  // 更新链路一律兜底成「下载失败」，原文留在 detail 里供诊断。
+  if (info.code === 'errors.raw') {
+    return { code: 'update.error.downloadFailed', detail: info.detail ?? raw }
+  }
+  return info
+}
+
 /** 订阅主进程下载事件（重复订阅前先清理，保证只有一套监听） */
 function setupEvents(set: (partial: Partial<UpdateDownloadState>) => void) {
   const api = (window as any).electronAPI?.updater
@@ -77,7 +124,9 @@ function setupEvents(set: (partial: Partial<UpdateDownloadState>) => void) {
       set({ phase: 'done', filePath: p.filePath, visible: true })
     }),
     api.onError((message: string) => {
-      set({ phase: 'error', error: message || '下载失败，请稍后重试', visible: true })
+      // 主进程回传的是技术原文（HTTP 状态、校验失败原因等），交给归一函数识别；
+      // 认不出来的一律兜底成「下载失败」并把原文留在 detail 里
+      set({ phase: 'error', error: normalizeFailure(message), visible: true })
     }),
   ]
 }
@@ -115,7 +164,7 @@ function startPolling(set: (partial: Partial<UpdateDownloadState>) => void) {
         })
       } else if (p.phase === 'error') {
         stopPolling()
-        set({ phase: 'error', error: p.error || '下载失败，请稍后重试', visible: true })
+        set({ phase: 'error', error: normalizeFailure(p.error), visible: true })
       } else if (p.phase === 'idle') {
         // 任务被取消/重置：不再继续轮询
         stopPolling()
@@ -126,7 +175,7 @@ function startPolling(set: (partial: Partial<UpdateDownloadState>) => void) {
       stopPolling()
       set({
         phase: 'error',
-        error: err instanceof Error && err.message ? err.message : '下载失败，请稍后重试',
+        error: normalizeFailure(err),
         visible: true,
       })
     }
@@ -153,7 +202,7 @@ async function startMobileDownload(
     if (useUpdateDownloadStore.getState().phase === 'downloading') {
       set({
         phase: 'error',
-        error: err instanceof Error && err.message ? err.message : '下载失败，请稍后重试',
+        error: normalizeFailure(err),
         visible: true,
       })
     }
@@ -196,7 +245,7 @@ export const useUpdateDownloadStore = create<UpdateDownloadState>()((set, get) =
           if (get().phase === 'downloading') {
             set({
               phase: 'error',
-              error: err instanceof Error && err.message ? err.message : '下载失败，请稍后重试',
+              error: normalizeFailure(err),
               visible: true,
             })
           }

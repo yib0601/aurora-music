@@ -5,6 +5,7 @@ import { useOpenSongDetail } from '@/lib/navigation'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { CoverImage } from '@/components/common/CoverImage'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
+import { useT } from '@/i18n'
 
 /**
  * 队列浮层（DS 皮肤）
@@ -12,6 +13,7 @@ import { cn, formatTime, isDesktop } from '@/lib/utils'
  * - 当前曲目用 mint 发丝描边 + 极轻底色标识，不再用大面积色块与投影
  */
 export function QueueView() {
+  const t = useT()
   // 已在详情页时不重复 push 同路径，避免返回按钮「退回」同一页
   const openSongDetail = useOpenSongDetail()
   const queue = usePlayerStore((s) => s.queue)
@@ -51,7 +53,7 @@ export function QueueView() {
     <div ref={panelRef} className="absolute right-0 bottom-full mb-3 w-80 max-h-[55vh] glass-liquid rounded-[16px] overflow-hidden z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 h-12 border-b border-white/[0.06]">
         <span className="font-display text-[15px] font-semibold tracking-[-0.224px] text-foreground">
-          播放队列
+          {t('player.queue.title')}
         </span>
         <button
           onClick={() => setQueuePanel(false)}
@@ -64,7 +66,7 @@ export function QueueView() {
         {queue.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-foreground/65">
             <Music2 className="h-10 w-10 mb-2 opacity-30" strokeWidth={1.5} />
-            <p className="font-text text-[14px] tracking-[-0.224px]">队列为空</p>
+            <p className="font-text text-[14px] tracking-[-0.224px]">{t('player.queue.empty')}</p>
           </div>
         ) : (
           <div className="space-y-0.5">
@@ -87,7 +89,7 @@ export function QueueView() {
                       usePlaylistStore.getState().setMobileNowPlaying(true)
                     }
                   }}
-                  title="查看歌曲详情"
+                  title={t('player.track.viewDetail')}
                   className="w-10 h-10 rounded-[10px] bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
                 >
                   <CoverImage

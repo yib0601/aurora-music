@@ -4,6 +4,7 @@ import {
   ChevronDown, Heart, ListMusic, Music2, Loader2,
 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
+import { useT } from '@/i18n'
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
@@ -37,6 +38,7 @@ interface Props {
  * 触控目标 ≥ 44×44，主播放按钮 72×72；不含音量控件（移动端交由系统硬件音量键）。
  */
 export function MobileNowPlaying({ open, onClose }: Props) {
+  const t = useT()
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const duration = usePlayerStore((s) => s.duration)
@@ -120,7 +122,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
       <header className="relative flex items-center justify-between px-2 pt-[calc(env(safe-area-inset-top)+4px)]">
         <button
           onClick={onClose}
-          aria-label="收起播放页"
+          aria-label={t('player.nowPlaying.collapse')}
           className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 active:text-white active:bg-white/[0.07] active:scale-95 transition"
         >
           <ChevronDown className="h-[22px] w-[22px]" strokeWidth={1.9} />
@@ -132,7 +134,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
             toggleQueuePanel()
             onClose()
           }}
-          aria-label="播放队列"
+          aria-label={t('player.queue.title')}
           className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 active:text-white active:bg-white/[0.07] active:scale-95 transition"
         >
           <ListMusic className="h-[21px] w-[21px]" strokeWidth={1.7} />
@@ -177,10 +179,10 @@ export function MobileNowPlaying({ open, onClose }: Props) {
       {/* 标题区：歌名是画面第二焦点，曲目信息层级用字号+透明度两档表达 */}
       <div className="relative px-10 pt-5 text-center">
         <p className="font-display text-[19px] font-semibold text-white/[0.96] tracking-[-0.4px] truncate">
-          {currentTrack?.title || '未在播放'}
+          {currentTrack?.title || t('player.state.notPlaying')}
         </p>
         <p className="mt-1 text-[12.5px] text-white/55 truncate tracking-[-0.1px]">
-          {currentTrack?.artist || '选择一首歌曲开始'}
+          {currentTrack?.artist || t('player.state.idleHint')}
         </p>
       </div>
 
@@ -190,7 +192,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <LyricsView
           large
           className="h-full"
-          onLineClick={(t) => usePlayerStore.getState().seekTo(t)}
+          onLineClick={(time) => usePlayerStore.getState().seekTo(time)}
           onHasLyricsChange={setHasLyrics}
         />
       </div>
@@ -220,7 +222,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
             step={0.01}
             defaultValue={0}
             disabled={!hasTrack}
-            aria-label="播放进度"
+            aria-label={t('player.nowPlaying.progress')}
             onPointerDown={onSeekStart}
             onPointerUp={onSeekCommit}
             onPointerCancel={onSeekCommit}
@@ -238,7 +240,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
       <div className="relative mx-auto w-full max-w-[440px] px-3 pt-0.5 pb-[calc(env(safe-area-inset-bottom)+10px)] grid grid-cols-5 items-center justify-items-center">
         <button
           onClick={cyclePlayMode}
-          aria-label="播放模式"
+          aria-label={t('player.mode.label')}
           className={cn(
             'w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition',
             playModeActive ? 'text-mint' : 'text-white/55',
@@ -257,7 +259,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <button
           onClick={() => usePlayerStore.getState().previous()}
           disabled={!hasTrack}
-          aria-label="上一首"
+          aria-label={t('common.action.previous')}
           className="w-12 h-12 flex items-center justify-center rounded-full text-white/[0.88] active:scale-90 transition disabled:opacity-35"
         >
           <SkipBack className="h-[23px] w-[23px]" fill="currentColor" strokeWidth={1.2} />
@@ -268,7 +270,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <button
           onClick={() => usePlayerStore.getState().togglePlay()}
           disabled={!hasTrack}
-          aria-label={resolving ? '加载中' : isPlaying ? '暂停' : '播放'}
+          aria-label={resolving ? t('common.state.loading') : isPlaying ? t('common.action.pause') : t('common.action.play')}
           className="w-[72px] h-[72px] rounded-full flex items-center justify-center bg-mint text-mint-fg disabled:opacity-35 active:scale-95 transition-transform duration-200 ease-apple shadow-[0_8px_20px_-10px_rgba(var(--fc-accent-rgb),.22),0_1px_6px_rgba(15,23,42,.08),inset_0_1px_0_rgba(255,255,255,.28)] dark:shadow-[0_8px_22px_-8px_rgba(var(--fc-accent-rgb),.55),0_2px_8px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.22)]"
         >
           {resolving ? (
@@ -282,7 +284,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <button
           onClick={() => usePlayerStore.getState().next()}
           disabled={!hasTrack}
-          aria-label="下一首"
+          aria-label={t('common.action.next')}
           className="w-12 h-12 flex items-center justify-center rounded-full text-white/[0.88] active:scale-90 transition disabled:opacity-35"
         >
           <SkipForward className="h-[23px] w-[23px]" fill="currentColor" strokeWidth={1.2} />
@@ -290,7 +292,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <button
           onClick={() => currentTrack && toggleLike(currentTrack.id)}
           disabled={!hasTrack}
-          aria-label={isLiked ? '取消收藏' : '收藏'}
+          aria-label={isLiked ? t('player.like.remove') : t('player.like.add')}
           className={cn(
             'w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition disabled:opacity-35',
             isLiked ? 'text-coral' : 'text-white/55',

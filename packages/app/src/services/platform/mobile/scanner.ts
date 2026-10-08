@@ -1,6 +1,6 @@
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { Capacitor } from '@capacitor/core'
-import { encodeFilePathToUrl } from '@aurora/shared'
+import { encodeFilePathToUrl, auroraError } from '@aurora/shared'
 import * as mm from 'music-metadata-browser'
 import type { Track } from '@/types'
 import { MobileDatabase } from './database'
@@ -106,7 +106,7 @@ async function processFile(
     // query 截断，导致读取到错误路径而扫描失败。统一用 shared 的逐段编码。
     const src = cap ? cap.convertFileSrc(encodeFilePathToUrl(abs)) : abs
     const res = await fetch(src)
-    if (!res.ok) throw new Error(`读取文件失败: ${res.status}`)
+    if (!res.ok) throw auroraError('runtime.error.fileReadFailed', { status: res.status })
     const blob = await res.blob()
 
     let metadata
@@ -118,8 +118,10 @@ async function processFile(
     }
 
     const title = metadata.common.title || fileName.replace(/\.[^.]+$/, '')
-    const artist = metadata.common.artist || '未知艺术家'
-    const album = metadata.common.album || '未知专辑'
+    // 无标签时的落库占位值保持中文原样：它参与 shared/coverMatch 的
+    // PLACEHOLDER_ARTISTS 匹配（判定「歌手未知」以放宽封面匹配），翻译它等于改匹配规则
+    const artist = metadata.common.artist || '未知艺术家' // i18n-exempt: 参与匹配的领域占位值
+    const album = metadata.common.album || '未知专辑' // i18n-exempt: 参与匹配的领域占位值
 
     const trackId = crypto.randomUUID()
     let coverPath: string | undefined

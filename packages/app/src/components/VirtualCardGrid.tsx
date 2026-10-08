@@ -16,6 +16,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, cn } from '@/lib/utils'
+import { useT } from '@/i18n'
 import {
   GRID_GAP,
   getCardHeight,
@@ -70,6 +71,7 @@ export const TrackCard = memo(function TrackCard({
   duplicateGroup?: DuplicateGroup<Track>
 }) {
   const navigate = useNavigate()
+  const t = useT()
 
   return (
     <ContextMenu>
@@ -90,7 +92,7 @@ export const TrackCard = memo(function TrackCard({
                 usePlaylistStore.getState().setMobileNowPlaying(true)
               }
             }}
-            title="查看歌曲详情"
+            title={t('library.action.viewDetails')}
             className="aspect-square rounded-[10px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer transition-transform duration-200 ease-apple group-hover:scale-[1.02]"
           >
             <CoverImage
@@ -128,21 +130,21 @@ export const TrackCard = memo(function TrackCard({
       <ContextMenuContent className="w-52">
         <ContextMenuItem onClick={() => onPlay(idx)}>
           <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          立即播放
+          {t('common.action.play')}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => usePlayerStore.getState().addToPlayNext(track)}>
           <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          下一首播放
+          {t('library.action.playNext')}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => usePlayerStore.getState().addToQueue(track)}>
           <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          添加到队列
+          {t('library.action.addToQueue')}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-            添加到播放列表
+            {t('library.action.addToPlaylist')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-48">
             <PlaylistSubmenuItems trackId={track.id} onCreatePlaylist={onCreatePlaylist} />
@@ -151,7 +153,7 @@ export const TrackCard = memo(function TrackCard({
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => useLibraryStore.getState().toggleLike(track.id)}>
           <Heart className={cn('h-4 w-4 mr-2', liked && 'fill-coral text-coral')} strokeWidth={1.5} />
-          {liked ? '取消收藏' : '收藏'}
+          {liked ? t('library.action.unlike') : t('library.action.like')}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

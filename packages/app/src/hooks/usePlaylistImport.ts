@@ -3,6 +3,8 @@ import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { toast } from '@/components/common/Toast'
+import { renderErrorMessage } from '@/lib/utils'
+import { useT } from '@/i18n'
 import {
   parsePlaylistText,
   extractShareUrl,
@@ -26,6 +28,12 @@ export interface ImportPreview {
   localMatches: Array<Track | null>
   /** 建议的歌单名（解析源返回的标题或默认名） */
   suggestedName: string
+  /**
+   * suggestedName 是否来自解析源。
+   * 调用方据此决定「要不要回填输入框」——不能用字符串比较默认名，
+   * 默认名跟随语言，比较会在英文界面下静默失效。
+   */
+  nameFromSource: boolean
 }
 
 export interface ImportResult {
@@ -67,6 +75,7 @@ function toImportedTrack(r: OnlineTrackSearchResult): Track {
  * 2. confirm：本地曲库有就用本地；没有的搜同一批音源的搜索接口取最佳结果直接进歌单（不下载）
  */
 export function usePlaylistImport() {
+  const t = useT()
   const [phase, setPhase] = useState<'idle' | 'parsing' | 'importing'>('idle')
   /** 在线补齐进度 [已完成, 总数] */
   const [progress, setProgress] = useState<[number, number]>([0, 0])
@@ -79,7 +88,8 @@ export function usePlaylistImport() {
     cancelRef.current = false
 
     let songs: ParsedSong[] = []
-    let suggestedName = '导入的播放列表'
+    let suggestedName = t('library.playlist.defaultImportName')
+    let nameFromSource = false
 
     const shareUrl = extractShareUrl(text)
     if (shareUrl) {
@@ -88,9 +98,19 @@ export function usePlaylistImport() {
         const sources = useLibraryStore.getState().onlineSources
         const result = await parsePlaylistLink(sources, shareUrl)
         songs = result.songs
-        if (result.name) suggestedName = result.name
-      } catch (err: any) {
-        toast(err?.message || '歌单解析失败', { type: 'error', duration: 6000 })
+        if (result.name) {
+          suggestedName = result.name
+          nameFromSource = true
+        }
+      } catch (err) {
+        // 解析失败不阻断：回退纯文本解析。
+        // 原因走结构化渲染（音源侧 AuroraError 的码 → 当前语言文案；未知错误原文透出），
+        // 外面仍套本域的整句，用户一眼知道是「歌单解析」这一步出的问题
+        console.warn('[usePlaylistImport] 歌单解析失败:', err)
+        toast(t('library.error.parseFailed', { reason: renderErrorMessage(err) }), {
+          type: 'error',
+          duration: 6000,
+        })
         songs = parsePlaylistText(text)
       }
     } else {
@@ -98,7 +118,7 @@ export function usePlaylistImport() {
     }
 
     if (songs.length === 0) {
-      toast('没有解析出任何歌曲，请检查粘贴内容（每行一首：歌名 - 歌手）', { type: 'error', duration: 6000 })
+      toast(t('library.import.emptyResult'), { type: 'error', duration: 6000 })
       setPhase('idle')
       return null
     }
@@ -110,8 +130,8 @@ export function usePlaylistImport() {
       dedupeTracksForDisplay(useLibraryStore.getState().tracks).tracks
     )
     setPhase('idle')
-    return { songs, localMatches, suggestedName }
-  }, [])
+    return { songs, localMatches, suggestedName, nameFromSource }
+  }, [t])
 
   const confirm = useCallback(
     async (preview: ImportPreview, playlistName: string): Promise<ImportResult | null> => {
@@ -179,7 +199,7 @@ export function usePlaylistImport() {
       if (imported.length === 0) {
         // 一首都没匹配到：不创建空歌单，对话框保持打开供用户调整
         setPhase('idle')
-        toast('没有可导入的歌曲：本地曲库未匹配，在线匹配也无结果', { type: 'error', duration: 6000 })
+        toast(t('library.import.nothingMatched'), { type: 'error', duration: 6000 })
         return null
       }
       const playlist = usePlaylistStore.getState().createPlaylist(playlistName.trim() || preview.suggestedName)
@@ -199,7 +219,7 @@ export function usePlaylistImport() {
         unmatched,
       }
     },
-    []
+    [t]
   )
 
   const cancel = useCallback(() => {

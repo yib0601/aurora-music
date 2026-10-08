@@ -1,6 +1,7 @@
 import type { DownloadQuality, OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
 import { searchEndpointOf } from './auroraPreset'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
+import { auroraError, toErrorInfo } from './i18n/errors'
 import { getLxHostDeps } from './lxHost'
 import { resolveLxScript, searchLxSourceForAggregate } from './lxResolver'
 
@@ -78,7 +79,7 @@ export async function searchMusicSource(
 ): Promise<OnlineTrackSearchResult[]> {
   const endpoint = searchEndpointOf(source)
   if (!endpoint.includes('{query}')) {
-    throw new Error(`源「${source.name}」的接口地址无效，必须包含 {query} 占位符`)
+    throw auroraError('core.error.sourceUrlNoQuery', { name: source.name, query: '{query}' })
   }
 
   const url = endpoint
@@ -92,11 +93,20 @@ export async function searchMusicSource(
       SEARCH_TIMEOUT_MS
     )
   } catch (err) {
-    // 超时给中文结论：搜索是并发多源的，哪个源超时了要一眼看出
-    if (isTimeoutError(err)) throw new Error(`源「${source.name}」请求超时（${SEARCH_TIMEOUT_MS}ms）`)
-    throw new Error(`源「${source.name}」请求失败：${(err as Error).message}`)
+    // 超时单独成句（源名 + 超时时长），失败原因交给结构化错误码：哪个源超时了要一眼看出
+    if (isTimeoutError(err)) {
+      throw auroraError('core.error.sourceTimeout', { name: source.name, ms: SEARCH_TIMEOUT_MS })
+    }
+    // reason 取归一后的**技术原文**：直接拿 err.message 会在嵌套结构化错误时
+    // 把 `AURORA_ERR:{...}` 编码串插进句子（detail 才是给人看的那一份）
+    const info = toErrorInfo(err)
+    throw auroraError(
+      'core.error.sourceRequestFailed',
+      { name: source.name, reason: info.detail || info.code },
+      String(err)
+    )
   }
-  if (!resp.ok) throw new Error(`源「${source.name}」返回 HTTP ${resp.status}`)
+  if (!resp.ok) throw auroraError('core.error.sourceHttpStatus', { name: source.name, status: resp.status })
 
   const json = (await resp.json()) as any
   const rawItems = extractItems(json)
@@ -111,6 +121,8 @@ export async function searchMusicSource(
     const idStr = rawId != null ? String(rawId) : String(results.length)
     results.push({
       id: `${source.id}-${idStr}`,
+      // i18n-exempt: 匹配数据 —— 这两个占位值与 coverMatch.PLACEHOLDER_ARTISTS 同源，
+      // 参与标题/歌手匹配与下载文件命名，翻译它等于改匹配规则
       title: String(item.title || item.name || item.songName || '未知歌曲'),
       artist: String(item.artist || item.singer || item.artists || '未知艺术家'),
       album: String(item.album || item.albumName || ''),
@@ -360,7 +372,7 @@ export async function searchOnlineTracks(
     }
   }
   if (allFailed) {
-    throw new Error('所有音乐源请求失败，请检查网络连接或源配置')
+    throw auroraError('core.error.allSourcesFailed')
   }
 
   if (!qualityMatters) return results

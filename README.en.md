@@ -42,9 +42,10 @@ The first screen is the **online library**: recommended playlists and charts ser
 - **Lyrics** — LRC synchronized lyrics (including word-level timestamps), provided by your music source; no separate lyrics source needed
 - **Playlist import** — share links (resolved through your source) or plain text (handled locally, zero network requests), matched against your local library
 - **Appearance** — Liquid Glass aesthetics, dynamic cover glow background, dark / light / follow-system themes
+- **Languages** — Simplified Chinese and English, following the system by default and pin-able in Settings; the UI, Android notification controls, the desktop `.desktop` entry and deb metadata are all localized
 - **Resilient update delivery** — update checks and installer downloads fall back from GitHub official to public mirrors: checks race the candidates concurrently, downloads follow the system proxy and switch source when one is clearly slower
 
-> The application UI is currently Chinese-only. Locale-driven English UI is planned.
+> The interface ships in Simplified Chinese and English. It follows the system language by default and can be pinned to either one in Settings; the Android notification controls and permission prompts are localized along with it.
 
 ---
 

@@ -16,6 +16,7 @@ import {
 import { audioEvents } from '@/services/audioEvents'
 import { resolveCachedAudioSrc } from '@/services/audioCache.service'
 import { toast } from '@/components/common/Toast'
+import { appTranslate } from '@/i18n'
 import {
   isNativePlayerAvailable,
   startNativeService,
@@ -155,11 +156,12 @@ function hasPlayableSrc(track: Track): boolean {
 }
 
 /**
- * 取址失败的提示：与页面层同一句文案（此前散在四个页面各自 toast）
+ * 取址失败的提示：与页面层同一句文案（此前散在四个页面各自 toast）。
+ * store 没有渲染周期，译文在**每次调用时**取（appTranslate），不缓存成模块级常量。
  */
 function notifyResolveFailed(track: Track): void {
   console.warn(`[播放] 取址失败，无法播放：${track.title} - ${track.artist}`)
-  toast('无法播放该在线歌曲：未配置音源或搜索无结果', { type: 'error' })
+  toast(appTranslate()('runtime.player.resolveFailed'), { type: 'error' })
 }
 
 /**

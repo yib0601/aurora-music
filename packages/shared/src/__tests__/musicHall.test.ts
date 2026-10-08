@@ -1,5 +1,6 @@
 import { fetchRecommendPlaylists, fetchToplistGroups, fetchToplistSongs, musicHallSourceOf } from '../musicHall'
 import { setCustomFetch } from '../fetchWithTimeout'
+import { expectCode, rejectionOf } from './i18nAssert'
 import type { MusicHallSource } from '../types'
 
 /** 固定音源：服务地址形态（在线音乐端点由协议派生） */
@@ -156,17 +157,19 @@ describe('fetchToplistGroups', () => {
     expect(await fetchToplistGroups(SOURCE)).toEqual([])
   })
 
-  it('HTTP 非 2xx 抛带源名的中文错误', async () => {
+  it('HTTP 非 2xx 抛带源名与状态码的错误', async () => {
     setCustomFetch(async () => new Response('boom', { status: 502 }))
-    await expect(fetchToplistGroups(SOURCE)).rejects.toThrow(/我的音源.*502/)
+    const err = await rejectionOf(fetchToplistGroups(SOURCE))
+    expectCode(err, 'core.error.hallHttpStatus', { name: '我的音源', status: 502 })
   })
 
   it('响应不是 JSON 时抛错', async () => {
     setCustomFetch(async () => new Response('<html>502</html>', { status: 200 }))
-    await expect(fetchToplistGroups(SOURCE)).rejects.toThrow(/不是 JSON/)
+    const err = await rejectionOf(fetchToplistGroups(SOURCE))
+    expectCode(err, 'core.error.hallNotJson', { name: '我的音源' })
   })
 
-  it('上游超过 10s 超时：抛带源名的中文超时错误，不是英文 AbortError', async () => {
+  it('上游超过 10s 超时：抛带源名的超时错误，不是英文 AbortError', async () => {
     // 复现用户侧现象：音源服务慢于 HALL_TIMEOUT_MS，底层抛 AbortError
     // 本用例真等满 10s 超时预算，故单独放宽 vitest 默认 5s 上限
     setCustomFetch(
@@ -178,7 +181,8 @@ describe('fetchToplistGroups', () => {
         })
     )
     const err = await fetchToplistGroups(SOURCE).catch((e) => e as Error)
-    expect(err.message).toBe('音源「我的音源」请求超时（10000ms）')
+    expectCode(err, 'core.error.hallTimeout', { name: '我的音源', ms: 10000 })
+    // 底层 AbortError 的英文原文一个字都不许漏进载荷（改成结构化后同样成立）
     expect(err.message).not.toMatch(/aborted/i)
   }, 20000)
 })

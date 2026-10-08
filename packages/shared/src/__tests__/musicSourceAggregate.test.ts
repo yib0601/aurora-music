@@ -9,6 +9,7 @@
  */
 import { searchOnlineTracks, clearSearchCache } from '../musicSource'
 import { setCustomFetch } from '../fetchWithTimeout'
+import { expectCode, rejectionOf } from './i18nAssert'
 import type { OnlineSourceConfig, OnlineTrackSearchResult } from '../types'
 
 interface Call {
@@ -185,9 +186,8 @@ describe('搜索结果缓存', () => {
         headers: { 'content-type': 'application/json' },
       })
     })
-    await expect(
-      searchOnlineTracks('抖动词', { sources: [SOURCE], quality: '128' })
-    ).rejects.toThrow('所有音乐源请求失败，请检查网络连接或源配置')
+    const err = await rejectionOf(searchOnlineTracks('抖动词', { sources: [SOURCE], quality: '128' }))
+    expectCode(err, 'core.error.allSourcesFailed')
     const again = await searchOnlineTracks('抖动词', { sources: [SOURCE], quality: '128' })
     expect(again).toHaveLength(1)
   })
@@ -213,12 +213,11 @@ describe('结果结构与顺序不变', () => {
     expect(out.map((r) => r.id)).toEqual(['src-1-A', 'b-B'])
   })
 
-  it('全部源失败时报出统一中文错误', async () => {
+  it('全部源失败时报出统一的失败结论', async () => {
     setCustomFetch(async () => {
       throw new Error('down')
     })
-    await expect(
-      searchOnlineTracks('全挂词', { sources: [SOURCE], quality: '128' })
-    ).rejects.toThrow('所有音乐源请求失败，请检查网络连接或源配置')
+    const err = await rejectionOf(searchOnlineTracks('全挂词', { sources: [SOURCE], quality: '128' }))
+    expectCode(err, 'core.error.allSourcesFailed')
   })
 })

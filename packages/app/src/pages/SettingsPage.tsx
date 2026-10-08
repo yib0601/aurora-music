@@ -14,13 +14,14 @@ import { isDesktop, isMobile } from '@/lib/utils'
 import {
   CACHE_LIMIT_MAX_GB,
   CACHE_LIMIT_MIN_GB,
-  formatCacheLimit,
   GB_PRESETS,
   gbToMb,
   mbToGb,
   parseCacheLimitGbDraft,
 } from '@/lib/cacheLimit'
-import { LIBRARY_LABEL } from '@/lib/routes'
+import { NAV_LABEL_KEYS } from '@/lib/routes'
+import { useLocale, useT } from '@/i18n'
+import { useLocaleStore } from '@/stores/localeStore'
 import { toast } from '@/components/common/Toast'
 import { APP_VERSION, REPO_URL, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
@@ -30,12 +31,23 @@ import {
   LxScriptProbe,
   type LxProbeState,
 } from '@/components/common/LxSourceProbe'
-import { checkLxScriptLink, lxFormSupported } from '@/components/common/lxSourceForm'
+import { checkLxScriptLink, lxFormSupported, renderError } from '@/components/common/lxSourceForm'
 import {
   buildAuroraEndpoints,
   checkSourceForm,
+  formatBytes,
+  formatNumber,
+  LANGUAGE_PREFERENCES,
+  LOCALE_LABELS,
+  SYSTEM_LANGUAGE_LABELS,
 } from '@aurora/shared'
-import type { AuroraEndpoints, OnlineSourceKind } from '@aurora/shared'
+import type {
+  AuroraEndpoints,
+  LanguagePreference,
+  Locale,
+  MessageKey,
+  OnlineSourceKind,
+} from '@aurora/shared'
 
 /**
  * 打开外部链接。
@@ -52,11 +64,28 @@ function openExternalUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-const themeOptions = [
-  { value: 'dark' as const, label: '深色', icon: Moon },
-  { value: 'light' as const, label: '浅色', icon: Sun },
-  { value: 'system' as const, label: '跟随系统', icon: Monitor },
+/**
+ * 主题档位。`labelKey` 而不是 `label: string` 是刻意的：这是模块级常量数组，
+ * 在这里求值文案会把语言冻结在模块加载那一刻（见 docs/i18n.md 硬规则 1）。
+ */
+const themeOptions: ReadonlyArray<{
+  value: 'dark' | 'light' | 'system'
+  labelKey: MessageKey
+  icon: typeof Moon
+}> = [
+  { value: 'dark', labelKey: 'settings.general.theme.dark', icon: Moon },
+  { value: 'light', labelKey: 'settings.general.theme.light', icon: Sun },
+  { value: 'system', labelKey: 'settings.general.theme.system', icon: Monitor },
 ]
+
+/**
+ * 语言选项的名称规则：具体语言一律用**该语言自身**书写（简体中文 / English），
+ * 「跟随系统」按**当前界面语言**书写。名字由 shared 提供，不进字典——
+ * 用户看不懂当前界面语言时，母语名是唯一能自救的线索。
+ */
+function languageOptionLabel(value: LanguagePreference, locale: Locale): string {
+  return value === 'system' ? SYSTEM_LANGUAGE_LABELS[locale] : LOCALE_LABELS[value]
+}
 
 /**
  * 端点预览压缩：弹窗可用宽度约 400px，整条 URL（host + 长密钥 + 占位符）必被
@@ -81,34 +110,31 @@ function compactEndpointUrl(url: string): string {
 
 /** 缓存容量合法区间与换算集中在 @/lib/cacheLimit：UI 只消费它的 GB 口径 */
 
-function formatBytes(n: number): string {
-  if (!isFinite(n) || n <= 0) return '0 MB'
-  const mb = n / 1024 / 1024
-  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
-}
-
-/** 下载音质档位：值对应歌源协议的 {quality} 占位符与 qualityUrls 键 */
-const downloadQualityOptions = [
-  { value: '128' as const, label: '标准 128k' },
-  { value: '320' as const, label: '高品质 320k' },
-  { value: 'flac' as const, label: '无损 FLAC' },
+/** 下载音质档位：值对应歌源协议的 {quality} 占位符与 qualityUrls 键（文案键在渲染期取译文） */
+const downloadQualityOptions: ReadonlyArray<{ value: '128' | '320' | 'flac'; labelKey: MessageKey }> = [
+  { value: '128', labelKey: 'settings.storage.downloadQuality.standard' },
+  { value: '320', labelKey: 'settings.storage.downloadQuality.high' },
+  { value: 'flac', labelKey: 'settings.storage.downloadQuality.lossless' },
 ]
 
 /**
- * 设置分区表：左侧导航、分区标题、滚动锚点三处共用这一份 id/名称，避免改一处漏两处。
+ * 设置分区表：左侧导航、分区标题、滚动锚点三处共用这一份 id/键，避免改一处漏两处。
  * 顺序即用户的任务顺序：先调外观 → 再管曲库来源 → 再管落盘 → 再管在线源 → 最后是版本信息。
  *
  * 分区数刻意收在 5 个：原来的「下载」「缓存」「软件更新」「关于」四个卡片各自只有一两行内容，
  * 平铺出来是四张等重卡片，用户扫读时要逐个读标题才知道哪个是哪个；合并后
  * 「下载 + 缓存」同属落盘语义、「软件更新 + 关于」同属版本语义，导航一眼可辨。
+ *
+ * 库里那一区复用 `nav.item.library`：页名在侧栏、页头、空态按钮等十几处出现，
+ * 另开一份键必然漂移。
  */
-const SETTINGS_SECTIONS = [
-  { id: 'general', label: '通用' },
-  { id: 'library', label: LIBRARY_LABEL },
-  { id: 'storage', label: '下载与缓存' },
-  { id: 'sources', label: '在线源' },
-  { id: 'about', label: '关于' },
-] as const
+const SETTINGS_SECTIONS: ReadonlyArray<{ id: string; labelKey: MessageKey }> = [
+  { id: 'general', labelKey: 'settings.nav.general' },
+  { id: 'library', labelKey: NAV_LABEL_KEYS.library },
+  { id: 'storage', labelKey: 'settings.nav.storage' },
+  { id: 'sources', labelKey: 'settings.nav.sources' },
+  { id: 'about', labelKey: 'settings.nav.about' },
+]
 
 /** 分区 DOM id：导航、滚动定位与 spy 共用，禁止在别处拼字面量 */
 const settingsSectionId = (id: string) => `settings-${id}`
@@ -143,12 +169,13 @@ const settingsSectionId = (id: string) => `settings-${id}`
  * 窄屏仍是横向胶囊条（实心 mint）：横向 chip 用实心是标准形态，竖条在那里没有意义。
  */
 function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: string) => void }) {
+  const t = useT()
   return (
     <nav
       data-settings-nav
       className="flex flex-wrap gap-1.5 lg:grid lg:w-fit lg:flex-none lg:flex-shrink-0 lg:grid-cols-[max-content] lg:content-start lg:gap-y-1 lg:self-stretch lg:border-r lg:border-white/[0.06] lg:pr-3"
     >
-      {SETTINGS_SECTIONS.map(({ id, label }) => {
+      {SETTINGS_SECTIONS.map(({ id, labelKey }) => {
         const on = active === id
         return (
           <button
@@ -170,7 +197,7 @@ function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: stri
                 : 'text-white/65 hover:bg-white/[0.05] hover:text-white/90'
             }`}
           >
-            {label}
+            {t(labelKey)}
           </button>
         )
       })}
@@ -348,6 +375,7 @@ function SourceEditorCard({
   const hasHeaders = headers != null && Object.keys(headers).length > 0
   const isMusic = kind === 'music'
   const isLx = sourceKind === 'lx'
+  const t = useT()
   const [editing, setEditing] = useState(false)
   const [showHeaders, setShowHeaders] = useState(hasHeaders)
   const [nameDraft, setNameDraft] = useState(name)
@@ -371,10 +399,11 @@ function SourceEditorCard({
     playlistUrl: playlistDraft,
     headersInvalid,
   })
-  const { parsed, isService, linkError, showPlaylist, playlistError } = aurora
+  // 校验错误由 checkSourceForm 直接给出结构化信封（code + 参数），渲染期按当前语言取文案
+  const { parsed, isService, showPlaylist, canSave: auroraCanSave, linkError, playlistError } = aurora
   // 洛雪形态另走一条校验：脚本链接既不是服务地址也不是接口模板，checkSourceForm 那套判定对它无效
   const lxLinkError = isLx && linkText ? checkLxScriptLink(linkText) : null
-  const canSave = isLx ? Boolean(linkText) && !lxLinkError && !headersInvalid : aurora.canSave
+  const canSave = isLx ? Boolean(linkText) && !lxLinkError && !headersInvalid : auroraCanSave
   // 预览即执行时真正会用的端点：优先服务端自描述，其次默认约定
   const preview =
     !isLx && isService && parsed ? buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, probeEndpoints) : null
@@ -486,29 +515,29 @@ function SourceEditorCard({
           <input
             type="text"
             value={nameDraft}
-            placeholder="源名称"
+            placeholder={t('sources.form.nameDraftPlaceholder')}
             onChange={(e) => setNameDraft(e.target.value)}
             className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-mint/50 transition-colors duration-200 py-1"
           />
         ) : (
           <>
-            <span className="flex-1 font-text text-caption-strong text-white/90 truncate py-1">{name || '未命名源'}</span>
+            <span className="flex-1 font-text text-caption-strong text-white/90 truncate py-1">{name || t('sources.form.unnamed')}</span>
             {/* 能力标签：一眼看出这条音源能搜索、还是也能解析歌单；洛雪脚本源只标形态与平台 */}
             <span className="flex items-center gap-1 flex-shrink-0">
               {isLx ? (
                 <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
-                  洛雪脚本
+                  {t('sources.capability.lxScript')}
                 </span>
               ) : (
                 <>
                   {sourceUrl.trim() && (
                     <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
-                      {isMusic ? '搜索' : '歌词'}
+                      {isMusic ? t('sources.capability.search') : t('sources.capability.lyrics')}
                     </span>
                   )}
                   {isMusic && (playlistUrl || '').trim() && (
                     <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/55">
-                      歌单
+                      {t('sources.capability.playlist')}
                     </span>
                   )}
                 </>
@@ -535,7 +564,7 @@ function SourceEditorCard({
           <Button
             variant="ghost"
             size="icon"
-            title="编辑"
+            title={t('common.action.edit')}
             className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
@@ -556,7 +585,7 @@ function SourceEditorCard({
           {isLx ? (
             /* 洛雪脚本源：只有一条脚本链接 + 可选请求头，端点与密钥那套对它不适用 */
             <div>
-              <p className="font-text text-caption text-white/50 mb-1">脚本链接</p>
+              <p className="font-text text-caption text-white/50 mb-1">{t('sources.form.scriptLabel')}</p>
               <LxScriptProbe
                 url={linkDraft}
                 headers={parsedHeaders}
@@ -568,15 +597,15 @@ function SourceEditorCard({
                 error={lxLinkError}
                 compact
               />
-              <p className="font-text text-caption text-white/35 mt-1">
-                脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索
-              </p>
+              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.scriptHint')}</p>
             </div>
           ) : (
             <>
           {/* 一条链接搞定：服务地址由软件组装两个端点，接口模板原样使用——形态由链接自身判定 */}
           <div>
-            <p className="font-text text-caption text-white/50 mb-1">{isMusic ? '音源地址' : '接口地址'}</p>
+            <p className="font-text text-caption text-white/50 mb-1">
+              {isMusic ? t('sources.form.sourceLabel') : t('sources.form.apiLabel')}
+            </p>
             <input
               type="text"
               value={linkDraft}
@@ -591,26 +620,24 @@ function SourceEditorCard({
               }`}
             />
             {linkError ? (
-              <p className="font-text text-caption text-coral/70 mt-1">{linkError}</p>
+              <p className="font-text text-caption text-coral/70 mt-1">{renderError(linkError, t)}</p>
             ) : isService ? (
               <p className="font-text text-caption text-mint/70 mt-1">
-                {parsed?.apiKey
-                  ? '已识别为服务地址，密钥已提取；搜索与歌单接口自动生成'
-                  : '已识别为服务地址；搜索与歌单接口自动生成，密钥可写在链接里'}
+                {parsed?.apiKey ? t('sources.form.sourceDetectedWithKey') : t('sources.form.sourceDetected')}
               </p>
             ) : parsed ? (
-              <p className="font-text text-caption text-white/35 mt-1">按接口模板使用，占位符由软件替换</p>
+              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.templateDetected')}</p>
             ) : (
-              <p className="font-text text-caption text-white/35 mt-1">
-                服务地址或完整接口地址都行；密钥写在链接里即可，如 https://host?key=xxx
-              </p>
+              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.sourceHint')}</p>
             )}
           </div>
 
           {/* 歌单解析接口只在接口模板形态下手填：服务地址形态的该端点由软件派生 */}
           {showPlaylist && (
             <div className="mt-2">
-              <p className="font-text text-caption text-white/50 mb-1">歌单解析接口（可选，需含 {'{url}'}）</p>
+              <p className="font-text text-caption text-white/50 mb-1">
+                {t('sources.form.playlistLabelRequired', { placeholder: '{url}' })}
+              </p>
               <input
                 type="text"
                 value={playlistDraft}
@@ -621,9 +648,9 @@ function SourceEditorCard({
                 }`}
               />
               {playlistError ? (
-                <p className="font-text text-caption text-coral/70 mt-1">{playlistError}</p>
+                <p className="font-text text-caption text-coral/70 mt-1">{renderError(playlistError, t)}</p>
               ) : (
-                <p className="font-text text-caption text-white/35 mt-1">留空表示该音源不参与歌单导入</p>
+                <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.playlistHint')}</p>
               )}
             </div>
           )}
@@ -642,11 +669,11 @@ function SourceEditorCard({
                   className={`h-3.5 w-3.5 mr-1.5 ${probe.loading ? 'animate-spin' : ''}`}
                   strokeWidth={1.6}
                 />
-                {probe.loading ? '测试中…' : '测试连接'}
+                {probe.loading ? t('sources.probe.testing') : t('sources.probe.testConnection')}
               </Button>
               {probe.message && (
                 <p className={`font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}>
-                  {probe.message}
+                  {renderError(probe.message, t)}
                 </p>
               )}
             </div>
@@ -655,9 +682,15 @@ function SourceEditorCard({
             <div className="mt-2 space-y-0.5">
               {/* 先回显软件从这条链接里提取出的服务地址：用户填的可能是裸域名、
                   带 key 的域名，或一条完整端点地址，不写清楚他会以为判定错了 */}
-              <p className="font-text text-caption text-white/35 truncate">服务 {parsed?.baseUrl}</p>
-              <p className="font-text text-caption text-white/35 truncate">搜索 {maskPreview(compactEndpointUrl(preview.search))}</p>
-              <p className="font-text text-caption text-white/35 truncate">歌单 {maskPreview(compactEndpointUrl(preview.playlist))}</p>
+              <p className="font-text text-caption text-white/35 truncate">
+                {t('sources.form.previewService', { url: parsed?.baseUrl ?? '' })}
+              </p>
+              <p className="font-text text-caption text-white/35 truncate">
+                {t('sources.form.previewSearch', { url: maskPreview(compactEndpointUrl(preview.search)) })}
+              </p>
+              <p className="font-text text-caption text-white/35 truncate">
+                {t('sources.form.previewPlaylist', { url: maskPreview(compactEndpointUrl(preview.playlist)) })}
+              </p>
             </div>
           )}
             </>
@@ -669,7 +702,7 @@ function SourceEditorCard({
               className="h-8 px-3 text-white/60 hover:text-white/90"
               onClick={() => setEditing(false)}
             >
-              取消
+              {t('common.action.cancel')}
             </Button>
             <Button
               size="sm"
@@ -677,7 +710,7 @@ function SourceEditorCard({
               disabled={!canSave}
               onClick={handleSave}
             >
-              保存
+              {t('common.action.save')}
             </Button>
           </div>
         </>
@@ -718,6 +751,7 @@ function SourceAddDialog({
   const [probe, setProbe] = useState<{ loading: boolean; ok?: boolean; message?: string }>({ loading: false })
   const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(undefined)
   const [lxProbe, setLxProbe] = useState<LxProbeState>({ loading: false })
+  const t = useT()
 
   // 每次打开重置表单
   useEffect(() => {
@@ -748,7 +782,7 @@ function SourceAddDialog({
     playlistUrl,
     headersInvalid,
   })
-  const { parsed, isService, linkError, showPlaylist, playlistError } = aurora
+  const { parsed, isService, showPlaylist, linkError, playlistError } = aurora
   // 洛雪形态另走一条校验：脚本链接既不是服务地址也不是接口模板
   const lxLinkError = isLx ? checkLxScriptLink(linkDraft) : null
   const canSave = isLx
@@ -809,7 +843,7 @@ function SourceAddDialog({
 
   const handleSave = () => {
     if (!canSave) return
-    const displayName = name.trim() || (isLx ? '新洛雪源' : '新音源')
+    const displayName = name.trim() || (isLx ? t('sources.form.defaultNameLx') : t('sources.form.defaultName'))
     if (isLx) {
       // 洛雪形态：只写脚本链接，脚本源码不落库（运行时按链接现拉）。
       // 测试未通过也允许先存，但落 enabled=false——源不可用就不该默认参与搜索，
@@ -823,7 +857,7 @@ function SourceAddDialog({
       })
       onOpenChange(false)
       if (lxProbe.ok !== true) {
-        toast('脚本未测试通过，已保存为停用；测试通过后可在列表中启用', { type: 'error', duration: 5000 })
+        toast(t('sources.form.savedDisabled'), { type: 'error', duration: 5000 })
       }
       return
     }
@@ -851,30 +885,32 @@ function SourceAddDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">
-            {isLx ? '添加洛雪音源' : '添加音源'}
+            {isLx ? t('sources.form.titleLx') : t('sources.form.title')}
           </DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
-            {isLx
-              ? '粘贴脚本链接，脚本提供取址能力'
-              : '服务地址自动生成接口，接口模板原样使用'}
+            {isLx ? t('sources.form.descLx') : t('sources.form.desc')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           {/* 形态选择：服务地址（端点自动派生）或洛雪脚本 */}
           {(
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">音源形态</p>
+              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.kindLabel')}</p>
               <div className="grid grid-cols-2 gap-2">
                 {(
                   [
-                    { value: 'aurora' as const, label: 'Aurora 协议源', hint: '服务地址 / 接口模板' },
+                    { value: 'aurora' as const, labelKey: 'sources.form.kindAurora', hintKey: 'sources.form.kindAuroraHint' },
                     {
                       value: 'lx' as const,
-                      label: '洛雪音源脚本',
+                      labelKey: 'sources.form.kindLx',
                       // 纯浏览器没有脚本执行能力：卡片直接说明原因并禁用，不让用户白填一遍
-                      hint: lxSupported ? '脚本链接（取址）' : '仅桌面端 / 手机端支持',
+                      hintKey: lxSupported ? 'sources.form.kindLxHint' : 'sources.form.kindLxHintUnsupported',
                     },
-                  ]
+                  ] satisfies ReadonlyArray<{
+                    value: OnlineSourceKind
+                    labelKey: MessageKey
+                    hintKey: MessageKey
+                  }>
                 ).map((option) => {
                   const disabled = option.value === 'lx' && !lxSupported
                   return (
@@ -882,7 +918,7 @@ function SourceAddDialog({
                       key={option.value}
                       type="button"
                       disabled={disabled}
-                      title={disabled ? '浏览器环境不支持洛雪音源脚本，请使用桌面端或手机端' : undefined}
+                      title={disabled ? t('sources.form.kindLxDisabledTitle') : undefined}
                       onClick={() => handleKindChange(option.value)}
                       className={`text-left px-3 py-2 rounded-[10px] border transition-colors duration-200 ease-mineradio ${
                         sourceKind === option.value
@@ -895,9 +931,9 @@ function SourceAddDialog({
                           sourceKind === option.value ? 'text-mint' : 'text-white/80'
                         }`}
                       >
-                        {option.label}
+                        {t(option.labelKey)}
                       </span>
-                      <span className="block font-text text-caption text-white/50 mt-0.5">{option.hint}</span>
+                      <span className="block font-text text-caption text-white/50 mt-0.5">{t(option.hintKey)}</span>
                     </button>
                   )
                 })}
@@ -905,18 +941,18 @@ function SourceAddDialog({
             </div>
           )}
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">名称（可选）</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.nameLabel')}</p>
             <input
               type="text"
               value={name}
-              placeholder={isLx ? '如：我的洛雪源' : '如：我的音源'}
+              placeholder={isLx ? t('sources.form.namePlaceholderLx') : t('sources.form.namePlaceholder')}
               onChange={(e) => setName(e.target.value)}
               className={inputCls}
             />
           </div>
           {isLx ? (
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">脚本链接</p>
+              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.scriptLabel')}</p>
               <LxScriptProbe
                 url={linkDraft}
                 headers={headers}
@@ -928,15 +964,13 @@ function SourceAddDialog({
                 error={lxLinkError}
               />
               {!lxLinkError && (
-                <p className="font-text text-caption text-white/35 mt-1">
-                  脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索
-                </p>
+                <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.scriptHint')}</p>
               )}
             </div>
           ) : (
             <>
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">音源地址</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.sourceLabel')}</p>
             <input
               type="text"
               value={linkDraft}
@@ -949,25 +983,21 @@ function SourceAddDialog({
               className={`${inputCls} ${linkError ? 'is-invalid' : ''}`}
             />
             {linkError ? (
-              <p className="font-text text-caption text-coral/70 mt-1">{linkError}</p>
+              <p className="font-text text-caption text-coral/70 mt-1">{renderError(linkError, t)}</p>
             ) : isService ? (
               <p className="font-text text-caption text-mint/70 mt-1">
-                {parsed?.apiKey
-                  ? '已识别为服务地址，密钥已提取；搜索与歌单接口自动生成'
-                  : '已识别为服务地址；搜索与歌单接口自动生成，密钥可写在链接里'}
+                {parsed?.apiKey ? t('sources.form.sourceDetectedWithKey') : t('sources.form.sourceDetected')}
               </p>
             ) : parsed ? (
-              <p className="font-text text-caption text-white/35 mt-1">按接口模板使用，占位符由软件替换</p>
+              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.templateDetected')}</p>
             ) : (
-              <p className="font-text text-caption text-white/35 mt-1">
-                服务地址或完整接口地址都行；密钥写在链接里即可，如 https://host?key=xxx
-              </p>
+              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.sourceHint')}</p>
             )}
           </div>
           {/* 歌单解析接口只在接口模板形态下手填：服务地址形态的该端点由软件派生 */}
           {showPlaylist && (
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">歌单解析接口（可选）</p>
+              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.playlistLabel')}</p>
               <input
                 type="text"
                 value={playlistUrl}
@@ -976,11 +1006,9 @@ function SourceAddDialog({
                 className={`${inputCls} ${playlistError ? 'is-invalid' : ''}`}
               />
               {playlistError ? (
-                <p className="font-text text-caption text-coral/70 mt-1">{playlistError}</p>
+                <p className="font-text text-caption text-coral/70 mt-1">{renderError(playlistError, t)}</p>
               ) : (
-                <p className="font-text text-caption text-white/35 mt-1">
-                  填入后，导入歌单时可直接解析 QQ / 网易云等平台的歌单分享链接
-                </p>
+                <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.playlistHintDialog')}</p>
               )}
             </div>
           )}
@@ -999,19 +1027,25 @@ function SourceAddDialog({
                     className={`h-3.5 w-3.5 mr-1.5 ${probe.loading ? 'animate-spin' : ''}`}
                     strokeWidth={1.6}
                   />
-                  {probe.loading ? '测试中…' : '测试连接'}
+                  {probe.loading ? t('sources.probe.testing') : t('sources.probe.testConnection')}
                 </Button>
                 {probe.message && (
                   <p className={`font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}>
-                    {probe.message}
+                    {renderError(probe.message, t)}
                   </p>
                 )}
               </div>
               {preview && (
                 <div className="space-y-0.5">
-                  <p className="font-text text-caption text-white/35 truncate">服务 {parsed?.baseUrl}</p>
-                  <p className="font-text text-caption text-white/35 truncate">搜索 {maskKey(compactEndpointUrl(preview.search))}</p>
-                  <p className="font-text text-caption text-white/35 truncate">歌单 {maskKey(compactEndpointUrl(preview.playlist))}</p>
+                  <p className="font-text text-caption text-white/35 truncate">
+                    {t('sources.form.previewService', { url: parsed?.baseUrl ?? '' })}
+                  </p>
+                  <p className="font-text text-caption text-white/35 truncate">
+                    {t('sources.form.previewSearch', { url: maskKey(compactEndpointUrl(preview.search)) })}
+                  </p>
+                  <p className="font-text text-caption text-white/35 truncate">
+                    {t('sources.form.previewPlaylist', { url: maskKey(compactEndpointUrl(preview.playlist)) })}
+                  </p>
                 </div>
               )}
             </>
@@ -1019,7 +1053,7 @@ function SourceAddDialog({
             </>
           )}
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">请求头（可选，JSON 对象）</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.headersLabel')}</p>
             <textarea
               value={headersDraft}
               placeholder={'{"Authorization": "Bearer ..."}'}
@@ -1028,13 +1062,15 @@ function SourceAddDialog({
               className={`${inputCls} resize-none ${headersInvalid ? 'is-invalid' : ''}`}
             />
             {headersInvalid && (
-              <p className="font-text text-caption text-coral/70 mt-1">JSON 格式无效：需为对象，如 {'{"Authorization": "Bearer xxx"}'}</p>
+              <p className="font-text text-caption text-coral/70 mt-1">
+                {t('sources.error.headersJson', { example: '{"Authorization": "Bearer xxx"}' })}
+              </p>
             )}
           </div>
         </div>
         <DialogFooter className="sm:space-x-2">
           <Button variant="ghost" size="sm" className="h-9 px-3.5 text-white/70" onClick={() => onOpenChange(false)}>
-            取消
+            {t('common.action.cancel')}
           </Button>
           <Button
             size="sm"
@@ -1042,7 +1078,7 @@ function SourceAddDialog({
             disabled={!canSave}
             onClick={handleSave}
           >
-            保存
+            {t('common.action.save')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1068,6 +1104,7 @@ function LibrarySourceAddDialog({
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [rootPath, setRootPath] = useState('')
+  const t = useT()
 
   useEffect(() => {
     if (open) {
@@ -1086,7 +1123,7 @@ function LibrarySourceAddDialog({
     if (!canSave) return
     onSave({
       kind: 'webdav',
-      name: name.trim() || '网络存储',
+      name: name.trim() || t('sources.webdav.defaultName'),
       baseUrl: baseUrl.trim().replace(/\/+$/, ''),
       username: username.trim() || undefined,
       password: password || undefined,
@@ -1102,48 +1139,46 @@ function LibrarySourceAddDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-white text-tagline">添加网络存储</DialogTitle>
+          <DialogTitle className="text-white text-tagline">{t('sources.webdav.title')}</DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
-            支持标准 WebDAV：群晖 / 威联通 / Nextcloud / rclone serve webdav 等。添加后可先「测试连接」，再扫描入库。
+            {t('sources.webdav.desc')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">名称（可选）</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.nameLabel')}</p>
             <input
               type="text"
               value={name}
-              placeholder="如：家里的群晖"
+              placeholder={t('sources.webdav.namePlaceholder')}
               onChange={(e) => setName(e.target.value)}
               className={inputCls}
             />
           </div>
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">服务地址</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.baseUrlLabel')}</p>
             <input
               type="text"
               value={baseUrl}
-              placeholder="如：https://nas.example.com:5006/dav"
+              placeholder={t('sources.webdav.baseUrlPlaceholder')}
               onChange={(e) => setBaseUrl(e.target.value)}
               className={`${inputCls} ${baseUrl.trim() && !urlOk ? 'is-invalid' : ''}`}
             />
-            <p className="font-text text-caption text-white/40 mt-1">
-              群晖为 http(s)://主机:5006/共享文件夹名；Nextcloud 为 https://主机/remote.php/dav/files/用户名
-            </p>
+            <p className="font-text text-caption text-white/40 mt-1">{t('sources.webdav.baseUrlHint')}</p>
           </div>
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">音乐库根目录（可选）</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.rootLabel')}</p>
             <input
               type="text"
               value={rootPath}
-              placeholder="如：Music，留空表示服务地址本身"
+              placeholder={t('sources.webdav.rootPlaceholder')}
               onChange={(e) => setRootPath(e.target.value)}
               className={inputCls}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">用户名（可选）</p>
+              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.usernameLabel')}</p>
               <input
                 type="text"
                 value={username}
@@ -1153,7 +1188,7 @@ function LibrarySourceAddDialog({
               />
             </div>
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">口令（可选）</p>
+              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.passwordLabel')}</p>
               <input
                 type="password"
                 value={password}
@@ -1163,13 +1198,11 @@ function LibrarySourceAddDialog({
               />
             </div>
           </div>
-          <p className="font-text text-caption text-white/40">
-            口令仅保存在本机配置中，不会写入曲库、也不会出现在播放地址里（远端请求由主进程代理）。
-          </p>
+          <p className="font-text text-caption text-white/40">{t('sources.webdav.passwordHint')}</p>
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" className="h-9 px-4 text-white/60 hover:text-white/90" onClick={() => onOpenChange(false)}>
-            取消
+            {t('common.action.cancel')}
           </Button>
           <Button
             size="sm"
@@ -1177,7 +1210,7 @@ function LibrarySourceAddDialog({
             disabled={!canSave}
             onClick={handleSave}
           >
-            添加
+            {t('common.action.add')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1207,6 +1240,7 @@ function LibrarySourceCard({
   const [usernameDraft, setUsernameDraft] = useState(source.username || '')
   const [passwordDraft, setPasswordDraft] = useState(source.password || '')
   const [rootPathDraft, setRootPathDraft] = useState(source.rootPath || '')
+  const t = useT()
 
   const startEditing = () => {
     setNameDraft(source.name)
@@ -1250,7 +1284,7 @@ function LibrarySourceCard({
           type="button"
           role="switch"
           aria-checked={source.enabled}
-          title={source.enabled ? '已启用（启动时自动扫描该来源）' : '已停用（启动时不再自动扫描，可手动扫描）'}
+          title={source.enabled ? t('sources.webdav.enabledTitle') : t('sources.webdav.disabledTitle')}
           onClick={() => onUpdate({ enabled: !source.enabled })}
           className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
             source.enabled ? 'bg-mint' : 'bg-white/[0.12]'
@@ -1266,7 +1300,7 @@ function LibrarySourceCard({
           <Button
             variant="ghost"
             size="icon"
-            title="编辑"
+            title={t('common.action.edit')}
             className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
@@ -1276,7 +1310,7 @@ function LibrarySourceCard({
         <Button
           variant="ghost"
           size="icon"
-          title={`移除来源（同时从${LIBRARY_LABEL}移除该来源的歌曲）`}
+          title={t('sources.webdav.removeTitle', { library: t(NAV_LABEL_KEYS.library) })}
           className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
@@ -1289,21 +1323,21 @@ function LibrarySourceCard({
           <input
             type="text"
             value={nameDraft}
-            placeholder="名称"
+            placeholder={t('sources.webdav.nameDraftPlaceholder')}
             onChange={(e) => setNameDraft(e.target.value)}
             className={inputCls}
           />
           <input
             type="text"
             value={baseUrlDraft}
-            placeholder="服务地址，如 https://nas.example.com:5006/dav"
+            placeholder={t('sources.webdav.baseUrlPlaceholderDraft')}
             onChange={(e) => setBaseUrlDraft(e.target.value)}
             className={`${inputCls} ${baseUrlDraft.trim() && !urlOk ? 'is-invalid' : ''}`}
           />
           <input
             type="text"
             value={rootPathDraft}
-            placeholder="音乐库根目录（可选），如 Music"
+            placeholder={t('sources.webdav.rootPlaceholderDraft')}
             onChange={(e) => setRootPathDraft(e.target.value)}
             className={inputCls}
           />
@@ -1311,7 +1345,7 @@ function LibrarySourceCard({
             <input
               type="text"
               value={usernameDraft}
-              placeholder="用户名（可选）"
+              placeholder={t('sources.webdav.usernameLabel')}
               onChange={(e) => setUsernameDraft(e.target.value)}
               className={inputCls}
               autoComplete="off"
@@ -1319,7 +1353,7 @@ function LibrarySourceCard({
             <input
               type="password"
               value={passwordDraft}
-              placeholder="口令（可选）"
+              placeholder={t('sources.webdav.passwordLabel')}
               onChange={(e) => setPasswordDraft(e.target.value)}
               className={inputCls}
               autoComplete="new-password"
@@ -1327,7 +1361,7 @@ function LibrarySourceCard({
           </div>
           <div className="flex items-center justify-end gap-2">
             <Button variant="ghost" size="sm" className="h-8 px-3 text-white/60 hover:text-white/90" onClick={() => setEditing(false)}>
-              取消
+              {t('common.action.cancel')}
             </Button>
             <Button
               size="sm"
@@ -1335,7 +1369,7 @@ function LibrarySourceCard({
               disabled={!canSave}
               onClick={handleSave}
             >
-              保存
+              {t('common.action.save')}
             </Button>
           </div>
         </div>
@@ -1349,7 +1383,7 @@ function LibrarySourceCard({
             onClick={onProbe}
           >
             <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.6} />
-            测试连接
+            {t('sources.webdav.testConnection')}
           </Button>
           <Button
             variant="secondary"
@@ -1359,7 +1393,7 @@ function LibrarySourceCard({
             onClick={onScan}
           >
             <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${status.loading ? 'animate-spin' : ''}`} strokeWidth={1.6} />
-            扫描入库
+            {t('sources.webdav.scan')}
           </Button>
           {status.message && (
             <p className={`font-text text-caption truncate ${status.ok ? 'text-mint/80' : 'text-coral/80'}`}>
@@ -1373,6 +1407,15 @@ function LibrarySourceCard({
 }
 
 export function SettingsPage() {
+  const t = useT()
+  const locale = useLocale()
+  // 语言偏好：读写一律走 localeStore。渲染层由 I18nProvider 负责即时生效，
+  // 主进程同步由它的副作用经 electronAPI.i18n.setLocale 发出，这里不额外调用。
+  const language = useLocaleStore((s) => s.language)
+  const setLanguage = useLocaleStore((s) => s.setLanguage)
+  /** 曲库页名：本页多处确认框与提示要引用它，取值在渲染期（模块级求值会冻结语言） */
+  const libraryLabel = t(NAV_LABEL_KEYS.library)
+
   const theme = useLibraryStore((s) => s.theme)
   const setTheme = useLibraryStore((s) => s.setTheme)
 
@@ -1466,8 +1509,14 @@ export function SettingsPage() {
     refreshCacheUsage()
   }
 
+  /** 档位文案：0 是「不限制」的档位标记而非容量数值；GB 值走 Intl 数字格式化，不手写小数位 */
+  const cacheLimitLabel = (mb: number) =>
+    mb <= 0
+      ? t('settings.storage.cache.unlimited')
+      : t('settings.storage.cache.gb', { value: formatNumber(Number(mbToGb(mb).toFixed(2)), locale) })
+
   const handleClearCache = async () => {
-    const ok = window.confirm('清空全部缓存？')
+    const ok = window.confirm(t('settings.storage.cache.clearConfirm'))
     if (!ok) return
     await clearAudioCache()
     // 封面文件被删除后主进程已把曲库里的 coverPath 置空，这里丢弃会话内缓存的
@@ -1476,17 +1525,17 @@ export function SettingsPage() {
     const tracks = await platform.getAllTracks?.()
     if (tracks) useLibraryStore.getState().setTracks(tracks)
     setCacheUsage({ usedBytes: 0, count: 0 })
-    toast('缓存已清空')
+    toast(t('settings.storage.cache.cleared'))
   }
 
   // 平台在运行期不会变，取一次即可；下载目录的文案与路径展示两端不同
   const desktop = isDesktop()
   // 桌面端存绝对路径；移动端存手机存储内的相对路径（选择器返回的形态）
   const downloadDirLabel = desktop
-    ? (downloadDir ?? '未设置（每次下载都会询问保存位置）')
+    ? (downloadDir ?? t('settings.storage.downloadDir.desktopUnset'))
     : downloadDir
-      ? `手机存储/${downloadDir}`
-      : `未设置（默认存入 手机存储/${DEFAULT_MOBILE_DOWNLOAD_DIR}）`
+      ? t('settings.storage.downloadDir.mobilePath', { path: downloadDir })
+      : t('settings.storage.downloadDir.mobileUnset', { path: DEFAULT_MOBILE_DOWNLOAD_DIR })
 
   // 音源配置（应用不内置任何源，均由用户按协议配置）
   // 一条音源可同时给出搜索（{query}）、歌单解析（{url}）与歌词（{track}）三种能力
@@ -1557,7 +1606,9 @@ export function SettingsPage() {
         altUrls: updateInfo.assetUrls,
         kind: updateInfo.assetKind,
         version: updateInfo.version,
-        label: updateInfo.assetLabel,
+        // assetLabel 是**文案键**（源：update.service 的 ASSET_LABEL_KEYS），
+        // 对话框直接渲染 task.label，所以在这里渲染期取译文
+        label: updateInfo.assetLabel ? t(updateInfo.assetLabel) : null,
         size: updateInfo.assetSize,
         digest: updateInfo.assetDigest,
       })
@@ -1575,7 +1626,7 @@ export function SettingsPage() {
       try {
         await platform.scanFolder?.(folder)
       } catch {
-        toast(`扫描目录「${folder}」失败，请检查目录是否存在且可访问`, { type: 'error', duration: 5000 })
+        toast(t('settings.library.scanDirs.pickFailed', { folder }), { type: 'error', duration: 5000 })
       }
     }
   }
@@ -1585,8 +1636,8 @@ export function SettingsPage() {
   // 桌面端走系统原生对话框，忽略该参数。
   const handlePickDownloadDir = async () => {
     const folder = await platform.pickFolder({
-      title: '选择下载目录',
-      description: `在线歌曲将直接保存到该目录，不再存入默认的 ${DEFAULT_MOBILE_DOWNLOAD_DIR}`,
+      title: t('settings.storage.downloadDir.pickerTitle'),
+      description: t('settings.storage.downloadDir.pickerDescription', { path: DEFAULT_MOBILE_DOWNLOAD_DIR }),
     })
     // 移动端选择器返回相对手机存储根的路径；用户在目录树里选了存储根（空串）时按未设置处理，
     // 否则下载的歌曲会散落在存储根目录下
@@ -1605,8 +1656,8 @@ export function SettingsPage() {
       .tracks.filter((t) => t.path === folder || t.path.startsWith(prefix) || t.path.startsWith(prefix.replace(/\//g, '\\'))).length
     const ok = window.confirm(
       affected > 0
-        ? `移除扫描目录「${folder}」？\n该目录下的 ${affected} 首歌曲会同时从${LIBRARY_LABEL}中移除（磁盘文件不会被删除）。`
-        : `移除扫描目录「${folder}」？`
+        ? t('settings.library.scanDirs.removeConfirmWithCount', { folder, count: affected, library: libraryLabel })
+        : t('settings.library.scanDirs.removeConfirm', { folder })
     )
     if (!ok) return
     // 先解除目录配置，避免移除过程中后台扫描又把曲目写回
@@ -1652,11 +1703,11 @@ export function SettingsPage() {
       setLibraryStatus((s) => ({
         ...s,
         [source.id]: result?.complete
-          ? { loading: false, ok: true, message: `扫描完成，曲库共 ${count} 首` }
+          ? { loading: false, ok: true, message: t('sources.webdav.scanComplete', { count }) }
           : {
               loading: false,
               ok: false,
-              message: `扫描完成，但有 ${result?.failedDirs ?? 0} 个目录无法访问，已保留原记录`,
+              message: t('sources.webdav.scanIncomplete', { count: result?.failedDirs ?? 0 }),
             },
       }))
     } catch (err) {
@@ -1673,8 +1724,8 @@ export function SettingsPage() {
     const affected = useLibraryStore.getState().tracks.filter((t) => t.path.startsWith(prefix)).length
     const ok = window.confirm(
       affected > 0
-        ? `移除网络存储「${source.name}」？\n该来源下的 ${affected} 首歌曲会同时从${LIBRARY_LABEL}中移除（远端文件不会被删除）。`
-        : `移除网络存储「${source.name}」？`
+        ? t('sources.webdav.removeConfirmWithCount', { name: source.name, count: affected, library: libraryLabel })
+        : t('sources.webdav.removeConfirm', { name: source.name })
     )
     if (!ok) return
     // 先从配置里摘掉，避免移除过程中后台扫描又把曲目写回（与本地目录移除同一套顺序）
@@ -1699,7 +1750,7 @@ export function SettingsPage() {
         // 本身就能传达的信息（导航高亮已经告诉你当前在哪一区），挂在页头上只是噪音。
         // 说明文案已下线；下面内容的首个子元素就是分区标题，与标题之间无需再加第二行。
         <div className="mb-4 md:mb-5">
-          <PageTitle>设置</PageTitle>
+          <PageTitle>{t('settings.page.title')}</PageTitle>
         </div>
       }
     >
@@ -1711,11 +1762,11 @@ export function SettingsPage() {
         <SettingsNav active={activeSection} onSelect={scrollToSection} />
         <div ref={scrollerRef} className="min-w-0 flex-1 overflow-y-auto scrollbar-thin lg:pr-2 lg:-mr-2">
           <div className="space-y-3 pb-8">
-            <SettingsSection id="general" title="通用">
+            <SettingsSection id="general" title={t('settings.nav.general')}>
               <div className="px-3 pt-1">
-                <p className="font-text text-caption text-white/50 mb-2">主题</p>
+                <p className="font-text text-caption text-white/50 mb-2">{t('settings.general.theme.label')}</p>
                 <div className="flex gap-2">
-                  {themeOptions.map(({ value, label, icon: Icon }) => (
+                  {themeOptions.map(({ value, labelKey, icon: Icon }) => (
                     <button
                       key={value}
                       onClick={() => {
@@ -1732,16 +1783,44 @@ export function SettingsPage() {
                       }`}
                     >
                       <Icon className="h-4 w-4" strokeWidth={1.6} />
-                      {label}
+                      {t(labelKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/*
+                语言项：与主题同一套控件形态（同一行布局 + 同一组胶囊）。
+                选项名一律用**该语言自身**书写（简体中文 / English），「跟随系统」按当前语言显示——
+                用户看不懂当前界面语言时，母语名是唯一能自救的线索。
+                切换只写偏好：渲染层由 I18nProvider 重渲染，主进程语言由它的副作用经 IPC 同步，无需刷新。
+              */}
+              <div className="px-3 pt-3">
+                <p className="font-text text-caption text-white/50 mb-2">
+                  {t('settings.general.language.label')}
+                </p>
+                <div className="flex gap-2">
+                  {LANGUAGE_PREFERENCES.map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={language === value}
+                      onClick={() => setLanguage(value)}
+                      className={`pill pill-md ${
+                        language === value ? 'pill-mint' : 'pill-soft'
+                      }`}
+                    >
+                      {languageOptionLabel(value, locale)}
                     </button>
                   ))}
                 </div>
               </div>
               <SettingRow
-                label="输出设备"
+                label={t('settings.general.outputDevice.label')}
                 control={
                   devices.length === 0 ? (
-                    <span className="font-text text-caption text-white/50">未检测到可用设备</span>
+                    <span className="font-text text-caption text-white/50">
+                      {t('settings.general.outputDevice.empty')}
+                    </span>
                   ) : (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1750,7 +1829,8 @@ export function SettingsPage() {
                           className="inset-field group flex h-9 w-[220px] items-center justify-between gap-2 px-3 font-text text-caption text-white/80"
                         >
                           <span className="truncate text-left">
-                            {devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? '系统默认'}
+                            {devices.find((d) => d.deviceId === selectedDeviceId)?.label ??
+                              t('settings.general.outputDevice.system')}
                           </span>
                           <ChevronDown className="h-4 w-4 flex-shrink-0 text-white/40 transition-transform duration-200 ease-mineradio group-data-[state=open]:rotate-180" strokeWidth={1.6} />
                         </button>
@@ -1775,19 +1855,19 @@ export function SettingsPage() {
               />
             </SettingsSection>
 
-            <SettingsSection id="library" title={LIBRARY_LABEL}>
+            <SettingsSection id="library" title={libraryLabel}>
               <SettingRow
-                label="扫描目录"
-                hint="应用自动扫描这些目录里的音乐文件"
+                label={t('settings.library.scanDirs.label')}
+                hint={t('settings.library.scanDirs.hint')}
                 control={
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickFolder}>
                     <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    添加
+                    {t('common.action.add')}
                   </Button>
                 }
               >
                 {scanFolders.length === 0 ? (
-                  <p className="font-text text-caption text-white/50">尚未添加目录</p>
+                  <p className="font-text text-caption text-white/50">{t('settings.library.scanDirs.empty')}</p>
                 ) : (
                   <div className="space-y-2">
                     {scanFolders.map((folder) => (
@@ -1796,7 +1876,7 @@ export function SettingsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          title={`移除目录（同时从${LIBRARY_LABEL}移除该目录下的歌曲）`}
+                          title={t('settings.library.scanDirs.removeTitle', { library: libraryLabel })}
                           className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
                           onClick={() => handleRemoveFolder(folder)}
                         >
@@ -1812,18 +1892,18 @@ export function SettingsPage() {
               {supportsLibrarySources && (
                 <div className="border-t border-white/[0.06] mx-3 mt-1 pt-3">
                   <SettingRow
-                    label="网络存储"
-                    hint="NAS / WebDAV 上的音乐会被扫描入库并长期保留"
+                    label={t('settings.library.storage.label')}
+                    hint={t('settings.library.storage.hint')}
                     control={
                       <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddLibraryOpen(true)}>
                         <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        添加
+                        {t('common.action.add')}
                       </Button>
                     }
                   >
                     {librarySources.length === 0 ? (
                       <p className="font-text text-caption text-white/50">
-                        尚未添加，支持群晖 / 威联通 / Nextcloud 等标准 WebDAV
+                        {t('settings.library.storage.empty')}
                       </p>
                     ) : (
                       <div className="space-y-2">
@@ -1847,11 +1927,13 @@ export function SettingsPage() {
 
             {/* 下载与缓存：同属"歌曲落盘"语义——下载音质/目录决定怎么存，
                 缓存大小决定播放时占多少磁盘。原先拆成两张卡，各自只有两行内容 */}
-            <SettingsSection id="storage" title="下载与缓存">
+            <SettingsSection id="storage" title={t('settings.nav.storage')}>
               <div className="px-3 pt-1">
-                <p className="font-text text-caption text-white/50 mb-2">下载音质</p>
+                <p className="font-text text-caption text-white/50 mb-2">
+                  {t('settings.storage.downloadQuality.label')}
+                </p>
                 <div className="flex gap-2">
-                  {downloadQualityOptions.map(({ value, label }) => (
+                  {downloadQualityOptions.map(({ value, labelKey }) => (
                     <button
                       key={value}
                       onClick={() => setDownloadQuality(value)}
@@ -1859,7 +1941,7 @@ export function SettingsPage() {
                         downloadQuality === value ? 'pill-mint' : 'pill-soft'
                       }`}
                     >
-                      {label}
+                      {t(labelKey)}
                     </button>
                   ))}
                 </div>
@@ -1867,18 +1949,18 @@ export function SettingsPage() {
 
               {/* 下载目录：桌面端设置后免保存对话框直存；移动端选的是手机存储内的相对目录 */}
               <SettingRow
-                label="下载目录"
-                hint={desktop ? '设置后不再弹保存对话框' : '设置后直接存入该目录'}
+                label={t('settings.storage.downloadDir.label')}
+                hint={desktop ? t('settings.storage.downloadDir.desktopHint') : t('settings.storage.downloadDir.mobileHint')}
                 control={
                   <>
                     {downloadDir && (
                       <Button variant="ghost" size="sm" className="h-9 px-3" onClick={() => setDownloadDir(null)}>
-                        {desktop ? '清除' : '恢复默认'}
+                        {desktop ? t('settings.storage.downloadDir.clear') : t('common.action.reset')}
                       </Button>
                     )}
                     <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handlePickDownloadDir}>
                       <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                      {downloadDir ? '更换' : '选择'}
+                      {downloadDir ? t('settings.storage.downloadDir.change') : t('common.action.select')}
                     </Button>
                   </>
                 }
@@ -1892,12 +1974,17 @@ export function SettingsPage() {
               {supportsAudioCache && (
                 <div className="border-t border-white/[0.06] mx-3 mt-1 pt-3">
                   <SettingRow
-                    label="缓存上限"
+                    label={t('settings.storage.cache.label')}
                     hint={
                       // 「不限制」档没有上限可超，继续写「超出上限时自动清理」会自相矛盾
                       audioCacheLimitMB === 0
-                        ? `不限制容量，只受磁盘剩余空间约束 · 当前占用 ${formatBytes(cacheUsage.usedBytes)}`
-                        : `超出上限时按最久未使用自动清理 · 默认 ${formatCacheLimit(defaultCacheLimitMB)} · 当前占用 ${formatBytes(cacheUsage.usedBytes)}`
+                        ? t('settings.storage.cache.hintUnlimited', {
+                            used: formatBytes(cacheUsage.usedBytes, locale),
+                          })
+                        : t('settings.storage.cache.hintLimited', {
+                            default: cacheLimitLabel(defaultCacheLimitMB),
+                            used: formatBytes(cacheUsage.usedBytes, locale),
+                          })
                     }
                   >
                     {/* 档位胶囊：预设 GB 档 + 「不限制」，同一套视觉权重，选中态一律 pill-mint。
@@ -1914,7 +2001,7 @@ export function SettingsPage() {
                               audioCacheLimitMB === presetMB ? 'pill-mint' : 'pill-soft'
                             }`}
                           >
-                            {formatCacheLimit(presetMB)}
+                            {cacheLimitLabel(presetMB)}
                           </button>
                         )
                       })}
@@ -1923,7 +2010,7 @@ export function SettingsPage() {
                         onClick={() => handleSelectCacheLimit(0)}
                         className={`pill pill-md ${audioCacheLimitMB === 0 ? 'pill-mint' : 'pill-soft'}`}
                       >
-                        不限制
+                        {t('settings.storage.cache.unlimited')}
                       </button>
                     </div>
 
@@ -1938,8 +2025,8 @@ export function SettingsPage() {
                           className="pill pill-md pill-mint"
                         >
                           {audioCacheLimitCustomMB
-                            ? `自定义 ${formatCacheLimit(audioCacheLimitMB)}`
-                            : `默认 ${formatCacheLimit(audioCacheLimitMB)}`}
+                            ? t('settings.storage.cache.custom', { value: cacheLimitLabel(audioCacheLimitMB) })
+                            : t('settings.storage.cache.defaultPill', { value: cacheLimitLabel(audioCacheLimitMB) })}
                         </button>
                       )}
                       <input
@@ -1950,7 +2037,7 @@ export function SettingsPage() {
                         step={0.5}
                         inputMode="decimal"
                         value={cacheLimitDraft}
-                        placeholder="自定义 GB"
+                        placeholder={t('settings.storage.cache.customPlaceholder')}
                         onChange={(e) => {
                           setCacheLimitDraft(e.target.value)
                           setCacheLimitInvalid(false)
@@ -1966,10 +2053,10 @@ export function SettingsPage() {
                           cacheLimitInvalid ? 'is-invalid' : ''
                         }`}
                       />
-                      <span className="font-text text-caption text-white/50">GB</span>
+                      <span className="font-text text-caption text-white/50">{t('settings.storage.cache.unit')}</span>
                       {audioCacheLimitCustomMB && (
                         <Button variant="ghost" size="sm" className="h-9 px-3" onClick={handleResetCacheLimit}>
-                          恢复默认
+                          {t('common.action.reset')}
                         </Button>
                       )}
                       <Button
@@ -1978,14 +2065,17 @@ export function SettingsPage() {
                         className="h-9 px-3 text-white/60 hover:text-coral hover:bg-coral/10"
                         onClick={handleClearCache}
                         disabled={cacheUsage.count === 0}
-                        title="清空全部缓存"
+                        title={t('settings.storage.cache.clearTitle')}
                       >
                         <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        清空
+                        {t('common.action.clear')}
                       </Button>
                       {cacheLimitInvalid && (
                         <span className="font-text text-caption text-coral/70">
-                          需填 {CACHE_LIMIT_MIN_GB} – {CACHE_LIMIT_MAX_GB} GB
+                          {t('settings.storage.cache.invalid', {
+                            min: formatNumber(CACHE_LIMIT_MIN_GB, locale),
+                            max: formatNumber(CACHE_LIMIT_MAX_GB, locale),
+                          })}
                         </span>
                       )}
                     </div>
@@ -1994,23 +2084,21 @@ export function SettingsPage() {
               )}
             </SettingsSection>
 
-            <SettingsSection id="sources" title="在线源">
+            <SettingsSection id="sources" title={t('settings.nav.sources')}>
               {/* 音源：应用不内置任何源，全部由用户按协议配置。
                   一条音源可同时给出搜索接口与歌单解析接口（标准音源形态下由服务地址自动生成） */}
               <SettingRow
-                label="音源"
-                hint="在线搜索与歌单导入共用这一条源"
+                label={t('sources.form.sourceRowLabel')}
+                hint={t('sources.form.sourceRowHint')}
                 control={
                   <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddMusicOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    添加
+                    {t('common.action.add')}
                   </Button>
                 }
               >
                 {onlineSources.length === 0 ? (
-                  <p className="font-text text-caption text-white/50">
-                    尚未配置，在线搜索与歌单导入暂不可用
-                  </p>
+                  <p className="font-text text-caption text-white/50">{t('sources.form.sourceRowEmpty')}</p>
                 ) : (
                   <div className="space-y-2">
                     {onlineSources.map((src) => (
@@ -2036,9 +2124,9 @@ export function SettingsPage() {
             </SettingsSection>
 
             {/* 关于：版本、更新与许可同属"这套软件本身"，合并后不再平铺两张只读卡片 */}
-            <SettingsSection id="about" title="关于">
+            <SettingsSection id="about" title={t('settings.nav.about')}>
               <SettingRow
-                label="版本"
+                label={t('settings.about.version')}
                 hint={`v${APP_VERSION} · PolyForm Noncommercial 1.0.0`}
                 control={
                   <>
@@ -2046,15 +2134,15 @@ export function SettingsPage() {
                       variant="ghost"
                       size="sm"
                       className="h-9 px-3 text-white/60"
-                      title="查看源码与开源许可（禁止商业用途）"
+                      title={t('settings.about.repoTitle')}
                       onClick={() => openExternalUrl(REPO_URL)}
                     >
                       <Github className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                      项目仓库
+                      {t('settings.about.repo')}
                     </Button>
                     <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={handleCheckUpdate} disabled={checking}>
                       <RefreshCw className={`h-4 w-4 mr-2 ${checking ? 'animate-spin' : ''}`} strokeWidth={1.6} />
-                      {checking ? '检查中…' : '检查更新'}
+                      {checking ? t('settings.about.checking') : t('settings.about.checkUpdate')}
                     </Button>
                   </>
                 }
@@ -2063,19 +2151,23 @@ export function SettingsPage() {
                   <div className="flex items-center justify-between bg-mint/[0.06] border border-mint/20 rounded-[10px] px-3.5 py-3">
                     <div className="min-w-0 mr-3">
                       <p className="font-text text-caption-strong text-white/90">
-                        发现新版本 <span className="text-mint font-semibold">v{updateInfo.version}</span>
+                        {t('settings.about.newVersion')} <span className="text-mint font-semibold">v{updateInfo.version}</span>
                       </p>
                       <p className="font-text text-caption text-white/55 mt-0.5 truncate">
                         {downloadPhase === 'downloading'
-                          ? '正在下载安装包，可关闭此窗口继续后台下载'
+                          ? t('settings.about.downloading')
                           : downloadPhase === 'done'
-                            ? '安装包已就绪，点击右侧继续安装'
+                            ? t('settings.about.ready')
                             : updateInfo.assetLabel
-                              ? `将下载对应系统的安装包（${updateInfo.assetLabel}）`
-                              : '点击下载对应平台的安装包'}
+                              // assetHint 的 {label} 要的是安装包类型名（人类可读），
+                              // 而 assetLabel 是键：必须内层先 t() 再当参数传入
+                              ? t('settings.about.assetHint', { label: t(updateInfo.assetLabel) })
+                              : t('settings.about.downloadHint')}
                       </p>
                       {updateInfo.installHint && downloadPhase !== 'downloading' && downloadPhase !== 'done' && (
-                        <p className="font-text text-caption text-white/50 mt-1 truncate">{updateInfo.installHint}</p>
+                        <p className="font-text text-caption text-white/50 mt-1 truncate">
+                          {t(updateInfo.installHint, { command: updateInfo.installCommand ?? '' })}
+                        </p>
                       )}
                     </div>
                     {downloadPhase === 'downloading' || downloadPhase === 'done' ? (
@@ -2086,7 +2178,7 @@ export function SettingsPage() {
                         onClick={downloadShow}
                       >
                         <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        {downloadPhase === 'done' ? '继续安装' : '下载中…'}
+                        {downloadPhase === 'done' ? t('settings.about.continueInstall') : t('settings.about.downloadingButton')}
                       </Button>
                     ) : (
                       <Button
@@ -2095,7 +2187,7 @@ export function SettingsPage() {
                         onClick={handleDownloadUpdate}
                       >
                         <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        下载更新
+                        {t('settings.about.downloadUpdate')}
                       </Button>
                     )}
                   </div>
@@ -2104,7 +2196,7 @@ export function SettingsPage() {
                 {updateState === 'latest' && (
                   <div className="inset-note flex items-center gap-2 px-3 py-2.5">
                     <CheckCircle2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
-                    <p className="font-text text-caption text-white/70">当前已是最新版本</p>
+                    <p className="font-text text-caption text-white/70">{t('settings.about.latest')}</p>
                   </div>
                 )}
 
@@ -2112,7 +2204,9 @@ export function SettingsPage() {
                   <div className="inset-note flex items-center gap-2 px-3 py-2.5">
                     <AlertCircle className="h-4 w-4 text-coral flex-shrink-0" strokeWidth={1.6} />
                     <p className="font-text text-caption text-white/70">
-                      {updateError ? `检查失败：${updateError}` : '检查失败，请确认网络后重试'}
+                      {updateError
+                        ? t('settings.about.checkFailed', { reason: updateError })
+                        : t('settings.about.checkFailedFallback')}
                     </p>
                   </div>
                 )}

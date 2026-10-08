@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { appTranslate } from '@/i18n'
 
 export interface AudioDevice {
   deviceId: string
@@ -23,7 +24,9 @@ export function useAudioDevices() {
           .filter((d) => d.kind === 'audiooutput')
           .map((d) => ({
             deviceId: d.deviceId,
-            label: d.label || `输出设备 ${++index}`,
+            // label 由系统给出（数据，不进字典）；未授权时为空串，用带序号的兜底名。
+            // 这里是设备枚举回调、没有渲染周期，故走 appTranslate()（读实时语言快照）
+            label: d.label || appTranslate()('player.device.fallbackLabel', { index: ++index }),
           }))
 
         if (mounted) {

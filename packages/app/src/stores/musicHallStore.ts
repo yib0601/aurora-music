@@ -1,9 +1,16 @@
 import { create } from 'zustand'
-import { musicHallSourceOf, searchEndpointOf } from '@aurora/shared'
+import {
+  musicHallSourceOf,
+  searchEndpointOf,
+  translateError,
+  type AppTranslator,
+  type TFunction,
+} from '@aurora/shared'
 import type { MusicHallSource, ParsedSong, RecommendPlaylist, ToplistGroup, ToplistDetail } from '@/types'
 import { hallRecommend, hallToplists, hallToplistSongs, supportsMusicHall } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { HALL_LABEL, LIBRARY_LABEL } from '@/lib/routes'
+import { NAV_LABEL_KEYS } from '@/lib/routes'
+import { appTranslate } from '@/i18n'
 
 /**
  * 音乐库（旧称「音乐馆」，store / 类型 / 路由段名沿用 hall / MusicHall*）状态：
@@ -76,58 +83,40 @@ export function pickHallSource(): MusicHallSource | null {
   return musicHallSourceOf(sources as unknown as MusicHallSource[]) as MusicHallSource | null
 }
 
-/** 无音源 / 平台不支持的统一提示文案（UI 空态与错误态共用一处） */
-export function hallUnavailableReason(): string {
+/**
+ * 无音源 / 平台不支持的统一提示（UI 空态与列表错误态共用一处）。
+ * 返回**已按当前语言渲染**的文案；空串表示可用。
+ *
+ * `t` 由调用方注入：组件里传 `useT()`（语言切换会重渲染），
+ * store 内的异步分支走默认值 `appTranslate()`（每次调用读语言快照，不是模块级求值）。
+ */
+export function hallUnavailableReason(t: AppTranslator = appTranslate()): string {
   // 本页是应用首屏，空态文案要同时交代「为什么空」与「本地内容仍可用」——
-  // 只说原因会让用户以为应用坏了
-  if (!supportsMusicHall()) return `当前环境不支持${HALL_LABEL}（浏览器版无在线能力），可先到「${LIBRARY_LABEL}」听本地曲库`
+  // 只说原因会让用户以为应用坏了。
+  // 页面名不写死在这一层：用占位符注入，免得 routes.ts 改一次名这里漏一处
+  // （「音乐库 / 我的音乐」的取名沿革见 lib/routes.ts）。
+  const names = { hall: t(NAV_LABEL_KEYS.hall), library: t(NAV_LABEL_KEYS.library) }
+  if (!supportsMusicHall()) return t('hall.unavailable.unsupportedEnv', names)
   const sources = useLibraryStore.getState().onlineSources
-  if (sources.length === 0) return `${HALL_LABEL}的推荐与榜单由音源服务提供，尚未配置音源；本地曲库不受影响`
-  if (!sources.some((s) => s.enabled)) return '音源已全部停用，请在设置页启用音乐源'
-  if (!pickHallSource()) return `当前音源不支持${HALL_LABEL}（需填写服务地址形态的音源）`
+  if (sources.length === 0) return t('hall.unavailable.noSource', names)
+  if (!sources.some((s) => s.enabled)) return t('hall.unavailable.allDisabled')
+  if (!pickHallSource()) return t('hall.unavailable.sourceUnsupported', names)
   return ''
 }
 
 /**
- * IPC 错误前缀：Electron 把主进程抛出的错误重建成 `Error`，message 前拼一句
- * `Error invoking remote method '<channel>': `（name 一律退化成 Error），
- * 这层前缀对用户没有任何信息量，剥掉后剩下的才是执行器的中文结论。
- */
-const IPC_PREFIX_RE = /^Error invoking remote method '[^']*':\s*/
-
-/** 剥掉 IPC 前缀后剩下的「异常类名:」前缀（含嵌套，如 `AbortError: `、`TypeError: `） */
-const ERROR_TAG_RE = /^(?:[A-Za-z]*Error|DOMException):\s*/
-
-/**
- * 错误文案归一：保证用户看到的是结论而非堆栈。
+ * 错误文案归一：保证用户看到的是结论而非堆栈（页面层与 service 层的统一入口）。
  *
- * 单独处理三种底座英文错误——它们在桌面端经 IPC 回传后，name 已经退化，
- * 只能按 message 里的类名/message 判定，直接上屏就是用户看到的那句
- * "The operation was aborted."：
- *   - AbortError：请求被中止（超时或取消）
- *   - TypeError: Failed to fetch：网络不可达（DNS / 连接被拒 / 代理拦截）
- * 执行器自己抛的中文错误原样保留。
+ * 归一规则本身在 `@aurora/shared` 的 i18n/errors.ts（`toErrorInfo` + `translateError`）：
+ *   - 剥掉 Electron 的 `Error invoking remote method '<channel>':` 前缀与 `AbortError:` 一类类名前缀；
+ *   - AbortError（跨 IPC 后 name 已退化，只剩 message）→ 超时；
+ *   - `TypeError: Failed to fetch` → 网络不可达；
+ *   - 空 message → 通用失败文案；未识别的文本原样透出（宁可显示原文也不抹平信息量）。
+ * 这一层只负责**接线**：把原始错误连同当前语言的翻译函数交给内核。
+ * 旧实现在 app 侧复刻了一份关键词表，每加一种错误就得补一条正则，且文案写死中文。
  */
-export function messageOf(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
-  let msg = raw.replace(IPC_PREFIX_RE, '').trim()
-  if (!msg) return '加载失败'
-  // 可能连着几层类名前缀（`Error: AbortError: …`），逐层剥
-  for (let i = 0; i < 3; i++) {
-    const next = msg.replace(ERROR_TAG_RE, '').trim()
-    if (next === msg) break
-    msg = next
-  }
-  if (isAbortMessage(msg) || isAbortMessage(raw)) return '请求超时：音源服务未在超时时间内响应'
-  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(msg)) {
-    return '网络不可达：请检查音源服务是否在运行、地址与端口是否正确'
-  }
-  return msg
-}
-
-/** 中止类错误判定：类名或浏览器/Node 自带的那两句固定 message */
-function isAbortMessage(msg: string): boolean {
-  return /abort/i.test(msg)
+export function messageOf(err: unknown, t: AppTranslator = appTranslate()): string {
+  return translateError(err, t)
 }
 
 export const useMusicHallStore = create<MusicHallState>()((set, get) => ({

@@ -52,6 +52,7 @@ import {
 import { cn, isMobile, isMobileUI } from '@/lib/utils'
 import { useOpenSongDetail } from '@/lib/navigation'
 import { HOME_ROUTE, KEEP_ALIVE_ROUTE, ROUTES, ROUTE_PATHS, isRoute } from '@/lib/routes'
+import { useT, appTranslate } from '@/i18n'
 import type { Track, FolderPickerOptions } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
@@ -91,6 +92,7 @@ function flushScannedTracks() {
  * - 封面右侧栏作为产品展示瓷砖，封面图带唯一 product-shadow
  */
 function AppLayout() {
+  const t = useT()
   const navigate = useNavigate()
   const location = useLocation()
   // 右瓷砖封面入口：已在详情页时不重复 push 同路径
@@ -340,7 +342,9 @@ function AppLayout() {
         CapApp.exitApp()
         return
       }
-      exitConfirmToastRef.current = toast('再按一次返回键退出', { duration: 2000 })
+      // 取译文走 appTranslate() 而非闭包里的 t：本监听只注册一次（依赖不含语言），
+      // 闭包捕获的 t 会在切语言后停留在旧语言上
+      exitConfirmToastRef.current = toast(appTranslate()('shell.back.pressAgainToExit'), { duration: 2000 })
       exitTimerRef.current = setTimeout(() => {
         exitTimerRef.current = null
         if (exitConfirmToastRef.current !== null) {
@@ -1071,7 +1075,7 @@ function AppLayout() {
                     {/* 封面图 — 唯一使用 product-shadow 的地方，点击进入歌曲详情 */}
                     <button
                       onClick={() => currentTrack && openSongDetail(currentTrack.id)}
-                      title="查看歌曲详情"
+                      title={t('shell.chrome.songDetail')}
                       disabled={!currentTrack}
                       className="relative aspect-square rounded-ds-card bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02] disabled:hover:scale-100"
                     >
@@ -1085,10 +1089,10 @@ function AppLayout() {
 
                     <div className="text-center">
                       <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/96">
-                        {currentTrack?.title || '未在播放'}
+                        {currentTrack?.title || t('shell.chrome.nowPlayingEmpty')}
                       </p>
                       <p className="font-text text-[14px] text-white/50 truncate mt-1 tracking-[-0.224px]">
-                        {currentTrack?.artist || '选择一首歌曲开始'}
+                        {currentTrack?.artist || t('shell.chrome.nowPlayingHint')}
                       </p>
                     </div>
 
@@ -1131,22 +1135,22 @@ function AppLayout() {
               <ShieldAlert className="h-7 w-7 text-mint" strokeWidth={1.6} />
             </div>
             <h2 className="font-display text-[17px] font-bold text-white/96 tracking-[-0.3px]">
-              需要存储权限
+              {t('shell.permission.title')}
             </h2>
             <p className="font-text text-[13px] text-white/60 leading-relaxed mt-2 mb-6 tracking-[-0.15px]">
-              未授予存储权限时无法读取本地音乐，因此扫描结果为空。请授予「音乐和音频」权限；若系统不再弹出授权窗口，可在设置中开启「所有文件访问」。授权后返回应用会自动开始扫描。
+              {t('shell.permission.description')}
             </p>
             <button
               onClick={handleGrantStoragePermission}
               className="w-full h-11 rounded-full bg-mint text-mint-fg font-semibold text-[14px] active:scale-[0.98] transition"
             >
-              授予权限
+              {t('shell.permission.grant')}
             </button>
             <button
               onClick={() => setNeedsStoragePermission(false)}
               className="w-full h-10 mt-2 text-white/50 text-[13px] hover:text-white/80 active:scale-[0.98] transition"
             >
-              稍后再说
+              {t('shell.permission.later')}
             </button>
           </div>
         </div>

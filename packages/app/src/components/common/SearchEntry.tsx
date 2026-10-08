@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
+import { useT } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 /**
@@ -14,14 +15,18 @@ import { cn } from '@/lib/utils'
  * 因此本组件自身不带定位与外边距；各页面的头部工具栏**不再**放置它
  * （避免同一入口出现两处）。设置页不注入（配置页不提供搜索）。
  * 框内不展示快捷键提示：⌘/Ctrl+K 仍由 App 层全局监听，只是不占输入框空间。
+ *
+ * 文案在渲染期取（`useT`）：语言切换时这个常驻顶栏组件必须跟着变，
+ * 所以键存在 `search.entry` 里而不是写成常量。
  */
 export function SearchEntry({ className }: { className?: string }) {
   const setSearchOpen = useUIStore((s) => s.setSearchOpen)
+  const t = useT()
   return (
     <button
       onClick={() => setSearchOpen(true)}
-      title="搜索"
-      aria-label="搜索"
+      title={t('common.action.search')}
+      aria-label={t('common.action.search')}
       className={cn('search-entry', className)}
     >
       {/* 图标与文字的字号/尺寸一律由 .search-entry / .search-entry-compact 给
@@ -31,7 +36,7 @@ export function SearchEntry({ className }: { className?: string }) {
       {/* 占位写明搜索范围（歌曲/歌手/专辑），比单字「搜索」更能说明这个框能做什么；
           小屏由 .search-entry 媒体查询隐藏文字只留放大镜 */}
       <span className="search-entry-label font-text tracking-[-0.15px] whitespace-nowrap">
-        搜索歌曲、歌手、专辑
+        {t('search.entry.placeholder')}
       </span>
     </button>
   )

@@ -1,7 +1,21 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Aurora Music</string>
-    <string name="title_activity_main">Aurora Music</string>
-    <string name="package_name">com.aurora.music</string>
-    <string name="custom_url_scheme">com.aurora.music</string>
+    <!-- 品牌名与包标识：不随界面语言变化，故 translatable="false" 且不在 values-zh 重复。
+         默认资源必须是英文——Android 的资源兜底规则是「系统语言匹配不到任何
+         语言限定符目录时用默认资源」，若默认放中文，英文/日文/德文系统都会看到中文。 -->
+    <string name="app_name" translatable="false">Aurora Music</string>
+    <string name="title_activity_main" translatable="false">Aurora Music</string>
+    <string name="package_name" translatable="false">com.aurora.music</string>
+    <string name="custom_url_scheme" translatable="false">com.aurora.music</string>
+
+    <!-- 应用自有文案：统一 aurora_ 前缀，与 Capacitor 框架字符串（app_name /
+         title_activity_main / package_name / custom_url_scheme）隔开，
+         避免上游模板升级时被覆盖或误改。
+         所有值均整句给出，不拼接：中文见 values-zh/strings.xml。 -->
+    <string name="aurora_notification_channel_name">Music playback</string>
+    <string name="aurora_notification_channel_description">Aurora Music media playback controls</string>
+    <string name="aurora_notification_action_previous">Previous</string>
+    <string name="aurora_notification_action_play">Play</string>
+    <string name="aurora_notification_action_pause">Pause</string>
+    <string name="aurora_notification_action_next">Next</string>
 </resources>

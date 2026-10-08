@@ -6,6 +6,7 @@ import {
   probeAuroraService,
   unavailableProbe,
 } from '@aurora/shared'
+import { appTranslate } from '@/i18n'
 
 /**
  * Web 平台实现：基于 File System Access API（Chrome / Edge 支持）。
@@ -134,8 +135,11 @@ async function processFile(
     audioUrls.set(fullPath, URL.createObjectURL(file))
 
     const title = metadata.common.title || fileName.replace(/\.[^.]+$/, '')
-    const artist = metadata.common.artist || '未知艺术家'
-    const album = metadata.common.album || '未知专辑'
+    // 无标签时的落库占位值保持中文原样：它参与 shared/coverMatch 的
+    // PLACEHOLDER_ARTISTS 匹配（据此判定「歌手未知」以放宽封面匹配），
+    // 翻译它等于改匹配规则，故不走字典
+    const artist = metadata.common.artist || '未知艺术家' // i18n-exempt: 参与匹配的领域占位值
+    const album = metadata.common.album || '未知专辑' // i18n-exempt: 参与匹配的领域占位值
 
     // 专辑级封面复用键：与移动端一致，仅专辑与艺术家标签都真实存在时启用，
     // 避免无标签曲目串用封面
@@ -274,7 +278,8 @@ export function createWebPlatform() {
     // 服务形态的源可以直连探测（与桌面端渲染层同一实现）
     async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
       if ((input.kind || 'aurora') === 'lx') {
-        return unavailableProbe('lx', '浏览器环境不支持脚本音源（请使用桌面端或手机端）')
+        // 探测结论直接上屏：取值在调用时进行，跟随当前界面语言
+        return unavailableProbe('lx', appTranslate()('runtime.platform.scriptUnsupportedBrowser'))
       }
       const parsed = parseSourceInput(input.sourceUrl)
       const result = await probeAuroraService(
@@ -343,11 +348,11 @@ export function createWebPlatform() {
       if (!handle) {
         // 刷新后句柄丢失：静默跳过，用户重新导入即可（避免启动时连环弹提示）
         console.info('[Web] 目录句柄未持有（页面刷新后需重新导入）:', folderKey)
-        emitScanError(folderKey, '目录访问权限未持有')
+        emitScanError(folderKey, appTranslate()('runtime.scan.permissionMissing'))
         return []
       }
       if (!(await ensureReadPermission(handle))) {
-        emitScanError(folderKey, '未获得目录读取权限')
+        emitScanError(folderKey, appTranslate()('runtime.scan.permissionDenied'))
         return []
       }
 

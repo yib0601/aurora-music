@@ -3,6 +3,8 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { Readable } from 'stream'
+import { auroraError } from '@aurora/shared'
+import { mainErrorText, mainTranslate } from '../i18n'
 
 /**
  * 内置更新下载与安装：
@@ -210,11 +212,14 @@ async function describeRoute(url: string): Promise<UpdaterRoute> {
     const raw = await session.defaultSession.resolveProxy(url)
     const first = raw.split(';').map((part) => part.trim()).find(Boolean) || 'DIRECT'
     const matched = /^(PROXY|HTTPS|SOCKS5?|SOCKS4?)\s+(\S+)/i.exec(first)
-    if (matched) return { label: `系统代理 ${matched[2]}`, proxy: matched[2] }
+    if (matched) {
+      // 线路说明经 updater:route 直接上屏（渲染层只做透传），所以现取当前语言的成品句
+      return { label: mainTranslate()('desktop.updater.routeProxy', { proxy: matched[2] }), proxy: matched[2] }
+    }
   } catch {
     // resolveProxy 不可用时按直连展示
   }
-  return { label: '直连（未走系统代理）', proxy: null }
+  return { label: mainTranslate()('desktop.updater.routeDirect'), proxy: null }
 }
 
 /** Content-Range 里的起点与总长：只认「bytes 起-止/总长」这一种写法，其余形式一律视为不可信 */
@@ -293,7 +298,7 @@ async function openResponse(
       priority: 'high',
       signal: ctrl.signal,
     } as NetFetchInit)
-    if (!res.ok || !res.body) throw new Error(`服务器返回 HTTP ${res.status}`)
+    if (!res.ok || !res.body) throw auroraError('desktop.error.updater.httpStatus', { status: res.status })
     clearTimeout(timeoutId)
     const info = contentRangeInfo(res)
     const { resumed, trusted } = classifyResponse(res, offset, info, knownTotal)
@@ -486,7 +491,7 @@ async function pumpToFile(task: PumpTask): Promise<PumpResult> {
             status: 'failed',
             received,
             speed: speedOver(SLOW_WINDOW_MS),
-            error: new Error('无法确认安装包完整性（服务端未提供长度，也不清楚官方包体大小）'),
+            error: auroraError('desktop.error.updater.integrityUnknown'),
           }
         }
         if (received !== expected) {
@@ -494,7 +499,7 @@ async function pumpToFile(task: PumpTask): Promise<PumpResult> {
             status: 'failed',
             received,
             speed: speedOver(SLOW_WINDOW_MS),
-            error: new Error(`安装包不完整（已下载 ${received} / 应为 ${expected} 字节）`),
+            error: auroraError('desktop.error.updater.incomplete', { received, expected }),
           }
         }
         break
@@ -506,7 +511,7 @@ async function pumpToFile(task: PumpTask): Promise<PumpResult> {
       received += bytesWritten
       if (bytesWritten !== buffer.length) {
         // 短写会让内存计数超出文件实际长度，下次换源的 Range 起点就会错位
-        throw new Error('写入磁盘失败')
+        throw auroraError('desktop.error.updater.diskWriteFailed')
       }
 
       if (now - lastEmit >= 200) {
@@ -524,7 +529,9 @@ async function pumpToFile(task: PumpTask): Promise<PumpResult> {
     return { status: 'completed', received, speed: 0 }
   } catch (err) {
     const speed = speedOver(SLOW_WINDOW_MS)
-    if (starved) return { status: 'failed', received, speed, error: new Error('连接长时间无数据') }
+    if (starved) {
+      return { status: 'failed', received, speed, error: auroraError('desktop.error.updater.stalled') }
+    }
     if (stalled) return { status: 'stalled', received, speed }
     if (task.external.aborted) return { status: 'aborted', received, speed }
     return { status: 'failed', received, speed, error: err }
@@ -633,7 +640,7 @@ export async function downloadInstaller(task: InstallerDownloadTask): Promise<nu
           // 直接丢弃这条响应
         }
         console.log('[Updater] 源返回 206 但无法确认数据起点，改用下一个源')
-        lastError = new Error('响应无法确认数据起点')
+        lastError = auroraError('desktop.error.updater.rangeUnknown')
         continue
       }
       let offset = received
@@ -683,18 +690,18 @@ export async function downloadInstaller(task: InstallerDownloadTask): Promise<nu
             } catch {
               // 删不掉会在下一次写入时被截断覆盖
             }
-            lastError = new Error('安装包校验失败（内容与官方摘要不一致）')
+            lastError = auroraError('desktop.error.updater.digestMismatch')
             continue
           }
           console.log('[Updater] 安装包摘要校验通过')
         }
         return received
       }
-      if (outcome.status === 'aborted') throw new Error('已取消下载')
+      if (outcome.status === 'aborted') throw auroraError('desktop.error.updater.canceled')
 
       if (outcome.status === 'stalled' && racesLeft > 0 && queue.length) {
         console.log(
-          `[Updater] 当前源过慢（${(outcome.speed / 1024).toFixed(0)} KB/s，已下 ${(received / 1048576).toFixed(2)} MB），竞速探测 ${Math.min(queue.length, MAX_PROBE_SOURCES)} 个候选源`
+          `[Updater] 当前源过慢（${(outcome.speed / 1024).toFixed(0)} KB/s，已下 ${(received / 1048576).toFixed(2)} MB），竞速探测 ${Math.min(queue.length, MAX_PROBE_SOURCES)} 个候选源` // i18n-exempt: 开发者日志，不进界面
         )
         const faster = await pickFasterSource(queue.slice(0, MAX_PROBE_SOURCES), outcome.speed, task.signal)
         if (faster) {
@@ -716,18 +723,22 @@ export async function downloadInstaller(task: InstallerDownloadTask): Promise<nu
         continue
       }
 
-      lastError = outcome.error ?? new Error('下载中断')
+      lastError = outcome.error ?? auroraError('desktop.error.updater.interrupted')
     } catch (err) {
       lastError = err
-      if (task.signal.aborted) throw new Error('已取消下载')
+      if (task.signal.aborted) throw auroraError('desktop.error.updater.canceled')
       // 建连失败/HTTP 错误：换下一个候选源
     } finally {
       attempt.dispose()
     }
   }
 
-  const detail = lastError instanceof Error && lastError.message ? lastError.message : ''
-  throw new Error(detail ? `下载失败：${detail}` : '下载失败：网络连接异常（已尝试所有下载源）')
+  // 换源全败：把最后一条失败原因渲染成当前语言的成品句作为 {detail}，嵌进外层整句；
+  // 一条可读原因都没有时才用通用兜底
+  const detail = lastError === null || lastError === undefined ? '' : mainErrorText(lastError)
+  throw detail
+    ? auroraError('desktop.error.updater.downloadFailed', { detail })
+    : auroraError('desktop.error.updater.downloadFailedGeneric')
 }
 
 // ───────────────────────── IPC ─────────────────────────
@@ -743,11 +754,11 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
 
   ipcMain.handle('updater:download', async (_event, url: unknown, kind: unknown, altUrls: unknown, expectedSize: unknown, expectedDigest: unknown) => {
     const candidates = normalizeDownloadUrls(url, altUrls)
-    if (!candidates.length) throw new Error('下载地址无效')
+    if (!candidates.length) throw auroraError('desktop.error.common.urlInvalid')
     if (typeof kind !== 'string' || !INSTALLER_KINDS.has(kind)) {
-      throw new Error('安装包类型无效')
+      throw auroraError('desktop.error.updater.kindInvalid')
     }
-    if (activeAbort) throw new Error('已有更新下载在进行中')
+    if (activeAbort) throw auroraError('desktop.error.updater.busy')
 
     const abort = new AbortController()
     activeAbort = abort
@@ -785,12 +796,17 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
         // 忽略
       }
       if (abort.signal.aborted) {
-        throw new Error('已取消下载')
+        throw auroraError('desktop.error.updater.canceled')
       }
       console.error('[Updater] 下载失败:', err)
-      const message = err instanceof Error && err.message ? err.message : '下载失败，请稍后重试'
+      // updater:error 的 message 由渲染层直接上屏（只做透传，不会再解码），
+      // 所以这里渲染成当前语言的成品句；reject 侧换成结构化错误，由渲染层
+      // translateError 按语言渲染（外层整句 + 内层原因）
+      const message = err === null || err === undefined
+        ? mainTranslate()('desktop.error.updater.downloadFailedGeneric')
+        : mainErrorText(err)
       send('updater:error', message)
-      throw new Error(message)
+      throw auroraError('desktop.error.updater.downloadFailed', { detail: message })
     } finally {
       // 只回收自己这个任务：取消后立刻重下时，不能把新任务的锁清掉
       if (activeAbort === abort) activeAbort = null
@@ -813,10 +829,10 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
 
   ipcMain.handle('updater:install', async (_event, filePath: unknown, kind: unknown) => {
     if (typeof filePath !== 'string' || !path.isAbsolute(filePath) || !fs.existsSync(filePath)) {
-      throw new Error('安装包文件不存在')
+      throw auroraError('desktop.error.updater.installerMissing')
     }
     if (typeof kind !== 'string' || !INSTALLER_KINDS.has(kind)) {
-      throw new Error('安装包类型无效')
+      throw auroraError('desktop.error.updater.kindInvalid')
     }
 
     if (kind === 'exe') {
@@ -837,7 +853,7 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
       }
       const err = await shell.openPath(filePath)
       if (err) {
-        throw new Error('启动新版本失败：' + err)
+        throw auroraError('desktop.error.updater.launchFailed', { detail: err })
       }
       app.quit()
       return { action: 'launched' as const }
@@ -852,7 +868,7 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
           : `sudo dnf install -y '${filePath}' || sudo rpm -Uvh '${filePath}'`
       const opened = await openTerminalWithCommand(cmd)
       if (!opened) {
-        throw new Error('无法打开终端，请手动执行：' + cmd)
+        throw auroraError('desktop.error.updater.terminalFailed', { command: cmd })
       }
       return { action: 'terminal' as const, command: cmd }
     }
@@ -863,7 +879,7 @@ export function registerUpdaterIpc(sender: (channel: string, ...args: unknown[])
       // 不退出当前实例——用户可能还想继续听，且退出会让拖拽替换更难操作。
       const err = await shell.openPath(filePath)
       if (err) {
-        throw new Error('打开安装包失败：' + err)
+        throw auroraError('desktop.error.updater.openFailed', { detail: err })
       }
       return { action: 'mounted' as const }
     }

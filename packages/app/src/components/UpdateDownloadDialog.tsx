@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { CheckCircle2, Download, Loader2, AlertCircle, FolderOpen } from 'lucide-react'
+import { translateError, type MessageKey, type TFunction } from '@aurora/shared'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/common/Toast'
 import { useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 import { isMobile } from '@/lib/utils'
+import { useT, appTranslate } from '@/i18n'
 import {
-  canInstallApk,
   installApk,
   openInstallPermissionSettings,
 } from '@/services/mobile-update'
@@ -15,8 +16,20 @@ import {
  * 内置更新下载/安装对话框（全局唯一实例，由 App 挂载）。
  * 下载进度、完成、失败状态由 updateDownloadStore 驱动；
  * 下载中可收起（任务继续后台进行），完成/失败时自动重新弹出。
+ *
+ * 文案约定：
+ * - 对话框内所有句子渲染期 t()；store 的 `error` 是**结构化载荷**，
+ *   经 `translateError(error, t)` 按当前语言出文案；
+ * - 模块级不存任何句子：`INSTALL_HINT` 那张表以前存中文字面量，语言会被冻在
+ *   模块加载那一刻，现在存 `MessageKey`，渲染期取译文。
  */
 
+/**
+ * `translateError` 的第二个参数声明为内核的 `TFunction`（键类型是通配 string），
+ * 而 `useT()` 给的是**收窄键集**的 `AppTranslator`——两者有已知的类型缺口
+ * （shared 的 i18n/index.ts 是禁区，本 owner 不改）。这里在显示端收口成一处适配，
+ * 避免每个调用点各写一份断言；如 shared 侧后续导出官方桥接函数，删掉本函数即可。
+ */
 function formatBytes(n: number): string {
   if (!isFinite(n) || n <= 0) return '0 MB'
   const mb = n / 1024 / 1024
@@ -33,17 +46,22 @@ function formatSpeed(bps: number | null): string | null {
 /** 低于这个速度基本说明线路没走对（正常经代理约 1~2 MB/s） */
 const SLOW_BPS = 300 * 1024
 
-/** 各安装包类型的「现在安装」说明文案 */
-const INSTALL_HINT: Record<string, string> = {
-  exe: '启动安装器后将退出当前应用，按向导完成安装',
-  appimage: '启动新版本后将退出当前应用，直接运行新文件即完成更新',
-  deb: '将打开系统终端执行 sudo 安装命令，输入密码确认即可',
-  rpm: '将打开系统终端执行 sudo 安装命令，输入密码确认即可',
-  dmg: '将挂载 dmg 安装包，把 Aurora Music 拖入「应用程序」覆盖旧版本即完成更新',
-  apk: '将调起系统安装界面，按提示确认安装；若提示未授权，请先允许本应用「安装未知应用」',
+/**
+ * 各安装包类型的「现在安装」说明：存**键**，渲染期 t()。
+ * 键与 update-asset 的 ASSET_LABEL_KEYS 分开维护是刻意的——
+ * 那边是「横幅/设置页上的包类型名」，这边是「点安装后会发生什么」，受众不同。
+ */
+const INSTALL_HINT_KEYS: Record<string, MessageKey> = {
+  exe: 'update.hint.exe',
+  appimage: 'update.hint.appimage',
+  deb: 'update.hint.deb',
+  rpm: 'update.hint.rpm',
+  dmg: 'update.hint.dmg',
+  apk: 'update.hint.apk',
 }
 
 export function UpdateDownloadDialog() {
+  const t = useT()
   const phase = useUpdateDownloadStore((s) => s.phase)
   const task = useUpdateDownloadStore((s) => s.task)
   const received = useUpdateDownloadStore((s) => s.received)
@@ -87,7 +105,7 @@ export function UpdateDownloadDialog() {
       if (isMobile()) {
         const result = await installApk(filePath)
         if (!result.launched && result.needPermission) {
-          toast('请先允许本应用安装未知应用，授权后回来再次点击「去安装」', { duration: 8000 })
+          toast(t('update.dialog.needInstallPermission'), { duration: 8000 })
           await openInstallPermissionSettings()
         }
         return
@@ -95,14 +113,17 @@ export function UpdateDownloadDialog() {
       const api = (window as any).electronAPI.updater
       const result = await api.install(filePath, task.kind)
       if (result?.action === 'terminal') {
-        toast('已在终端打开安装命令，请按提示输入密码', { duration: 8000 })
+        toast(t('update.toast.terminal'), { duration: 8000 })
       }
       if (result?.action === 'mounted') {
-        toast('已挂载 dmg，把 Aurora Music 拖入「应用程序」覆盖旧版本即完成更新', { duration: 8000 })
+        toast(t('update.toast.mounted'), { duration: 8000 })
       }
       // exe / appimage 会启动安装器并退出当前应用，无需后续处理
     } catch (err) {
-      toast(err instanceof Error && err.message ? err.message : '启动安装失败', { type: 'error' })
+      // toast 走非渲染期入口（appTranslate 每次读实时快照）；
+      // 归一函数认不出来的失败落到 update.error.installFailed，原始文本留在 detail 里
+      const text = err === null || err === undefined ? '' : translateError(err, appTranslate())
+      toast(text || t('update.error.installFailed'), { type: 'error' })
     } finally {
       setInstalling(false)
     }
@@ -122,7 +143,7 @@ export function UpdateDownloadDialog() {
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-[17px]">软件更新</DialogTitle>
+          <DialogTitle className="text-[17px]">{t('update.dialog.title')}</DialogTitle>
           <DialogDescription className="font-text text-[12px]">
             {task ? `v${task.version}${task.label ? ` · ${task.label}` : ''}` : ''}
           </DialogDescription>
@@ -132,7 +153,7 @@ export function UpdateDownloadDialog() {
           <div className="space-y-3">
             <div className="flex items-center gap-2 font-text text-[13px] text-white/80">
               <Loader2 className="h-4 w-4 animate-spin text-mint" strokeWidth={1.8} />
-              正在下载安装包…
+              {t('update.dialog.downloading')}
               <span className="ml-auto flex items-baseline gap-2">
                 {speedText ? <span className="text-[11px] text-white/50">{speedText}</span> : null}
                 {percent !== null ? <span className="text-mint">{percent}%</span> : null}
@@ -153,19 +174,19 @@ export function UpdateDownloadDialog() {
               {formatBytes(received)}
               {total ? ` / ${formatBytes(total)}` : ''}
               {route ? <span className="ml-2">· {route}</span> : null}
-              <span className="ml-2">· 保存至系统「下载」目录</span>
+              <span className="ml-2">· {t('update.dialog.savedToDownloads')}</span>
             </p>
             {slowWarning && (
               <p className="rounded-[10px] border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 font-text text-[11px] leading-relaxed text-amber-200/80">
-                当前速度偏低。应用跟随系统代理下载，若本机代理未开启或未设为系统代理，会自动回退直连，速度会明显下降。
+                {t('update.dialog.slowLine')}
               </p>
             )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={hide}>
-                后台下载
+                {t('update.dialog.background')}
               </Button>
               <Button variant="secondary" size="sm" onClick={cancel}>
-                取消
+                {t('common.action.cancel')}
               </Button>
             </div>
           </div>
@@ -176,19 +197,19 @@ export function UpdateDownloadDialog() {
             <div className="flex items-start gap-2.5 rounded-[10px] border border-mint/20 bg-mint/[0.06] px-3.5 py-3">
               <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint" strokeWidth={1.8} />
               <div className="min-w-0">
-                <p className="font-text text-[13px] text-white/90">下载完成</p>
+                <p className="font-text text-[13px] text-white/90">{t('update.dialog.done')}</p>
                 <p className="mt-0.5 break-all font-text text-[11px] leading-4 text-white/45">{filePath}</p>
               </div>
             </div>
-            {task && INSTALL_HINT[task.kind] && (
-              <p className="font-text text-[11px] leading-4 text-white/45">{INSTALL_HINT[task.kind]}</p>
+            {task && INSTALL_HINT_KEYS[task.kind] && (
+              <p className="font-text text-[11px] leading-4 text-white/45">{t(INSTALL_HINT_KEYS[task.kind])}</p>
             )}
             <div className="flex justify-end gap-2 pt-1">
               {/* 「打开文件夹」依赖桌面端 shell.showItemInFolder；移动端无对等能力，隐藏 */}
               {!isMobile() && (
                 <Button variant="ghost" size="sm" onClick={handleReveal}>
                   <FolderOpen className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.8} />
-                  打开文件夹
+                  {t('update.dialog.reveal')}
                 </Button>
               )}
               {task && (
@@ -198,11 +219,11 @@ export function UpdateDownloadDialog() {
                   ) : (
                     <Download className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.8} />
                   )}
-                  {isMobile() ? '去安装' : '现在安装'}
+                  {t(isMobile() ? 'update.dialog.installMobile' : 'update.dialog.installDesktop')}
                 </Button>
               )}
               <Button variant="secondary" size="sm" onClick={reset}>
-                稍后
+                {t('update.dialog.later')}
               </Button>
             </div>
           </div>
@@ -212,14 +233,17 @@ export function UpdateDownloadDialog() {
           <div className="space-y-3">
             <div className="flex items-start gap-2.5 rounded-[10px] border border-coral/25 bg-coral/[0.07] px-3.5 py-3">
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-coral" strokeWidth={1.8} />
-              <p className="min-w-0 break-all font-text text-[13px] text-white/85">{error || '下载失败，请稍后重试'}</p>
+              {/* 错误是结构化载荷：按当前语言渲染，不是抛出点烧死的那句话 */}
+              <p className="min-w-0 break-all font-text text-[13px] text-white/85">
+                {error ? translateError(error, t) : t('update.error.downloadFailed')}
+              </p>
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={reset}>
-                关闭
+                {t('update.dialog.close')}
               </Button>
               <Button size="sm" onClick={handleRetry}>
-                重试
+                {t('update.dialog.retry')}
               </Button>
             </div>
           </div>

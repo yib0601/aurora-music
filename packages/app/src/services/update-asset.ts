@@ -6,7 +6,13 @@
  * - 系统包管理器装的（dnf/apt）→ 给对应原生包（rpm/deb），AppImage 仅作兜底；
  * - 判断不出发行版时保持历史行为（AppImage 优先）。
  * - macOS 只有 dmg（分 arm64/x64 两份），按 process.arch 挑本机那份。
+ *
+ * 文案约定：本模块**只产出文案键，不产出句子**。
+ * 展示名与覆盖安装提示都要随语言切换，若在这里拼成字符串，语言就被冻在
+ * 「检查更新完成」那一刻（用户之后切语言，横幅上的包类型名不会跟着变）。
  */
+
+import type { MessageKey } from '@aurora/shared'
 
 export type AssetKind = 'apk' | 'exe' | 'appimage' | 'deb' | 'rpm' | 'dmg'
 
@@ -28,13 +34,17 @@ export interface AssetPick {
   digest: string | null
 }
 
-export const ASSET_LABEL: Record<AssetKind, string> = {
-  apk: 'APK',
-  exe: 'EXE 安装包',
-  appimage: 'AppImage 便携版',
-  deb: 'DEB 包',
-  rpm: 'RPM 包',
-  dmg: 'DMG 安装包',
+/**
+ * 安装包类型的**展示名键**（渲染期 `t(ASSET_LABEL_KEYS[kind])`）。
+ * 值为键而非句子：横幅与设置页都会展示它，且横幅在语言切换后仍留在屏幕上。
+ */
+export const ASSET_LABEL_KEYS: Record<AssetKind, MessageKey> = {
+  apk: 'update.asset.apk',
+  exe: 'update.asset.exe',
+  appimage: 'update.asset.appimage',
+  deb: 'update.asset.deb',
+  rpm: 'update.asset.rpm',
+  dmg: 'update.asset.dmg',
 }
 
 const ASSET_SUFFIX: Record<AssetKind, string> = {
@@ -111,10 +121,25 @@ export function pickAsset(
   return null
 }
 
-/** 覆盖安装命令提示：仅当推荐的是系统包、且当前就是包管理器安装时给出 */
-export function assetInstallHint(kind: AssetKind, info?: SystemInfoLike | null): string | null {
+/** 覆盖安装命令：只给命令原文，是否展示由调用方决定（语言无关，不进字典） */
+const SUDO_COMMAND: Partial<Record<AssetKind, string>> = {
+  rpm: 'sudo dnf install ./Aurora-Music-*.rpm',
+  deb: 'sudo apt install ./Aurora-Music-*.deb',
+}
+
+/**
+ * 覆盖安装提示的**文案键**：仅当推荐的是系统包、且当前就是包管理器安装时给出。
+ * 返回 null 表示不给提示（沿用旧返回值语义）。
+ * 命令行原文由 `assetInstallCommand()` 给出，作为 `{command}` 参数传给 t()。
+ */
+export function assetInstallHintKey(kind: AssetKind, info?: SystemInfoLike | null): MessageKey | null {
   if (info?.installKind !== 'system-package') return null
-  if (kind === 'rpm') return '下载后用 sudo dnf install ./Aurora-Music-*.rpm 覆盖安装'
-  if (kind === 'deb') return '下载后用 sudo apt install ./Aurora-Music-*.deb 覆盖安装'
+  if (kind === 'rpm') return 'update.installHint.rpm'
+  if (kind === 'deb') return 'update.installHint.deb'
   return null
+}
+
+/** 与 assetInstallHintKey 配套的命令行原文（键为 null 时本函数也无意义） */
+export function assetInstallCommand(kind: AssetKind): string | null {
+  return SUDO_COMMAND[kind] ?? null
 }

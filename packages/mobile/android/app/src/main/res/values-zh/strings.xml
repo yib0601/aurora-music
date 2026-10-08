@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- 中文资源（values-zh）：只需覆盖默认资源里可翻译的条目。
+         app_name / title_activity_main / package_name / custom_url_scheme 是品牌名与
+         包标识，默认资源里已标 translatable="false"，此处刻意不出现（重复反而会让
+         lint 报 MissingTranslation 之外的歧义）。
+         键集合必须与 values/strings.xml 的可翻译条目逐条对应。 -->
+    <string name="aurora_notification_channel_name">音乐播放</string>
+    <string name="aurora_notification_channel_description">Aurora Music 媒体播放控制</string>
+    <string name="aurora_notification_action_previous">上一首</string>
+    <string name="aurora_notification_action_play">播放</string>
+    <string name="aurora_notification_action_pause">暂停</string>
+    <string name="aurora_notification_action_next">下一首</string>
+</resources>

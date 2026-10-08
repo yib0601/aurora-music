@@ -3,6 +3,7 @@ import { ArrowDownCircle, Download, X } from 'lucide-react'
 import type { UpdateInfo } from '@/services/update.service'
 import { openDownloadPage, APP_VERSION } from '@/services/update.service'
 import { isInAppUpdateAvailable, startInAppDownload } from '@/stores/updateDownloadStore'
+import { useT } from '@/i18n'
 
 /**
  * 新版本提示横幅：启动检测到新版本后在页面顶部展示。
@@ -15,6 +16,9 @@ import { isInAppUpdateAvailable, startInAppDownload } from '@/stores/updateDownl
  *   两端对齐。整行横幅塞进 44px 带子里会溢出（自带 py-2.5 + 圆角边框），
  *   而带子里若只有左侧一个搜索框、右侧留空 800+px，那个框看着就是孤零零地
  *   飘在窗口顶 —— 这两件事是同一个决定的两面。
+ *
+ * 文案一律渲染期 t()：`info.assetLabel` / `info.installHint` 是**键**不是句子
+ * （见 update.service 的 UpdateInfo），横幅是长期驻留元素，切语言要跟着变。
  */
 export function UpdateBanner({
   info,
@@ -25,8 +29,17 @@ export function UpdateBanner({
   onClose: () => void
   variant?: 'banner' | 'compact'
 }) {
+  const t = useT()
   const [downloading, setDownloading] = useState(false)
   const inAppAvailable = isInAppUpdateAvailable() && !!info.assetUrl && !!info.assetKind
+  // 覆盖安装提示：键 + 命令行原文配套渲染，缺一不给（避免显示半个句子）
+  const installHint =
+    info.installHint && info.installCommand
+      ? t(info.installHint, { command: info.installCommand })
+      : info.installHint
+        ? t(info.installHint)
+        : null
+  const downloadTitle = inAppAvailable ? t('update.banner.inAppHint') : installHint || undefined
 
   const handleDownload = () => {
     if (inAppAvailable) {
@@ -60,19 +73,19 @@ export function UpdateBanner({
       <div className="flex items-center gap-1 rounded-full border border-mint/20 bg-mint/[0.06] pl-3 pr-1 h-9 backdrop-blur-ds">
         <ArrowDownCircle className="h-[18px] w-[18px] text-mint flex-shrink-0" strokeWidth={1.6} />
         <p className="font-text text-[13px] text-white/85 tracking-[-0.15px] whitespace-nowrap">
-          新版本 <span className="text-mint font-semibold">v{info.version}</span>
+          {t('update.banner.newVersionCompact')} <span className="text-mint font-semibold">v{info.version}</span>
         </p>
         <button
           onClick={handleDownload}
-          title={inAppAvailable ? '应用内下载，完成后可直接安装' : info.installHint || undefined}
+          title={downloadTitle}
           className="ml-1 flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.1] px-3 h-7 flex items-center gap-1.5 font-text text-[13px] text-mint hover:bg-mint/20 transition-colors whitespace-nowrap"
         >
           <Download className="h-3.5 w-3.5" strokeWidth={2} />
-          {downloading ? '已打开' : '下载更新'}
+          {t(downloading ? 'update.banner.opened' : 'update.banner.download')}
         </button>
         <button
           onClick={onClose}
-          aria-label="关闭更新提示"
+          aria-label={t('update.banner.close')}
           className="btn-icon rounded-full text-white/50 hover:text-white"
         >
           <X className="h-4 w-4" strokeWidth={1.8} />
@@ -85,28 +98,31 @@ export function UpdateBanner({
     <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 mb-3">
       <div className="flex items-center gap-3 rounded-[10px] border border-mint/20 bg-mint/[0.06] px-4 py-2.5 backdrop-blur-ds">
       <ArrowDownCircle className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
+      {/* 新版本号与当前版本号同句：英文语序不同，整句 + 两个占位符，不拆开拼 */}
       <p className="font-text text-[13px] text-white/85 tracking-[-0.15px] min-w-0 flex-1 truncate">
-        发现新版本 <span className="text-mint font-semibold">v{info.version}</span>
+        {t('update.banner.newVersionFull')} <span className="text-mint font-semibold">v{info.version}</span>
         {/* 小屏空间有限，隐藏当前版本信息，优先保证新版本号完整展示 */}
-        <span className="text-white/50 hidden md:inline">，当前 v{APP_VERSION}</span>
+        <span className="text-white/50 hidden md:inline">
+          {t('update.banner.currentVersion', { version: APP_VERSION })}
+        </span>
       </p>
       {/* 标出将下载的包类型：dnf 系给 RPM、apt 系给 DEB、便携版给 AppImage */}
       {info.assetLabel && (
         <span className="flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.08] px-2 py-0.5 font-text text-[11px] text-mint/90">
-          {info.assetLabel}
+          {t(info.assetLabel)}
         </span>
       )}
       <button
         onClick={handleDownload}
-        title={inAppAvailable ? '应用内下载，完成后可直接安装' : info.installHint || undefined}
+        title={downloadTitle}
         className="flex-shrink-0 pill pill-sm pill-mint"
       >
         <Download className="h-3.5 w-3.5" strokeWidth={1.8} />
-        {downloading ? '已打开下载' : '下载更新'}
+        {t(downloading ? 'update.banner.openedDownload' : 'update.banner.download')}
       </button>
       <button
         onClick={onClose}
-        aria-label="关闭更新提示"
+        aria-label={t('update.banner.close')}
         className="btn-icon rounded-full text-white/50 hover:text-white"
       >
         <X className="h-4 w-4" strokeWidth={1.8} />

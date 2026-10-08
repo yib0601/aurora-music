@@ -1,4 +1,5 @@
 import {
+  auroraError,
   fetchLxScript as sharedFetchLxScript,
   inspectLxSource as sharedInspectLxSource,
   resolveLxSourceUrl as sharedResolveLxSourceUrl,
@@ -6,6 +7,7 @@ import {
   setLxHostDeps,
   setLxScriptProvider,
 } from '@aurora/shared'
+import { appTranslate } from '@/i18n'
 import type {
   DownloadQuality,
   LxHostDeps,
@@ -98,7 +100,8 @@ export function createMobileLxRequest(): LxRequestFn {
           body: parsed,
         })
       } catch (err) {
-        finish((err as Error)?.message || '网络请求失败', null)
+        // 底层异常原样透出（脚本宿主据此判错），仅在无 message 时给当前语言的兜底文案
+        finish((err as Error)?.message || appTranslate()('errors.network.unreachable'), null)
       }
     })()
 
@@ -125,7 +128,7 @@ const scriptCache = new Map<string, Promise<string>>()
 async function ensureScript(source: LxScriptSource): Promise<string> {
   const inline = typeof source.script === 'string' ? source.script.trim() : ''
   if (inline) return String(source.script)
-  if (!source.sourceUrl) throw new Error('音源未填写脚本地址')
+  if (!source.sourceUrl) throw auroraError('runtime.error.scriptSourceUrlMissing')
   const key = `${source.id}|${source.sourceUrl}`
   let pending = scriptCache.get(key)
   if (!pending) {

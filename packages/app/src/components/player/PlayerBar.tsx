@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic, Loader2 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
+import { useT } from '@/i18n'
 import { useOpenSongDetail } from '@/lib/navigation'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -98,6 +99,7 @@ function CompactBar({
   onNext,
   onOpenNowPlaying,
 }: PlayerBarProps) {
+  const t = useT()
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
@@ -124,7 +126,7 @@ function CompactBar({
     <div
       onClick={openNowPlaying}
       role="button"
-      aria-label="展开播放器"
+      aria-label={t('player.bar.expand')}
       className="glass-saved-panel rounded-[16px] border border-white/[0.07] pl-2 pr-1.5 py-1.5 flex items-center gap-0.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
     >
       {/* 顶部进度细线：左右各内缩 16px，避开 16px 圆角弧线——原先 inset-x-0
@@ -151,10 +153,10 @@ function CompactBar({
         </div>
         <div className="min-w-0 flex flex-col gap-px">
           <p className="text-[13px] font-medium text-white/[0.94] truncate tracking-[-0.224px]">
-            {currentTrack?.title || '未在播放'}
+            {currentTrack?.title || t('player.state.notPlaying')}
           </p>
           <p className="text-[10.5px] text-white/60 truncate tracking-[-0.12px]">
-            {currentTrack?.artist || '选择一首歌曲'}
+            {currentTrack?.artist || t('player.state.idle')}
           </p>
         </div>
       </div>
@@ -170,7 +172,7 @@ function CompactBar({
           onTogglePlay()
         }}
         disabled={!currentTrack}
-        aria-label={resolving ? '加载中' : isPlaying ? '暂停' : '播放'}
+        aria-label={resolving ? t('common.state.loading') : isPlaying ? t('common.action.pause') : t('common.action.play')}
       >
         {resolving ? (
           // 取址中：主按钮转菊花，明确「已经收到你的点播，正在取地址」
@@ -188,7 +190,7 @@ function CompactBar({
           onNext()
         }}
         disabled={!currentTrack}
-        aria-label="下一首"
+        aria-label={t('common.action.next')}
       >
         <SkipForward className="h-[18px] w-[18px]" fill="currentColor" strokeWidth={1.2} />
       </button>
@@ -203,7 +205,7 @@ function CompactBar({
           e.stopPropagation()
           toggleQueuePanel()
         }}
-        aria-label="队列"
+        aria-label={t('player.queue.toggle')}
       >
         <ListMusic className="h-[19px] w-[19px]" strokeWidth={1.7} />
       </button>
@@ -232,6 +234,7 @@ function FullBar({
   onToggleMute,
   onCyclePlayMode,
 }: PlayerBarProps) {
+  const t = useT()
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
@@ -322,7 +325,7 @@ function FullBar({
         <div className="flex items-center gap-3 min-w-0 justify-start">
           <button
             onClick={() => currentTrack && openSongDetail(currentTrack.id)}
-            title="查看歌曲详情"
+            title={t('player.track.viewDetail')}
             className="w-[40px] h-[40px] min-[1500px]:w-12 min-[1500px]:h-12 rounded-[10px] flex-shrink-0 overflow-hidden bg-white/[0.04] flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
             style={{
               boxShadow:
@@ -338,10 +341,10 @@ function FullBar({
           </button>
           <div className="min-w-0 flex flex-col gap-0.5">
             <p className="text-[12.5px] min-[1500px]:text-[14px] font-medium text-white/92 truncate transition-colors hover:text-white">
-              {currentTrack?.title || '未在播放'}
+              {currentTrack?.title || t('player.state.notPlaying')}
             </p>
             <p className="text-[10.5px] min-[1500px]:text-[12px] text-white/65 truncate">
-              {currentTrack?.artist || '选择一首歌曲开始'}
+              {currentTrack?.artist || t('player.state.idleHint')}
             </p>
           </div>
         </div>
@@ -354,15 +357,15 @@ function FullBar({
               playModeActive && 'text-mint',
             )}
             onClick={onCyclePlayMode}
-            title={
+            title={t(
               shuffleMode === 'on'
-                ? '随机播放'
+                ? 'player.mode.shuffle'
                 : repeatMode === 'one'
-                  ? '单曲循环'
+                  ? 'player.mode.repeatOne'
                   : repeatMode === 'all'
-                    ? '列表循环'
-                    : '随机播放'
-            }
+                    ? 'player.mode.repeatAll'
+                    : 'player.mode.shuffle'
+            )}
           >
             {shuffleMode === 'on' ? (
               <Shuffle className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
@@ -415,7 +418,7 @@ function FullBar({
               e.stopPropagation()
               toggleQueuePanel()
             }}
-            title="队列"
+            title={t('player.queue.toggle')}
           >
             <ListMusic className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
           </button>
@@ -426,7 +429,7 @@ function FullBar({
           <button
             className="btn-icon btn-xl"
             onClick={onToggleMute}
-            title={muted || volume === 0 ? '取消静音' : '静音'}
+            title={muted || volume === 0 ? t('player.volume.unmute') : t('player.volume.mute')}
           >
             {muted || volume === 0 ? (
               <VolumeX className="h-[14px] w-[14px] min-[1500px]:h-4 min-[1500px]:w-4" strokeWidth={1.5} />

@@ -317,7 +317,12 @@ export interface PlaylistParseResult {
 export interface SourceCapability {
   /** 能力键（脚本源：kw / kg / tx / wy / mg；服务源：search / playlist / recommend / toplists / toplist） */
   key: string
-  /** 展示名 */
+  /**
+   * 展示名。**已知平台 / 端点给的是文案键**（`core.platform.*` / `core.probe.endpoint.*`），
+   * 显示端在渲染期 `t(label)` 取值（取值时机必须是渲染期，模块级求值会把语言冻结）；
+   * 脚本自报的平台名（第三方数据）与裸标识串原样透出 —— 翻译器查不到键会返回原串，
+   * 因此显示端用同一个 `t()` 调用即可同时兜住两种形态。
+   */
   label: string
   /** 该能力是否可检索 */
   searchable: boolean
@@ -345,9 +350,13 @@ export interface SourceProbeInput {
 export interface SourceProbeResult {
   ok: boolean
   kind: OnlineSourceKind
-  /** 面向用户的结论文案 */
+  /**
+   * 面向用户的结论文案。
+   * 形态：结构化信封（`AURORA_ERR:{code,params}`）或平台侧的自由文本；
+   * 显示端统一 `translateError(message, t)` 渲染（自由文本按原样透出，不吞信息）。
+   */
   message?: string
-  /** 失败原因（ok=false 时给） */
+  /** 失败原因（ok=false 时给）：与 message 同形态，渲染方式同上 */
   error?: string
   /** 该源可提供的能力行 */
   capabilities: SourceCapability[]

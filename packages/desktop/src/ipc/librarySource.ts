@@ -13,6 +13,7 @@ import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 import { parseBuffer } from 'music-metadata'
 import {
+  auroraError,
   getMediaProvider,
   storagePathFor,
   storagePathPrefix,
@@ -34,6 +35,7 @@ import {
   updateTrack,
 } from './database'
 import { registerCoverFile } from './mediaCache'
+import { mainTranslate } from '../i18n'
 // 与本地按需提取共用同一份「悬空路径」判定，避免两处各写一份阈值
 import { isUsableCoverFile } from './coverFile'
 
@@ -59,16 +61,22 @@ export function getLibrarySource(id: string): LibrarySourceConfig | undefined {
  */
 function providerFor(cfg: LibrarySourceConfig): MediaProvider {
   const provider = getMediaProvider(cfg.kind)
-  if (!provider) throw new Error(`暂不支持的媒体库来源类型：${cfg.kind}`)
+  if (!provider) throw auroraError('desktop.error.source.kindUnsupported', { kind: cfg.kind })
   return provider
 }
 
-/** 按扩展名给出一个占位标题/艺术家，与本地扫描的命名惯例保持一致 */
+/**
+ * 按扩展名给出一个占位标题/艺术家，与本地扫描的命名惯例保持一致。
+ *
+ * 占位值（"未知艺术家"/"未知专辑"）是**落库哨兵**，同时参与匹配
+ * （见 shared/coverMatch 的 PLACEHOLDER_ARTISTS 与 scanner 的 META_PLACEHOLDERS），
+ * 本地化会让匹配失效、并让同一首歌在不同语言下入库成不同记录，因此保持字面量。
+ */
 function fallbackMetaFromName(name: string): { title: string; artist: string } {
   const stem = name.replace(/\.[^.]+$/, '')
   const m = stem.match(/^(.{1,50}?)\s*-\s*(.{1,100})$/)
   if (m) return { title: m[2].trim(), artist: m[1].trim() }
-  return { title: stem, artist: '未知艺术家' }
+  return { title: stem, artist: '未知艺术家' } // i18n-exempt: 落库哨兵值，参与匹配
 }
 
 /**
@@ -85,7 +93,12 @@ async function parseRemoteMetadata(
   // 非 2xx 一律按传输层失败处理（抛 WebdavError）：远端拒绝/文件已消失时，
   // 不该用文件名兜底把一条读不到音源的记录写进曲库
   if (!resp.ok && resp.status !== 206) {
-    throw new WebdavError(`读取远端文件失败：HTTP ${resp.status}`, resp.status)
+    // 必须保持 WebdavError 类型：调用方据此区分「传输层失败（可重试、不得写库）」。
+    // message 走字典渲染成当前语言的成品句（该错误最终经 events 或 reject 上屏）。
+    throw new WebdavError(
+      mainTranslate()('desktop.error.source.remoteReadFailed', { status: resp.status }),
+      resp.status
+    )
   }
   const buf = new Uint8Array(await resp.arrayBuffer())
   const md = await parseBuffer(buf, { mimeType: guessAudioMime(entry.name) }, { duration: true, skipCovers: true })
@@ -96,12 +109,12 @@ async function parseRemoteMetadata(
   const fallback = fallbackMetaFromName(stem)
   let title = md.common.title || fallback.title
   let artist = md.common.artist || fallback.artist
-  if (!artist) artist = '未知艺术家'
+  if (!artist) artist = '未知艺术家' // i18n-exempt: 落库哨兵值，参与匹配
 
   return {
     title,
     artist,
-    album: md.common.album || '未知专辑',
+    album: md.common.album || '未知专辑', // i18n-exempt: 落库哨兵值，参与匹配
     year: md.common.year,
     genre: md.common.genre?.[0],
     duration,
@@ -135,7 +148,7 @@ async function buildRemoteTrack(
     if (err instanceof WebdavError) throw err
     const fallback = fallbackMetaFromName(entry.name)
     console.warn('[LibrarySource] 元数据解析失败，按文件名兜底入库:', entry.path, (err as Error).message)
-    meta = { title: fallback.title, artist: fallback.artist, album: '未知专辑', duration: 0 }
+    meta = { title: fallback.title, artist: fallback.artist, album: '未知专辑', duration: 0 } // i18n-exempt: 落库哨兵值
     parsedSize = undefined
   }
   return {
@@ -144,8 +157,8 @@ async function buildRemoteTrack(
     sourceId: cfg.id,
     remoteUrl: buildRemoteAudioUrl(cfg.id, entry.path),
     title: meta.title || fallbackMetaFromName(entry.name).title,
-    artist: meta.artist || '未知艺术家',
-    album: meta.album || '未知专辑',
+    artist: meta.artist || '未知艺术家', // i18n-exempt: 落库哨兵值，参与匹配
+    album: meta.album || '未知专辑', // i18n-exempt: 落库哨兵值，参与匹配
     year: meta.year,
     genre: meta.genre,
     duration: meta.duration ?? 0,
@@ -184,7 +197,7 @@ export async function scanLibrarySource(
   onTrack?: (track: Track) => void
 ): Promise<LibraryScanResult> {
   const cfg = registry.get(sourceId)
-  if (!cfg) throw new Error(`未知的媒体库来源：${sourceId}`)
+  if (!cfg) throw auroraError('desktop.error.source.unknown', { id: sourceId })
   const provider = providerFor(cfg)
 
   const failedDirs: string[] = []
@@ -238,7 +251,7 @@ export async function scanLibrarySource(
     if (removed > 0) console.log('[LibrarySource] 清理已不存在的远端曲目:', removed)
   } else {
     console.warn(
-      `[LibrarySource]「${cfg.name}」有 ${failedDirs.length} 个目录列举失败，本次跳过缺失清理，避免误删曲库`
+      `[LibrarySource]「${cfg.name}」有 ${failedDirs.length} 个目录列举失败，本次跳过缺失清理，避免误删曲库` // i18n-exempt: 开发者日志，不进界面
     )
   }
 
@@ -275,7 +288,7 @@ export async function ensureRemoteCover(track: Track, userData: string): Promise
     // 网络/服务端错误必须抛错，不能返回 null：渲染层只对「确认无内嵌封面」缓存结果，
     // 返回 null 会被当成"这首没有封面"缓存一整个会话，NAS 短暂不可达后封面就再也不补了
     if (!head.ok && head.status !== 206) {
-      throw new Error(`读取远端文件失败：HTTP ${head.status}`)
+      throw auroraError('desktop.error.source.remoteReadFailed', { status: head.status })
     }
     const buf = new Uint8Array(await head.arrayBuffer())
     const md = await parseBuffer(buf, { mimeType: guessAudioMime(parsed) }, { duration: false })
@@ -320,9 +333,11 @@ function coverExtensionFor(data: Uint8Array, declaredFormat?: string): string {
 /** 探测来源可用性（设置页「测试连接」）：只列举根目录，不递归、不入库 */
 export async function probeLibrarySource(sourceId: string): Promise<{ ok: boolean; message: string; sample?: string[] }> {
   const cfg = registry.get(sourceId)
-  if (!cfg) return { ok: false, message: '来源配置不存在' }
+  if (!cfg) return { ok: false, message: mainTranslate()('desktop.error.source.notFound') }
   const provider = getMediaProvider(cfg.kind)
-  if (!provider) return { ok: false, message: `暂不支持的媒体库来源类型：${cfg.kind}` }
+  if (!provider) {
+    return { ok: false, message: mainTranslate()('desktop.error.source.kindUnsupported', { kind: cfg.kind }) }
+  }
   try {
     return await provider.probe(cfg)
   } catch (err) {

@@ -9,7 +9,7 @@ import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { EmptyTitle } from '@/components/PageHeading'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
-import { LIBRARY_LABEL, ROUTES } from '@/lib/routes'
+import { NAV_LABEL_KEYS, ROUTES } from '@/lib/routes'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -22,11 +22,23 @@ import {
 } from '@/components/ui/context-menu'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { useDisplayTracks } from '@/hooks/useDisplayTracks'
+import { useT } from '@/i18n'
+import { messageOf } from '@/stores/musicHallStore'
 import { searchEndpointOf } from '@aurora/shared'
 import type { Track, OnlineTrackSearchResult, Playlist } from '@/types'
 
 /** 行 DOM 注册：键盘高亮移动时把目标行滚动到可视区 */
 type RegisterRow = (id: string, el: HTMLDivElement | null) => void
+
+/**
+ * 源名缺失时的**分组键**（不是文案）。
+ * 它参与 Map 比较，一旦写成译文就会「切一次语言拆成两组」，所以固定 ASCII；
+ * 界面上显示的兜底源名走 `search.badge.onlineFallback`（来源泛称，见 routes.ts）。
+ */
+const ONLINE_SOURCE_FALLBACK_KEY = 'online'
+
+/** 本地结果展示上限：键盘导航与渲染共用同一个切片长度（文案里的条数也取自它） */
+const LOCAL_RESULT_LIMIT = 30
 
 /** 行通用样式：content-visibility 让可视区外的行跳过渲染，百行级列表滚动不卡。
  * 水平内边距取 8px（而非卡片时代的 16px）：行直接铺在浮层玻璃上，
@@ -66,6 +78,9 @@ interface LocalResultRowProps {
  * 本地结果行。memo 隔离渲染：悬停/键盘高亮每次只变化两行，
  * 未受影响的行直接跳过重渲染（行内含 Radix ContextMenu，全量渲染成本高）。
  * 所有回调均由父组件 useCallback 保持稳定引用，否则 memo 失效。
+ *
+ * 译文在行内取（`useT`）而不是由父组件当 prop 传下来：memo 比较的是 props，
+ * 把译文写进 props 就等于给每一行加了一个「随语言变化」的入参，语言一换全列表重渲染。
  */
 const LocalResultRow = memo(function LocalResultRow({
   track,
@@ -82,6 +97,7 @@ const LocalResultRow = memo(function LocalResultRow({
   onOpenDetail,
   registerRow,
 }: LocalResultRowProps) {
+  const t = useT()
   const rowRef = useCallback((el: HTMLDivElement | null) => registerRow(track.id, el), [registerRow, track.id])
   return (
     <ContextMenu>
@@ -104,7 +120,7 @@ const LocalResultRow = memo(function LocalResultRow({
               e.stopPropagation()
               onOpenDetail(track.id)
             }}
-            title="查看歌曲详情"
+            title={t('search.row.viewDetail')}
             className="w-10 h-10 rounded-[10px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
           >
             <CoverImage
@@ -123,7 +139,7 @@ const LocalResultRow = memo(function LocalResultRow({
           {/* 来源徽章：与在线行同构，标出「本地」；窄屏只留图标省宽度 */}
           <span className={BADGE_LOCAL_CLASS}>
             <HardDrive className="h-2.5 w-2.5 flex-shrink-0" strokeWidth={1.8} />
-            <span className="hidden sm:block">本地</span>
+            <span className="hidden sm:block">{t('common.label.local')}</span>
           </span>
           <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
             {formatTime(track.duration)}
@@ -136,7 +152,7 @@ const LocalResultRow = memo(function LocalResultRow({
               e.stopPropagation()
               onToggleLike(track.id)
             }}
-            title={isLiked ? '取消收藏' : '收藏'}
+            title={isLiked ? t('search.row.unlike') : t('search.row.like')}
             className="h-7 w-7 flex items-center justify-center rounded-[10px] transition-colors duration-200 ease-apple hover:bg-mint/[0.075]"
           >
             <Heart
@@ -149,25 +165,25 @@ const LocalResultRow = memo(function LocalResultRow({
       <ContextMenuContent className="w-52 z-[90]">
         <ContextMenuItem onClick={() => onPlay(track, idx)}>
           <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          立即播放
+          {t('search.row.playNow')}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => onPlayNext(track)}>
           <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          下一首播放
+          {t('search.row.playNext')}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => onAddToQueue(track)}>
           <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          添加到队列
+          {t('search.row.addToQueue')}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <Plus className="h-4 w-4 mr-2 opacity-50" strokeWidth={1.5} />
-            添加到播放列表
+            {t('search.row.addToPlaylist')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-48 z-[90]">
             {playlists.length === 0 ? (
-              <ContextMenuItem disabled>暂无播放列表</ContextMenuItem>
+              <ContextMenuItem disabled>{t('search.row.noPlaylist')}</ContextMenuItem>
             ) : (
               playlists.map((pl) => (
                 <ContextMenuItem key={pl.id} onClick={() => onAddToPlaylist(pl.id, track.id)}>
@@ -214,6 +230,9 @@ const OnlineResultRow = memo(function OnlineResultRow({
   onDownload,
   registerRow,
 }: OnlineResultRowProps) {
+  const t = useT()
+  // 源名兜底用来源泛称（「在线音乐」），不跟随页面改名：见 routes.ts 的说明
+  const sourceLabel = track.onlineSourceName || t('search.badge.onlineFallback')
   const rowRef = useCallback((el: HTMLDivElement | null) => registerRow(track.id, el), [registerRow, track.id])
   return (
     <ContextMenu>
@@ -247,9 +266,9 @@ const OnlineResultRow = memo(function OnlineResultRow({
           </span>
           {/* 来源徽章：同栏多源混排时靠它区分来源（与本地行「本地」徽章同构）；
               窄屏只留云图标省宽度，完整源名靠 title 提示 */}
-          <span className={BADGE_ONLINE_CLASS} title={track.onlineSourceName || '在线音乐'}>
+          <span className={BADGE_ONLINE_CLASS} title={sourceLabel}>
             <Cloud className="h-2.5 w-2.5 flex-shrink-0" strokeWidth={1.8} />
-            <span className="hidden sm:block truncate">{track.onlineSourceName || '在线音乐'}</span>
+            <span className="hidden sm:block truncate">{sourceLabel}</span>
           </span>
           {/* 音频实际来源后端标识（源提供 qualitySource 时展示，便于识别跨平台拼贴数据） */}
           {track.onlineAudioSource && (
@@ -267,7 +286,7 @@ const OnlineResultRow = memo(function OnlineResultRow({
               e.stopPropagation()
               onDownload(track)
             }}
-            title="下载歌曲"
+            title={t('search.row.download')}
             disabled={isDownloading}
             className={cn(
               'h-7 w-7 flex items-center justify-center rounded-[10px] transition-colors duration-200 ease-apple',
@@ -287,15 +306,15 @@ const OnlineResultRow = memo(function OnlineResultRow({
       <ContextMenuContent className="w-52 z-[90]">
         <ContextMenuItem onClick={() => onPlay(track, queueIdx, queue)}>
           <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          立即播放
+          {t('search.row.playNow')}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => onPlayNext(track)}>
           <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          下一首播放
+          {t('search.row.playNext')}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => onAddToQueue(track)}>
           <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          添加到队列
+          {t('search.row.addToQueue')}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => onDownload(track)} disabled={isDownloading}>
@@ -304,7 +323,7 @@ const OnlineResultRow = memo(function OnlineResultRow({
           ) : (
             <Download className="h-4 w-4 mr-2" strokeWidth={1.5} />
           )}
-          下载歌曲
+          {t('search.row.download')}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -330,6 +349,7 @@ interface SearchOverlayProps {
  */
 export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const navigate = useNavigate()
+  const t = useT()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [onlineResults, setOnlineResults] = useState<OnlineTrackSearchResult[]>([])
@@ -431,8 +451,11 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       })
       .catch((err) => {
         if (seq !== searchSeqRef.current) return
-        // 展示主进程返回的直白中文错误（如"网络请求失败，请检查网络连接"）
-        setOnlineError(err?.message || '搜索失败，请稍后重试')
+        // 错误在显示地渲染：主进程抛的是结构化错误（码 + 参数），
+        // 交给内核按当前语言出文案；未识别的文本原样透出，不吞信息。
+        // 这里刻意不把语言写进 effect 依赖（否则切一次语言就重发一次搜索请求），
+        // 所以走 messageOf 的默认参数——它每次读实时语言快照。
+        setOnlineError(messageOf(err))
         setOnlineResults([])
       })
       .finally(() => {
@@ -465,8 +488,8 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     }))
   }, [onlineResults])
 
-  // 本地只展示前 30 条（渲染与键盘导航共用同一份切片，保持一致）
-  const localSlice = useMemo(() => localResults.slice(0, 30), [localResults])
+  // 本地只展示前 LOCAL_RESULT_LIMIT 条（渲染与键盘导航共用同一份切片，保持一致）
+  const localSlice = useMemo(() => localResults.slice(0, LOCAL_RESULT_LIMIT), [localResults])
 
   /**
    * 在线行的渲染数据：本地与在线同栏混排（本地在前、在线在后），
@@ -478,7 +501,8 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     const queueBySource = new Map<string, Track[]>()
     const rows: Row[] = []
     onlineTracks.forEach((t, i) => {
-      const key = t.onlineSourceName || '在线音乐'
+      // 分组键是数据不是文案（缺源名的结果归同一组），切语言必须同组
+      const key = t.onlineSourceName || ONLINE_SOURCE_FALLBACK_KEY
       let queue = queueBySource.get(key)
       if (!queue) {
         queue = []
@@ -599,7 +623,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-start justify-center" role="dialog" aria-modal="true" aria-label="搜索">
+    <div className="fixed inset-0 z-[80] flex items-start justify-center" role="dialog" aria-modal="true" aria-label={t('common.action.search')}>
       {/* 遮罩：点击关闭；轻模糊让底层曲库退后但仍可辨识。
           不做淡入动画——backdrop-filter 不参与合成，软件渲染下
           模糊层淡入期间每帧重算全屏模糊会明显掉帧 */}
@@ -618,7 +642,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="搜索歌曲、艺术家、专辑..."
+            placeholder={t('search.overlay.placeholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
@@ -630,7 +654,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 setQuery('')
                 inputRef.current?.focus()
               }}
-              title="清空"
+              title={t('common.action.clear')}
               className="h-7 w-7 flex items-center justify-center rounded-full text-white/35 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple flex-shrink-0"
             >
               <X className="h-3.5 w-3.5" strokeWidth={2} />
@@ -653,8 +677,10 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                     <SearchIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
                   </div>
                 </div>
-                <EmptyTitle>开始搜索</EmptyTitle>
-                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词，搜索{LIBRARY_LABEL}与在线音源</p>
+                <EmptyTitle>{t('search.overlay.emptyTitle')}</EmptyTitle>
+                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">
+                  {t('search.overlay.emptyDesc', { library: t(NAV_LABEL_KEYS.library) })}
+                </p>
               </div>
             ) : (
               /* 历史搜索：有记录时空态展示，点击回搜，支持单条删除与一键清空 */
@@ -662,13 +688,13 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/40 tracking-[-0.12px]">
                     <History className="h-3.5 w-3.5" strokeWidth={1.8} />
-                    历史搜索
+                    {t('search.overlay.historyTitle')}
                   </h2>
                   <button
                     onClick={clearSearchHistory}
                     className="font-text text-[12px] text-white/35 hover:text-white/70 transition-colors duration-200 ease-apple tracking-[-0.12px]"
                   >
-                    清空
+                    {t('common.action.clear')}
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -684,7 +710,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                           e.stopPropagation()
                           removeSearchHistory(item)
                         }}
-                        title="删除该记录"
+                        title={t('search.overlay.historyRemove')}
                         className="h-5 w-5 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple"
                       >
                         <X className="h-3 w-3" strokeWidth={2} />
@@ -743,18 +769,18 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
               <div className="px-2 pt-2 space-y-1">
                 {localResults.length > localSlice.length && (
                   <p className="py-2 text-center font-text text-[12px] text-white/30 tracking-[-0.12px]">
-                    本地结果较多，仅显示前 30 条
+                    {t('search.overlay.localTruncated', { count: LOCAL_RESULT_LIMIT })}
                   </p>
                 )}
                 {!onlineLoading && localResults.length === 0 && onlineTracks.length === 0 && (
                   <p className="py-3 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
-                    没有找到匹配 "{query}" 的歌曲
+                    {t('search.overlay.noMatch', { query })}
                   </p>
                 )}
                 {enabledSourceCount === 0 ? (
                   <div className="py-2 flex flex-col items-center gap-3">
                     <p className="font-text text-[13px] text-white/35 tracking-[-0.15px] text-center">
-                      应用不内置任何音乐源，请先在设置中配置符合协议的搜索接口
+                      {t('search.overlay.noSource')}
                     </p>
                     <button
                       onClick={() => {
@@ -763,7 +789,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                       }}
                       className="pill pill-md pill-soft text-mint"
                     >
-                      前往设置音乐源
+                      {t('search.overlay.goSettings')}
                     </button>
                   </div>
                 ) : onlineError ? (
@@ -773,13 +799,15 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 ) : onlineLoading ? (
                   <div className="py-3 flex items-center justify-center gap-2">
                     <Loader2 className="h-4 w-4 text-mint/60 animate-spin" strokeWidth={1.5} />
-                    <span className="font-text text-[13px] text-white/40 tracking-[-0.15px]">正在搜索在线音乐...</span>
+                    <span className="font-text text-[13px] text-white/40 tracking-[-0.15px]">
+                      {t('search.overlay.searching')}
+                    </span>
                   </div>
                 ) : onlineTracks.length === 0 ? (
                   /* 仅当本地已命中、只是在线没搜到时才提示，避免与上方空态重复 */
                   localResults.length > 0 && (
                     <p className="py-3 text-center font-text text-[12px] text-white/30 tracking-[-0.12px]">
-                      在线源未找到匹配结果
+                      {t('search.overlay.onlineEmpty')}
                     </p>
                   )
                 ) : null}
