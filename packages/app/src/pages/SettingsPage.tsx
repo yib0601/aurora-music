@@ -135,13 +135,18 @@ const settingsSectionId = (id: string) => `settings-${id}`
  * 视线才知道 24px 空隙"属于谁"。间距优先于分割线是常规，但这里左列内容是**导航**——
  * 用户需要随时知道"当前在哪一区"，一条贯穿的分割线比纯间距更能锚定这一列。
  *
+ * **桌面端 `content-start` 与 `self-stretch` 是成对的，两个都要留**：nav 被拉伸到内容列
+ * 全高后，grid 行若不从顶部起排，`align-content` 默认的 `stretch` 会把 5 行均分到这一整列，
+ * 相邻标签中心间距从 40px 涨到 118px（793px 高窗口实测）——"导航太分散"就是这么来的。
+ * 只删 `content-start` 症状立刻复发：标签被均匀摊在整列高度上，而不是聚成一组。
+ *
  * 窄屏仍是横向胶囊条（实心 mint）：横向 chip 用实心是标准形态，竖条在那里没有意义。
  */
 function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: string) => void }) {
   return (
     <nav
       data-settings-nav
-      className="flex flex-wrap gap-1.5 lg:grid lg:w-fit lg:flex-none lg:flex-shrink-0 lg:grid-cols-[max-content] lg:gap-y-1 lg:self-stretch lg:border-r lg:border-white/[0.06] lg:pr-3"
+      className="flex flex-wrap gap-1.5 lg:grid lg:w-fit lg:flex-none lg:flex-shrink-0 lg:grid-cols-[max-content] lg:content-start lg:gap-y-1 lg:self-stretch lg:border-r lg:border-white/[0.06] lg:pr-3"
     >
       {SETTINGS_SECTIONS.map(({ id, label }) => {
         const on = active === id
