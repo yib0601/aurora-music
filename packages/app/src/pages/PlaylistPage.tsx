@@ -25,8 +25,6 @@ import {
   parseM3U,
   matchTracksByPaths,
   pickM3UFile,
-  ensurePlayableTrack,
-  resolvePlayableTracks,
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
@@ -90,25 +88,21 @@ export function PlaylistPage() {
 
   const totalDuration = playlistTracks.reduce((sum, t) => sum + t.duration, 0)
 
-  const handlePlayAll = async () => {
+  const handlePlayAll = () => {
     if (playlistTracks.length === 0) return
-    // 在线曲目可能没有可用地址（重启后过期被剥离），播放前按需取址
-    const queue = await resolvePlayableTracks(playlistTracks)
-    playQueue(queue, 0)
+    // 整单播放：队列先落地再从第一首开始，取址由 playQueue 内部按需完成，
+    // 不在页面上等所有在线曲目都取到地址（那会让「播放全部」卡住不响应）
+    playQueue(playlistTracks, 0)
   }
 
-  const handlePlayTrack = async (track: typeof tracks[0], index: number) => {
+  const handlePlayTrack = (track: typeof tracks[0], index: number) => {
     if (currentTrack?.id === track.id) {
       usePlayerStore.getState().togglePlay()
       return
     }
-    const playable = await ensurePlayableTrack(track)
-    if (!playable) {
-      toast('无法播放该在线歌曲：未配置音源或搜索无结果', { type: 'error' })
-      return
-    }
-    const queue = playlistTracks.map((t) => (t.id === playable.id ? playable : t))
-    playQueue(queue, index)
+    // 不再在页面层预取址：取址是网络往返（可能几秒），会让「点了播放却什么都不显示」。
+    // 队列与当前曲目立即落地，取址交给 playQueue 内部完成，失败时由 store 落错误提示
+    playQueue(playlistTracks, index)
   }
 
   const isCurrentTrack = (trackId: string) => currentTrack?.id === trackId

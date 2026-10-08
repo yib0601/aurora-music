@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Play, Loader2, Music2, TrendingUp, Sparkles, RefreshCw } from 'lucide-react'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
-import { toast } from '@/components/common/Toast'
 import { HallEmpty, formatCount } from '@/pages/MusicHallPage'
 import { cn, formatTime } from '@/lib/utils'
 import { useGoBack } from '@/lib/navigation'
@@ -11,7 +10,6 @@ import { ROUTE_PATHS, isRoute, HALL_LABEL, LIBRARY_LABEL, LIBRARY_ROUTE, ROUTES 
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
-import { ensurePlayableTrack, resolvePlayableTracks } from '@/services/playlistIO.service'
 import { matchTracksByNames } from '@aurora/shared'
 import type { Track } from '@/types'
 
@@ -24,7 +22,8 @@ import type { Track } from '@/types'
  *
  * **只展示不落库**：这两个集合都是临时浏览对象，点歌才按需取址。
  * 播放优先本地：本地曲库里已有同名曲目就直接播本地副本（不依赖网络），
- * 没有的走 ensurePlayableTrack 按名搜索取在线地址。
+ * 没有地址的在线曲目交给 playerStore 的 playQueue 按需取址——页面不预取，
+ * 用户点下去立刻能看到「正在播放哪一首」，取址在网络往返里完成。
  */
 export function MusicHallDetailPage() {
   const navigate = useNavigate()
@@ -40,7 +39,6 @@ export function MusicHallDetailPage() {
   const loadToplistDetail = useMusicHallStore((s) => s.loadToplistDetail)
   const loadPlaylistDetail = useMusicHallStore((s) => s.loadPlaylistDetail)
 
-  const [playing, setPlaying] = useState(false)
   const libraryTracks = useLibraryStore((s) => s.tracks)
 
   useEffect(() => {
@@ -84,7 +82,7 @@ export function MusicHallDetailPage() {
   /**
    * 把展示行转成可播放的 Track 列表。
    * 本地已有同名曲目优先用本地副本（播放不依赖网络）；其余为在线占位（path 为空，
-   * 播放时由 ensurePlayableTrack 取址）——与歌单导入的在线曲目同一套语义。
+   * 播放时由 playerStore 的取址闸门按需取址）——与歌单导入的在线曲目同一套语义。
    *
    * ⚠️ id 必须**确定性**（`hall-<详情id>-<序号>`）：早先用 generateId() 每次调用都生成新 id，
    * 导致「按 id 把取到地址的曲目替换回队列」永远匹配不上，点歌静默无声。
@@ -112,38 +110,19 @@ export function MusicHallDetailPage() {
     })
   }, [rows, libraryTracks, id])
 
-  const handlePlayAll = async () => {
+  const handlePlayAll = () => {
     if (baseTracks.length === 0) return
-    setPlaying(true)
-    try {
-      const queue = await resolvePlayableTracks(baseTracks)
-      const start = queue.findIndex((t) => t.path || t.onlineUrl)
-      if (start < 0) {
-        toast('无法播放：未配置可用的音源，或搜索均无结果', { type: 'error', duration: 5000 })
-        return
-      }
-      usePlayerStore.getState().playQueue(queue, start)
-    } finally {
-      setPlaying(false)
-    }
+    // 队列先落地：取址由 playQueue 内部按需完成，不在页面上等全部取完
+    // （早先是先 resolvePlayableTracks 全量取址、再跳到「第一首能取到地址的」曲目起播：
+    //  既让按钮长时间无响应，又会出现「点了第一首却在放第四首」的错位。
+    //  现在固定从第一首开始，取不到地址就明确报错，不再静默跳曲）
+    usePlayerStore.getState().playQueue(baseTracks, 0)
   }
 
-  const handlePlayRow = async (index: number) => {
+  const handlePlayRow = (index: number) => {
     const track = baseTracks[index]
     if (!track) return
-    // 本地副本：直接进队列播，无需取址
-    if (track.path) {
-      usePlayerStore.getState().playQueue(baseTracks, index)
-      return
-    }
-    const playable = await ensurePlayableTrack(track)
-    if (!playable) {
-      toast('无法播放该曲目：未配置音源或搜索无结果', { type: 'error', duration: 5000 })
-      return
-    }
-    // 用同 id 把取到地址的曲目替换回队列（baseTracks 的 id 是确定性的，一定能命中）
-    const queue = baseTracks.map((t) => (t.id === playable.id ? playable : t))
-    usePlayerStore.getState().playQueue(queue, index)
+    usePlayerStore.getState().playQueue(baseTracks, index)
   }
 
   const unavailable = hallUnavailableReason()
@@ -172,14 +151,10 @@ export function MusicHallDetailPage() {
             <button
               type="button"
               onClick={handlePlayAll}
-              disabled={playing || rows.length === 0}
+              disabled={rows.length === 0}
               className="pill pill-sm pill-mint inline-flex items-center gap-1.5 disabled:opacity-50"
             >
-              {playing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
-              ) : (
-                <Play className="h-3.5 w-3.5" strokeWidth={1.8} />
-              )}
+              <Play className="h-3.5 w-3.5" strokeWidth={1.8} />
               播放全部
             </button>
           }

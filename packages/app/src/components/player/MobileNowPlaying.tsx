@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
-  ChevronDown, Heart, ListMusic, Music2,
+  ChevronDown, Heart, ListMusic, Music2, Loader2,
 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress'
@@ -47,6 +47,8 @@ export function MobileNowPlaying({ open, onClose }: Props) {
   const toggleLike = useLibraryStore((s) => s.toggleLike)
 
   const hasTrack = !!currentTrack
+  // 取址中（在线曲目换直链的网络往返）：主按钮转菊花，与桌面播放条同一语义
+  const resolving = usePlayerStore((s) => s.resolvingTrackId) !== null
 
   // 进度刻意不订阅 store：原生快照每 500ms 轮询回来一次，走 React 会连带歌词
   // 一起重渲染；交给 hook 用 rAF 外推 + 命令式写 DOM，见 usePlaybackProgress。
@@ -264,10 +266,12 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <button
           onClick={() => usePlayerStore.getState().togglePlay()}
           disabled={!hasTrack}
-          aria-label={isPlaying ? '暂停' : '播放'}
+          aria-label={resolving ? '加载中' : isPlaying ? '暂停' : '播放'}
           className="w-[72px] h-[72px] rounded-full flex items-center justify-center bg-mint text-mint-fg disabled:opacity-35 active:scale-95 transition-transform duration-200 ease-apple shadow-[0_8px_20px_-10px_rgba(var(--fc-accent-rgb),.22),0_1px_6px_rgba(15,23,42,.08),inset_0_1px_0_rgba(255,255,255,.28)] dark:shadow-[0_8px_22px_-8px_rgba(var(--fc-accent-rgb),.55),0_2px_8px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.22)]"
         >
-          {isPlaying ? (
+          {resolving ? (
+            <Loader2 className="h-[27px] w-[27px] animate-spin" strokeWidth={2} />
+          ) : isPlaying ? (
             <Pause className="h-[27px] w-[27px]" fill="currentColor" strokeWidth={1.2} />
           ) : (
             <Play className="h-[27px] w-[27px] ml-[3px]" fill="currentColor" strokeWidth={1.2} />

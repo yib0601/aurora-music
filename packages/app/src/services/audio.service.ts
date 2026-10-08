@@ -171,7 +171,9 @@ function startHowl(track: Track, src: string, isOnline: boolean, targetVolume: n
     },
     onloaderror: (_id, error) => {
       console.error('Audio load error:', error)
-      audioEvents.emit('error', { error })
+      // 带上出错的曲目：切歌后旧 Howl 的失败回调可能晚到，
+      // 订阅方据此判断该不该动当前曲目（见 audioEvents 的 error 注释）
+      audioEvents.emit('error', { error, trackId: track.id })
     },
     onplayerror: (_id, error) => {
       console.error('Audio play error:', error)

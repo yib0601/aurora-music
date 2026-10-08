@@ -15,6 +15,7 @@ import {
 } from '@/services/audio.service'
 import { audioEvents } from '@/services/audioEvents'
 import { resolveCachedAudioSrc } from '@/services/audioCache.service'
+import { toast } from '@/components/common/Toast'
 import {
   isNativePlayerAvailable,
   startNativeService,
@@ -46,6 +47,12 @@ interface PlayerState {
   repeatMode: RepeatMode
   shuffleMode: ShuffleMode
   shuffleHistory: number[]
+
+  /**
+   * 正在取址的曲目 id：点播在线曲目后、拿到播放地址前的过渡态。
+   * 此时 currentTrack 已经是这首歌，只是还没出声，播放条据此显示加载指示。
+   */
+  resolvingTrackId: string | null
 
   playTrack: (track: Track) => Promise<void>
   playQueue: (tracks: Track[], startIndex?: number) => Promise<void>
@@ -84,6 +91,7 @@ const initialState = {
   repeatMode: 'off' as RepeatMode,
   shuffleMode: 'on' as ShuffleMode,
   shuffleHistory: [] as number[],
+  resolvingTrackId: null as string | null,
 }
 
 /**
@@ -112,13 +120,65 @@ function isNetworkBackedTrack(track: Track | null | undefined): boolean {
 }
 
 /**
- * 启动时恢复在线曲目：持久化时 onlineUrl 已被剥离（歌源直链会过期）。
- * 优先查本地播放缓存——命中则直接用缓存地址加载（直链过期也能续播）；
- * 未命中才按元信息走歌源重新搜索取址，成功后加载（不自动播放）并 seek 到
- * 持久化进度，同时把新地址回填到队列与 currentTrack。
- * 失败（未配置歌源 / 无结果 / 网络异常）时静默：曲目元信息仍保留在 UI，
- * 用户点播放会经 ensurePlayableTrack 再次取址。
+ * 播放意图号：点播那一刻自增。
+ *
+ * 取址（在线曲目按 id 向歌源/脚本换直链）是网络往返，可能几秒；期间用户完全可能
+ * 再点另一首。异步回调回到 store 时必须先确认「这仍是最新一次点播」，否则旧曲目的
+ * 结果会把新曲目的播放地址与显示信息一起覆盖掉。
  */
+let playIntent = 0
+
+/**
+ * 点播落地：先把用户点的那首歌设为当前曲目，再谈取址。
+ *
+ * 这样做的意义是「点谁显示谁」——取址等待期间在线歌曲不再是一片空白：
+ * 播放条/详情页立刻显示曲名、歌手、封面，只是进度条不动、主按钮转加载态。
+ */
+function markPlaying(track: Track, resolving: boolean): void {
+  const prev = usePlayerStore.getState().currentTrack
+  // 切到另一首歌：旧音频立即停掉。取址要网络往返，若还让上一首继续出声，
+  // 就会出现「界面显示新歌、耳朵里是旧歌」的错位
+  if (!useNative() && prev && prev.id !== track.id && hasCurrentHowl()) {
+    audioStopPlayback()
+  }
+  usePlayerStore.setState({
+    currentTrack: track,
+    progress: 0,
+    duration: track.duration || 0,
+    resolvingTrackId: resolving ? track.id : null,
+  })
+}
+
+/** 是否已有可直接播放的地址（无需走取址闸门） */
+function hasPlayableSrc(track: Track): boolean {
+  return !!(track.path || track.onlineUrl || track.remoteUrl)
+}
+
+/**
+ * 取址失败的提示：与页面层同一句文案（此前散在四个页面各自 toast）
+ */
+function notifyResolveFailed(track: Track): void {
+  console.warn(`[播放] 取址失败，无法播放：${track.title} - ${track.artist}`)
+  toast('无法播放该在线歌曲：未配置音源或搜索无结果', { type: 'error' })
+}
+
+/**
+ * 取址收尾：地址仍未取到时给一次提示并停住，不把空地址交给播放器。
+ *
+ * 空地址会建出一个必然失败的 Howl，其 error 事件会被下面的自动跳曲逻辑
+ * 当成本地文件损坏而把这首歌剔除出队列——那是「取址失败」不是「文件没了」，
+ * 队列不该被吃掉。返回 false 表示这一轮不继续播放。
+ */
+function confirmResolved(ready: Track): boolean {
+  if (hasPlayableSrc(ready)) {
+    usePlayerStore.setState({ resolvingTrackId: null })
+    return true
+  }
+  usePlayerStore.setState({ resolvingTrackId: null, isPlaying: false, progress: 0 })
+  notifyResolveFailed(ready)
+  return false
+}
+
 /**
  * 播放前的取址闸门：用户点播的曲目可能**还没有播放地址**。
  *
@@ -140,20 +200,49 @@ async function resolveBeforePlay(track: Track): Promise<Track> {
   }
 }
 
+/**
+ * 「本次点播是否无需等待取址」的同步判据。
+ *
+ * ⚠️ 必须能同步判定：`await resolveBeforePlay(...)` 即便内部立刻返回，也至少要
+ * 让出一个 microtask，于是同一 tick 内连点两首时，两边的后续代码都会排在**两个
+ * 已解封的 await 回调**里按入队顺序执行 —— 第二首的 markPlaying 会落在第一首的
+ * 回调之后，形成「点的是 B，最后显示 A」。有了这个同步分支，有地址的曲目走
+ * 全同步路径，调用顺序严格等于用户点击顺序。
+ */
+function hasResolvableGap(track: Track): boolean {
+  if (hasPlayableSrc(track)) return false
+  return !!(track.lx || track.onlineSource || track.onlineId)
+}
+
 /** 取址 → 播放（自动续播路径共用）：取址失败就按原样交给播放器，保持既有语义 */
 async function playResolved(track: Track, volume: number, muted: boolean, autoplay = true): Promise<void> {
+  const intent = ++playIntent
+  // 同一道理：显示信息先切到这首歌，取址耗时期间界面不空窗
+  markPlaying(track, hasResolvableGap(track))
+  // 已有地址：全同步起播（同 playTrack 的同步分支）
+  if (!hasResolvableGap(track)) {
+    audioPlayTrack(track, volume, muted, autoplay)
+    return
+  }
   const ready = await resolveBeforePlay(track)
+  // 取址期间用户已改点别的歌：本次结果作废
+  if (intent !== playIntent) return
   if (ready !== track) {
     const state = usePlayerStore.getState()
     usePlayerStore.setState({ queue: state.queue.map((t) => (t.id === ready.id ? ready : t)) })
     if (state.currentTrack?.id === ready.id) usePlayerStore.setState({ currentTrack: ready })
   }
+  // 自动续播（下一首/循环）取址失败同样停住：空地址交给播放器会被 error 路径
+  // 误判成「本地文件损坏」而把这首歌踢出队列（见 confirmResolved）
+  if (!confirmResolved(ready)) return
   audioPlayTrack(ready, volume, muted, autoplay)
 }
 
 async function restoreOnlineTrack(): Promise<void> {
   const track = usePlayerStore.getState().currentTrack
   if (!track) return
+  // 冷启动恢复不占播放意图：在途的旧取址回调不应因为这次恢复而失效
+  const intent = playIntent
   if (useNative()) {
     // 移动端：原生引擎可能仍持有有效流并续播中（START_STICKY），先对账；
     // 引擎活跃（snap.index >= 0）则无需重新取址，仅同步 UI
@@ -183,8 +272,8 @@ async function restoreOnlineTrack(): Promise<void> {
   const playable = await ensurePlayableTrack(track)
   if (!playable) return
   const st = usePlayerStore.getState()
-  // 重新取址是异步的，期间用户可能已切歌：不覆盖用户的当前操作
-  if (st.currentTrack?.id !== track.id) return
+  // 重新取址是异步的，期间用户可能已切歌或点了新歌：不覆盖用户的当前操作
+  if (intent !== playIntent || st.currentTrack?.id !== track.id) return
   // 把取到新地址的曲目回填（队列里同 id 的条目一并更新，避免续播时仍拿旧快照）
   usePlayerStore.setState({
     currentTrack: playable,
@@ -264,23 +353,39 @@ export const usePlayerStore = create<PlayerState>()(
       ...initialState,
 
       playTrack: async (track) => {
-        // 取址闸门先行：在线条目（尤其洛雪脚本源）多数没有现成地址
-        const ready = await resolveBeforePlay(track)
+        const intent = ++playIntent
         const state = get()
-        let index = state.queue.findIndex((t) => t.id === ready.id)
+        let index = state.queue.findIndex((t) => t.id === track.id)
         let newQueue = state.queue
         if (index < 0) {
-          newQueue = [...state.queue, ready]
+          newQueue = [...state.queue, track]
           index = newQueue.length - 1
-        } else {
-          // 命中的旧条目可能还是无地址的快照：用取到地址的副本替换，避免续播时又空跑
-          newQueue = state.queue.map((t) => (t.id === ready.id ? ready : t))
         }
         const newHistory =
           state.shuffleMode === 'on'
             ? [...state.shuffleHistory, index]
             : state.shuffleHistory
+        // 信息先行：先把这首歌设为当前曲目（此时可能还没有播放地址），
+        // 再走取址——取址期间播放条显示的就是用户点的这首歌
         set({ queue: newQueue, currentIndex: index, shuffleHistory: newHistory })
+        markPlaying(track, hasResolvableGap(track))
+        // 已有地址：全同步路径，同一 tick 连点两首时不会互串（见 hasResolvableGap）
+        if (!hasResolvableGap(track)) {
+          if (useNative()) {
+            set({ currentTrack: track, progress: 0 })
+            nativeBootstrapPlay(0, true)
+            return
+          }
+          audioPlayTrack(track, state.volume, state.muted)
+          return
+        }
+        // 取址闸门：在线条目（尤其洛雪脚本源）多数没有现成地址
+        const ready = await resolveBeforePlay(track)
+        // 期间用户已点别的歌：本次结果作废，不得覆盖新曲目的信息与地址
+        if (intent !== playIntent) return
+        // 命中的旧条目可能还是无地址的快照：用取到地址的副本替换，避免续播时又空跑
+        set({ queue: get().queue.map((t) => (t.id === ready.id ? ready : t)) })
+        if (!confirmResolved(ready)) return
         if (useNative()) {
           set({ currentTrack: ready, progress: 0 })
           nativeBootstrapPlay(0, true)
@@ -293,14 +398,29 @@ export const usePlayerStore = create<PlayerState>()(
         // 空队列或索引越界时直接返回，避免 audioPlayTrack(undefined) 崩溃
         if (!tracks || tracks.length === 0) return
         const idx = Math.max(0, Math.min(startIndex, tracks.length - 1))
-        // 队列先落地再取址：取址可能有网络往返，期间用户已能看到队列与当前曲目
-        const newHistory =
-          get().shuffleMode === 'on' && tracks[idx] ? [idx] : []
+        const intent = ++playIntent
+        const start = tracks[idx]
+        const newHistory = get().shuffleMode === 'on' && start ? [idx] : []
+        // 队列与当前曲目先落地再取址：取址可能有网络往返，期间用户已能看到
+        // 队列与「正在播放的是哪一首」（取址结果稍后回填地址）
         set({ queue: tracks, currentIndex: idx, shuffleHistory: newHistory })
-        const ready = await resolveBeforePlay(tracks[idx])
-        if (ready !== tracks[idx]) {
+        markPlaying(start, hasResolvableGap(start))
+        // 已有地址：全同步起播（同 playTrack 的同步分支）
+        if (!hasResolvableGap(start)) {
+          if (useNative()) {
+            set({ currentTrack: start, progress: 0 })
+            nativeBootstrapPlay(0, true)
+            return
+          }
+          audioPlayTrack(start, get().volume, get().muted)
+          return
+        }
+        const ready = await resolveBeforePlay(start)
+        if (intent !== playIntent) return
+        if (ready !== start) {
           set({ queue: get().queue.map((t) => (t.id === ready.id ? ready : t)) })
         }
+        if (!confirmResolved(ready)) return
         if (useNative()) {
           set({ currentTrack: ready, progress: 0 })
           nativeBootstrapPlay(0, true)
@@ -336,8 +456,14 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       removeFromQueue: (index) => {
-        const { queue, currentIndex } = get()
+        const { queue, currentIndex, resolvingTrackId } = get()
         if (index < 0 || index >= queue.length) return
+        const cancelledResolve = queue[index].id === resolvingTrackId
+        if (cancelledResolve) {
+          // 正在取址的曲目被删：作废这次点播。否则取址回来会把这首歌重新
+          // 填回 currentTrack/队列（用户已经明确删掉它了），或残留空地址条目
+          playIntent++
+        }
         const newQueue = queue.filter((_, i) => i !== index)
         let newCurrentIndex = currentIndex
         if (index < currentIndex) {
@@ -358,21 +484,28 @@ export const usePlayerStore = create<PlayerState>()(
             audioPlayTrack(nextTrack, get().volume, get().muted)
           }
         }
-        set({ queue: newQueue, currentIndex: newCurrentIndex })
+        set({
+          queue: newQueue,
+          currentIndex: newCurrentIndex,
+          // 队列删空、或删的正是取址中那首：加载指示不能留在界面上
+          ...(newCurrentIndex < 0 || cancelledResolve ? { resolvingTrackId: null } : {}),
+        })
         syncNativeMirror()
       },
 
       clearQueue: () => {
+        // 取消在途取址意图：清空后旧取址回调不得再落地任何播放状态
+        playIntent++
         if (useNative()) {
           nativeStopEngine()
           stopNativeService()
           stopNativeTicker()
           nativeBootstrapped = false
-          set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, progress: 0 })
+          set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, progress: 0, resolvingTrackId: null })
           return
         }
         audioStopPlayback()
-        set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, progress: 0 })
+        set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, progress: 0, resolvingTrackId: null })
       },
 
       togglePlay: () => {
@@ -385,10 +518,15 @@ export const usePlayerStore = create<PlayerState>()(
             nativeBootstrapPlay(state.progress, true)
             return
           }
+          // 取址在途时原生引擎仍在播上一首，暂停/续播要照常生效（不能早退）
           if (state.isPlaying) nativePause()
           else nativeResume()
           return
         }
+        // 取址在途中用户点了播放键：此时没有 Howl 可操作，拿 currentTrack 去建
+        // 播放器只会得到空地址的必然失败（连点还会把加载指示抖掉）。
+        // 真取到地址后 playTrack 自己会起播，这里只需忽略这次点击
+        if (state.resolvingTrackId) return
         // 如果 currentHowl 已被清理(如应用从后台恢复/StrictMode cleanup 后),
         // 重建 Howl 并从保存的进度续播,而不是静默失败
         if (!hasCurrentHowl()) {
@@ -411,6 +549,8 @@ export const usePlayerStore = create<PlayerState>()(
           }
           return
         }
+        // 同 togglePlay：取址在途时没有可播放的音频，忽略点击等取址结果
+        if (state.resolvingTrackId) return
         if (!hasCurrentHowl()) {
           audioPlayTrack(state.currentTrack, state.volume, state.muted, false)
           const seekPos = state.progress
@@ -665,14 +805,21 @@ audioEvents.on('duration', ({ duration }) => {
 })
 
 audioEvents.on('trackChange', ({ track }) => {
-  usePlayerStore.setState({ currentTrack: track, duration: 0, progress: 0 })
+  // 只在「播的就是当前点播的那首」时回填：取址期间用户可能已切歌，
+  // 旧曲目的 Howl 建好后触发的事件不得把新曲目的显示信息顶掉
+  const { currentTrack } = usePlayerStore.getState()
+  if (currentTrack && currentTrack.id !== track.id) return
+  usePlayerStore.setState({ currentTrack: track, duration: 0, progress: 0, resolvingTrackId: null })
 })
 
 // 本地文件加载失败（文件被删除/移动/损坏）时自动跳过，避免播放卡住；网络来源（在线流 / 远端媒体库）出错不自动跳
-audioEvents.on('error', () => {
+audioEvents.on('error', ({ trackId }) => {
   const state = usePlayerStore.getState()
   const { currentTrack, queue, currentIndex } = state
   if (!currentTrack) return
+  // 出错的是已经被切走的那一首（Howl 的失败回调可能晚到）：什么都不做。
+  // 否则会拿「当前曲目」去判定，把用户刚点的新歌当成坏文件删掉
+  if (trackId && currentTrack.id !== trackId) return
   if (isNetworkBackedTrack(currentTrack)) return
   if (queue.length <= 1) {
     state.clearQueue()

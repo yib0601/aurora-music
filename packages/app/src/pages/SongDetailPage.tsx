@@ -14,8 +14,6 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useDisplayTracks } from '@/hooks/useDisplayTracks'
 import { loadLyricsForTrack } from '@/services/lyrics.service'
-import { ensurePlayableTrack } from '@/services/playlistIO.service'
-import { toast } from '@/components/common/Toast'
 import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { isDownloadableOnlineTrack } from '@/lib/onlineTrack'
 import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
@@ -215,7 +213,7 @@ export function SongDetailPage() {
       .sort((a, b) => (a.trackNumber || 0) - (b.trackNumber || 0))
   }, [track, tracks])
 
-  const handlePlay = async () => {
+  const handlePlay = () => {
     if (!track) return
     const player = usePlayerStore.getState()
     if (isCurrent) {
@@ -226,13 +224,9 @@ export function SongDetailPage() {
       const idx = albumTracks.findIndex((t) => t.id === track.id)
       player.playQueue(albumTracks, idx < 0 ? 0 : idx)
     } else {
-      // 在线曲目（如从最近播放进入）播放地址可能已过期，播放前按需取址
-      const playable = await ensurePlayableTrack(track)
-      if (!playable) {
-        toast('无法播放该在线歌曲：未配置音源或搜索无结果', { type: 'error' })
-        return
-      }
-      player.playTrack(playable)
+      // 在线曲目（如从最近播放进入）播放地址可能已过期：取址由 playTrack 内部完成，
+      // 当前曲目会立即切到这首歌（详情页立刻显示），不必在这里阻塞等待
+      player.playTrack(track)
     }
   }
 

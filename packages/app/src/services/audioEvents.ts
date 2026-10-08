@@ -11,7 +11,12 @@ export interface AudioEventMap {
   end: {}
   progress: { currentTime: number }
   duration: { duration: number }
-  error: { error: unknown }
+  /**
+   * 加载/播放失败。⚠️ 必须带上**出错的曲目**（trackId 至少要带）：
+   * 旧曲目的 Howl 出错回调有可能在新曲目已开始后送达，订阅方若按
+   * 「当前曲目」判定，就会把用户刚点的那首误当成坏文件踢出队列。
+   */
+  error: { error: unknown; trackId?: string }
   trackChange: { track: Track }
   // 播放统计事件：服务层触发，libraryStore 独立订阅更新曲库数据。
   // 携带完整曲目快照：在线曲目不在本地曲库（updateTrack 对其无效），
