@@ -837,6 +837,23 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .search-entry:hover { color: var(--btn-icon-hover-color); background: var(--btn-icon-hover-bg); border-color: rgb(var(--tw-white) / .16); transform: translateY(-1px); }
   .search-entry:active { transform: translateY(0) scale(.97); }
 
+  /* 顶栏工具带里的入口形态：高度取 DS 的 lg 档 44px（与主播放按钮同档），
+   * 宽度 380px。尺寸一律在这里管，调用方不再写 Tailwind 尺寸类：
+   * utilities 层会压过本层，窄窗那道压缩态就收不成图标钮（详见下方媒体查询）。
+   *
+   * 为什么不是「小档」也不是「与窗口按钮齐平」：
+   * 与 30px 的窗口控制按钮逐像素拉平过，代价是入口在一条 56px 的带子里
+   * 又小又扁——窗口按钮是原生资产区，不该绑架内容区入口的尺寸档。
+   * 现在入口坐在带的底线上（App 的工具带行用 items-end），下沿与内容列起点齐平，
+   * 上方留出 12px 呼吸，读作「顶栏主体」而不是「贴在窗框上的小胶囊」。 */
+  .search-entry-compact {
+    height: 44px;
+    width: 380px;
+    min-width: 0;
+    padding: 0 16px;
+    gap: 10px;
+  }
+
   /* 小屏（<640px，手机）压缩态：手机内容列仅约 358px，保留 120px 硬性 min-width
    * 会把同行页面大标题挤成 0 宽（标题文字消失）、工具栏整体溢出屏幕右缘。
    * 小屏撤掉 min-width 与横向 padding、隐藏「搜索」文字只留放大镜，
@@ -850,6 +867,16 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
       justify-content: center;
     }
     .search-entry .search-entry-label { display: none; }
+    /* 顶栏工具带里的形态在窄窗下收成方形图标钮，尺寸取 44×44（触控最小可点尺寸），
+     * 而不是只收宽度 —— 只收宽度会得到 36×44 的竖长条，图标钮没有这种比例。
+     * （窄窗 + 宽档并非不可能：判据是「宽 ≥1024 或宽高都 ≥520」，
+     * 桌面窗口被拖到 600px 宽时就是这一档。） */
+    .search-entry-compact {
+      width: 44px;
+      padding: 0;
+      gap: 0;
+      justify-content: center;
+    }
   }
 
   /* 分段控件容器：标签栏 / 视图切换 */
