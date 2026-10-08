@@ -21,7 +21,9 @@ import type {
   MusicHallSource,
   ToplistDetail,
   OnlineSourceKind,
-  LxTrackRef,
+  SourceTrackRef,
+  SourceProbeInput,
+  SourceProbeResult,
   LxSourceInspection,
   LxScriptSource,
 } from '@aurora/shared'
@@ -48,7 +50,9 @@ export type {
   MusicHallSource,
   ToplistDetail,
   OnlineSourceKind,
-  LxTrackRef,
+  SourceTrackRef,
+  SourceProbeInput,
+  SourceProbeResult,
   LxSourceInspection,
   LxScriptSource,
 }
@@ -96,12 +100,12 @@ export interface Track {
   onlineAudioSource?: string
   onlineId?: string
   /**
-   * 洛雪脚本源的取址定位信息（kind='lx' 的音源才有）：
-   * 脚本源没有公共搜索接口，曲目由本应用搜索得到（音源服务或脚本自带 search），
-   * 这份定位信息原样回喂脚本取直链。持久化时与 onlineUrl 一起剥离（脚本侧 id 依赖上游，
-   * 且直链本身会过期；重启后按元信息重新搜索即可）。
+   * 源私有的曲目定位令牌（惰性取址的源才有）：这类源在搜索阶段只给得出元信息，
+   * 播放地址由取址门面（platform.resolveTrackAudio）按这份令牌向源现取。
+   * 应用只携带、不解释；持久化时与 onlineUrl 一起剥离（令牌依赖上游、直链会过期，
+   * 重启后按元信息重新搜索即可）。
    */
-  lx?: LxTrackRef
+  trackRef?: SourceTrackRef
 }
 
 export interface Album {
@@ -224,18 +228,17 @@ export interface PlatformInterface {
   readLyrics(trackId: string): Promise<string | null>
   searchOnlineTracks(query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]>
   /**
-   * 拉取洛雪音源脚本源码（kind='lx' 的音源）。
-   * 桌面端经主进程拉取（避开渲染进程 CORS 并从主进程缓存），移动端走原生 HTTP。
+   * 源探测（设置页「测试」与保存前校验）：拉取、执行、鉴权这些形态差异全部由平台适配器
+   * 吸收，返回形态无关的能力结论 —— UI 不需要知道源是服务形态还是脚本形态。
+   * 桌面端经主进程执行（避开渲染进程 CORS），移动端走原生 HTTP，浏览器端返回不可用结论。
    */
-  fetchLxScript(url: string): Promise<string>
-  /** 探测洛雪脚本能力（平台 / 音质档位 / 是否有自带搜索），设置页「测试」与保存前校验用 */
-  inspectLxSource(source: LxScriptSource): Promise<LxSourceInspection>
+  probeSource(input: SourceProbeInput): Promise<SourceProbeResult>
   /**
-   * 洛雪脚本源按需取直链：track.lx 存在时回喂脚本取址并回填 onlineUrl；
-   * 非脚本源、缺定位信息或取址失败一律返回 null（调用方据此回落既有搜索取址路径）。
+   * 惰性取址：曲目带 trackRef（源只给元信息）时向源索取可播放地址并回填副本（onlineUrl）；
+   * 无定位令牌、源不可用或取址失败一律返回 null（调用方回落既有搜索取址路径）。
    * 只读：不写库、不落盘。
    */
-  resolveLxTrack(track: Track): Promise<Track | null>
+  resolveTrackAudio(track: Track): Promise<Track | null>
   database: DatabaseAdapter
   windowControls: WindowControls
 }

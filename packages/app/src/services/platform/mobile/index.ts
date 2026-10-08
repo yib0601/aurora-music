@@ -9,8 +9,8 @@ import type {
   WindowControls,
   OnlineTrackSearchResult,
   OnlineSearchOptions,
-  LxScriptSource,
-  LxSourceInspection,
+  SourceProbeInput,
+  SourceProbeResult,
   LyricsSearchOptions,
   LyricsSearchResult,
   FolderPickerOptions,
@@ -48,6 +48,13 @@ import {
   resolveLxSourceUrl,
 } from './lxHost'
 import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, encodeFilePathToUrl } from '@aurora/shared'
+import {
+  auroraProbeToResult,
+  lxInspectionToProbe,
+  parseSourceInput,
+  probeAuroraService,
+  unavailableProbe,
+} from '@aurora/shared'
 import {
   requestMediaPermissions,
   checkAllFilesAccess,
@@ -521,33 +528,53 @@ export function createMobilePlatform(): PlatformInterface & {
     },
 
     /**
-     * 洛雪音源（kind='lx'）：
-     * - inspect / search / fetchScript：移动端没有「宿主和调用方分离」的问题，
-     *   渲染层直接调共享宿主（依赖在 ./lxHost.ts 注册，请求走 CapacitorHttp 原生 HTTP）；
-     * - resolveLxTrack：与桌面端同一套语义（回填 onlineUrl 的副本，失败返回 null）。
+     * 源探测与惰性取址：形态差异收在这一层。
+     * - 脚本形态：移动端没有「宿主与调用方分离」的问题，渲染层直接执行共享宿主
+     *   （依赖在 ./lxHost.ts 注册，请求走 CapacitorHttp 原生 HTTP）；
+     * - 服务形态：直连探测（fetch 已换成原生 HTTP，不受 WebView CORS 限制）。
      */
-    async fetchLxScript(url: string): Promise<string> {
-      return await fetchLxScript(url)
+    async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
+      if ((input.kind || 'aurora') === 'lx') {
+        try {
+          const script = input.script?.trim() || (await fetchLxScript(input.sourceUrl))
+          const inspection = await inspectLxSource({
+            id: input.id || 'probe-draft',
+            name: input.name || '',
+            kind: 'lx',
+            sourceUrl: input.sourceUrl,
+            headers: input.headers,
+            enabled: true,
+            script,
+          })
+          return lxInspectionToProbe(inspection)
+        } catch (err) {
+          return unavailableProbe('lx', (err as Error)?.message || String(err))
+        }
+      }
+      const parsed = parseSourceInput(input.sourceUrl)
+      const result = await probeAuroraService(
+        parsed?.baseUrl || input.sourceUrl,
+        parsed?.apiKey || input.apiKey
+      )
+      return auroraProbeToResult(result)
     },
 
-    async inspectLxSource(source: LxScriptSource): Promise<LxSourceInspection> {
-      return await inspectLxSource(source)
-    },
-
-    async resolveLxTrack(track: Track): Promise<Track | null> {
-      if (!track?.lx) return null
+    async resolveTrackAudio(track: Track): Promise<Track | null> {
+      const ref = track?.trackRef
+      // 没有定位令牌的条目不走这条路：调用方回落既有搜索取址路径
+      if (!ref) return null
       try {
         const { useLibraryStore } = await import('@/stores/libraryStore')
         const state = useLibraryStore.getState()
-        const source = state.onlineSources.find((s) => s.id === track.lx!.sourceId)
-        // 找不到音源配置或该源不是脚本源：返回 null 由调用方回落既有取址路径
+        const source = state.onlineSources.find((s) => s.id === ref.sourceId)
+        // 找不到音源配置或形态对不上：返回 null 由调用方回落既有取址路径
         if (!source || source.kind !== 'lx') return null
         // 脚本多数按音质档位取址，档位唯一意图来源是用户的下载音质设置（默认 flac）
-        const { url } = await resolveLxSourceUrl(source, track.lx, state.downloadQuality || 'flac')
+        const { url } = await resolveLxSourceUrl(source, ref, state.downloadQuality || 'flac')
         if (!url || !/^https?:\/\//i.test(url)) return null
         return { ...track, onlineUrl: url }
       } catch (err) {
-        console.warn('[Lx] 移动端脚本取址失败:', track.lx?.sourceId, err)
+        console.warn('[音源] 移动端取址失败:', ref?.sourceId, err)
         return null
       }
     },

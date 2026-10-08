@@ -459,8 +459,8 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       onlineSourceName: r.sourceName,
       onlineAudioSource: r.audioSource,
       onlineId: r.id,
-      // 洛雪脚本源：直链按需向脚本取，定位信息随曲目带走
-      lx: r.lx,
+      // 源给的定位令牌：地址按需向源取，令牌随曲目带走
+      trackRef: r.trackRef,
     }))
   }, [onlineResults])
 

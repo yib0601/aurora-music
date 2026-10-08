@@ -103,9 +103,9 @@ const initialState = {
  */
 function stripOnlineUrl(track: Track | null): Track | null {
   if (!track || !track.onlineUrl) return track
-  // lx 定位信息（洛雪脚本源）与直链同命运：脚本侧的曲目定位依赖上游、重启后未必有效，
+  // 源给的定位令牌与直链同命运：令牌依赖上游、重启后未必有效，
   // 交由播放时的按需取址重建，因此这里随 onlineUrl 一起剥离
-  const { onlineUrl: _url, lx: _lx, ...rest } = track
+  const { onlineUrl: _url, trackRef: _ref, ...rest } = track
   return rest as Track
 }
 
@@ -182,15 +182,16 @@ function confirmResolved(ready: Track): boolean {
 /**
  * 播放前的取址闸门：用户点播的曲目可能**还没有播放地址**。
  *
- * 典型场景就是洛雪脚本源：脚本的搜索只给元信息（曲目定位信息 lx），直链要按 id
- * 现取（见平台侧 resolveLxTrack）；导入歌单 / 最近播放里的在线曲目在落盘时也剥离了地址。
+ * 典型场景就是惰性取址的源：搜索只给元信息（曲目带一份定位令牌 trackRef），
+ * 地址要在播放时按令牌现取（见平台侧 resolveTrackAudio）；导入歌单 / 最近播放里的
+ * 在线曲目在落盘时也剥离了地址。
  * 没有这道闸门，播放器会拿着空地址去加载，表现为「双击了但没声音」，且毫无提示。
  *
  * 取址失败不阻断：返回原曲目，交给播放器按原有语义处理（无地址即不播放）。
  */
 async function resolveBeforePlay(track: Track): Promise<Track> {
   if (track.path || track.onlineUrl || track.remoteUrl) return track
-  if (!track.lx && !track.onlineSource && !track.onlineId) return track
+  if (!track.trackRef && !track.onlineSource && !track.onlineId) return track
   try {
     const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
     return (await ensurePlayableTrack(track)) || track
@@ -211,7 +212,7 @@ async function resolveBeforePlay(track: Track): Promise<Track> {
  */
 function hasResolvableGap(track: Track): boolean {
   if (hasPlayableSrc(track)) return false
-  return !!(track.lx || track.onlineSource || track.onlineId)
+  return !!(track.trackRef || track.onlineSource || track.onlineId)
 }
 
 /** 取址 → 播放（自动续播路径共用）：取址失败就按原样交给播放器，保持既有语义 */

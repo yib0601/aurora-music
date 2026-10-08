@@ -199,9 +199,9 @@ export const useLibraryStore = create<LibraryState>()(
         })
       },
       addRecentPlayed: (track, lastPlayedAt, playCount) => {
-        // 记录只留元数据快照：剥离会过期的在线播放地址与洛雪脚本定位信息（lx），
+        // 记录只留元数据快照：剥离会过期的在线播放地址与源给的定位令牌，
         // 播放时按元信息重新搜索取址（见 playlistIO.service 的 ensurePlayableTrack）
-        const { onlineUrl: _omitUrl, onlineQualityUrls: _omitQuality, lx: _omitLx, ...meta } = track
+        const { onlineUrl: _omitUrl, onlineQualityUrls: _omitQuality, trackRef: _omitRef, ...meta } = track
         const record: Track = { ...meta, lastPlayedAt, playCount } as Track
         const rest = get().recentPlayedTracks.filter((t) => t.id !== record.id)
         set({ recentPlayedTracks: [record, ...rest].slice(0, MAX_RECENT_PLAYED) })
