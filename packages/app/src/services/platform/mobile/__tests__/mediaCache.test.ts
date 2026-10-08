@@ -188,20 +188,44 @@ describe('移动端媒体缓存：命中与落盘', () => {
     expect(readyFilesIn(AUDIO_DIR)).toHaveLength(0)
   })
 
-  it('关闭档位后已有内容照常命中，且不再拉取新内容', async () => {
+  it('不限制档位下照常拉取新内容，既有内容照常命中', async () => {
     const cache = await loadCache()
     const req = audioReq('kept')
     await cache.resolveMobileCachedAudio(req)
     await waitFor(() => readyFilesIn(AUDIO_DIR).length === 1)
 
     await cache.configureMobileMediaCache(0)
+    // 不限制不等于停用：已缓存内容照常命中
     expect((await cache.resolveMobileCachedAudio(req)).src).toBeTruthy()
 
+    // 新内容照常下载落盘（旧语义「不再新增」下这里只会多出 0 个下载）
     const before = state.downloads.length
-    await cache.resolveMobileCachedAudio(audioReq('skipped'))
-    await new Promise((r) => setTimeout(r, 30))
-    expect(state.downloads).toHaveLength(before)
-    expect(readyFilesIn(AUDIO_DIR)).toHaveLength(1)
+    await cache.resolveMobileCachedAudio(audioReq('fresh'))
+    expect(await waitFor(() => readyFilesIn(AUDIO_DIR).length === 2)).toBe(true)
+    expect(state.downloads.length).toBe(before + 1)
+    expect(state.files.has(`${AUDIO_DIR}/${hashCacheKey('fresh')}.mp3`)).toBe(true)
+  })
+
+  it('不限制档位下占用突破任意配额也不驱逐：文件数只增不减', async () => {
+    const cache = await loadCache()
+    // 先用 1MB 配额档攒下一个文件，验证转到不限制档不会把既有内容清掉
+    await cache.configureMobileMediaCache(1)
+    await cache.resolveMobileCachedAudio(audioReq('seed'))
+    expect(await waitFor(() => readyFilesIn(AUDIO_DIR).length === 1)).toBe(true)
+
+    await cache.configureMobileMediaCache(0)
+    // 400KB × 6 = 2.4MB，任何 MB 级配额都装不下；不限制档必须全部留下
+    for (let i = 0; i < 6; i++) {
+      await cache.resolveMobileCachedAudio(audioReq(`bulk-${i}`))
+      expect(await waitFor(() => readyFilesIn(AUDIO_DIR).length === i + 2)).toBe(true)
+    }
+
+    expect(readyFilesIn(AUDIO_DIR)).toHaveLength(7)
+    const usage = await cache.getMobileCacheUsage()
+    expect(usage.count).toBe(7)
+    expect(usage.usedBytes).toBe(7 * state.downloadSize)
+    // 最早的一条仍在：不限制档不按 LRU 驱逐任何东西
+    expect(state.files.has(`${AUDIO_DIR}/${hashCacheKey('seed')}.mp3`)).toBe(true)
   })
 
   it('索引文件缺失时按空索引重建，不抛错', async () => {

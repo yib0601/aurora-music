@@ -15,36 +15,50 @@
  * 曲库记录），只是同时登记进索引参与配额统计与驱逐；封面被驱逐时通过 evict
  * 通知回调清理曲库里的 coverPath，下次显示封面会按需重新提取，不留悬空路径。
  *
- * limitMB 为 0 表示关闭缓存：不再新增缓存，磁盘上已有的文件保留（要腾空间
- * 走显式的「清空缓存」，见 configureMediaCache）。
+ * limitMB 为 0 表示不限制容量：不驱逐、照常新增，磁盘占用无上限；腾空间只能走
+ * 显式的「清空缓存」（见 configureMediaCache）。
+ *
+ * 配额分配、索引读写、驱逐选择、扩展名推断与稳定文件名全部取自 @aurora/shared 的
+ * mediaCacheCore：移动端（app/src/services/platform/mobile/mediaCache.ts）用的是同一份，
+ * 两端只在「怎么落盘」上有差异（这里是 node:fs，那边是 Capacitor Filesystem）。
+ * 这些口径一旦各写一份，改一端漏一端就会让桌面与手机对同一份配额算出不同的结果。
  */
 import { app, ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import crypto from 'crypto'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
+import {
+  CACHE_FETCH_UA,
+  CACHE_POOLS,
+  CACHE_TOUCH_FLUSH_MS,
+  audioExtFrom,
+  cacheBodyKey,
+  cacheFileKey,
+  hashCacheKey,
+  imageExtFrom,
+  parseCacheIndex,
+  poolLimitsMB,
+  selectEvictions,
+  serializeCacheIndex,
+  sumSizes,
+  type CacheEntry,
+  type CachePool,
+} from '@aurora/shared'
 
 export const CACHE_SCHEME = 'aurora-cache'
 
-/** 缓存池：三类内容各自独立配额与 LRU，共享同一份总量配置 */
-export type CachePool = 'audio' | 'cover' | 'lyrics'
-
-const POOLS: readonly CachePool[] = ['audio', 'cover', 'lyrics']
-
-/** 总量切给各池的比例（音频占大头，封面次之，歌词文本极小） */
-const POOL_RATIO: Record<CachePool, number> = { audio: 0.8, cover: 0.15, lyrics: 0.05 }
-
-/**
- * 各池最低配额（MB）：容量档位很小时按比例切出的额度放不下基本用量，
- * 这里兜底，避免某一类内容被压成 0 而完全失去缓存意义。
- */
-const POOL_MIN_MB: Record<CachePool, number> = { audio: 16, cover: 8, lyrics: 4 }
+/** 池的顺序沿用 shared 的声明顺序：三处遍历（初始化、驱逐、清空）都依赖它 */
+const POOLS = CACHE_POOLS
 
 /**
  * 各池落盘目录（相对 userData）。
  * 封面与歌词沿用原目录：路径已写进曲库记录与渲染层，迁目录只会平添一次性重写
  * 风险；这里仅把文件登记进统一索引，参与配额统计与驱逐。
+ *
+ * 这是**有意的平台差异**，不进 shared：移动端封面写在应用专属缓存目录（曲库内嵌封面
+ * 走 convertFileSrc，驱逐时无法安全回填成文件路径，不能纳入配额），桌面端则与曲库
+ * 共用 aurora-music/covers。
  */
 const POOL_SUBDIR: Record<CachePool, string> = {
   audio: 'audio-cache',
@@ -52,27 +66,9 @@ const POOL_SUBDIR: Record<CachePool, string> = {
   lyrics: path.join('aurora-music', 'lyrics'),
 }
 
-interface CacheEntry {
-  pool: CachePool
-  /** 所在池目录内的文件名（含扩展名） */
-  file: string
-  size: number
-  lastUsed: number
-  /** 来源直链，仅用于排查，不参与命中判断 */
-  url?: string
-  /** 关联曲目 id（封面、歌词）：驱逐时据此回填曲库 */
-  trackId?: string
-}
-
-interface CacheIndex {
-  version: number
-  entries: Record<string, CacheEntry>
-}
-
 const INDEX_FILE = 'index.json'
-const INDEX_VERSION = 2
 /** 命中只改内存的 lastUsed，攒一会儿再落盘：播放中的 Range 请求会高频命中 */
-const TOUCH_FLUSH_MS = 60000
+const TOUCH_FLUSH_MS = CACHE_TOUCH_FLUSH_MS
 
 export interface CacheEvictPayload {
   pool: CachePool
@@ -82,6 +78,7 @@ export interface CacheEvictPayload {
 
 let userDataDir = ''
 let initialized = false
+/** 总配额（MB）：0 = 不限制容量（不驱逐、照常新增），负数与非有限值在 configureMediaCache 归一为默认值 */
 let limitMB = 1024
 /** 索引键（`<pool>:<stem>`）→ 条目 */
 const entries = new Map<string, CacheEntry>()
@@ -114,38 +111,21 @@ export function setCacheClearListener(fn: ((removedCoverFiles: string[]) => void
 // ─── 容量分配 ────────────────────────────────────────────────
 
 /**
- * 把总容量按比例切给各池（MB）。比例切完不足最低配额的按最低配额补；
- * 补完若超过总量（容量档位很小时会发生）再等比缩回，保证各池之和不超过总量。
+ * 容量分配直接用 shared 的实现（移动端同一份），重新导出是为了让冒烟脚本与
+ * 校验脚本仍能按 `mod.poolLimitsMB(...)` 断言两端口径一致。
  */
-export function poolLimitsMB(totalMB: number): Record<CachePool, number> {
-  const zero: Record<CachePool, number> = { audio: 0, cover: 0, lyrics: 0 }
-  if (!Number.isFinite(totalMB) || totalMB <= 0) return zero
-  const raw = {} as Record<CachePool, number>
-  let sum = 0
-  for (const pool of POOLS) {
-    raw[pool] = Math.max(totalMB * POOL_RATIO[pool], POOL_MIN_MB[pool])
-    sum += raw[pool]
-  }
-  if (sum <= totalMB) return raw
-  const scale = totalMB / sum
-  for (const pool of POOLS) raw[pool] *= scale
-  return raw
-}
+export { poolLimitsMB }
 
 function poolLimitBytes(pool: CachePool): number {
   return Math.floor(poolLimitsMB(limitMB)[pool] * 1024 * 1024)
 }
 
-function poolUsedBytes(pool: CachePool): number {
-  let sum = 0
-  for (const entry of entries.values()) if (entry.pool === pool) sum += entry.size
-  return sum
-}
-
+/**
+ * 当前占用（字节）：三类内容合计。
+ * 统计口径取自 shared 的 sumSizes，与移动端「设置页看到的占用」同源
+ */
 function totalUsedBytes(): number {
-  let sum = 0
-  for (const entry of entries.values()) sum += entry.size
-  return sum
+  return sumSizes(entries.values())
 }
 
 // ─── 索引 ────────────────────────────────────────────────────
@@ -154,21 +134,21 @@ function poolDirOf(pool: CachePool): string {
   return path.join(userDataDir, POOL_SUBDIR[pool])
 }
 
-function bodyKey(pool: CachePool, stem: string): string {
-  return `${pool}:${stem}`
-}
-
-function fileKey(pool: CachePool, file: string): string {
-  return `${pool}:${file}`
-}
+/** 索引键与反查键的拼法来自 shared：两端必须同构，否则切端时索引互不认账 */
+const bodyKey = cacheBodyKey
+const fileKey = cacheFileKey
 
 function indexPath(): string {
   return path.join(poolDirOf('audio'), INDEX_FILE)
 }
 
-function hashKey(input: string): string {
-  return crypto.createHash('sha1').update(input).digest('hex')
-}
+/**
+ * 稳定文件名主体：sha1(缓存键)。
+ * 用 shared 的纯 JS SHA-1（已实测与 node crypto 在 padding 边界 55/56/63/64 字节处
+ * 逐字节一致），保证两端对同一个键算出的文件名相同——否则用户在桌面缓存的音频，
+ * 到了手机端会因文件名不同而重新下载一遍。
+ */
+const hashKey = hashCacheKey
 
 function saveIndex(): void {
   if (!initialized) return
@@ -176,8 +156,9 @@ function saveIndex(): void {
   try {
     // 目录可能被手动删除，写索引前自愈
     fs.mkdirSync(poolDirOf('audio'), { recursive: true })
-    const payload: CacheIndex = { version: INDEX_VERSION, entries: Object.fromEntries(entries) }
-    fs.writeFileSync(indexPath(), JSON.stringify(payload), 'utf-8')
+    // 序列化口径取自 shared（已实测与原手写 JSON.stringify 字节一致）：两端索引格式
+    // 一旦分叉，用户在某一端写下的缓存到另一端就读不回来
+    fs.writeFileSync(indexPath(), serializeCacheIndex(entries), 'utf-8')
   } catch (err) {
     console.warn('[MediaCache] 索引写入失败:', err)
   }
@@ -203,29 +184,13 @@ function loadIndex(): void {
   entries.clear()
   fileToKey.clear()
   try {
-    const parsed = JSON.parse(fs.readFileSync(indexPath(), 'utf-8')) as {
-      version?: number
-      entries?: Record<string, CacheEntry>
-    }
-    if (!parsed || !parsed.entries || typeof parsed.entries !== 'object') return
-    // 旧版索引只有音频一类，键即 sha1(缓存键)，与现音频键同构，补上池前缀即可直接沿用
-    const current = parsed.version === INDEX_VERSION
-    for (const [key, raw] of Object.entries(parsed.entries)) {
-      if (!raw || typeof raw.file !== 'string' || typeof raw.size !== 'number') continue
-      const pool: CachePool = current ? raw.pool : 'audio'
-      if (!POOLS.includes(pool)) continue
-      const indexKey = current ? key : bodyKey('audio', key)
-      const entry: CacheEntry = {
-        pool,
-        file: raw.file,
-        size: raw.size,
-        lastUsed: Number(raw.lastUsed) || Date.now(),
-        url: typeof raw.url === 'string' ? raw.url : undefined,
-        trackId: typeof raw.trackId === 'string' ? raw.trackId : undefined,
-      }
-      if (!fs.existsSync(path.join(poolDirOf(pool), entry.file))) continue
+    // 解析（含 v1 单池格式升级与非法条目丢弃）取自 shared，两端同构；
+    // 这里只补一层桌面端特有的校验：索引存在但文件已丢的条目直接剔除
+    const parsed = parseCacheIndex(JSON.parse(fs.readFileSync(indexPath(), 'utf-8')))
+    for (const [indexKey, entry] of parsed) {
+      if (!fs.existsSync(path.join(poolDirOf(entry.pool), entry.file))) continue
       entries.set(indexKey, entry)
-      fileToKey.set(fileKey(pool, entry.file), indexKey)
+      fileToKey.set(fileKey(entry.pool, entry.file), indexKey)
     }
   } catch {
     // 首次启动或索引损坏：空索引重来
@@ -234,8 +199,11 @@ function loadIndex(): void {
 
 /**
  * 收编目录里未登记的文件：老版本的音频缓存、历史封面与歌词文件都没进过索引，
- * 不接管就永远不受配额约束，磁盘占用只涨不降。半截临时文件（.part）永远无法
- * 命中，直接清掉。
+ * 不接管就永远不受配额约束，磁盘占用只涨不降。
+ *
+ * 这里**不碰** `.part`：进程存活期内半截文件只可能是正在下载的那一个，删掉它会让
+ * 在途下载在 rename 时报 ENOENT，白拉一遍流量。陈旧 `.part` 只可能来自上次崩溃，
+ * 清理交给 initMediaCache 走 cleanStaleParts 做一次即可。
  */
 function adoptExistingFiles(): void {
   for (const pool of POOLS) {
@@ -248,14 +216,7 @@ function adoptExistingFiles(): void {
     }
     for (const name of names) {
       if (name === INDEX_FILE) continue
-      if (name.endsWith('.part')) {
-        try {
-          fs.unlinkSync(path.join(dir, name))
-        } catch {
-          // 忽略
-        }
-        continue
-      }
+      if (name.endsWith('.part')) continue
       const fk = fileKey(pool, name)
       if (fileToKey.has(fk)) continue
       let stat: fs.Stats
@@ -308,20 +269,16 @@ function dropEntry(key: string, entry: CacheEntry, notify = true): void {
 
 /** 超限时从最久未用的开始删，直到回到该池配额内 */
 function evictPool(pool: CachePool): void {
-  // 关闭档位（0）视为「冻结」：不再新增也不再淘汰，磁盘上已有的文件保持原样。
-  // 配置项被重新解释就静默删掉用户已有的歌词与封面，是没人能预料到的行为；
+  // 不限制档（0）不分配配额，也就没有「超限」可言：不淘汰任何条目，
+  // 配置档位被重新解释就静默删掉用户已有的歌词与封面，是没人能预料到的行为；
   // 腾空间由用户显式按「清空缓存」完成。
   if (limitMB <= 0) return
-  const limitBytes = poolLimitBytes(pool)
-  let used = poolUsedBytes(pool)
-  if (used <= limitBytes) return
-  const candidates = [...entries.entries()]
-    .filter(([, entry]) => entry.pool === pool)
-    .sort((a, b) => a[1].lastUsed - b[1].lastUsed)
-  for (const [key, entry] of candidates) {
-    if (used <= limitBytes) break
-    dropEntry(key, entry)
-    used -= entry.size
+  // 挑谁该删的规则（最久未用优先、配额为 0 不删）来自 shared，与移动端同一份；
+  // 这里只负责把选出来的条目真正删盘
+  const doomed = selectEvictions(entries, pool, poolLimitBytes(pool))
+  for (const key of doomed) {
+    const entry = entries.get(key)
+    if (entry) dropEntry(key, entry)
   }
 }
 
@@ -349,12 +306,42 @@ function putEntry(key: string, entry: CacheEntry): void {
 
 // ─── 生命周期 ────────────────────────────────────────────────
 
+/**
+ * 清掉上次崩溃留下的半截文件（.part）。
+ *
+ * 只在初始化时调用一次：进程活着时 `.part` 必然对应一个正在进行的下载（下载器
+ * 无论成功失败都会自己收拾，见 downloadToCache），此时删它只会让在途下载在 rename
+ * 时报 ENOENT、白拉一遍流量。放在配置下发路径上尤其糟——用户连点几下档位胶囊
+ * 就能把正在预热的内容全部作废。
+ */
+function cleanStaleParts(): void {
+  for (const pool of POOLS) {
+    const dir = poolDirOf(pool)
+    let names: string[] = []
+    try {
+      names = fs.readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      if (!name.endsWith('.part')) continue
+      try {
+        fs.unlinkSync(path.join(dir, name))
+      } catch {
+        // 忽略
+      }
+    }
+  }
+}
+
 /** 启动时加载索引、接管历史文件并做一次容量收敛 */
 export function initMediaCache(): void {
   try {
     userDataDir = app.getPath('userData')
     for (const pool of POOLS) fs.mkdirSync(poolDirOf(pool), { recursive: true })
     initialized = true
+    // 残留 .part 先清（上次崩溃的产物），再收编，避免把半截文件当历史文件接管
+    cleanStaleParts()
     loadIndex()
     adoptExistingFiles()
     // 历史文件纳入统计后可能已经超限，启动就收敛一次，而不是等下次写入
@@ -375,9 +362,10 @@ function configureMediaCache(nextLimitMB: number): void {
   const next = Number(nextLimitMB)
   limitMB = Number.isFinite(next) && next >= 0 ? Math.floor(next) : 1024
   if (!initialized) return
-  if (limitMB <= 0) return
-  // 关闭档位期间写下的封面不会进索引，从关闭改回有容量时先收编一次，
-  // 否则这批文件既不计入占用也不受配额约束
+  // 不限制档也要走完收编与落盘：早退会让这次配置下发白白丢掉索引写入。
+  // 收编是为了把历史上没进过索引的文件纳入统计（否则它们既不计入占用也不受
+  // 配额约束）；evictAllPools 在不限制档下因配额为 0 自然不删任何东西，
+  // 但收编结果仍要写进索引，所以这里不做档位分支。
   adoptExistingFiles()
   evictAllPools()
   saveIndex()
@@ -412,61 +400,14 @@ export function getCacheUsage(): { usedBytes: number; count: number } {
 
 // ─── 下载 ────────────────────────────────────────────────────
 
-const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+/** 拉流缓存用的 UA，与移动端同一份（见 shared 的 CACHE_FETCH_UA） */
+const UA = CACHE_FETCH_UA
 
-/** Content-Type → 扩展名（与 handlers.ts 的 inferAudioExtension 同源逻辑） */
-function audioExtFrom(contentType?: string | null, fallbackUrl?: string): string {
-  const ct = (contentType || '').split(';')[0].trim().toLowerCase()
-  const ctMap: Record<string, string> = {
-    'audio/mpeg': '.mp3',
-    'audio/mp3': '.mp3',
-    'audio/flac': '.flac',
-    'audio/ogg': '.ogg',
-    'audio/wav': '.wav',
-    'audio/x-wav': '.wav',
-    'audio/aac': '.aac',
-    'audio/mp4': '.m4a',
-    'audio/x-m4a': '.m4a',
-  }
-  if (ctMap[ct]) return ctMap[ct]
-  try {
-    if (fallbackUrl) {
-      const pathname = new URL(fallbackUrl).pathname
-      const ext = pathname.slice(pathname.lastIndexOf('.')).toLowerCase()
-      if (['.mp3', '.flac', '.ogg', '.wav', '.aac', '.m4a', '.opus'].includes(ext)) return ext
-    }
-  } catch {
-    // 忽略
-  }
-  return '.mp3'
-}
-
-/** Content-Type → 扩展名（图片）；歌源封面多为 jpeg，判不出来时按 jpg 存 */
-function imageExtFrom(contentType?: string | null, fallbackUrl?: string): string {
-  const ct = (contentType || '').split(';')[0].trim().toLowerCase()
-  const ctMap: Record<string, string> = {
-    'image/jpeg': '.jpg',
-    'image/jpg': '.jpg',
-    'image/png': '.png',
-    'image/webp': '.webp',
-    'image/gif': '.gif',
-    'image/bmp': '.bmp',
-  }
-  if (ctMap[ct]) return ctMap[ct]
-  try {
-    if (fallbackUrl) {
-      const pathname = new URL(fallbackUrl).pathname
-      const ext = pathname.slice(pathname.lastIndexOf('.')).toLowerCase()
-      if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(ext)) return ext === '.jpeg' ? '.jpg' : ext
-    }
-  } catch {
-    // 忽略
-  }
-  return '.jpg'
-}
-
-/** 后台拉流写缓存：先写临时文件再原子改名，避免半截文件进索引 */
+/**
+ * 后台拉流写缓存：先写临时文件再原子改名，避免半截文件进索引。
+ * extOf 传 shared 的 audioExtFrom / imageExtFrom（与移动端同一份）：扩展名一旦两端
+ * 各判一套，同一个键会在两端算出不同文件名，缓存互相读不到、只能重下。
+ */
 async function downloadToCache(
   pool: CachePool,
   indexKey: string,
@@ -478,6 +419,9 @@ async function downloadToCache(
   if (inflight.has(indexKey)) return
   inflight.add(indexKey)
   const epoch = cacheEpoch
+  // 半截文件路径提到 try 外：失败路径要自己收拾，不能再指望收编顺带删掉
+  // （收编已不再碰 .part，见 adoptExistingFiles 的说明）
+  let tmpPath = ''
   try {
     const dir = poolDirOf(pool)
     // 目录可能被用户手动删除，写入前自愈
@@ -493,22 +437,33 @@ async function downloadToCache(
     }
     const ext = extOf(resp.headers.get('content-type'), url)
     const finalFile = `${stem}${ext}`
-    const tmpPath = path.join(dir, `${finalFile}.part`)
+    tmpPath = path.join(dir, `${finalFile}.part`)
     const finalPath = path.join(dir, finalFile)
     await pipeline(Readable.fromWeb(resp.body as any), fs.createWriteStream(tmpPath))
 
-    // 下载期间缓存可能被关闭或整体清空：写完直接丢弃，不进索引
+    // 下载期间缓存可能被整体清空：写完直接丢弃，不进索引
     // （清空场景若照常登记，用户会看到「清空缓存」后占用又涨回去）
-    if (limitMB <= 0 || epoch !== cacheEpoch) {
+    if (epoch !== cacheEpoch) {
       fs.unlinkSync(tmpPath)
+      tmpPath = ''
       return
     }
     fs.renameSync(tmpPath, finalPath)
+    tmpPath = ''
     const size = fs.statSync(finalPath).size
     putEntry(indexKey, { pool, file: finalFile, size, lastUsed: Date.now(), url })
   } catch (err) {
     console.warn('[MediaCache] 后台缓存失败:', (err as Error).message)
   } finally {
+    // 超时、断流、HTTP 错误留下的半截文件必须当场清掉，否则它既不进索引
+    // （永远无法命中）也不受配额约束，只能等下次启动清理
+    if (tmpPath) {
+      try {
+        fs.unlinkSync(tmpPath)
+      } catch {
+        // 忽略
+      }
+    }
     inflight.delete(indexKey)
   }
 }
@@ -522,7 +477,7 @@ function cacheUrlFor(pool: CachePool, file: string): string {
 /**
  * 命中返回缓存协议地址；未命中返回 null。
  * 文件名主体用 sha1(缓存键)：原键（直链、地址）随时会变，只有稳定键的哈希能当文件名。
- * 关闭档位（0）视为「冻结」：已有内容照常命中，但不再拉取新内容。
+ * 拉新与档位无关：不限制档（0）不驱逐但照常下载，否则「不限制」会退化成只读缓存。
  */
 function resolveCachedAsset(
   pool: CachePool,
@@ -541,8 +496,8 @@ function resolveCachedAsset(
   }
   // 索引有但文件没了：清掉脏条目（顺带让调用方回填曲库里的悬空引用）
   if (entry) dropEntry(indexKey, entry)
-  // 关闭档位只冻结已有内容，不再拉新的
-  if (limitMB > 0) void downloadToCache(pool, indexKey, stem, url, headers, extOf)
+  // 不限制档照常拉新，配额只影响驱逐（见 evictPool）
+  void downloadToCache(pool, indexKey, stem, url, headers, extOf)
   return { src: null }
 }
 
@@ -599,8 +554,8 @@ export function forgetCachedFiles(filePaths: readonly string[]): void {
  * 封面落盘后登记（scanner / librarySource 写完文件调用）。
  *
  * 无论档位如何都要登记：封面提取本身是曲库功能，写下的文件必须计入占用，
- * 否则它既不被配额约束、也不被「清空缓存」删掉，只会静默堆积（关闭档位下
- * 尤其明显）。关闭档位不删文件由 evictPool 的冻结语义保证，不靠跳过登记。
+ * 否则它既不被配额约束、也不被「清空缓存」删掉，只会静默堆积（不限制档位下
+ * 尤其明显）。不限制档位不删文件由 evictPool 的配额为 0 保证，不靠跳过登记。
  */
 export function registerCoverFile(trackId: string, filePath: string): void {
   if (!initialized) return
@@ -623,7 +578,7 @@ export function registerCoverFile(trackId: string, filePath: string): void {
 
 /**
  * 读取歌词并刷新最近使用时间；文件不在时返回 null 由调用方走在线搜索。
- * 关闭档位下照读：缓存只是不再增长，已有内容继续可用。
+ * 档位只影响驱逐不影响读取，不限制档位下照读照写。
  */
 export function readCachedLyrics(trackId: string): string | null {
   if (!initialized) return null
@@ -650,12 +605,11 @@ export function readCachedLyrics(trackId: string): string | null {
   return content
 }
 
-/** 写入歌词并登记；关闭档位不写盘（不增长），已有文件不受影响 */
+/** 写入歌词并登记；不限制档位照常写盘，档位只决定是否驱逐 */
 export function writeCachedLyrics(trackId: string, content: string): string {
   const dir = poolDirOf('lyrics')
   const abs = path.join(dir, `${trackId}.lrc`)
   if (!initialized) return abs
-  if (limitMB <= 0) return abs
   try {
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(abs, content, 'utf-8')

@@ -22,12 +22,14 @@
  * 未命中返回 null（本次仍走原始远端地址），后台用原生 HTTP 下载，下次即命中。
  * 该地址与本地曲目播放走的是同一条拦截路径（WebViewLocalServer 的
  * `_capacitor_file_` 处理器），播放器行为随之一致，不额外引入差异。
- * limitMB 为 0 表示关闭缓存：不再新增，已有内容照常命中（腾空间走「清空缓存」）。
+ * limitMB 为 0 表示不限制容量：不驱逐、照常新增，占用无上限（腾空间走「清空缓存」）。
  */
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { Capacitor } from '@capacitor/core'
 import {
+  CACHE_FETCH_UA,
   CACHE_POOLS,
+  CACHE_TOUCH_FLUSH_MS,
   audioExtFrom,
   cacheBodyKey,
   cacheFileKey,
@@ -63,14 +65,15 @@ const POOL_DIR: Record<CachePool, string> = {
  */
 const ADOPT_POOLS: readonly CachePool[] = ['lyrics']
 
-const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+/** 拉流缓存用的 UA，与桌面端同一份（见 shared 的 CACHE_FETCH_UA） */
+const UA = CACHE_FETCH_UA
 
 /** 命中只改内存里的 lastUsed，攒一会儿再落盘：播放中的命中很频繁 */
-const TOUCH_FLUSH_MS = 60000
+const TOUCH_FLUSH_MS = CACHE_TOUCH_FLUSH_MS
 
 let initialized = false
 let initPromise: Promise<void> | null = null
+/** 容量档位：> 0 按配额驱逐；为 0 表示不限制容量（不驱逐、照常新增） */
 let limitMB = 1024
 /** 索引键（`<pool>:<stem>`）→ 条目 */
 const entries = new Map<string, CacheEntry>()
@@ -211,6 +214,14 @@ async function loadIndex(): Promise<void> {
  * 与磁盘状态对齐：清掉残留的 .part 与未登记的孤儿文件，收编历史歌词文件。
  * audio / cover 目录是我们的专属缓存目录，孤儿文件没有任何引用，留着只占额度。
  */
+/**
+ * 与磁盘状态对齐：清掉未登记的孤儿文件，收编历史歌词文件。
+ * audio / cover 目录是我们的专属缓存目录，孤儿文件没有任何引用，留着只占额度。
+ *
+ * 这里**不碰** `.part`：进程存活期内半截文件只可能是正在下载的那一个，删掉它会让
+ * 在途下载在 rename 时报错、白拉一遍流量。陈旧 `.part` 只可能来自上次进程被杀，
+ * 清理交给 initInternal 走 cleanStaleParts 做一次即可。
+ */
 async function reconcilePoolDirs(): Promise<void> {
   for (const pool of CACHE_POOLS) {
     const dir = POOL_DIR[pool]
@@ -220,11 +231,8 @@ async function reconcilePoolDirs(): Promise<void> {
     for (const entry of entries.values()) if (entry.pool === pool) known.add(entry.file)
     for (const name of names) {
       if (known.has(name)) continue
+      if (name.endsWith('.part')) continue
       const full = `${dir}/${name}`
-      if (name.endsWith('.part')) {
-        await deleteQuiet(full)
-        continue
-      }
       if (!ADOPT_POOLS.includes(pool)) {
         await deleteQuiet(full)
         continue
@@ -256,7 +264,7 @@ async function dropEntry(key: string, entry: CacheEntry): Promise<void> {
   if (fileToKey.get(fk) === key) fileToKey.delete(fk)
 }
 
-/** 超限时从最久未用的开始删，直到回到该池配额内；配额为 0 是冻结语义，不驱逐 */
+/** 超限时从最久未用的开始删，直到回到该池配额内；不限制档（0）无配额，不驱逐 */
 async function evictPool(pool: CachePool): Promise<void> {
   if (limitMB <= 0) return
   const limitBytes = Math.floor(poolLimitsMB(limitMB)[pool] * 1024 * 1024)
@@ -286,10 +294,26 @@ async function putEntry(key: string, entry: CacheEntry): Promise<void> {
 
 // ─── 生命周期 ────────────────────────────────────────────────
 
+/**
+ * 清掉上次进程被杀留下的半截文件（.part）。
+ * 只在初始化时调用一次：进程活着时 `.part` 必然对应一个正在进行的下载（下载器
+ * 无论成功失败都会自己收拾，见 downloadToCache），此时删它只会让在途下载失败。
+ */
+async function cleanStaleParts(): Promise<void> {
+  for (const pool of CACHE_POOLS) {
+    const dir = POOL_DIR[pool]
+    for (const name of await listFiles(dir)) {
+      if (name.endsWith('.part')) await deleteQuiet(`${dir}/${name}`)
+    }
+  }
+}
+
 async function initInternal(): Promise<void> {
   for (const pool of CACHE_POOLS) await mkdirQuiet(POOL_DIR[pool])
   await mkdirQuiet(CACHE_ROOT)
   initialized = true
+  // 残留 .part 先清（上次进程被杀的产物），再对齐目录，避免把半截文件当历史文件接管
+  await cleanStaleParts()
   await loadIndex()
   await reconcilePoolDirs()
   // 历史文件纳入统计后可能已经超限，启动就收敛一次，而不是等下次写入
@@ -312,7 +336,7 @@ async function ensureInit(): Promise<void> {
   await initPromise
 }
 
-/** 下发容量档位（0 = 关闭缓存，不再新增；已缓存内容保留） */
+/** 下发容量档位（0 = 不限制容量，不驱逐、照常新增；已缓存内容保留） */
 export async function configureMobileMediaCache(nextLimitMB: number): Promise<void> {
   const next = Number(nextLimitMB)
   limitMB = Number.isFinite(next) && next >= 0 ? Math.floor(next) : 1024
@@ -321,9 +345,8 @@ export async function configureMobileMediaCache(nextLimitMB: number): Promise<vo
   } catch {
     return
   }
-  if (limitMB <= 0) return
-  // 关闭档位期间写下的文件不会进索引，从关闭改回有容量时先对齐一次，
-  // 否则这批文件既不计入占用也不受配额约束
+  // 索引之外的文件（旧版本写下的歌词、半截文件）任何档位下都要对齐一次；
+  // 不限制档下 evictAllPools 因配额为 0 自然不删任何东西，索引仍要落盘
   await reconcilePoolDirs()
   await evictAllPools()
   await saveIndex()
@@ -402,8 +425,8 @@ async function downloadToCache(
       await deleteQuiet(partPath)
       return
     }
-    // 下载期间缓存可能被关闭或整体清空：写完直接丢弃，不进索引
-    if (limitMB <= 0 || epoch !== cacheEpoch) {
+    // 下载期间缓存可能被整体清空：写完直接丢弃，不进索引
+    if (epoch !== cacheEpoch) {
       await deleteQuiet(partPath)
       return
     }
@@ -459,10 +482,8 @@ async function resolveCachedMedia(
     }
     await dropEntry(indexKey, entry)
   }
-  // 关闭档位只冻结已有内容，不再拉新的
-  if (limitMB > 0) {
-    void downloadToCache(pool, indexKey, stem, req.url, req.headers, pool === 'audio' ? audioExtFrom : imageExtFrom)
-  }
+  // 未命中就后台拉一份：任何档位都缓存，不限制档只是不做驱逐
+  void downloadToCache(pool, indexKey, stem, req.url, req.headers, pool === 'audio' ? audioExtFrom : imageExtFrom)
   return { src: null }
 }
 

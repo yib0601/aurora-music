@@ -43,7 +43,7 @@ export async function resolveCachedAudioSrc(track: Track): Promise<string | null
   }
 }
 
-/** 下发缓存容量配置（0 = 关闭缓存，不再新增；已缓存内容保留，腾空间走「清空缓存」） */
+/** 下发缓存容量配置（0 = 不限制容量：不驱逐、照常缓存；腾空间走「清空缓存」） */
 export async function configureAudioCache(limitMB: number): Promise<void> {
   try {
     await platform.configureAudioCache?.({ limitMB })

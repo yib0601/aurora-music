@@ -141,7 +141,7 @@ export interface PlatformExtension {
     key: string
     headers?: Record<string, string>
   }) => Promise<{ src: string | null }>
-  /** 下发缓存容量配置（0 = 关闭缓存，不再新增） */
+  /** 下发缓存容量配置（0 = 不限制容量：不驱逐、照常缓存） */
   configureAudioCache?: (opts: { limitMB: number }) => Promise<void>
   /** 当前缓存占用（三类内容合计） */
   getAudioCacheUsage?: () => Promise<{ usedBytes: number; count: number }>
