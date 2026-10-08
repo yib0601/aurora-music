@@ -307,14 +307,6 @@ export function LibraryPage() {
 
   const filteredTracks = sortedTracks
 
-  // 副标题：只展示去重后展示集的首数，与列表里看到的数量一致。
-  // 空态措辞用普通名词「曲库」而非页面名 LIBRARY_LABEL：页面名是「我的音乐」，
-  // 代入「构建你的专属 X」会得到「你的专属我的音乐」，语义重复且不通。
-  const librarySummary = useMemo(() => {
-    if (tracks.length === 0) return '导入音乐，开始构建你的专属曲库'
-    return `${tracks.length} 首歌曲`
-  }, [tracks])
-
   // 分组只在对应标签页（或已进入某个分组详情）时才需要计算：
   // 歌曲页每批扫描数据都重算专辑+艺术家两套分组是纯浪费（歌曲多时是主要卡顿来源之一）
   const needAlbumGroups = libraryTab === 'albums' || selectedGroup?.type === 'album'
@@ -465,14 +457,15 @@ export function LibraryPage() {
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
             <PageTitle>{LIBRARY_LABEL}</PageTitle>
-            <PageSubtitle>{librarySummary}
-              {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
-                  被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效。
-                  悬停提示逐组列出具体名单——只给条数不给名单，用户无从核对 */}
-              {hiddenDuplicates > 0 && (
+            {/* 去重必须可见：否则用户只会发现「歌变少了」却找不到原因。
+                被隐藏的副本并未删库，歌单/收藏里对它的引用依然有效。
+                悬停提示逐组列出具体名单——只给条数不给名单，用户无从核对。
+                页头的说明文字全站已撤掉，这行只在真有隐藏副本时出现 */}
+            {hiddenDuplicates > 0 && (
+              <PageSubtitle>
                 <DuplicateSummaryHover hidden={hiddenDuplicates} groups={duplicateGroups} />
-              )}
-            </PageSubtitle>
+              </PageSubtitle>
+            )}
           </div>
           {/* 工具栏：重扫/视图切换仅列表态显示。搜索入口已上移到应用顶栏（全局常驻），
               不在页头重复放置 */}

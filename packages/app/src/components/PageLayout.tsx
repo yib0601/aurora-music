@@ -1,9 +1,8 @@
 import { cn } from '@/lib/utils'
-import { PageSubtitle, PageTitle } from '@/components/PageHeading'
+import { PageTitle } from '@/components/PageHeading'
 
 interface PageLayoutProps {
   title?: string
-  subtitle?: string
   header?: React.ReactNode
   children: React.ReactNode
   className?: string
@@ -14,10 +13,13 @@ interface PageLayoutProps {
  * 所有页面共用，确保间距、内边距完全一致
  *
  * 用法：
- * 1. 简单标题：<PageLayout title="我的音乐" subtitle="导入音乐...">
+ * 1. 简单标题：<PageLayout title="我的音乐">
  * 2. 自定义标题：<PageLayout header={<CustomHeader />}>
+ *
+ * 页头只放标题：全站已撤掉标题下的说明性副标题，需要解释的页面把信息交给
+ * 空态或内容区首行，不在页头重复一遍。
  */
-export function PageLayout({ title, subtitle, header, children, className }: PageLayoutProps) {
+export function PageLayout({ title, header, children, className }: PageLayoutProps) {
   return (
     // pb 需为底部悬浮播放条让位（移动端约 84px+safe-area / 桌面约 102px），
     // 否则滚动到底时内容会被播放条永久遮挡
@@ -31,7 +33,6 @@ export function PageLayout({ title, subtitle, header, children, className }: Pag
       {header ?? (title && (
         <div className="mb-6 md:mb-8">
           <PageTitle>{title}</PageTitle>
-          {subtitle && <PageSubtitle>{subtitle}</PageSubtitle>}
         </div>
       ))}
       {children}

@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
 import { LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
 import { PageLayout } from '@/components/PageLayout'
-import { PageTitle, PageSubtitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
+import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
 import type { Track } from '@/types'
 import {
@@ -72,9 +72,6 @@ export function RecentPage() {
         <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
           <div className="min-w-0">
             <PageTitle>最近播放</PageTitle>
-            <PageSubtitle>
-              {tracks.length === 0 ? '你的播放历史' : `${tracks.length} 首歌曲`}
-            </PageSubtitle>
           </div>
           {/* 搜索入口已上移到应用顶栏（全局常驻），页头不再放置 */}
         </div>
