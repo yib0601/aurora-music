@@ -25,7 +25,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn } from '@/lib/utils'
 import { GRID_GAP, getGridColumnCount } from '@/lib/gridLayout'
 import { PageLayout } from '@/components/PageLayout'
-import { PageTitle, PageSubtitle } from '@/components/PageHeading'
+import { PageTitle, PageSubtitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { toast } from '@/components/common/Toast'
@@ -553,12 +553,10 @@ export function LibraryPage() {
               <MusicIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
-          <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
-            还没有音乐
-          </h2>
-          <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
+          <EmptyTitle>还没有音乐</EmptyTitle>
+          <EmptyText className="text-white/40">
             导入你的音乐文件夹，开始构建你的专属曲库
-          </p>
+          </EmptyText>
           <button
             onClick={handlePickFolder}
             className="pill pill-lg pill-mint"
