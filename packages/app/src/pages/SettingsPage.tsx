@@ -34,9 +34,8 @@ import { checkLxScriptLink, lxFormSupported } from '@/components/common/lxSource
 import {
   buildAuroraEndpoints,
   checkSourceForm,
-  probeAuroraService,
 } from '@aurora/shared'
-import type { AuroraEndpoints, LxSourceInspection, OnlineSourceKind } from '@aurora/shared'
+import type { AuroraEndpoints, OnlineSourceKind } from '@aurora/shared'
 
 /**
  * 打开外部链接。
@@ -399,7 +398,12 @@ function SourceEditorCard({
   const handleProbe = async () => {
     if (!parsed || parsed.kind !== 'service') return
     setProbe({ loading: true })
-    const result = await probeAuroraService(parsed.baseUrl, parsed.apiKey)
+    // 探测走平台统一入口：服务形态直连取端点自描述并验密钥，形态差异不落到设置页
+    const result = await platform.probeSource({
+      kind: 'aurora',
+      sourceUrl: parsed.baseUrl,
+      apiKey: parsed.apiKey,
+    })
     setProbe({ loading: false, ok: result.ok, message: result.message })
     setProbeEndpoints(result.endpoints)
   }
@@ -771,7 +775,12 @@ function SourceAddDialog({
   const handleProbe = async () => {
     if (!parsed || parsed.kind !== 'service') return
     setProbe({ loading: true })
-    const result = await probeAuroraService(parsed.baseUrl, parsed.apiKey)
+    // 探测走平台统一入口：服务形态直连取端点自描述并验密钥，形态差异不落到设置页
+    const result = await platform.probeSource({
+      kind: 'aurora',
+      sourceUrl: parsed.baseUrl,
+      apiKey: parsed.apiKey,
+    })
     setProbe({ loading: false, ok: result.ok, message: result.message })
     setProbeEndpoints(result.endpoints)
   }

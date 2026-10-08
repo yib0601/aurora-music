@@ -391,9 +391,9 @@ describe('B. 聚合搜索行为', () => {
       expect(auItems.length).toBe(1)
       expect(lxItems.length).toBe(1)
       expect(lxItems[0].audioUrl).toBe('')
-      expect(lxItems[0].lx?.sourceId).toBe('lx-verifier-1')
-      expect(lxItems[0].lx?.platform).toBe('kw')
-      expect(lxItems[0].lx?.meta.songmid).toBe('91084746')
+      expect(lxItems[0].trackRef?.sourceId).toBe('lx-verifier-1')
+      expect(lxItems[0].trackRef?.platform).toBe('kw')
+      expect(lxItems[0].trackRef?.meta.songmid).toBe('91084746')
     } finally {
       await fixture.close()
     }

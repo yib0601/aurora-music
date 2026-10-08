@@ -24,11 +24,18 @@
 
 import LZString from 'lz-string'
 import { fetchWithTimeout } from './fetchWithTimeout'
-import type { DownloadQuality, LxTrackRef, OnlineSourceConfig, OnlineTrackSearchResult } from './types'
+import type { DownloadQuality, OnlineSourceConfig, OnlineTrackSearchResult, SourceTrackRef } from './types'
 
-/** 搜索结果条目：洛雪源额外带一份取址定位信息（重取直链时原样回喂脚本） */
+/**
+ * 洛雪脚本源的曲目定位令牌：即协议层的中性类型 SourceTrackRef。
+ * 保留该别名供翻译层内部（本文件、lxResolver、两端执行接入与既有 IPC）沿用，
+ * 协议层本身不再出现脚本专属字样。
+ */
+export type LxTrackRef = SourceTrackRef
+
+/** 搜索结果条目：脚本源额外带一份取址定位信息（重取直链时原样回喂脚本） */
 export type LxSearchResult = OnlineTrackSearchResult & {
-  lx?: LxTrackRef
+  trackRef?: SourceTrackRef
 }
 
 // ─── 洛雪脚本运行时类型 ───────────────────────────────────────────
@@ -734,7 +741,7 @@ export async function searchLxSource(
           audioQuality: undefined,
           source: source.id,
           sourceName: source.name,
-          lx: { sourceId: source.id, platform, meta },
+          trackRef: { sourceId: source.id, platform, meta },
         })
       }
     } catch (err) {
@@ -754,7 +761,7 @@ export async function searchLxSource(
  */
 export async function resolveLxSourceUrl(
   source: LxScriptSource,
-  ref: LxTrackRef,
+  ref: SourceTrackRef,
   quality: DownloadQuality | string,
   deps?: LxHostDeps | null
 ): Promise<{ url: string; quality: string }> {

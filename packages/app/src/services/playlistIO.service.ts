@@ -99,17 +99,16 @@ const PLAY_RESOLVE_CONCURRENCY = 4
  * 音乐源重新搜索取最佳结果，并回填 importedTracks 供后续播放直接使用。
  * 未配置音乐源或无结果返回 null
  *
- * 洛雪脚本源（kind='lx'）走另一条路：曲目自带脚本定位信息（track.lx）时优先让脚本
- * 自己取址——脚本侧定位的是具体平台的具体曲目，比「按歌名重新搜一遍」准得多；
- * 取不到再落回下面的统一搜索取址。
+ * 带定位令牌（trackRef）的曲目优先按令牌向源取址：令牌定位的是源内部的具体曲目，
+ * 比「按歌名重新搜一遍」准得多；取不到再落回下面的统一搜索取址。
  */
 export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
   if (track.path || track.onlineUrl) return track
-  if (track.lx) {
-    const viaScript = await platform.resolveLxTrack?.(track).catch(() => null)
-    if (viaScript?.onlineUrl) {
-      usePlaylistStore.getState().addImportedTracks([viaScript])
-      return viaScript
+  if (track.trackRef) {
+    const viaSource = await platform.resolveTrackAudio?.(track).catch(() => null)
+    if (viaSource?.onlineUrl) {
+      usePlaylistStore.getState().addImportedTracks([viaSource])
+      return viaSource
     }
   }
   const { onlineSources, downloadQuality } = useLibraryStore.getState()
@@ -139,8 +138,8 @@ export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
       onlineSourceName: r.sourceName,
       onlineId: r.id,
       duration: track.duration || r.duration,
-      // 洛雪源的结果可能只有元信息（直链按需再取），把定位信息一并带上
-      lx: r.lx,
+      // 源的条目可能只给元信息（地址按需再取），定位令牌一并带上
+      trackRef: r.trackRef,
     }
     usePlaylistStore.getState().addImportedTracks([resolved])
     return resolved

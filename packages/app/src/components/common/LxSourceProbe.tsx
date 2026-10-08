@@ -1,12 +1,13 @@
 import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { lxPlatformRows, runLxProbe, type LxProbeState } from './lxSourceForm'
-import type { LxSourceInspection } from '@aurora/shared'
+import type { SourceProbeResult } from '@aurora/shared'
 
 /**
  * 洛雪音源脚本源的探测 UI：脚本链接输入 + 「测试」+ 能力展示。
  * 添加弹窗与音源卡片共用这一块——平台中文名映射与能力标签只写一份；
  * 纯逻辑（链接校验 / 能力映射 / 探测调用）在 lxSourceForm.ts，便于单测。
+ * 探测结论由平台适配器翻译成形态无关的 SourceProbeResult，这里只负责渲染。
  *
  * 纪律：脚本源码只存在于本次探测过程，绝不写进配置（配置里只留脚本链接）。
  */
@@ -14,15 +15,16 @@ import type { LxSourceInspection } from '@aurora/shared'
 export type { LxProbeState } from './lxSourceForm'
 
 /** 探测结果展示：脚本自报的名称/版本 + 各平台能力 + 音质档位数 */
-export function LxProbeResult({ inspection }: { inspection: LxSourceInspection }) {
-  const rows = lxPlatformRows(inspection)
+export function LxProbeResult({ result }: { result: SourceProbeResult }) {
+  const rows = lxPlatformRows(result)
   if (!rows.length) return null
+  const info = result.scriptInfo
   return (
     <div className="space-y-1">
-      {(inspection.name || inspection.version) && (
+      {(info?.name || info?.version) && (
         <p className="font-text text-caption text-white/50 truncate">
-          {inspection.name || '未命名脚本'}
-          {inspection.version ? ` · v${inspection.version}` : ''}
+          {info?.name || '未命名脚本'}
+          {info?.version ? ` · v${info.version}` : ''}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -39,7 +41,7 @@ export function LxProbeResult({ inspection }: { inspection: LxSourceInspection }
           </span>
         ))}
       </div>
-      {inspection.packed && (
+      {info?.packed && (
         <p className="font-text text-caption text-white/35">脚本经 liscript 包装，已自动解包</p>
       )}
     </div>
@@ -119,9 +121,9 @@ export function LxScriptProbe({
         </p>
       )}
       {!probe.message && error && <p className="font-text text-caption text-coral/70 mt-1">{error}</p>}
-      {probe.inspection?.ok && (
+      {probe.result?.ok && (
         <div className="mt-1.5">
-          <LxProbeResult inspection={probe.inspection} />
+          <LxProbeResult result={probe.result} />
         </div>
       )}
     </div>
