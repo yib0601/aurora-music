@@ -4,12 +4,21 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PageLayout } from '@/components/PageLayout'
-import { useLibraryStore } from '@/stores/libraryStore'
+import { useLibraryStore, defaultAudioCacheLimitMB } from '@/stores/libraryStore'
 import type { LibrarySourceConfig } from '@/types'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform, DEFAULT_MOBILE_DOWNLOAD_DIR } from '@/services/platform'
 import { isDesktop, isMobile } from '@/lib/utils'
+import {
+  CACHE_LIMIT_MAX_GB,
+  CACHE_LIMIT_MIN_GB,
+  formatCacheLimit,
+  GB_PRESETS,
+  gbToMb,
+  mbToGb,
+  parseCacheLimitGbDraft,
+} from '@/lib/cacheLimit'
 import { LIBRARY_LABEL } from '@/lib/routes'
 import { toast } from '@/components/common/Toast'
 import { APP_VERSION, REPO_URL, checkForUpdate, openDownloadPage, type UpdateInfo } from '@/services/update.service'
@@ -70,9 +79,7 @@ function compactEndpointUrl(url: string): string {
   }
 }
 
-/** 缓存容量合法区间（MB），与 store 侧钳制规则一致 */
-const CACHE_LIMIT_MIN_MB = 64
-const CACHE_LIMIT_MAX_MB = 102400
+/** 缓存容量合法区间与换算集中在 @/lib/cacheLimit：UI 只消费它的 GB 口径 */
 
 function formatBytes(n: number): string {
   if (!isFinite(n) || n <= 0) return '0 MB'
@@ -1372,12 +1379,25 @@ export function SettingsPage() {
   const audioCacheLimitCustomMB = useLibraryStore((s) => s.audioCacheLimitCustomMB)
   const setAudioCacheLimitCustomMB = useLibraryStore((s) => s.setAudioCacheLimitCustomMB)
   const resetAudioCacheLimitToDefault = useLibraryStore((s) => s.resetAudioCacheLimitToDefault)
+  const setAudioCacheLimitUnlimited = useLibraryStore((s) => s.setAudioCacheLimitUnlimited)
   const [cacheUsage, setCacheUsage] = useState<{ usedBytes: number; count: number }>({ usedBytes: 0, count: 0 })
-  // 输入框是受控的：草稿只在提交时才落库，非法草稿不写入 store
-  const [cacheLimitDraft, setCacheLimitDraft] = useState(String(audioCacheLimitMB))
+  // 输入框是受控的：草稿只在提交时才落库，非法草稿不写入 store。单位是 GB。
+  // 「不限制」档（值 0）草稿留空：0 是档位标记而不是用户填的容量，若把它塞进输入框，
+  // 用户点到框里再离开就会触发 onBlur 提交，被解析器判成非法并弹「需填 0.5 – 100 GB」，
+  // 让人误以为自己的选择出了问题。空串同样是"待填写"的自然表达。
+  const cacheLimitDraftOf = (mb: number) => (mb > 0 ? String(mbToGb(mb)) : '')
+  const [cacheLimitDraft, setCacheLimitDraft] = useState(cacheLimitDraftOf(audioCacheLimitMB))
   const [cacheLimitInvalid, setCacheLimitInvalid] = useState(false)
   const cacheLimitInputRef = useRef<HTMLInputElement>(null)
+  /**
+   * 当前值是否恰好等于某个预设档或「不限制」：决定该由哪一行承载选中态。
+   * 预设档由第一行的胶囊点亮，第二行只负责展示「不在预设里的手填值」。
+   */
+  const isPresetCacheLimit =
+    audioCacheLimitMB === 0 || GB_PRESETS.some((gb) => gbToMb(gb) === audioCacheLimitMB)
   const supportsAudioCache = typeof platform.getAudioCacheUsage === 'function'
+  /** 平台默认容量（MB）：提示行按同一来源换算成 GB 展示，避免与真正生效的默认值漂移 */
+  const defaultCacheLimitMB = defaultAudioCacheLimitMB()
   useEffect(() => {
     if (!supportsAudioCache) return
     let mounted = true
@@ -1394,9 +1414,9 @@ export function SettingsPage() {
     }
   }, [supportsAudioCache])
 
-  // 生效值变化（提交被 store 钳制 / 恢复默认）后回写输入框，显示的永远是真实生效值
+  // 生效值变化（提交落库 / 切档位 / 恢复默认）后回写输入框，显示的永远是真实生效值
   useEffect(() => {
-    setCacheLimitDraft(String(audioCacheLimitMB))
+    setCacheLimitDraft(cacheLimitDraftOf(audioCacheLimitMB))
     setCacheLimitInvalid(false)
   }, [audioCacheLimitMB])
 
@@ -1405,15 +1425,30 @@ export function SettingsPage() {
   }
 
   const commitCacheLimit = () => {
-    const raw = cacheLimitDraft.trim()
-    const mb = Number(raw)
-    // 空值 / 非数字：不写库，仅提示合法区间；区间外交给 store 钳制
-    if (raw === '' || !Number.isFinite(mb)) {
+    // 空草稿视为「未填写」而非「填错」：点了输入框又直接离开不该弹校验文案
+    // （「不限制」档下草稿恒为空，那是档位状态，不是用户的输入错误）。
+    // 越界与非数字草稿一律返回 null：不写库，只提示合法区间（不做静默钳制）
+    if (cacheLimitDraft.trim() === '') {
+      setCacheLimitInvalid(false)
+      return
+    }
+    const mb = parseCacheLimitGbDraft(cacheLimitDraft)
+    if (mb === null) {
       setCacheLimitInvalid(true)
       return
     }
     setCacheLimitInvalid(false)
     setAudioCacheLimitCustomMB(mb)
+    refreshCacheUsage()
+  }
+
+  /** 点击档位胶囊：0 是「不限制」专用档，不能走钳制入口（会被钳到 64 MB） */
+  const handleSelectCacheLimit = (mb: number) => {
+    if (mb === 0) {
+      setAudioCacheLimitUnlimited()
+    } else {
+      setAudioCacheLimitCustomMB(mb)
+    }
     refreshCacheUsage()
   }
 
@@ -1856,28 +1891,64 @@ export function SettingsPage() {
                 <div className="border-t border-white/[0.06] mx-3 mt-1 pt-3">
                   <SettingRow
                     label="缓存上限"
-                    hint={`超出上限时按最久未使用自动清理 · 默认 1 GB · 当前占用 ${formatBytes(cacheUsage.usedBytes)}`}
+                    hint={
+                      // 「不限制」档没有上限可超，继续写「超出上限时自动清理」会自相矛盾
+                      audioCacheLimitMB === 0
+                        ? `不限制容量，只受磁盘剩余空间约束 · 当前占用 ${formatBytes(cacheUsage.usedBytes)}`
+                        : `超出上限时按最久未使用自动清理 · 默认 ${formatCacheLimit(defaultCacheLimitMB)} · 当前占用 ${formatBytes(cacheUsage.usedBytes)}`
+                    }
                   >
+                    {/* 档位胶囊：预设 GB 档 + 「不限制」，同一套视觉权重，选中态一律 pill-mint。
+                        选中判据直接比对落库的 MB，手填值恰好等于某档位时该档位也会亮起。 */}
                     <div className="flex flex-wrap items-center gap-2">
+                      {GB_PRESETS.map((gb) => {
+                        const presetMB = gbToMb(gb)
+                        return (
+                          <button
+                            key={gb}
+                            type="button"
+                            onClick={() => handleSelectCacheLimit(presetMB)}
+                            className={`pill pill-md ${
+                              audioCacheLimitMB === presetMB ? 'pill-mint' : 'pill-soft'
+                            }`}
+                          >
+                            {formatCacheLimit(presetMB)}
+                          </button>
+                        )
+                      })}
                       <button
                         type="button"
-                        onClick={() => cacheLimitInputRef.current?.focus()}
-                        className={`pill pill-md ${
-                          audioCacheLimitCustomMB ? 'pill-mint' : 'pill-soft'
-                        }`}
+                        onClick={() => handleSelectCacheLimit(0)}
+                        className={`pill pill-md ${audioCacheLimitMB === 0 ? 'pill-mint' : 'pill-soft'}`}
                       >
-                        {audioCacheLimitCustomMB ? '自定义' : '默认'}{' '}
-                        {formatBytes(audioCacheLimitMB * 1024 * 1024)}
+                        不限制
                       </button>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {/* 状态胶囊只在「值不属于任何预设档」时出现（手填值、或移动端 0.5 GB 这类平台默认）：
+                          预设档与「不限制」已由上一行承担选中态，再点一个同文案的绿胶囊，
+                          就是同一件事说两遍，还看不出该看哪一行。任何时刻只有一个 mint。 */}
+                      {!isPresetCacheLimit && (
+                        <button
+                          type="button"
+                          onClick={() => cacheLimitInputRef.current?.focus()}
+                          className="pill pill-md pill-mint"
+                        >
+                          {audioCacheLimitCustomMB
+                            ? `自定义 ${formatCacheLimit(audioCacheLimitMB)}`
+                            : `默认 ${formatCacheLimit(audioCacheLimitMB)}`}
+                        </button>
+                      )}
                       <input
                         ref={cacheLimitInputRef}
                         type="number"
-                        min={CACHE_LIMIT_MIN_MB}
-                        max={CACHE_LIMIT_MAX_MB}
-                        step={64}
-                        inputMode="numeric"
+                        min={CACHE_LIMIT_MIN_GB}
+                        max={CACHE_LIMIT_MAX_GB}
+                        step={0.5}
+                        inputMode="decimal"
                         value={cacheLimitDraft}
-                        placeholder="MB 数字"
+                        placeholder="自定义 GB"
                         onChange={(e) => {
                           setCacheLimitDraft(e.target.value)
                           setCacheLimitInvalid(false)
@@ -1893,7 +1964,7 @@ export function SettingsPage() {
                           cacheLimitInvalid ? 'is-invalid' : ''
                         }`}
                       />
-                      <span className="font-text text-caption text-white/50">MB</span>
+                      <span className="font-text text-caption text-white/50">GB</span>
                       {audioCacheLimitCustomMB && (
                         <Button variant="ghost" size="sm" className="h-9 px-3" onClick={handleResetCacheLimit}>
                           恢复默认
@@ -1912,7 +1983,7 @@ export function SettingsPage() {
                       </Button>
                       {cacheLimitInvalid && (
                         <span className="font-text text-caption text-coral/70">
-                          需填 {CACHE_LIMIT_MIN_MB} – {CACHE_LIMIT_MAX_MB} MB
+                          需填 {CACHE_LIMIT_MIN_GB} – {CACHE_LIMIT_MAX_GB} GB
                         </span>
                       )}
                     </div>

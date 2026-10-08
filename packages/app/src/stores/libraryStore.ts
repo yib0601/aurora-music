@@ -22,14 +22,16 @@ const MAX_RECENT_PLAYED = 100
 const AUDIO_CACHE_LIMIT_MIN_MB = 64
 const AUDIO_CACHE_LIMIT_MAX_MB = 102400
 
-/** 未手填（或填了非法值）时的容量：默认按平台给，手机存储紧张，1GB 起步偏重 */
-function defaultAudioCacheLimitMB(): number {
+/** 未手填（或填了非法值）时的容量：默认按平台给，手机存储紧张，1GB 起步偏重。
+ *  导出给设置页复用：提示行要展示「默认 X GB」，与真正生效的默认值必须同源 */
+export function defaultAudioCacheLimitMB(): number {
   return platform.platform === 'mobile' ? 512 : 1024
 }
 
 /**
  * 钳制用户手填的缓存容量：非有限值（NaN / Infinity，含输入框空串转出的 NaN）退回
  * 该平台默认值，区间外取最近边界，并统一向下取整为整数 MB。
+ * 下界 64 MB；「不限制」不走本函数——它的值是 0，由 setAudioCacheLimitUnlimited 专用入口写入。
  */
 function clampAudioCacheLimitMB(mb: number): number {
   if (!Number.isFinite(mb)) return defaultAudioCacheLimitMB()
@@ -118,6 +120,7 @@ interface LibraryState {
    * 媒体缓存容量上限（MB）：音频 / 封面 / 歌词共用这一份配额并内部按比例分配。
    * 值由设置页的自定义档位写入，区间 64–102400 由 store 钳制（收口在
    * setAudioCacheLimitCustomMB；setAudioCacheLimitMB 仅保留旧调用口径）。
+   * 0 = 不限制容量（不驱逐、不上限，仍照常缓存），由 setAudioCacheLimitUnlimited 写入。
    * 桌面端落盘在主进程 userData，移动端落在应用专属存储；Web 平台未实现，
    * 此值不生效（设置页按能力探测隐藏缓存分区）。
    */
@@ -133,6 +136,11 @@ interface LibraryState {
   setAudioCacheLimitCustomMB: (mb: number) => void
   /** 清除自定义标记并回到平台默认容量 */
   resetAudioCacheLimitToDefault: () => void
+  /**
+   * 切到「不限制」档：容量写 0（后端据此不驱逐、照常缓存）。
+   * 必须走专用入口而不是 setAudioCacheLimitCustomMB(0)——后者会被钳到 64 MB。
+   */
+  setAudioCacheLimitUnlimited: () => void
 }
 
 /** 递增版本号：防止 getAllTracks 的延迟响应用旧数据覆盖 scan:complete 的新数据 */
@@ -305,6 +313,8 @@ export const useLibraryStore = create<LibraryState>()(
         set({ audioCacheLimitCustomMB: true, audioCacheLimitMB: clampAudioCacheLimitMB(mb) }),
       resetAudioCacheLimitToDefault: () =>
         set({ audioCacheLimitCustomMB: false, audioCacheLimitMB: defaultAudioCacheLimitMB() }),
+      // 「不限制」也算一档自定义：置标记为 true，设置页据此给出「恢复默认」入口
+      setAudioCacheLimitUnlimited: () => set({ audioCacheLimitCustomMB: true, audioCacheLimitMB: 0 }),
     }),
     {
       name: 'aurora-library-state',
@@ -352,6 +362,7 @@ export const useLibraryStore = create<LibraryState>()(
       //     playlistEndpointOf）；preset / baseUrl / apiKey 三个回显字段随之消失
       // v11 缓存容量改版：新增自定义标记（audioCacheLimitCustomMB，旧数据置 false →
       //     设置页显示「默认」）；原「关闭」档（0）随档位改版移除，迁移时归到平台默认容量
+      //     v11 之后 0 不再被迁移改写，作为「不限制」档使用（只影响 version < 11 的历史数据）
       migrate: (persisted: any, version: number) => {
         if (persisted) {
           if (version < 9) {
@@ -440,6 +451,7 @@ useLibraryStore.subscribe((state, prev) => {
 // ─── 在线播放缓存容量 → 主进程 ──────────────────────────────────
 // 缓存实体在主进程磁盘，容量变更后必须下发，否则驱逐仍按旧限额执行。
 // 与媒体库来源同步同理：persist 异步 hydrate，先推一次快照再订阅变更。
+// 值 0 会原样下发：主进程按「不限制」处理（不驱逐、照常拉新），这里不做任何替换。
 configureAudioCache(useLibraryStore.getState().audioCacheLimitMB)
 useLibraryStore.subscribe((state, prev) => {
   if (state.audioCacheLimitMB !== prev.audioCacheLimitMB) {

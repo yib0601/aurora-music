@@ -9,7 +9,7 @@
  *   - 总容量按 80/15/5 切给音频/封面/歌词，小档位下各池之和不超过总量
  *   - 未命中时不阻塞调用方（返回 null 并后台下载），下次命中返回协议地址
  *   - 协议读取的内容与 Range 语义正确，未知文件与路径穿越请求被拒
- *   - 封面/歌词落盘后计入占用，清空与关闭缓存后不再命中
+ *   - 封面/歌词落盘后计入占用；不限制档（0）不驱逐、照常拉新，清空后不再命中
  *   - 池内超限时按最久未用驱逐，且驱逐通知带上对应曲目（曲库据此回填 coverPath）
  *   - 旧版单池索引（键为 sha1、无 version 字段）升级后仍能命中，不重复下载
  *
@@ -141,7 +141,7 @@ async function main() {
   const small = mod.poolLimitsMB(16)
   const smallSum = small.audio + small.cover + small.lyrics
   check('小档位下各池之和不超过总量', smallSum <= 16.0001 && smallSum > 15.5, `sum=${smallSum}`)
-  check('关闭档位各池为 0', Object.values(mod.poolLimitsMB(0)).every((v) => v === 0))
+  check('不限制档各池为 0', Object.values(mod.poolLimitsMB(0)).every((v) => v === 0))
 
   console.log('2) 旧版单池索引升级后仍命中（不重复下载）')
   // 造一条 v1 索引：键为 sha1(缓存键)，无 version 字段，文件与键同名
@@ -269,31 +269,55 @@ async function main() {
   const usageNow = ipc('cache:usage')()
   check('总占用不超过总量', usageNow.usedBytes <= 1024 * 1024, JSON.stringify(usageNow))
 
-  console.log('7) 关闭不删数据 / 清空才删')
-  // 「关闭」只停止新增缓存：磁盘上已有的歌词、封面、音频一个都不能动——
-  // 配置项被重新解释就静默删用户文件，是升级时最不能接受的行为
+  console.log('7) 不限制档：不驱逐、照常新增')
+  // 不限制档（0）只关掉驱逐：磁盘上已有的歌词、封面、音频一个都不能动，
+  // 同时新内容照常拉、照常写——把 0 理解成「关闭」会让用户选了不限制反而没缓存
   ipc('cache:configure')(null, { limitMB: 0 })
   check(
-    '关闭缓存保留既有文件',
+    '不限制档保留既有文件',
     fs.existsSync(lyricPath) && listDir(COVER_DIR).length > 0 && listDir(AUDIO_DIR).length > 0,
     `covers=${listDir(COVER_DIR).length} audio=${listDir(AUDIO_DIR).length}`
   )
   mod.writeCachedLyrics('track-lyric-2', lyric)
-  check('关闭缓存后不再写新歌词', !fs.existsSync(path.join(LYRIC_DIR, 'track-lyric-2.lrc')))
-  check('关闭缓存后不再拉取新内容', (() => {
-    const before = hits.audio
-    const res = mod.resolveCachedAudio('src-a|300', `${base}/audio.mp3`)
-    return res.src === null && hits.audio === before
-  })())
-  check('关闭缓存下已有内容仍可命中（冻结而非失效）', mod.resolveCachedAudio(audioKey, `${base}/audio.mp3`).src !== null)
-  // 关闭档位下封面照样会写盘（提取封面是曲库功能），必须照常登记：
+  const offLyricPath = path.join(LYRIC_DIR, 'track-lyric-2.lrc')
+  check('不限制档照常写新歌词', fs.existsSync(offLyricPath))
+  check('新歌词可读回', mod.readCachedLyrics('track-lyric-2') === lyric)
+  const hitsBeforeOff = hits.audio
+  const missUnderOff = mod.resolveCachedAudio('src-a|300', `${base}/audio.mp3`)
+  check('不限制档下未命中仍返回 null（不阻塞播放）', missUnderOff.src === null)
+  const offAudioHit = await waitFor(() => mod.resolveCachedAudio('src-a|300', `${base}/audio.mp3`).src)
+  check('不限制档仍拉取新内容', hits.audio > hitsBeforeOff, `${hitsBeforeOff} → ${hits.audio}`)
+  check('新拉取的内容随后命中', /^aurora-cache:\/\/localhost\/audio\/[a-f0-9]{40}\.mp3$/.test(String(offAudioHit)), String(offAudioHit))
+  check('不限制档下已有内容仍可命中', mod.resolveCachedAudio(audioKey, `${base}/audio.mp3`).src !== null)
+  // 不限制档下封面照样会写盘（提取封面是曲库功能），必须照常登记：
   // 不登记就成了既不受配额约束、也不被「清空缓存」删除的孤儿文件
   const coverUnderOff = path.join(COVER_DIR, 'track-off-1.jpg')
   fs.writeFileSync(coverUnderOff, IMAGE_BODY)
   mod.registerCoverFile('track-off-1', coverUnderOff)
-  check('关闭档位下写入的封面仍被登记（占用可见）', ipc('cache:usage')().usedBytes > 0, JSON.stringify(ipc('cache:usage')()))
+  check('不限制档下写入的封面仍被登记（占用可见）', ipc('cache:usage')().usedBytes > 0, JSON.stringify(ipc('cache:usage')()))
 
-  // 关闭档位期间未登记的历史文件，改回有容量时应被收编
+  // 硬断言：不限制档下占用允许越过任何配额，且文件一个都不少
+  const beforeUnlimited = ipc('cache:usage')()
+  const filesBeforeUnlimited = listDir(COVER_DIR).length
+  for (let i = 0; i < 30; i++) {
+    const p = path.join(COVER_DIR, `track-unlimited-${i}.jpg`)
+    fs.writeFileSync(p, Buffer.alloc(48 * 1024, i))
+    mod.registerCoverFile(`track-unlimited-${i}`, p)
+  }
+  const afterUnlimited = ipc('cache:usage')()
+  check(
+    '不限制档下占用可超过任何配额（不驱逐）',
+    afterUnlimited.usedBytes > 1024 * 1024 && afterUnlimited.usedBytes > beforeUnlimited.usedBytes,
+    `${beforeUnlimited.usedBytes} → ${afterUnlimited.usedBytes}`
+  )
+  check(
+    '不限制档下文件数只增不减',
+    listDir(COVER_DIR).filter((n) => n.startsWith('track-unlimited-')).length === 30 &&
+      listDir(COVER_DIR).length === filesBeforeUnlimited + 30,
+    `covers=${listDir(COVER_DIR).length}`
+  )
+
+  // 不限制档期间未登记的历史文件，改回有容量时应被收编
   const strayFile = path.join(COVER_DIR, 'track-stray-1.jpg')
   fs.writeFileSync(strayFile, IMAGE_BODY)
   ipc('cache:configure')(null, { limitMB: 1024 })

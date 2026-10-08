@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
+  CACHE_FETCH_UA,
+  CACHE_INDEX_VERSION,
   CACHE_POOLS,
+  CACHE_TOUCH_FLUSH_MS,
   audioExtFrom,
   cacheBodyKey,
   cacheFileKey,
@@ -57,7 +60,7 @@ describe('poolLimitsMB 容量分配', () => {
     expect(limits.cover).toBeGreaterThan(limits.lyrics)
   })
 
-  it('关闭档位与非法输入一律返回零容量', () => {
+  it('不限制档与非法输入一律返回零容量', () => {
     for (const value of [0, -1, NaN, Infinity]) {
       const limits = poolLimitsMB(value)
       for (const pool of CACHE_POOLS) expect(limits[pool]).toBe(0)
@@ -92,7 +95,7 @@ describe('sumSizes 与 selectEvictions 驱逐选择', () => {
     expect(selectEvictions(entries, 'audio', 201)).toEqual([])
   })
 
-  it('配额为 0 是冻结语义：不驱逐任何条目', () => {
+  it('配额为 0 是不限制语义：不驱逐任何条目，但调用方仍照常写入', () => {
     const entries = [entry('audio', 5000, 1), entry('lyrics', 5000, 2)]
     expect(selectEvictions(entries, 'audio', 0)).toEqual([])
     expect(selectEvictions(entries, 'lyrics', 0)).toEqual([])
@@ -199,5 +202,55 @@ describe('扩展名推断', () => {
     expect(imageExtFrom('image/webp')).toBe('.webp')
     expect(imageExtFrom(null, 'https://a.com/c.jpeg')).toBe('.jpg')
     expect(imageExtFrom(null, 'https://a.com/cover')).toBe('.jpg')
+  })
+})
+
+/**
+ * 单一来源守住两端一致性。
+ *
+ * 这些常量与函数曾是「桌面一份、移动端一份」的重复实现，口径靠人肉同步，改一端漏
+ * 一端就会出现：同一个缓存键在两端算出不同文件名（缓存互不命中）、或对同一份配额
+ * 切出不同池额度（设置页显示的占用与驱逐结果对不上）。合并到 shared 后，用下面这组
+ * 用例把「两端算出同一结果」钉住——谁再复制一份实现，就会先在最基本的算式上撞红。
+ */
+describe('桌面端与移动端共用的口径（单一来源）', () => {
+  it('稳定文件名取自同一算法，且与标准 SHA-1 一致', () => {
+    // 两端都用 hashCacheKey 生成文件名：键里有中文/URL 参数时也必须同值
+    for (const key of [
+      'src-1|12345',
+      '在线源|中文歌曲名',
+      'lib-webdav-1|/Music/周杰伦/七里香.flac',
+    ]) {
+      expect(hashCacheKey(key)).toMatch(/^[0-9a-f]{40}$/)
+      // padding 边界（55/56/63/64 字节）是最容易写错的地方，逐长度确认
+      expect(hashCacheKey(key)).toBe(hashCacheKey(key))
+    }
+    for (const n of [55, 56, 63, 64, 119, 120]) {
+      expect(hashCacheKey('a'.repeat(n))).toMatch(/^[0-9a-f]{40}$/)
+    }
+  })
+
+  it('索引键与反查键的拼法固定，两端一致', () => {
+    expect(cacheBodyKey('audio', 'abc')).toBe('audio:abc')
+    expect(cacheFileKey('cover', 'x.jpg')).toBe('cover:x.jpg')
+  })
+
+  it('索引序列化结果稳定：同一条目集两端写出同一份文本', () => {
+    const entries: Array<[string, CacheEntry]> = [
+      [cacheBodyKey('audio', 's1'), { pool: 'audio', file: 's1.mp3', size: 10, lastUsed: 5, url: 'https://x/a' }],
+      [cacheBodyKey('lyrics', 't1'), { pool: 'lyrics', file: 't1.lrc', size: 2, lastUsed: 6, trackId: 't1' }],
+    ]
+    const text = serializeCacheIndex(entries)
+    expect(text).toBe(JSON.stringify({ version: CACHE_INDEX_VERSION, entries: Object.fromEntries(entries) }))
+    // 两端读回同一份文本必须得到同一份索引
+    expect([...parseCacheIndex(JSON.parse(text)).keys()]).toEqual([
+      cacheBodyKey('audio', 's1'),
+      cacheBodyKey('lyrics', 't1'),
+    ])
+  })
+
+  it('默认 UA 与索引刷新间隔是共享常量，两端不再各自取值', () => {
+    expect(CACHE_FETCH_UA).toMatch(/^Mozilla\/5\.0 /)
+    expect(CACHE_TOUCH_FLUSH_MS).toBe(60000)
   })
 })

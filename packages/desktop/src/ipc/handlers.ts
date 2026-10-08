@@ -30,7 +30,7 @@ import {
   searchOnlineTracks,
   searchLyrics,
   sanitizeFileName,
-  inferAudioExtFromUrl,
+  audioExtFrom,
   embedCoverIntoAudio,
   detectImageMime,
   fetchWithTimeout,
@@ -69,22 +69,15 @@ function isValidTrackId(id: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/.test(id)
 }
 
-/** 从 Content-Type 推断音频扩展名，无法判断时回退到按 URL 推断 */
+/**
+ * 从 Content-Type 推断音频扩展名，无法判断时回退到按 URL 推断。
+ * 判定表取自 shared 的 audioExtFrom（已实测与原先的本地实现逐项等价），
+ * 这样「下载落盘用哪个扩展名」与缓存层、移动端是同一套口径；
+ * 注意两处参数序相反（这里是 url 在前，历史上先写 URL 后补 Content-Type），
+ * 所以保留本层薄包装而不直接把调用点改掉。
+ */
 function inferAudioExtension(url: string, contentType?: string): string {
-  const ct = (contentType || '').split(';')[0].trim().toLowerCase()
-  const ctMap: Record<string, string> = {
-    'audio/mpeg': '.mp3',
-    'audio/mp3': '.mp3',
-    'audio/flac': '.flac',
-    'audio/ogg': '.ogg',
-    'audio/wav': '.wav',
-    'audio/x-wav': '.wav',
-    'audio/aac': '.aac',
-    'audio/mp4': '.m4a',
-    'audio/x-m4a': '.m4a',
-  }
-  if (ctMap[ct]) return ctMap[ct]
-  return inferAudioExtFromUrl(url)
+  return audioExtFrom(contentType, url)
 }
 
 /** 去重名探测的最大尝试次数：超过则回退到时间戳后缀，避免目录内同名文件极多时死循环 */
