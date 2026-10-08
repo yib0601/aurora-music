@@ -77,7 +77,8 @@ export interface OnlineSourceConfig {
    * 与 sourceUrl 同属一条音源：音源服务一个地址既给搜索又给歌单解析时，歌单导入直接可用。
    * 响应需为 JSON，支持数组或 { results:[] } / { data:[] } / { songs:[] } / { list:[] } 包裹；
    * 可选 name 字段提供歌单标题；
-   * 每项字段（宽松兼容）：title / name / songName；artist / singer / artists
+   * 每项字段（宽松兼容）：title / name / songName；artist / singer / artists；
+   * 以及 album / duration（秒）/ coverUrl / songmid —— 后四个是可选扩展，源给出时才有
    */
   playlistUrl?: string
   /**
@@ -271,7 +272,8 @@ export interface PlaylistResolverConfig {
    * 解析接口地址，需包含 {url} 占位符（调用时替换为 URL 编码后的歌单链接）。
    * 响应需为 JSON，支持数组或 { results:[] } / { data:[] } / { songs:[] } / { list:[] } 包裹；
    * 可选 name 字段提供歌单标题。
-   * 每项字段（宽松兼容）：title / name / songName；artist / singer / artists
+   * 每项字段（宽松兼容）：title / name / songName；artist / singer / artists；
+   * 以及 album / duration（秒）/ coverUrl / songmid —— 后四个是可选扩展，源给出时才有
    */
   apiUrl: string
   /** 附加请求头（如鉴权 Token），同名头覆盖默认值 */
@@ -279,10 +281,25 @@ export interface PlaylistResolverConfig {
   enabled: boolean
 }
 
-/** 导入流程中解析出的单首歌曲（仅元数据，不含任何音频地址） */
+/**
+ * 导入流程中解析出的单首歌曲（仅元数据，不含任何音频地址）。
+ *
+ * title / artist 是协议最小集，任何源都必须给；其余四个是**可选扩展**：新版音源服务
+ * （QQ_Music 的 `/aurora/playlist`）会一并带出，音乐库的歌单详情页据此显示时长与序号，
+ * 与榜单详情端点（ToplistSong）同名同义。老音源只回最小集时字段直接缺席，
+ * 调用方用 `?? 0` / `?? ''` 判缺，**不补空值**——「源没给」与「源给了空值」是两回事。
+ */
 export interface ParsedSong {
   title: string
   artist: string
+  /** 专辑名（源给出时才有） */
+  album?: string
+  /** 时长，**秒**（与榜单详情的 duration 同一口径；源给出且 > 0 时才有） */
+  duration?: number
+  /** 专辑封面地址（源给出时才有） */
+  coverUrl?: string
+  /** 源内曲目 id：QQ 为 songmid，其它平台为各自的 id 字符串（源给出时才有） */
+  songmid?: string
 }
 
 /** 歌单解析源的解析结果 */

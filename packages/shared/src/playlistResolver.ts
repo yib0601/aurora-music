@@ -47,14 +47,42 @@ function extractItems(json: any): any[] {
   return []
 }
 
-/** 单条目容错转 ParsedSong；无标题返回 null */
+/**
+ * 单条目容错转 ParsedSong；无标题返回 null。
+ *
+ * 除 title/artist 外还认 album / duration / coverUrl / songmid：这四个是可选扩展，
+ * 新版音源服务（QQ_Music 的 /aurora/playlist）会带上，歌单详情页据此显示时长与序号。
+ * **有值才挂键**——老源只回两个字段时保持原样，凭空补空串会让调用方分不清
+ * 「源没给」与「源给了空值」。
+ */
 function toSong(item: any): ParsedSong | null {
   if (!item || typeof item !== 'object') return null
   const title = item.title || item.name || item.songName
   if (!title || typeof title !== 'string') return null
   let artist: any = item.artist || item.singer || ''
   if (Array.isArray(artist)) artist = artist.map((a: any) => (typeof a === 'string' ? a : a?.name || '')).join('/')
-  return { title: String(title).trim(), artist: String(artist || '').trim() }
+
+  const song: ParsedSong = { title: String(title).trim(), artist: String(artist || '').trim() }
+
+  // 专辑：酷我给字符串，QQ / 网易云给对象（album.name），个别源用 albumname / albumName
+  const rawAlbum = item.album
+  const album =
+    typeof rawAlbum === 'string'
+      ? rawAlbum
+      : rawAlbum?.name || rawAlbum?.title || item.albumname || item.albumName
+  if (album) song.album = String(album).trim()
+
+  // 时长：协议口径一律**秒**（源的毫秒换算由源侧完成，客户端不做猜测性除算）
+  const duration = Number(item.duration ?? item.interval)
+  if (Number.isFinite(duration) && duration > 0) song.duration = Math.round(duration)
+
+  const cover = item.coverUrl || item.cover || item.pic || (typeof rawAlbum === 'object' ? rawAlbum?.picUrl : '')
+  if (cover) song.coverUrl = String(cover)
+
+  const mid = item.songmid ?? item.mid ?? item.id
+  if (mid !== undefined && mid !== null && mid !== '') song.songmid = String(mid)
+
+  return song
 }
 
 /**
