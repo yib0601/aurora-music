@@ -267,14 +267,20 @@ describe('2. 播放前取址闸门', () => {
     expect(st.queue[0].onlineUrl).not.toBe('')
   })
 
-  it('2b 取址失败不阻断：仍以原曲目进入队列（不抛错、不崩）', async () => {
+  it('2b 取址失败不阻断：曲目仍进队列且信息可见，但不拿空地址建播放器（队列不被吃）', async () => {
     const { usePlayerStore } = await loadStores()
     h.resolveLxTrack = async () => null
     usePlayerStore.setState({ queue: [], currentIndex: -1, currentTrack: null })
     const track = trackOf({ id: 'online-2', onlineUrl: '', lx: { sourceId: 'lx-1', platform: 'kw', meta: {} } })
     await expect(usePlayerStore.getState().playTrack(track)).resolves.toBeUndefined()
-    expect(h.audio.length).toBe(1)
-    expect(usePlayerStore.getState().queue.length).toBe(1)
+    // 收口点从「建 Howl」前移到「进队列」：空地址一旦交给播放器，其 loaderror 会被
+    // 下面的 error 监听当成本地文件损坏，这首歌（队列长度 1 时是整个队列）就被吃掉。
+    // 用户要的是「看到这首歌 + 知道取不到地址」，不是静默清空队列
+    expect(h.audio.length).toBe(0)
+    const st = usePlayerStore.getState()
+    expect(st.queue.map((t) => t.id)).toEqual(['online-2'])
+    expect(st.currentTrack?.id).toBe('online-2')
+    expect(st.resolvingTrackId).toBeNull()
   })
 
   it('2c 零开销：有 path / onlineUrl / remoteUrl 的曲目不得触发任何取址调用', async () => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic, Loader2 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
 import { useOpenSongDetail } from '@/lib/navigation'
 import type { RepeatMode, ShuffleMode, Track } from '@/types'
@@ -101,6 +101,9 @@ function CompactBar({
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
+  // 取址中（在线曲目按 id 换直链的网络往返，见 playerStore.resolvingTrackId）：
+  // 主按钮转菊花，表示「已收到点播、正在取地址」
+  const resolving = usePlayerStore((s) => s.resolvingTrackId) !== null
   const showQueuePanel = usePlaylistStore((s) => s.showQueuePanel)
   const toggleQueuePanel = usePlaylistStore((s) => s.toggleQueuePanel)
   // 已在详情页时不重复 push 同路径，避免返回按钮「退回」同一页
@@ -167,9 +170,12 @@ function CompactBar({
           onTogglePlay()
         }}
         disabled={!currentTrack}
-        aria-label={isPlaying ? '暂停' : '播放'}
+        aria-label={resolving ? '加载中' : isPlaying ? '暂停' : '播放'}
       >
-        {isPlaying ? (
+        {resolving ? (
+          // 取址中：主按钮转菊花，明确「已经收到你的点播，正在取地址」
+          <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} />
+        ) : isPlaying ? (
           <Pause className="h-5 w-5" fill="currentColor" strokeWidth={1.2} />
         ) : (
           <Play className="h-5 w-5 ml-[2px]" fill="currentColor" strokeWidth={1.2} />
@@ -229,6 +235,9 @@ function FullBar({
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const progress = usePlayerStore((s) => s.progress)
   const duration = usePlayerStore((s) => s.duration)
+  // 取址中：主按钮转菊花（与紧凑档同一语义，各自在档内订阅，
+  // 不把播放状态冒泡到外壳——外壳只做宽度测量）
+  const resolving = usePlayerStore((s) => s.resolvingTrackId) !== null
   // 已在详情页时不重复 push 同路径，避免返回按钮「退回」同一页
   const openSongDetail = useOpenSongDetail()
   const [seeking, setSeeking] = useState(false)
@@ -379,7 +388,9 @@ function FullBar({
             disabled={!currentTrack}
             style={{ color: 'rgb(var(--tw-mint-fg))' }}
           >
-            {isPlaying ? (
+            {resolving ? (
+              <Loader2 className="h-[18px] w-[18px] min-[1500px]:h-[22px] min-[1500px]:w-[22px] animate-spin" strokeWidth={2} />
+            ) : isPlaying ? (
               <Pause className="h-[18px] w-[18px] min-[1500px]:h-[22px] min-[1500px]:w-[22px]" fill="currentColor" strokeWidth={1.5} />
             ) : (
               <Play className="h-[18px] w-[18px] ml-0.5 min-[1500px]:h-[22px] min-[1500px]:w-[22px]" fill="currentColor" strokeWidth={1.5} />

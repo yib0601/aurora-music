@@ -10,8 +10,6 @@ import { LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { CoverImage } from '@/components/common/CoverImage'
-import { toast } from '@/components/common/Toast'
-import { ensurePlayableTrack } from '@/services/playlistIO.service'
 import type { Track } from '@/types'
 import {
   ContextMenu,
@@ -49,15 +47,10 @@ export function RecentPage() {
   const playlists = usePlaylistStore((s) => s.playlists)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
 
-  const handlePlay = async (track: Track, idx: number) => {
-    // 在线曲目播放地址会过期（落盘时已剥离），播放前按需重新取址
-    const playable = await ensurePlayableTrack(track)
-    if (!playable) {
-      toast('无法播放该在线歌曲：未配置音源或搜索无结果', { type: 'error' })
-      return
-    }
-    const queue = tracks.map((t) => (t.id === playable.id ? playable : t))
-    usePlayerStore.getState().playQueue(queue, idx)
+  // 取址交给 store：队列与当前曲目立即落地，播放条马上显示这首歌，
+  // 在线直链在后台取（取不到时 store 统一提示），不再阻塞在这里
+  const handlePlay = (_track: Track, idx: number) => {
+    usePlayerStore.getState().playQueue(tracks, idx)
   }
 
   const handlePlayNext = (track: Track) => {
