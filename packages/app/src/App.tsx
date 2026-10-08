@@ -116,34 +116,26 @@ function AppLayout() {
   // 桌面外壳标题栏是否真的会渲染（与 TitleBar 内部判定同源）：
   // 内容列的 pt-11 留白必须跟着它走，否则没有标题栏时会凭空多出 44px 空白
   const hasTitleBar = hasDesktopTitleBar()
-  // 窗口顶部是否有一条 44px 浮层顶栏（不占文档流，内容列需 pt-11 补偿）。
-  // 三种外壳形态各有一条，且判据必须唯一：桌面是窗口标题栏；无 Electron
-  // 窗口控制的宽档（浏览器预览 / 车机横屏 / 平板横屏）在 App 里自建一条同高浮层条，
-  // 否则这些环境下顶部既没有标题栏也没有搜索入口（手机窄档走 MobileNav 的
-  // 常规流顶栏，不需要补偿）。
+  // 窗口顶部是否有一条 44px 的浮层带（不占文档流，内容列需 pt-11 补偿）。
+  // 判据必须唯一：桌面是窗口标题栏占着这条带；无 Electron 窗口控制的宽档
+  // （浏览器预览 / 车机横屏 / 平板横屏）由内容列自己渲染一行顶栏搜索占着它。
+  // 手机窄档走 MobileNav 的常规流顶栏，不需要补偿。
   const hasFloatingTopBar = hasTitleBar || !showMobileNav
   // 歌曲详情页为沉浸式视图：隐藏左侧导航栏与右侧 Now Playing 瓷砖，避免与详情内容重叠
   const isSongDetail = isRoute(ROUTE_PATHS.songDetail, location.pathname)
 
-  // 全局搜索浮层：入口按钮由 App 层统一装配在**窗口顶部**（见下方三处插槽），
-  // 这里只负责浮层本体与 ⌘/Ctrl+K 快捷键，保证任意页面唤起都可见。
+  // 全局搜索浮层：入口由 App 层统一装配（见下方两处），这里只负责浮层本体与
+  // ⌘/Ctrl+K 快捷键，保证任意页面唤起都可见。
   // 设置页是配置页：不注入入口，快捷键一并屏蔽。
   const searchOpen = useUIStore((s) => s.searchOpen)
   const setSearchOpen = useUIStore((s) => s.setSearchOpen)
   const isSettings = isRoute(ROUTES.settings, location.pathname)
-  // 顶部常驻搜索入口：唯一实例来源，按外壳形态注入 TitleBar / MobileNav / 浮层条
-  const topSearch = isSettings ? null : <SearchEntry />
-  // 桌面/宽档顶栏里入口的横向位置：与**内容列左缘**对齐（侧栏 224px + 内容列内边距
-  // 16/32px），而不是贴窗口左上角 —— 左上角那一格是侧栏与品牌 logo 的位置，
-  // 搜索作用于内容，落在内容列上方才不会被读成「侧栏的搜索框」，
-  // 也与下方页面大标题共用同一条视觉轴。
-  // 详情页侧栏折叠成 0 宽，偏移同步收回到内容内边距；动画参数与侧栏折叠一致
-  // （300ms ease-apple），两者不会一个先到、一个后到。
-  // 手机窄档不套这层偏移：那里入口贴在 MobileNav 顶栏右缘。
-  const topSearchInset = cn(
-    'flex items-center transition-[padding] duration-300 ease-apple',
-    isSongDetail ? 'pl-4 md:pl-8' : 'pl-[240px] md:pl-[256px]',
-  )
+  // 搜索入口两副形态，互斥渲染（同一个组件、同一份浮层，只是落点与宽度不同）：
+  // - 宽档：内容列顶栏行（下方 JSX），加宽到 280px —— 它上面没有任何容器边界，
+  //   用自然宽度（约 183px）会在 1200px 内容列上显得像一枚孤零零的小胶囊
+  // - 窄档手机：MobileNav 顶栏右缘，保持自然宽度（<640px 会退化成 36px 图标按钮）
+  const topSearch = isSettings ? null : <SearchEntry className="w-[280px]" />
+  const mobileSearch = isSettings ? null : <SearchEntry />
   const isSettingsRef = useRef(isSettings)
   useEffect(() => { isSettingsRef.current = isSettings }, [isSettings])
   useEffect(() => {
@@ -848,9 +840,8 @@ function AppLayout() {
       {/* 内置软件更新：下载进度/安装对话框（全局唯一实例，横幅与设置页共用） */}
       <UpdateDownloadDialog />
 
-      {/* 桌面外壳标题栏：浮层（不占文档流），左侧插槽注入全局搜索入口。
-          入口自带横向偏移（与内容列左缘对齐），TitleBar 自身不设左侧内边距 */}
-      <TitleBar>{topSearch && <div className={topSearchInset}>{topSearch}</div>}</TitleBar>
+      {/* 桌面外壳标题栏：浮层（不占文档流），只承载右侧窗口控制按钮 */}
+      <TitleBar />
 
       {/* 桌面端窗口缩放手柄；移动端不需要（组件内部 isDesktop 判断返回 null） */}
       <ResizeHandles />
@@ -859,20 +850,7 @@ function AppLayout() {
       {/* 移动端窄档顶部导航：左上角汉堡菜单 + 左侧抽屉
           （宽档移动端不渲染：那时走固定侧栏，与桌面同构） */}
       {/* 右侧插槽注入全局搜索入口：窄档手机上是 36px 图标按钮，与汉堡同一行 */}
-      {showMobileNav && <MobileNav>{topSearch}</MobileNav>}
-
-      {/* 无窗口控制时的浮层顶栏：浏览器预览 / 车机横屏 / 平板横屏等宽档外壳没有
-          Electron 窗口控制按钮，TitleBar 整体不渲染，此处补一条同高（44px）的
-          浮层条承载搜索入口，与桌面形态在视觉上对齐。pointer-events 分两层：
-          条本身不拦截点击（不挡住侧栏/内容），只有入口实体可交互。
-          条始终渲染（设置页只是没有入口），保证内容列的 pt-11 补偿不随路由变化 */}
-      {!hasTitleBar && !showMobileNav && (
-        <div className="absolute top-0 left-0 right-0 h-11 z-40 flex items-center pr-3 pointer-events-none">
-          {topSearch && (
-            <div className={cn('pointer-events-auto', topSearchInset)}>{topSearch}</div>
-          )}
-        </div>
-      )}
+      {showMobileNav && <MobileNav>{mobileSearch}</MobileNav>}
 
       {/* 主区域：侧栏 + 内容 + 右侧封面瓷砖 */}
       <div className="flex-1 flex overflow-hidden relative">
@@ -919,6 +897,19 @@ function AppLayout() {
                 内容仍从标题栏下方 y=44 开始，与占位时逐像素一致，详情页滚动容器的
                 -top-11 也仍相对本 padding 盒定位、上延到窗口顶的行为不变 */}
             <div className={cn('relative flex-1 flex flex-col min-w-0', hasFloatingTopBar && 'pt-11', isSongDetail && !mobile && 'min-h-0')}>
+              {/* 顶栏搜索行：落在窗口顶部那 44px 浮层带里（内容列以 pt-11 让位）。
+                  对齐不靠手算像素 —— 内层复刻 PageLayout 的横向约束
+                  （mx-auto w-full max-w-[1200px] px-4 md:px-8），所以窗口再宽
+                  （内容列限宽居中）、右侧封面瓷砖展开、详情页侧栏折叠成 0 宽，
+                  入口都始终与页面大标题左缘同轴，不必按外壳逐档维护偏移值。
+                  条本身不拦截点击（pointer-events-none），只有入口实体可交互 */}
+              {hasFloatingTopBar && topSearch && (
+                <div className="absolute top-0 left-0 right-0 h-11 z-20 flex items-center pointer-events-none">
+                  <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex items-center">
+                    <div className="pointer-events-auto">{topSearch}</div>
+                  </div>
+                </div>
+              )}
               {/* 新版本提示横幅：启动检测到新版本时固定在内容区顶部 */}
               {updateInfo && (
                 <div className="pt-3">

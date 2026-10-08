@@ -41,6 +41,14 @@ export const SUB_PAGE_TITLE_CLASS =
  */
 export const PAGE_SUBTITLE_CLASS = 'font-text text-[13px] text-white/65 tracking-[-0.2px]'
 
+/**
+ * 空态标题档。全站空态（无曲目 / 无收藏 / 无播放记录 / 无音源 / 无搜索结果）
+ * 此前抄了 6 份**逐字相同**的类名，含 `text-white/90` + `tracking-[-0.3px]`
+ * 这两处别处都不用的写法；收口后新空态直接用它。
+ * 字号 22px 与二级页头同档：空态标题是「页面级提示」，不该比页头更抢眼。
+ */
+export const EMPTY_TITLE_CLASS = 'font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]'
+
 interface TitleProps {
   children: React.ReactNode
   /** 追加的布局类（如 `truncate` / `mb-3`）；字号档本身不可覆写 */
@@ -60,4 +68,14 @@ export function SubPageTitle({ children, className }: TitleProps) {
 /** 页头副标题（标题下那一行说明/计数） */
 export function PageSubtitle({ children, className }: TitleProps) {
   return <p className={cn(PAGE_SUBTITLE_CLASS, 'mt-1', className)}>{children}</p>
+}
+
+/** 空态标题（图标 + 一句主文案 + 一句说明 + 动作按钮的空态块） */
+export function EmptyTitle({ children, className }: TitleProps) {
+  return <h2 className={cn(EMPTY_TITLE_CLASS, className)}>{children}</h2>
+}
+
+/** 空态说明文字（与空态标题成对出现） */
+export function EmptyText({ children, className }: TitleProps) {
+  return <p className={cn('font-text text-[14px] text-white/50 mb-6 tracking-[-0.15px]', className)}>{children}</p>
 }

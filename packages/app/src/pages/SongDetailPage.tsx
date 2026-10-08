@@ -19,7 +19,7 @@ import { isDownloadableOnlineTrack } from '@/lib/onlineTrack'
 import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
 import { LIBRARY_LABEL } from '@/lib/routes'
 // 歌曲详情页没有独立页头：本页唯一的 h1 是黑胶旁的歌名，故用一级页头档
-import { PageTitle } from '@/components/PageHeading'
+import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -286,12 +286,10 @@ export function SongDetailPage() {
               <Music2 className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
-          <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
-            {tracks.length === 0 ? '正在加载歌曲…' : '未找到这首歌曲'}
-          </h2>
-          <p className="font-text text-[14px] text-white/40 mb-6 tracking-[-0.15px]">
+          <EmptyTitle>{tracks.length === 0 ? '正在加载歌曲…' : '未找到这首歌曲'}</EmptyTitle>
+          <EmptyText className="text-white/40">
             {tracks.length === 0 ? `请稍候，${LIBRARY_LABEL}正在加载` : '歌曲可能已被移除'}
-          </p>
+          </EmptyText>
           <button
             onClick={goBack}
             className="pill pill-lg pill-mint"

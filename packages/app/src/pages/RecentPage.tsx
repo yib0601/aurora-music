@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { formatTime, cn, isDesktop } from '@/lib/utils'
 import { LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
 import { PageLayout } from '@/components/PageLayout'
-import { PageTitle, PageSubtitle } from '@/components/PageHeading'
+import { PageTitle, PageSubtitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
 import type { Track } from '@/types'
 import {
@@ -88,12 +88,8 @@ export function RecentPage() {
               <Clock className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
             </div>
           </div>
-          <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">
-            还没有播放记录
-          </h2>
-          <p className="font-text text-[14px] text-white/50 mb-6 tracking-[-0.15px]">
-            导入音乐后，你播放的歌曲会出现在这里
-          </p>
+          <EmptyTitle>还没有播放记录</EmptyTitle>
+          <EmptyText>导入音乐后，你播放的歌曲会出现在这里</EmptyText>
           <button
             onClick={() => navigate(LIBRARY_ROUTE)}
             className="pill pill-lg pill-mint"
