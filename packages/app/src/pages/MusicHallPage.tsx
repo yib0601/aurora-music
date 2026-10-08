@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Compass, RefreshCw, Music2, TrendingUp, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
-import { PageTitle, PageSubtitle } from '@/components/PageHeading'
+import { PageTitle, PageSubtitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { cn } from '@/lib/utils'
 import { HALL_LABEL, LIBRARY_LABEL, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
@@ -316,10 +316,8 @@ export function HallEmpty({
           <Compass className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
         </div>
       </div>
-      <h2 className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">{title}</h2>
-      <p className="font-text text-[14px] text-white/50 mb-6 tracking-[-0.15px] text-center max-w-md px-6 leading-relaxed">
-        {desc}
-      </p>
+      <EmptyTitle>{title}</EmptyTitle>
+      <EmptyText className="text-center max-w-md px-6 leading-relaxed">{desc}</EmptyText>
       {(action || secondaryAction) && (
         <div className="flex items-center gap-3">
           {action && (

@@ -7,6 +7,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
+import { EmptyTitle } from '@/components/PageHeading'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
 import { LIBRARY_LABEL, ROUTES } from '@/lib/routes'
 import {
@@ -652,7 +653,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                     <SearchIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
                   </div>
                 </div>
-                <p className="font-display text-[22px] font-semibold text-white/90 mb-2 tracking-[-0.3px]">开始搜索</p>
+                <EmptyTitle>开始搜索</EmptyTitle>
                 <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">输入关键词，搜索{LIBRARY_LABEL}与在线音源</p>
               </div>
             ) : (
