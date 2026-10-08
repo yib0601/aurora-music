@@ -1,6 +1,6 @@
 {
   "name": "@aurora/desktop",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "license": "PolyForm-Noncommercial-1.0.0",
   "private": true,
   "description": "Aurora Music - 跨平台音乐播放器",
