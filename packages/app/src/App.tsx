@@ -33,6 +33,7 @@ import {
 } from '@/services/permission'
 import { useThemeColor } from '@/hooks/useThemeColor'
 import { useViewportMatch } from '@/hooks/useViewportMatch'
+import { useContainerWidth } from '@/hooks/useContainerWidth'
 import { resolveShellMode, LARGE_SCREEN_QUERY } from '@/lib/shellMode'
 import { syncSystemBars } from '@/services/systemBars'
 import { platform, setFolderPickerHandler } from '@/services/platform'
@@ -60,6 +61,13 @@ let initialScanTriggered = false
 // 才写一次 store。逐首写入意味着「N 首歌 = N 次整表重渲染」，是歌曲多时卡顿的主因。
 const SCAN_BATCH_SIZE = 80
 const SCAN_FLUSH_MS = 300
+
+/**
+ * 顶栏工具带「左入口 + 右更新胶囊」并排所需的最小内联宽度（px）。
+ * 组成：入口 280 + 两端间距 16 + 更新胶囊 237 ≈ 533，取 620 留出余量
+ * （带子在 1200px 内容列上内联宽约 1136，在 600px 窄桌面窗口上只剩约 344）。
+ */
+const TOP_BAND_MIN_INLINE = 620
 let pendingScanned: Track[] = []
 let scanFlushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -131,11 +139,20 @@ function AppLayout() {
   const setSearchOpen = useUIStore((s) => s.setSearchOpen)
   const isSettings = isRoute(ROUTES.settings, location.pathname)
   // 搜索入口两副形态，互斥渲染（同一个组件、同一份浮层，只是落点与宽度不同）：
-  // - 宽档：内容列顶栏行（下方 JSX），加宽到 280px —— 它上面没有任何容器边界，
+  // - 宽档：顶栏工具带左端（下方 JSX），加宽到 280px —— 它上面没有任何容器边界，
   //   用自然宽度（约 183px）会在 1200px 内容列上显得像一枚孤零零的小胶囊
   // - 窄档手机：MobileNav 顶栏右缘，保持自然宽度（<640px 会退化成 36px 图标按钮）
-  const topSearch = isSettings ? null : <SearchEntry className="w-[280px]" />
+  // 宽档用 compact 档（30px 高 + 280px 宽，与同带的窗口控制按钮/更新胶囊同网格；
+  // 宽度写在 .search-entry-compact 里，避免 Tailwind 宽度类反过来压掉窄窗压缩态）。
+  const topSearch = isSettings ? null : <SearchEntry className="search-entry-compact" />
   const mobileSearch = isSettings ? null : <SearchEntry />
+  // 顶栏工具带能否同时容下「左入口 + 右更新胶囊」：按**实测可用宽度**分档，
+  // 不用视口宽度 —— 带子被内容列宽度与 max-w-[1200px] 双重约束，两者不成正比。
+  // 需要的内联宽度 = 左右内边距 + 入口 280 + 间距 16 + 胶囊 237（约 597；取 620 留余量）；
+  // 不够时把更新提示退回内容流里的整行横幅，避免两端叠在一起（520px 窗口实测会重叠
+  // 200px 以上：入口 240–276 与胶囊 133–370）。
+  const { ref: topBandRef, width: topBandWidth } = useContainerWidth<HTMLDivElement>()
+  const inlineUpdate = hasFloatingTopBar && topBandWidth !== null && topBandWidth >= TOP_BAND_MIN_INLINE
   const isSettingsRef = useRef(isSettings)
   useEffect(() => { isSettingsRef.current = isSettings }, [isSettings])
   useEffect(() => {
@@ -840,8 +857,11 @@ function AppLayout() {
       {/* 内置软件更新：下载进度/安装对话框（全局唯一实例，横幅与设置页共用） */}
       <UpdateDownloadDialog />
 
-      {/* 桌面外壳标题栏：浮层（不占文档流），只承载右侧窗口控制按钮 */}
-      <TitleBar />
+      {/* 桌面外壳标题栏：浮层（不占文档流），只承载右侧窗口控制按钮
+          + 应用级更新提示（更新属应用内容，不塞进窗口控制区，见 TitleBar 的 trailing） */}
+      <TitleBar
+        trailing={updateInfo ? <UpdateBanner info={updateInfo} onClose={() => setUpdateInfo(null)} variant="compact" /> : null}
+      />
 
       {/* 桌面端窗口缩放手柄；移动端不需要（组件内部 isDesktop 判断返回 null） */}
       <ResizeHandles />
@@ -897,21 +917,46 @@ function AppLayout() {
                 内容仍从标题栏下方 y=44 开始，与占位时逐像素一致，详情页滚动容器的
                 -top-11 也仍相对本 padding 盒定位、上延到窗口顶的行为不变 */}
             <div className={cn('relative flex-1 flex flex-col min-w-0', hasFloatingTopBar && 'pt-11', isSongDetail && !mobile && 'min-h-0')}>
-              {/* 顶栏搜索行：落在窗口顶部那 44px 浮层带里（内容列以 pt-11 让位）。
+              {/* 顶栏工具带：落在窗口顶部那 44px 浮层带里（内容列以 pt-11 让位）。
+                  带子两端对齐 —— 左端搜索入口，右端照样是「真正属于应用」的控件
+                  （桌面端更新提示挂在 TitleBar 尾部插槽，与这条带同高同行；无外壳
+                  标题栏的宽档则由本带右端承接同一枚胶囊）。
+                  旧版只在左端放一个入口、右侧 800+px 全空，同时下面另占一整行放更新
+                  横幅：结果是顶部那个框看着像孤零零飘在窗口上，还要再吃一行高度。
                   对齐不靠手算像素 —— 内层复刻 PageLayout 的横向约束
                   （mx-auto w-full max-w-[1200px] px-4 md:px-8），所以窗口再宽
                   （内容列限宽居中）、右侧封面瓷砖展开、详情页侧栏折叠成 0 宽，
                   入口都始终与页面大标题左缘同轴，不必按外壳逐档维护偏移值。
-                  条本身不拦截点击（pointer-events-none），只有入口实体可交互 */}
-              {hasFloatingTopBar && topSearch && (
-                <div className="absolute top-0 left-0 right-0 h-11 z-20 flex items-center pointer-events-none">
-                  <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex items-center">
-                    <div className="pointer-events-auto">{topSearch}</div>
+                  条本身不拦截点击（pointer-events-none），只有两端实体可交互。
+                  ⚠️ z 必须高于 TitleBar（z-50）：外壳标题栏是**全宽 z-50 的拖拽层**，
+                  压在下面的话命中测试会落在 .titlebar-drag 上，入口永远收不到点击
+                  （DOM 里看得见、点不动），而这在 CDP 里不报任何错。实体另外显式标
+                  no-drag，避免 Electron 把这块也当成窗口拖拽区。
+                  ⚠️ 移动端全屏 Now Playing 是 z-50 的 fixed 全覆盖层（自带顶部关闭
+                  按钮），宽档移动端（车机 / 平板）同样有这条带 —— 不主动让位就会
+                  盖住播放页自己的顶栏，故该浮层打开期间整条带子不渲染。 */}
+              {hasFloatingTopBar && !nowPlayingOpen && (
+                <div className="absolute top-0 left-0 right-0 h-11 z-[60] flex items-center pointer-events-none">
+                  <div
+                    ref={topBandRef}
+                    className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex items-center justify-between h-full"
+                  >
+                    {topSearch && (
+                      <div className="titlebar-no-drag pointer-events-auto flex items-center h-full">{topSearch}</div>
+                    )}
+                    {/* 更新胶囊：外壳标题栏已代为承载时不重复渲染（二者同高同行，
+                        只是落在窗口控制按钮左侧——那里是窗口级的右端）；
+                        带子容不下两端并排时也让位给内容流里的整行横幅 */}
+                    {updateInfo && !hasTitleBar && inlineUpdate && (
+                      <div className="titlebar-no-drag pointer-events-auto ml-auto">
+                        <UpdateBanner info={updateInfo} onClose={() => setUpdateInfo(null)} variant="compact" />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
-              {/* 新版本提示横幅：启动检测到新版本时固定在内容区顶部 */}
-              {updateInfo && (
+              {/* 新版本提示横幅：窄档（无浮层带）或带子容不下并排时，占用内容首行 */}
+              {updateInfo && !(hasTitleBar || inlineUpdate) && (
                 <div className="pt-3">
                   <UpdateBanner info={updateInfo} onClose={() => setUpdateInfo(null)} />
                 </div>

@@ -8,8 +8,23 @@ import { isInAppUpdateAvailable, startInAppDownload } from '@/stores/updateDownl
  * 新版本提示横幅：启动检测到新版本后在页面顶部展示。
  * 桌面端点击「下载更新」走应用内下载（主进程拉包 + 进度对话框，下载完可直接安装）；
  * Web / 移动端或未匹配到安装包时回退到系统浏览器打开下载页。
+ *
+ * 两副形态（同一份状态与动作，只是落点不同）：
+ * - `banner`（默认）：内容区首行的整行横幅，占满内容列宽度，移动端窄档用它
+ * - `compact`：宽档顶部工具带右端的胶囊（30px 高），与左边的搜索入口同行
+ *   两端对齐。整行横幅塞进 44px 带子里会溢出（自带 py-2.5 + 圆角边框），
+ *   而带子里若只有左侧一个搜索框、右侧留空 800+px，那个框看着就是孤零零地
+ *   飘在窗口顶 —— 这两件事是同一个决定的两面。
  */
-export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () => void }) {
+export function UpdateBanner({
+  info,
+  onClose,
+  variant = 'banner',
+}: {
+  info: UpdateInfo
+  onClose: () => void
+  variant?: 'banner' | 'compact'
+}) {
   const [downloading, setDownloading] = useState(false)
   const inAppAvailable = isInAppUpdateAvailable() && !!info.assetUrl && !!info.assetKind
 
@@ -34,6 +49,34 @@ export function UpdateBanner({ info, onClose }: { info: UpdateInfo; onClose: () 
     openDownloadPage(info)
     setDownloading(true)
     setTimeout(onClose, 1200)
+  }
+
+  // 紧凑态：图标 + 版本号 + 下载按钮 + 关闭，全部压进 30px 高的一枚胶囊。
+  // 当前版本号、包类型标签在带子里放不下（也不值得为它撑高那条带），省略。
+  if (variant === 'compact') {
+    return (
+      <div className="flex items-center gap-1 rounded-full border border-mint/20 bg-mint/[0.06] pl-3 pr-1 h-[30px] backdrop-blur-ds">
+        <ArrowDownCircle className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
+        <p className="font-text text-[12px] text-white/85 tracking-[-0.15px] whitespace-nowrap">
+          新版本 <span className="text-mint font-semibold">v{info.version}</span>
+        </p>
+        <button
+          onClick={handleDownload}
+          title={inAppAvailable ? '应用内下载，完成后可直接安装' : info.installHint || undefined}
+          className="ml-1 flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.1] px-2.5 h-[22px] flex items-center gap-1 font-text text-[12px] text-mint hover:bg-mint/20 transition-colors whitespace-nowrap"
+        >
+          <Download className="h-3 w-3" strokeWidth={2} />
+          {downloading ? '已打开' : '下载更新'}
+        </button>
+        <button
+          onClick={onClose}
+          aria-label="关闭更新提示"
+          className="btn-icon rounded-full text-white/50 hover:text-white"
+        >
+          <X className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      </div>
+    )
   }
 
   return (
