@@ -61,6 +61,8 @@
     "files": [
       "dist-electron/**/*",
       "app-dist/**/*",
+      "!**/node_modules/@aurora/shared/src/**",
+      "!**/node_modules/@aurora/shared/tsconfig*.json",
       "!**/node_modules/better-sqlite3/binding.gyp",
       "!**/node_modules/better-sqlite3/bin/**",
       "!**/node_modules/better-sqlite3/deps/**",

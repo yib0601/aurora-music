@@ -160,6 +160,8 @@ export {
 export {
   CACHE_POOLS,
   CACHE_INDEX_VERSION,
+  CACHE_FETCH_UA,
+  CACHE_TOUCH_FLUSH_MS,
   POOL_RATIO,
   POOL_MIN_MB,
   poolLimitsMB,

@@ -3,20 +3,40 @@
  *
  * 音频 / 封面 / 歌词三类内容共用一份磁盘配额，按固定比例切给三个池，
  * 池内各自按 lastUsed 做 LRU 驱逐：某类内容暴涨（例如一次扫进几千张封面）
- * 不会把另一类挤到不可用。这里是桌面端主进程与移动端共用的那部分计算——
- * 容量分配、使用量统计、驱逐选择、索引解析与序列化、扩展名推断、稳定文件名。
+ * 不会把另一类挤到不可用。容量档位为 0 是「不限制」档：不切配额、不驱逐，
+ * 各端据此照常写入新内容。
  *
- * 具体落盘（Electron 的 node:fs / Android 的 Capacitor Filesystem）由各端实现，
+ * 这里是桌面端主进程与移动端**唯一**的缓存口径来源：容量分配、使用量统计、驱逐选择、
+ * 索引解析与序列化、扩展名推断、稳定文件名（sha1）、索引键拼法、默认 UA 与刷新间隔
+ * 全在此处，两端只保留各自「怎么落盘」的部分（Electron 的 node:fs / Android 的
+ * Capacitor Filesystem）。历史上两端各写一份，2026-10 合并——改一端漏一端会让桌面与
+ * 手机对同一份配额算出不同结果、或对同一个键算出不同文件名而互相读不到缓存。
  * 因此本模块不引入任何平台 API，可直接跑单元测试。
  *
- * 桌面端的实现见 desktop/src/ipc/mediaCache.ts：那边的文件存在性校验、
- * 原子改名、协议响应等仍留在主进程，本模块只保证两端的配额与驱逐口径一致。
+ * 各端仍保留的有意差异见 desktop/src/ipc/mediaCache.ts 与
+ * app/src/services/platform/mobile/mediaCache.ts 的注释（落盘目录、索引文件读取方式、
+ * 封面是否纳入配额、.part 命名等）。
  */
 
 /** 缓存池：三类内容各自独立配额与 LRU，共享同一份总量配置 */
 export const CACHE_POOLS = ['audio', 'cover', 'lyrics'] as const
 
 export type CachePool = (typeof CACHE_POOLS)[number]
+
+/**
+ * 后台拉流缓存用的默认 User-Agent。
+ * 放在这里而不是各端各写一份：两端拉的是同一批歌源/图床，UA 一旦只有一端更新，
+ * 就会出现「桌面能缓存、手机被源站挡掉」这种只在单端复现的问题。
+ */
+export const CACHE_FETCH_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+/**
+ * 命中只改内存里的 lastUsed、攒一会儿再落盘的间隔（毫秒）。
+ * 两端共用：命中发生在播放热路径上（一次播放会发很多 Range 请求），
+ * 每次都同步重写整份索引会让主进程/WebView 在拖动进度条时卡顿。
+ */
+export const CACHE_TOUCH_FLUSH_MS = 60000
 
 export interface CacheEntry {
   pool: CachePool
@@ -45,6 +65,8 @@ export const POOL_MIN_MB: Record<CachePool, number> = { audio: 16, cover: 8, lyr
 /**
  * 把总容量按比例切给各池（MB）。比例切完不足最低配额的按最低配额补；
  * 补完若超过总量（容量档位很小时会发生）再等比缩回，保证各池之和不超过总量。
+ * totalMB ≤ 0 是「不限制」档：三池都不分配配额，调用方据此跳过驱逐，
+ * 而不是停止缓存——继续拉新、继续写盘，占用不设上限。
  */
 export function poolLimitsMB(totalMB: number): Record<CachePool, number> {
   const raw = {} as Record<CachePool, number>
@@ -86,7 +108,7 @@ export function sumSizes(entries: Iterable<CacheEntry>, pool?: CachePool): numbe
 /**
  * 超限时挑出该池要删的条目（最久未用优先），返回索引键列表。
  * 只做选择不做删除：落盘由各端执行，选择逻辑保持可测。
- * limitBytes ≤ 0 时返回空数组——容量档位为 0 是「冻结」语义，
+ * limitBytes ≤ 0 时返回空数组——0 是「不限制」档：不驱逐任何条目，
  * 已有内容原样保留，腾空间由用户显式「清空缓存」完成。
  */
 export function selectEvictions(
