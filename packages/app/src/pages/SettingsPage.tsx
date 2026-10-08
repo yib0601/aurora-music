@@ -114,32 +114,34 @@ const SETTINGS_SECTIONS = [
 const settingsSectionId = (id: string) => `settings-${id}`
 
 /**
- * 页头那句动态说明：每个分区一句，随导航选中项切换。
- * 原先这些解释散在各卡片的第一行（每张卡都要一句"这卡是干什么的"），
- * 收拢到页头后，卡片里只剩行标签与必要提示。
- */
-const settingsSectionHint: Record<string, string> = {
-  general: '主题与播放设备',
-  library: '本地目录与网络存储，扫描入库的来源',
-  storage: '下载音质、落盘目录与播放缓存',
-  sources: '配置在线音源与歌词源',
-  about: '版本、更新与开源许可',
-}
-
-/**
  * 分区导航：桌面端左侧常驻竖排，窄屏退化为顶部胶囊条。
  * 窄屏用 flex-wrap 换行而非横向滚动：5 个中文标签在 390px 宽下会超出屏幕，
  * 横向滚动条会把最后一项藏起来，用户不知道还有分区没看到。
- * 桌面端 `self-start` 让 nav 高度只占内容高——不写死高度、也不依赖 sticky：
- * 滚动发生在右侧内容列内部，整页并不滚动，sticky 在这里是死代码。
- * 选中态**刻意与主导航不同**：主导航用低透 mint 底 + mint 字（全局方位锚点，要克制），
- * 这里用实心 mint + 深墨字 —— 低透叠色在浅色主题下只有 2.84:1，达不到正文阈值。
+ *
+ * **桌面端宽度贴合最长标签**（`grid-cols-[max-content]`），不要写成固定 `w-[152px]`：
+ * 定宽 + 文字左对齐时，中文标签实测只占 26–64px，按钮里留下 88–126px 死空白，
+ * 「导航文字 → 卡片边框」的净空隙因此涨到 100px 以上——用户抱怨的"间隔太大"正是这个，
+ * 与父容器 gap 无关，只调 gap 治不了。max-content 列让 nav 收到最长标签的宽度，
+ * 每个按钮仍等宽（grid 子项默认 stretch），一列边缘齐平。
+ *
+ * **桌面端选中态：左侧 2px mint 竖条 + 白 7% 弱底**，不用实心 mint 色块。
+ * 实心块在 114px 宽的窄列里是 36px 高的整块色斑（文字只占 26px，左右各 32px 死内边距），
+ * 面积大、色相满，是"丑"的主要来源；且与侧栏主导航的低透语言割裂。
+ * 弱底 + 竖条把"选中"拆成两个弱信号：色相只出现在 2px 竖条上，面积降到 1/20，
+ * 底色回到中性通道（`white/7%`，浅色主题自动翻成深墨叠色），两套主题都不需要单独调色。
+ * 竖条压在 nav 左内衬之外（`-left-3`），与文字左缘对齐成一条轴线。
+ *
+ * **桌面端另一侧有竖分割线**：导航列与内容列是两个分组，分割线让左列有明确边界，
+ * 视线才知道 24px 空隙"属于谁"。间距优先于分割线是常规，但这里左列内容是**导航**——
+ * 用户需要随时知道"当前在哪一区"，一条贯穿的分割线比纯间距更能锚定这一列。
+ *
+ * 窄屏仍是横向胶囊条（实心 mint）：横向 chip 用实心是标准形态，竖条在那里没有意义。
  */
 function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: string) => void }) {
   return (
     <nav
       data-settings-nav
-      className="flex flex-wrap gap-1.5 pb-3 lg:w-[152px] lg:flex-shrink-0 lg:flex-col lg:flex-nowrap lg:self-start lg:gap-0.5 lg:pb-0"
+      className="flex flex-wrap gap-1.5 lg:grid lg:w-fit lg:flex-none lg:flex-shrink-0 lg:grid-cols-[max-content] lg:gap-y-1 lg:self-stretch lg:border-r lg:border-white/[0.06] lg:pr-3"
     >
       {SETTINGS_SECTIONS.map(({ id, label }) => {
         const on = active === id
@@ -149,15 +151,18 @@ function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: stri
             type="button"
             onClick={() => onSelect(id)}
             aria-current={on ? 'true' : undefined}
-            // 选中态用实心 mint 底 + 深墨字：低透 mint 底 + mint 字（原做法）在浅色主题下
-            // 同色相叠加只有 2.84:1，达不到正文阈值。前景**刻意硬编码** #030608 而不是
-            // 用 `text-mint-fg`——那个 token 是为 Tailwind 的 bg-mint 设计的，浅色下翻成白字，
-            // 在白字 on #009C88 只有 3.44:1，会退化（与 globals.css 的 .btn-primary 同一理由）。
-            // 深墨字在两种主题的 mint 底上分别是 14.5:1 / 5.9:1。
-            className={`h-8 flex-shrink-0 whitespace-nowrap rounded-full border px-3 font-text text-[12px] tracking-[-0.2px] transition-colors duration-200 ease-mineradio lg:h-9 lg:rounded-ds-media lg:text-[13px] lg:text-left ${
+            // 选中态两套写法按断点切换（不用同属性叠加，避免 Tailwind 生成顺序决定胜负）：
+            // - 窄屏：实心 mint + 深墨字。前景**刻意硬编码** #030608 而不是用 `text-mint-fg`——
+            //   后者是为 Tailwind 的 bg-mint 设计的，浅色下翻成白字，白字 on #009C88 只有 3.44:1
+            //   （与 globals.css 的 .btn-primary 同一理由）；深墨字在两种主题的 mint 底上是 14.53:1 / 5.91:1。
+            // - 桌面端：弱底 + 竖条（详见上方函数注释），色相只落在 2px 竖条上。
+            // 竖条放按钮自身左缘（不是 nav 内衬外侧）：弱底从按钮左缘开始，竖条压在它边缘上，
+            // 两者读作一个整体；放在内衬外会隔着 12px 空隙"漂"在左边，像两条无关的元素。
+            // 未选中字色 /65 而非 /55：设计系统 §2.5 定的次要文字下限（/55 实测跌到 3.x:1）。
+            className={`relative h-8 whitespace-nowrap rounded-full px-3 font-text text-[12px] tracking-[-0.2px] transition-colors duration-200 ease-mineradio lg:h-9 lg:rounded-ds-media lg:pl-3 lg:pr-3.5 lg:text-left lg:text-[13px] lg:before:absolute lg:before:bottom-2 lg:before:left-0 lg:before:top-2 lg:before:w-[2px] lg:before:rounded-r-[2px] lg:before:content-[''] ${
               on
-                ? 'border-transparent bg-mint font-semibold text-[#030608]'
-                : 'border-transparent text-white/55 hover:border-white/[0.10] hover:bg-white/[0.04] hover:text-white/85'
+                ? 'bg-mint font-semibold text-[#030608] lg:bg-white/[0.07] lg:font-medium lg:text-white/95 lg:before:bg-mint'
+                : 'text-white/65 hover:bg-white/[0.05] hover:text-white/90'
             }`}
           >
             {label}
@@ -1692,20 +1697,21 @@ export function SettingsPage() {
       // 其底边仍落在悬浮播放条上方，去掉留白会让「关于」卡片滚到底时压在播放条下面
       className="max-w-[980px]"
       header={
-        // 页面头压到一行：标题 + 一句动态说明。原先是 64px 图标块 + 主标题 + 副标题三行，
-        // 只说明"这是设置页"，占掉首屏近 120px；分区导航本身已经承担了页面识别。
-        // 说明文案按当前分区变化，把原本铺在卡片里的解释收拢到一处。
-        <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 md:mb-5">
+        // 页头只留主标题。原先是「标题 + 一句随分区变化的说明」，但那句说明是分区导航
+        // 本身就能传达的信息（导航高亮已经告诉你当前在哪一区），挂在页头上只是噪音。
+        // 说明文案已下线；下面内容的首个子元素就是分区标题，与标题之间无需再加第二行。
+        <div className="mb-4 md:mb-5">
           <h1 className="font-display text-[24px] font-medium tracking-[-0.02em] text-white/[0.98] leading-tight">
             设置
           </h1>
-          <p className="font-text text-[12px] text-white/50 tracking-[-0.2px]">
-            {settingsSectionHint[activeSection]}
-          </p>
         </div>
       }
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-8">
+      {/*
+        两栏间距：导航列的右分割线到内容卡片之间留 20px。左列自带竖分割线，
+        视线有明确边界，20px 足够读出"两个分组"，再大就会让导航像被遗弃在半空。
+      */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-5">
         <SettingsNav active={activeSection} onSelect={scrollToSection} />
         <div ref={scrollerRef} className="min-w-0 flex-1 overflow-y-auto scrollbar-thin lg:pr-2 lg:-mr-2">
           <div className="space-y-3 pb-8">
