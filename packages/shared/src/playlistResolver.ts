@@ -1,7 +1,7 @@
 import type { PlaylistParseResult, ParsedSong } from './types'
 import type { SourceEndpointInput } from './auroraPreset'
 import { playlistEndpointOf } from './auroraPreset'
-import { fetchWithTimeout } from './fetchWithTimeout'
+import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 
 /**
  * 歌单解析协议执行器（与音乐源/歌词源同一架构）：
@@ -24,6 +24,9 @@ const DEFAULT_HEADERS: Record<string, string> = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   Accept: 'application/json',
 }
+
+/** 单条歌单解析请求超时（大歌单服务端要分页取，给得比在线搜索宽） */
+const PLAYLIST_TIMEOUT_MS = 15000
 
 /** 从粘贴文本中提取第一个 http/https 链接（分享文案通常夹带描述文字） */
 export function extractShareUrl(text: string): string | null {
@@ -69,11 +72,18 @@ export async function resolvePlaylistUrl(
     throw new Error(`音源「${label}」未配置歌单解析接口地址，需包含 {url} 占位符`)
   }
   const url = endpoint.replace('{url}', encodeURIComponent(shareUrl))
-  const resp = await fetchWithTimeout(
-    url,
-    { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
-    15000
-  )
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
+      PLAYLIST_TIMEOUT_MS
+    )
+  } catch (err) {
+    // 超时文案自解释（底层 AbortError 的英文 message 对用户毫无信息量）
+    if (isTimeoutError(err)) throw new Error(`音源「${label}」请求超时（${PLAYLIST_TIMEOUT_MS}ms）`)
+    throw new Error(`音源「${label}」请求失败：${(err as Error).message}`)
+  }
   if (!resp.ok) throw new Error(`音源「${label}」返回 HTTP ${resp.status}`)
   const json = (await resp.json()) as any
 

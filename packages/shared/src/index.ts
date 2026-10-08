@@ -85,7 +85,7 @@ export {
 } from './fileUrl'
 export { embedCoverIntoAudio, detectImageMime } from './embedCover'
 export type { EmbedMeta, EmbedCover } from './embedCover'
-export { fetchWithTimeout, setCustomFetch } from './fetchWithTimeout'
+export { fetchWithTimeout, setCustomFetch, TimeoutError, isTimeoutError } from './fetchWithTimeout'
 export {
   normalizeName,
   parsePlaylistText,

@@ -75,10 +75,46 @@ export function hallUnavailableReason(): string {
   return ''
 }
 
-/** 错误文案归一：保证用户看到的是结论而非堆栈 */
-function messageOf(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err)
-  return msg || '加载失败'
+/**
+ * IPC 错误前缀：Electron 把主进程抛出的错误重建成 `Error`，message 前拼一句
+ * `Error invoking remote method '<channel>': `（name 一律退化成 Error），
+ * 这层前缀对用户没有任何信息量，剥掉后剩下的才是执行器的中文结论。
+ */
+const IPC_PREFIX_RE = /^Error invoking remote method '[^']*':\s*/
+
+/** 剥掉 IPC 前缀后剩下的「异常类名:」前缀（含嵌套，如 `AbortError: `、`TypeError: `） */
+const ERROR_TAG_RE = /^(?:[A-Za-z]*Error|DOMException):\s*/
+
+/**
+ * 错误文案归一：保证用户看到的是结论而非堆栈。
+ *
+ * 单独处理三种底座英文错误——它们在桌面端经 IPC 回传后，name 已经退化，
+ * 只能按 message 里的类名/message 判定，直接上屏就是用户看到的那句
+ * "The operation was aborted."：
+ *   - AbortError：请求被中止（超时或取消）
+ *   - TypeError: Failed to fetch：网络不可达（DNS / 连接被拒 / 代理拦截）
+ * 执行器自己抛的中文错误原样保留。
+ */
+export function messageOf(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  let msg = raw.replace(IPC_PREFIX_RE, '').trim()
+  if (!msg) return '加载失败'
+  // 可能连着几层类名前缀（`Error: AbortError: …`），逐层剥
+  for (let i = 0; i < 3; i++) {
+    const next = msg.replace(ERROR_TAG_RE, '').trim()
+    if (next === msg) break
+    msg = next
+  }
+  if (isAbortMessage(msg) || isAbortMessage(raw)) return '请求超时：音源服务未在超时时间内响应'
+  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(msg)) {
+    return '网络不可达：请检查音源服务是否在运行、地址与端口是否正确'
+  }
+  return msg
+}
+
+/** 中止类错误判定：类名或浏览器/Node 自带的那两句固定 message */
+function isAbortMessage(msg: string): boolean {
+  return /abort/i.test(msg)
 }
 
 export const useMusicHallStore = create<MusicHallState>()((set, get) => ({

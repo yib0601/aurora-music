@@ -1,5 +1,5 @@
 import type { LyricsSourceConfig, LyricsSearchOptions, LyricsSearchResult } from './types'
-import { fetchWithTimeout } from './fetchWithTimeout'
+import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 
 // 统一默认请求头，可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -56,6 +56,9 @@ function toCandidate(item: any, fallbackName: string, fallbackArtist: string): L
   }
 }
 
+/** 单个歌词源请求超时：歌词是播放的附属信息，等太久不如先出无歌词界面 */
+const LYRICS_TIMEOUT_MS = 8000
+
 /**
  * 单个歌词源搜索（协议执行器核心）
  * - sourceUrl 占位符替换：{track}/{query} 歌曲名、{artist} 艺术家、{album} 专辑、{duration} 时长（秒）
@@ -79,11 +82,17 @@ export async function searchLyricsSource(
     .replace(/\{album\}/g, encodeURIComponent(album || ''))
     .replace(/\{duration\}/g, duration && duration > 0 ? String(Math.round(duration)) : '')
 
-  const resp = await fetchWithTimeout(
-    url,
-    { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
-    8000
-  )
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      { headers: { ...DEFAULT_HEADERS, ...(source.headers || {}) } },
+      LYRICS_TIMEOUT_MS
+    )
+  } catch (err) {
+    if (isTimeoutError(err)) throw new Error(`歌词源「${source.name}」请求超时（${LYRICS_TIMEOUT_MS}ms）`)
+    throw new Error(`歌词源「${source.name}」请求失败：${(err as Error).message}`)
+  }
   if (!resp.ok) throw new Error(`歌词源「${source.name}」返回 HTTP ${resp.status}`)
 
   const json = (await resp.json()) as any

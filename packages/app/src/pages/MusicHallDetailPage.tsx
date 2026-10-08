@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Play, Loader2, Music2, TrendingUp, Sparkles } from 'lucide-react'
+import { ArrowLeft, Play, Loader2, Music2, TrendingUp, Sparkles, RefreshCw } from 'lucide-react'
 import { PageLayout } from '@/components/PageLayout'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { toast } from '@/components/common/Toast'
@@ -191,8 +191,17 @@ export function MusicHallDetailPage() {
           <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.6} />
         </div>
       ) : error ? (
-        <div className="inset-note px-4 py-3">
-          <span className="font-text text-[12px] text-white/60">{error}</span>
+        // 错误态必须能给重试入口：上游偶发超时/限流时，用户不该被迫退出再进
+        <div className="inset-note flex items-center justify-between gap-3 px-4 py-3">
+          <span className="font-text text-[12px] text-white/60 truncate">{error}</span>
+          <button
+            type="button"
+            className="btn-icon flex-shrink-0"
+            title="重新加载"
+            onClick={() => (isToplist ? void loadToplistDetail(id, true) : void loadPlaylistDetail(id, true))}
+          >
+            <RefreshCw className="h-4 w-4" strokeWidth={1.6} />
+          </button>
         </div>
       ) : rows.length === 0 ? (
         <p className="font-text text-[13px] text-white/50 py-6">这个{isToplist ? '榜单' : '歌单'}里没有曲目</p>
