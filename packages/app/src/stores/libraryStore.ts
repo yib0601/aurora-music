@@ -2,12 +2,11 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   mergeLegacyPlaylistSources,
-  migrateLyricsSources,
   migrateOnlineSources,
   clearSearchCache,
   clearLxSourceCache,
 } from '@aurora/shared'
-import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, LyricsSourceConfig, DownloadQuality, LibrarySourceConfig } from '@/types'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
 import { configureAudioCache } from '@/services/audioCache.service'
@@ -61,11 +60,10 @@ interface LibraryState {
   searchResults: Track[]
   /** 历史搜索记录（最新在前，最多保留 MAX_SEARCH_HISTORY 条） */
   searchHistory: string[]
-  // 音源与歌词源配置（应用不内置任何源，全部由用户按协议配置）
-  // 音源一条可同时承载两种能力：搜索（{query}）与歌单解析（{url}），端点地址在执行时由
-  // sourceUrl 解析组装（服务地址由协议派生，第三方接口模板原样使用）
+  // 音源配置（应用不内置任何源，全部由用户按协议配置）
+  // 音源一条可同时承载多种能力：搜索（{query}）、歌单解析（{url}）与歌词（{track}），
+  // 端点地址在执行时由 sourceUrl 解析组装（服务地址由协议派生并读服务端自描述，第三方接口模板原样使用）
   onlineSources: OnlineSourceConfig[]
-  lyricsSources: LyricsSourceConfig[]
   /**
    * 媒体库来源（本机目录之外的持久曲库，目前支持 WebDAV 网络存储）。
    * 与 onlineSources（在线搜索歌源，地址易失、不入库）是两类东西：
@@ -106,10 +104,6 @@ interface LibraryState {
   addOnlineSource: (source: Omit<OnlineSourceConfig, 'id'>) => void
   updateOnlineSource: (id: string, updates: Partial<OnlineSourceConfig>) => void
   removeOnlineSource: (id: string) => void
-  // 歌词源配置操作
-  addLyricsSource: (source: Omit<LyricsSourceConfig, 'id'>) => void
-  updateLyricsSource: (id: string, updates: Partial<LyricsSourceConfig>) => void
-  removeLyricsSource: (id: string) => void
   // 媒体库来源操作（WebDAV 网络存储等持久曲库来源）
   addLibrarySource: (source: Omit<LibrarySourceConfig, 'id'>) => string
   updateLibrarySource: (id: string, updates: Partial<LibrarySourceConfig>) => void
@@ -165,7 +159,6 @@ export const useLibraryStore = create<LibraryState>()(
       searchHistory: [],
       likedTracks: new Set<string>(),
       onlineSources: [],
-      lyricsSources: [],
       librarySources: [],
       downloadDir: null,
       downloadQuality: 'flac',
@@ -274,21 +267,6 @@ export const useLibraryStore = create<LibraryState>()(
         clearLxSourceCache()
       },
 
-      addLyricsSource: (source) => {
-        const id = `lrc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        set({ lyricsSources: [...get().lyricsSources, { ...source, id }] })
-      },
-      updateLyricsSource: (id, updates) => {
-        set({
-          lyricsSources: get().lyricsSources.map((s) =>
-            s.id === id ? { ...s, ...updates } : s
-          ),
-        })
-      },
-      removeLyricsSource: (id) => {
-        set({ lyricsSources: get().lyricsSources.filter((s) => s.id !== id) })
-      },
-
       addLibrarySource: (source) => {
         // id 用作 aurora-remote:// 的 host，必须是小写字母/数字/连字符
         const id = `lib-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -341,7 +319,6 @@ export const useLibraryStore = create<LibraryState>()(
           ...(s.playlistUrl ? { playlistUrl: s.playlistUrl } : {}),
           ...(s.endpoints ? { endpoints: s.endpoints } : {}),
         })),
-        lyricsSources: state.lyricsSources,
         librarySources: state.librarySources,
         downloadDir: state.downloadDir,
         downloadQuality: state.downloadQuality,
@@ -363,6 +340,8 @@ export const useLibraryStore = create<LibraryState>()(
       // v11 缓存容量改版：新增自定义标记（audioCacheLimitCustomMB，旧数据置 false →
       //     设置页显示「默认」）；原「关闭」档（0）随档位改版移除，迁移时归到平台默认容量
       //     v11 之后 0 不再被迁移改写，作为「不限制」档使用（只影响 version < 11 的历史数据）
+      // v12 歌词并入音源：删除独立「歌词源」配置（lyricsSources），
+      //     歌词能力改由音源服务的端点自描述提供（endpoints.lyric）
       migrate: (persisted: any, version: number) => {
         if (persisted) {
           if (version < 9) {
@@ -375,7 +354,12 @@ export const useLibraryStore = create<LibraryState>()(
           }
           if (version < 10) {
             persisted.onlineSources = migrateOnlineSources(persisted.onlineSources)
-            persisted.lyricsSources = migrateLyricsSources(persisted.lyricsSources)
+          }
+          if (version < 12) {
+            // 歌词并入音源：独立「歌词源」配置退场，歌词能力改为读音源服务的端点自描述
+            // （见 shared/src/auroraPreset.ts 的 lyricEndpointOf）。歌词是「用完即弃」的
+            // 在线查询，没有需要保留的用户数据，老字段直接丢弃即可。
+            delete persisted.lyricsSources
           }
           if (version < 11) {
             persisted.audioCacheLimitCustomMB = false
@@ -400,7 +384,6 @@ export const useLibraryStore = create<LibraryState>()(
           if (version < 3) {
             delete persisted.useNeteaseSources
             delete persisted.useQQSources
-            if (!Array.isArray(persisted.lyricsSources)) persisted.lyricsSources = []
           }
           if (version < 2 && persisted.useBuiltinSources !== undefined) {
             delete persisted.useBuiltinSources
@@ -411,7 +394,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 11,
+      version: 12,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

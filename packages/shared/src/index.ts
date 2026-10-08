@@ -125,7 +125,7 @@ export {
 } from './coverMatch'
 export type { CoverMatchTarget } from './coverMatch'
 export type { PlaylistCapableSource } from './playlistResolver'
-export { mergeLegacyPlaylistSources, migrateOnlineSources, migrateLyricsSources } from './sourceMigration'
+export { mergeLegacyPlaylistSources, migrateOnlineSources } from './sourceMigration'
 export {
   AURORA_ENDPOINT_FALLBACK,
   normalizeSourceBase,
@@ -134,10 +134,12 @@ export {
   checkSourceForm,
   searchEndpointOf,
   playlistEndpointOf,
+  lyricEndpointOf,
   hallEndpointOf,
   fillEndpointTemplate,
   buildAuroraEndpoints,
   parseAuroraEndpoints,
+  parseAuroraCapabilities,
   probeAuroraService,
 } from './auroraPreset'
 export type {

@@ -1,4 +1,5 @@
-import type { LyricLine } from '@/types'
+import { lyricEndpointOf } from '@aurora/shared'
+import type { LyricLine, LyricsSourceConfig } from '@/types'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 
@@ -92,6 +93,34 @@ export interface OnlineLyricsResult {
   artist: string
 }
 
+/**
+ * 把「音源」翻成歌词执行器认识的源列表 —— 歌词能力随音源走，不再有独立的歌词源配置。
+ *
+ * 服务地址形态的音源由协议派生出歌词端点（服务端自描述里的 endpoints.lyric 优先，
+ * 没有自描述时回落默认路径，见 shared/src/auroraPreset.ts 的 lyricEndpointOf），
+ * 于是用户只填一条音源，搜索 / 歌单解析 / 歌词三种能力一起到位。
+ * 派生出端点（含 {track}/{artist}/{duration} 占位符）的源才参与；顺序即音源的配置顺序。
+ */
+function lyricsSourcesFromLibrary(): LyricsSourceConfig[] {
+  const { onlineSources } = useLibraryStore.getState()
+  const out: LyricsSourceConfig[] = []
+  for (const source of onlineSources) {
+    if (!source.enabled) continue
+    // 脚本源（kind='lx'）只提供取址，不经 aurora 端点协议，没有歌词能力
+    if (source.kind === 'lx') continue
+    const sourceUrl = lyricEndpointOf(source)
+    if (!sourceUrl) continue
+    out.push({
+      id: source.id,
+      name: source.name,
+      sourceUrl,
+      ...(source.headers ? { headers: source.headers } : {}),
+      enabled: true,
+    })
+  }
+  return out
+}
+
 export async function searchOnlineLyrics(
   query: string,
   artist?: string,
@@ -99,10 +128,10 @@ export async function searchOnlineLyrics(
   duration?: number
 ): Promise<OnlineLyricsResult | null> {
   if (!platform.searchLyrics) return null
-  // 下传用户配置的歌词源：用户源优先生效，全部未命中时执行器内部回退到内置源兜底
-  const lyricsSources = useLibraryStore.getState().lyricsSources
+  // 下传音源派生的歌词源：命中即返回；全部未命中时执行器内部回退到内置源兜底
+  const sources = lyricsSourcesFromLibrary()
   try {
-    return await platform.searchLyrics(query, artist, album, duration, { sources: lyricsSources })
+    return await platform.searchLyrics(query, artist, album, duration, { sources })
   } catch {
     return null
   }

@@ -4,6 +4,8 @@ import {
   buildAuroraEndpoints,
   checkSourceForm,
   fillEndpointTemplate,
+  lyricEndpointOf,
+  parseAuroraCapabilities,
   hallEndpointOf,
   normalizeSourceBase,
   parseSourceInput,
@@ -289,11 +291,46 @@ describe('searchEndpointOf / playlistEndpointOf（执行时解析端点）', () 
   })
 })
 
+describe('lyricEndpointOf（歌词能力随音源走）', () => {
+  it('服务地址形态派生歌词端点，占位符原样保留给执行器替换', () => {
+    const url = lyricEndpointOf({ sourceUrl: 'https://music.example.com?key=K1' })
+    expect(url).toBe(
+      'https://music.example.com/aurora/lyric?track={track}&artist={artist}&duration={duration}&key=K1'
+    )
+  })
+
+  it('服务端自描述里的歌词端点优先于默认路径', () => {
+    const url = lyricEndpointOf({
+      sourceUrl: 'https://music.example.com',
+      endpoints: { lyric: '/v2/lyric?t={track}&a={artist}' },
+    })
+    expect(url).toBe('https://music.example.com/v2/lyric?t={track}&a={artist}')
+  })
+
+  it('脚本源（kind=lx）与接口模板形态都不派生歌词端点', () => {
+    // 脚本地址不是服务地址，派生会拼出不存在的路径 —— 必须挡在门外
+    expect(lyricEndpointOf({ sourceUrl: 'https://example.com/lx.js', kind: 'lx' })).toBe('')
+    expect(
+      lyricEndpointOf({ sourceUrl: 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}' })
+    ).toBe('')
+    expect(lyricEndpointOf({})).toBe('')
+  })
+
+  it('parseAuroraCapabilities 读能力清单；老服务端无该字段时返回 null', () => {
+    expect(parseAuroraCapabilities({ capabilities: ['search', 'lyric'] })).toEqual(['search', 'lyric'])
+    expect(parseAuroraCapabilities({ capabilities: [] })).toBeNull()
+    expect(parseAuroraCapabilities({ endpoints: {} })).toBeNull()
+    expect(parseAuroraCapabilities(null)).toBeNull()
+  })
+})
+
 describe('buildAuroraEndpoints', () => {
-  it('按兜底模板组装五个端点（搜索 / 歌单解析 / 在线音乐三项）', () => {
+  it('按兜底模板组装六个端点（搜索 / 歌单解析 / 歌词 / 在线音乐三项）', () => {
     expect(buildAuroraEndpoints('https://music.lighthouses.top', 'K1')).toEqual({
       search: 'https://music.lighthouses.top/aurora?query={query}&quality={quality}&key=K1',
       playlist: 'https://music.lighthouses.top/aurora/playlist?url={url}&key=K1',
+      lyric:
+        'https://music.lighthouses.top/aurora/lyric?track={track}&artist={artist}&duration={duration}&key=K1',
       recommend:
         'https://music.lighthouses.top/aurora/recommend?categoryId={categoryId}&sortId={sortId}&page={page}&limit={limit}&key=K1',
       toplists: 'https://music.lighthouses.top/aurora/toplists?preview={preview}&key=K1',

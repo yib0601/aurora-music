@@ -689,12 +689,10 @@ function SourceEditorCard({
 /** 添加源弹窗：填写名称 / 接口地址（音源可另填歌单解析接口）/ 请求头，校验通过后才保存进列表 */
 function SourceAddDialog({
   open,
-  kind,
   onOpenChange,
   onSave,
 }: {
   open: boolean
-  kind: 'music' | 'lyrics'
   onOpenChange: (open: boolean) => void
   onSave: (source: {
     name: string
@@ -737,16 +735,15 @@ function SourceAddDialog({
     }
   }, [open])
 
-  const isLyrics = kind === 'lyrics'
   // 洛雪脚本要在平台侧拉取与执行：桌面端经主进程、移动端走原生 HTTP，纯浏览器（web）没有该能力。
   // 入口就挡掉——不让用户填完链接、点完测试才拿到「不支持」；平台在运行期不会变，取一次即可
   const lxSupported = lxFormSupported({ desktop: isDesktop(), mobile: isMobile() })
-  // 只有音乐源有洛雪形态（它提供的是取址能力，歌词源那套占位符协议与它无关）
-  const isLx = kind === 'music' && sourceKind === 'lx'
+  // 洛雪脚本形态：提供的是取址能力，与 aurora 端点的占位符协议并列
+  const isLx = sourceKind === 'lx'
   const linkText = linkDraft.trim()
   // 形态与校验都收在 checkSourceForm：链接自身决定形态，不需要用户选
   const aurora = checkSourceForm({
-    kind,
+    kind: 'music',
     link: linkDraft,
     playlistUrl,
     headersInvalid,
@@ -812,7 +809,7 @@ function SourceAddDialog({
 
   const handleSave = () => {
     if (!canSave) return
-    const displayName = name.trim() || (isLyrics ? '新歌词源' : isLx ? '新洛雪源' : '新音源')
+    const displayName = name.trim() || (isLx ? '新洛雪源' : '新音源')
     if (isLx) {
       // 洛雪形态：只写脚本链接，脚本源码不落库（运行时按链接现拉）。
       // 测试未通过也允许先存，但落 enabled=false——源不可用就不该默认参与搜索，
@@ -840,7 +837,7 @@ function SourceAddDialog({
     onSave({
       name: displayName,
       sourceUrl: linkText,
-      ...(!isLyrics && trimmedPlaylist ? { playlistUrl: trimmedPlaylist } : {}),
+      ...(trimmedPlaylist ? { playlistUrl: trimmedPlaylist } : {}),
       headers,
     })
     onOpenChange(false)
@@ -854,19 +851,17 @@ function SourceAddDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">
-            {isLyrics ? '添加歌词源' : isLx ? '添加洛雪音源' : '添加音源'}
+            {isLx ? '添加洛雪音源' : '添加音源'}
           </DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
-            {isLyrics
-              ? '接口地址需含 {track} 与 {artist} 占位符'
-              : isLx
-                ? '粘贴脚本链接，脚本提供取址能力'
-                : '服务地址自动生成接口，接口模板原样使用'}
+            {isLx
+              ? '粘贴脚本链接，脚本提供取址能力'
+              : '服务地址自动生成接口，接口模板原样使用'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          {/* 形态选择：只有音乐源有两种形态，歌词源固定接口模板，不显示该区块（既有路径零变化） */}
-          {!isLyrics && (
+          {/* 形态选择：服务地址（端点自动派生）或洛雪脚本 */}
+          {(
             <div>
               <p className="font-text text-caption text-white/60 mb-1.5">音源形态</p>
               <div className="grid grid-cols-2 gap-2">
@@ -914,7 +909,7 @@ function SourceAddDialog({
             <input
               type="text"
               value={name}
-              placeholder={isLyrics ? '如：LRCLIB' : isLx ? '如：我的洛雪源' : '如：我的音源'}
+              placeholder={isLx ? '如：我的洛雪源' : '如：我的音源'}
               onChange={(e) => setName(e.target.value)}
               className={inputCls}
             />
@@ -941,15 +936,11 @@ function SourceAddDialog({
           ) : (
             <>
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{isLyrics ? '接口地址' : '音源地址'}</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">音源地址</p>
             <input
               type="text"
               value={linkDraft}
-              placeholder={
-                isLyrics
-                  ? 'https://lrclib.net/api/search?track_name={track}&artist_name={artist}'
-                  : 'https://music.lighthouses.top'
-              }
+              placeholder="https://music.lighthouses.top"
               onChange={(e) => {
                 setLinkDraft(e.target.value)
                 setProbe({ loading: false })
@@ -969,9 +960,7 @@ function SourceAddDialog({
               <p className="font-text text-caption text-white/35 mt-1">按接口模板使用，占位符由软件替换</p>
             ) : (
               <p className="font-text text-caption text-white/35 mt-1">
-                {isLyrics
-                  ? '填接口地址即可，占位符由软件替换为当前歌曲信息'
-                  : '服务地址或完整接口地址都行；密钥写在链接里即可，如 https://host?key=xxx'}
+                服务地址或完整接口地址都行；密钥写在链接里即可，如 https://host?key=xxx
               </p>
             )}
           </div>
@@ -1499,17 +1488,12 @@ export function SettingsPage() {
       ? `手机存储/${downloadDir}`
       : `未设置（默认存入 手机存储/${DEFAULT_MOBILE_DOWNLOAD_DIR}）`
 
-  // 音源与歌词源配置（应用不内置任何源，均由用户按协议配置）
-  // 一条音源可同时给出搜索（{query}）与歌单解析（{url}）两个接口
+  // 音源配置（应用不内置任何源，均由用户按协议配置）
+  // 一条音源可同时给出搜索（{query}）、歌单解析（{url}）与歌词（{track}）三种能力
   const onlineSources = useLibraryStore((s) => s.onlineSources)
   const addOnlineSource = useLibraryStore((s) => s.addOnlineSource)
   const updateOnlineSource = useLibraryStore((s) => s.updateOnlineSource)
   const removeOnlineSource = useLibraryStore((s) => s.removeOnlineSource)
-  const lyricsSources = useLibraryStore((s) => s.lyricsSources)
-  const addLyricsSource = useLibraryStore((s) => s.addLyricsSource)
-  const updateLyricsSource = useLibraryStore((s) => s.updateLyricsSource)
-  const removeLyricsSource = useLibraryStore((s) => s.removeLyricsSource)
-
   // 网络存储（WebDAV）来源：与上面的在线音源不同，这是会入库的持久曲库来源
   const librarySources = useLibraryStore((s) => s.librarySources)
   const addLibrarySource = useLibraryStore((s) => s.addLibrarySource)
@@ -1541,7 +1525,6 @@ export function SettingsPage() {
 
   // 添加源弹窗开关：弹窗内校验通过后才写入 store，避免假地址被持久化
   const [addMusicOpen, setAddMusicOpen] = useState(false)
-  const [addLyricsOpen, setAddLyricsOpen] = useState(false)
 
   const handleCheckUpdate = async () => {
     if (checking) return
@@ -2050,38 +2033,6 @@ export function SettingsPage() {
                   </div>
                 )}
               </SettingRow>
-
-              {/* 歌词源：用户配置优先，未命中时回退到内置歌词源兜底 */}
-              <SettingRow
-                label="歌词源"
-                hint="配置后优先生效，未命中回退内置源"
-                control={
-                  <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => setAddLyricsOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                    添加
-                  </Button>
-                }
-              >
-                {lyricsSources.length === 0 ? (
-                  <p className="font-text text-caption text-white/50">尚未配置，自动回退内置歌词源</p>
-                ) : (
-                  <div className="space-y-2">
-                    {lyricsSources.map((src) => (
-                      <SourceEditorCard
-                        key={src.id}
-                        name={src.name}
-                        sourceUrl={src.sourceUrl}
-                        headers={src.headers}
-                        enabled={src.enabled}
-                        placeholderUrl="https://lrclib.net/api/search?track_name={track}&artist_name={artist}"
-                        kind="lyrics"
-                        onUpdate={(updates) => updateLyricsSource(src.id, updates)}
-                        onRemove={() => removeLyricsSource(src.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </SettingRow>
             </SettingsSection>
 
             {/* 关于：版本、更新与许可同属"这套软件本身"，合并后不再平铺两张只读卡片 */}
@@ -2173,15 +2124,8 @@ export function SettingsPage() {
 
       <SourceAddDialog
         open={addMusicOpen}
-        kind="music"
         onOpenChange={setAddMusicOpen}
         onSave={(source) => addOnlineSource({ ...source, enabled: source.enabled ?? true })}
-      />
-      <SourceAddDialog
-        open={addLyricsOpen}
-        kind="lyrics"
-        onOpenChange={setAddLyricsOpen}
-        onSave={(source) => addLyricsSource({ ...source, enabled: true })}
       />
       <LibrarySourceAddDialog
         open={addLibraryOpen}
