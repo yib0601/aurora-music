@@ -17,6 +17,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -39,6 +40,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   - cancel(): 取消下载并删除残留文件
  *   - canInstall(): 是否已允许「安装未知应用」
  *   - openInstallPermissionSettings(): 跳到本应用的「安装未知应用」授权页
+ *
+ * 错误约定：reject 与 progress().error 回传的**永远是错误码**（`update_error_xxx`），
+ * 不含任何给用户看的句子——文案由 JS 侧按当前语言渲染，见
+ * packages/shared/src/i18n/messages/{zh-CN,en}/mobile.ts 的 `update.error.*`
+ * 与 docs/development.md「多语言开发」的码→键映射说明。
  */
 @CapacitorPlugin(name = "Update")
 class UpdatePlugin : Plugin() {
@@ -72,6 +78,23 @@ class UpdatePlugin : Plugin() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * 拼装原生错误码。码是**机器可读**的：不含任何给用户看的文案，
+     * 文案由 JS 侧按当前语言渲染（字典 mobile.ts 的 `update.error.*`）。
+     *
+     * 形式：`<域>_error_<小驼峰名>`，需要参数时以查询串追加（`?k=v&k2=v2`，值做 URL 编码）。
+     * JS 侧映射规则（可逆、无需映射表）：键路径 = `mobile.` + 码把 `_` 换成 `.`
+     * （段内小驼峰原样保留），例如 `update_error_apkMissing` → `mobile.update.error.apkMissing`；
+     * 参数用 `URLSearchParams` 解析后作为 t() 的插值参数。
+     */
+    private fun err(code: String, vararg params: Pair<String, String?>): String {
+        if (params.isEmpty()) return code
+        val query = params.joinToString("&") { (key, value) ->
+            "$key=" + URLEncoder.encode(value.orEmpty(), "UTF-8")
+        }
+        return "$code?$query"
+    }
+
     /** APK 落地目录：应用外部私有 Downloads 目录，Android 10+ 免存储权限 */
     private fun downloadDir(): File {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -97,12 +120,12 @@ class UpdatePlugin : Plugin() {
     @PluginMethod
     fun download(call: PluginCall) {
         if (phase == "downloading") {
-            call.reject("已有下载任务在进行中")
+            call.reject(err("update_error_busy"))
             return
         }
         val url = call.getString("url")
         if (url.isNullOrBlank() || !url.startsWith("https://", ignoreCase = true)) {
-            call.reject("下载地址无效")
+            call.reject(err("update_error_urlInvalid"))
             return
         }
         // 候选列表：主地址 + altUrls（都是 https 白名单地址，由 JS 侧生成）
@@ -139,8 +162,10 @@ class UpdatePlugin : Plugin() {
                     lastError = null
                     break
                 } catch (e: Exception) {
-                    lastError = e.message ?: "下载失败"
-                    android.util.Log.w(TAG, "候选地址失败: $candidate -> $lastError")
+                    // e.message 已经是 err() 拼出的码（downloadOne 内统一），兜底同样给码：
+                    // 这条字符串会经 progress() 的 error 字段上屏，不能是中文句子
+                    lastError = e.message ?: err("update_error_downloadFailed")
+                    android.util.Log.w(TAG, "候选地址失败: $candidate -> $lastError") 
                 }
             }
 
@@ -196,7 +221,7 @@ class UpdatePlugin : Plugin() {
                 redirects++
             }
             if (code !in 200..299) {
-                throw IllegalStateException("服务器返回 HTTP $code")
+                throw IllegalStateException(err("update_error_httpStatus", "status" to code.toString()))
             }
 
             // 长度未知时为 0（chunked 响应没有 Content-Length），此时跳过收尾校验
@@ -209,7 +234,7 @@ class UpdatePlugin : Plugin() {
                     val buf = ByteArray(64 * 1024)
                     var lastNotify = 0L
                     while (true) {
-                        if (cancelled.get()) throw InterruptedException("已取消")
+                        if (cancelled.get()) throw InterruptedException(err("update_error_canceled"))
                         val n = input.read(buf)
                         if (n <= 0) break
                         out.write(buf, 0, n)
@@ -228,7 +253,9 @@ class UpdatePlugin : Plugin() {
             // 代理超时）时 input.read 会正常返回 -1 收尾，不校验就会把半截 APK 当成功，
             // 用户装到一半才看到「解析包错误」——必须当成这条源失败并换下一个。
             if (expected > 0 && received != expected) {
-                throw IllegalStateException("下载不完整（$received/$expected 字节）")
+                throw IllegalStateException(
+                    err("update_error_incomplete", "received" to received.toString(), "expected" to expected.toString())
+                )
             }
             notifyProgress()
         } finally {
@@ -276,12 +303,12 @@ class UpdatePlugin : Plugin() {
     fun install(call: PluginCall) {
         val path = call.getString("filePath") ?: filePath
         if (path.isNullOrBlank()) {
-            call.reject("安装包路径无效")
+            call.reject(err("update_error_pathInvalid"))
             return
         }
         val file = File(path)
         if (!file.exists()) {
-            call.reject("安装包不存在，请重新下载")
+            call.reject(err("update_error_apkMissing"))
             return
         }
         if (!canRequestPackageInstalls()) {
@@ -307,7 +334,7 @@ class UpdatePlugin : Plugin() {
             ret.put("needPermission", false)
             call.resolve(ret)
         } catch (e: Exception) {
-            call.reject("启动安装失败: ${e.message}")
+            call.reject(err("update_error_launchFailed", "detail" to e.message))
         }
     }
 
@@ -377,7 +404,7 @@ class UpdatePlugin : Plugin() {
                 ret.put("opened", true)
                 call.resolve(ret)
             } catch (e2: Exception) {
-                call.reject("无法打开安装权限设置页: ${e2.message}")
+                call.reject(err("update_error_permissionSettings", "detail" to e2.message))
             }
         }
     }

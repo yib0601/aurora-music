@@ -1,6 +1,8 @@
 import { RefreshCw } from 'lucide-react'
+import { type AuroraError } from '@aurora/shared'
 import { Button } from '@/components/ui/button'
-import { lxPlatformRows, runLxProbe, type LxProbeState } from './lxSourceForm'
+import { useT } from '@/i18n'
+import { lxPlatformRows, renderError, runLxProbe, type LxProbeState } from './lxSourceForm'
 import type { SourceProbeResult } from '@aurora/shared'
 
 /**
@@ -9,6 +11,9 @@ import type { SourceProbeResult } from '@aurora/shared'
  * 纯逻辑（链接校验 / 能力映射 / 探测调用）在 lxSourceForm.ts，便于单测。
  * 探测结论由平台适配器翻译成形态无关的 SourceProbeResult，这里只负责渲染。
  *
+ * 文案全部在渲染期取（`useT()`）：校验错误以 AuroraError 传入，由 renderError
+ * 按当前语言渲染，语言切换后无需重新校验即可换文案。
+ *
  * 纪律：脚本源码只存在于本次探测过程，绝不写进配置（配置里只留脚本链接）。
  */
 
@@ -16,15 +21,18 @@ export type { LxProbeState } from './lxSourceForm'
 
 /** 探测结果展示：脚本自报的名称/版本 + 各平台能力 + 音质档位数 */
 export function LxProbeResult({ result }: { result: SourceProbeResult }) {
+  const t = useT()
   const rows = lxPlatformRows(result)
   if (!rows.length) return null
   const info = result.scriptInfo
+  const scriptName = info?.name || t('sources.probe.unnamedScript')
   return (
     <div className="space-y-1">
       {(info?.name || info?.version) && (
         <p className="font-text text-caption text-white/50 truncate">
-          {info?.name || '未命名脚本'}
-          {info?.version ? ` · v${info.version}` : ''}
+          {info?.version
+            ? t('sources.probe.scriptNameWithVersion', { name: scriptName, version: info.version })
+            : t('sources.probe.scriptName', { name: scriptName })}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -33,16 +41,23 @@ export function LxProbeResult({ result }: { result: SourceProbeResult }) {
             key={row.key}
             className="inline-flex items-center gap-1.5 px-1.5 py-1 rounded-[6px] bg-white/[0.06] leading-none"
           >
-            <span className="font-text text-[10px] text-white/80">{row.label}</span>
-            <span className="font-text text-[10px] text-white/55">{row.searchable ? '搜索+取址' : '取址'}</span>
+            {/* 平台名：探测层给的是**文案键**（LX_PLATFORM_LABEL_KEYS），
+                取值必须在渲染期做 —— 直接渲染会露出 `core.platform.kw`。
+                能力描述走字典 */}
+            <span className="font-text text-[10px] text-white/80">{t(row.labelKey)}</span>
+            <span className="font-text text-[10px] text-white/55">
+              {row.searchable ? t('sources.probe.searchAndResolve') : t('sources.probe.resolveOnly')}
+            </span>
             {row.qualityCount > 0 && (
-              <span className="font-text text-[10px] text-white/35">音质 {row.qualityCount} 档</span>
+              <span className="font-text text-[10px] text-white/35">
+                {t('sources.probe.qualityCount', { count: row.qualityCount })}
+              </span>
             )}
           </span>
         ))}
       </div>
       {info?.packed && (
-        <p className="font-text text-caption text-white/35">脚本经 liscript 包装，已自动解包</p>
+        <p className="font-text text-caption text-white/35">{t('sources.probe.packed')}</p>
       )}
     </div>
   )
@@ -73,14 +88,16 @@ export function LxScriptProbe({
   onUrlChange: (value: string) => void
   onProbeChange: (state: LxProbeState) => void
   invalid?: boolean
-  error?: string | null
+  /** 链接校验结果：结构化错误，渲染期按当前语言取文案 */
+  error?: AuroraError | null
   placeholder?: string
   /** 卡片编辑态：字号与间距收紧一档 */
   compact?: boolean
 }) {
+  const t = useT()
   const handleProbe = async () => {
     onProbeChange({ loading: true })
-    const state = await runLxProbe(instanceId, url, headers)
+    const state = await runLxProbe(instanceId, url, headers, { t })
     onProbeChange(state)
   }
 
@@ -109,18 +126,22 @@ export function LxScriptProbe({
             className={`h-3.5 w-3.5 mr-1.5 ${probe.loading ? 'animate-spin' : ''}`}
             strokeWidth={1.6}
           />
-          {probe.loading ? '测试中…' : '测试'}
+          {probe.loading ? t('sources.probe.testing') : t('sources.probe.test')}
         </Button>
       </div>
       {probe.message && (
+        /* 探测结论是**结构化信封**（AURORA_ERR:{code,params}）或第三方自由文本：
+           直接渲染会把 JSON 摊在界面上，必须过 renderError 按当前语言渲染 */
         <p
           className={`font-text text-caption mt-1 truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}
-          title={probe.message}
+          title={renderError(probe.message, t)}
         >
-          {probe.message}
+          {renderError(probe.message, t)}
         </p>
       )}
-      {!probe.message && error && <p className="font-text text-caption text-coral/70 mt-1">{error}</p>}
+      {!probe.message && error && (
+        <p className="font-text text-caption text-coral/70 mt-1">{renderError(error, t)}</p>
+      )}
       {probe.result?.ok && (
         <div className="mt-1.5">
           <LxProbeResult result={probe.result} />

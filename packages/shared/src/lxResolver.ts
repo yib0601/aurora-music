@@ -29,6 +29,7 @@ import {
   type LxScriptSource,
   type LxTrackRef,
 } from './lxHost'
+import { auroraError } from './i18n/errors'
 import type {
   DownloadQuality,
   OnlineSourceConfig,
@@ -97,26 +98,28 @@ interface LxPlatformSpec {
   idFields: string[]
   /** 是否必须带「歌名 + 歌手」（按名搜索取址的脚本，如幻音咪咕） */
   needName: boolean
-  /** 报错信息里用的中文平台名 */
-  label: string
 }
 
+/**
+ * 平台字段规格。
+ * 这里**只放协议标识**（kw / kg / …）：平台展示名是界面文案，在
+ * LX_PLATFORM_LABEL_KEYS 里给文案键，由显示端渲染期取值（见 lxHost 的说明）。
+ */
 const LX_PLATFORM_SPECS: Record<string, LxPlatformSpec> = {
-  kw: { idFields: ['hash', 'songmid'], needName: false, label: '酷我' },
-  kg: { idFields: ['hash', 'songmid'], needName: false, label: '酷狗' },
-  tx: { idFields: ['songmid', 'mid'], needName: false, label: 'QQ' },
-  wy: { idFields: ['songmid', 'id'], needName: false, label: '网易' },
+  kw: { idFields: ['hash', 'songmid'], needName: false },
+  kg: { idFields: ['hash', 'songmid'], needName: false },
+  tx: { idFields: ['songmid', 'mid'], needName: false },
+  wy: { idFields: ['songmid', 'id'], needName: false },
   // 咪咕：幻音脚本按歌名 + 歌手搜索取址，不需要 id
-  mg: { idFields: [], needName: true, label: '咪咕' },
-  git: { idFields: ['id', 'songmid'], needName: false, label: 'Git' },
-  local: { idFields: ['id'], needName: false, label: '本地' },
+  mg: { idFields: [], needName: true },
+  git: { idFields: ['id', 'songmid'], needName: false },
+  local: { idFields: ['id'], needName: false },
 }
 
 /** 未知平台兜底：脚本生态里最常见的标识字段名，给了就试，没有就报缺字段 */
 const LX_FALLBACK_SPEC: LxPlatformSpec = {
   idFields: ['songmid', 'hash', 'id', 'mid', 'rid', 'copyrightId'],
   needName: false,
-  label: '未知平台',
 }
 
 /** 脚本曲目对象里可直接当标识用的字段名（判断一份 meta 是否已能直接回喂脚本） */
@@ -208,7 +211,8 @@ export function toLxMusicInfo(
   if (missing.length > 0) {
     return {
       ok: false,
-      reason: `${spec.label}(${key}) 取址缺少必要字段：${missing.join(' / ')}`,
+      // 文案不在这里落地：只给「码 + 参数」，显示端按当前语言渲染
+      reason: auroraError('core.error.lxMetaMissing', { platform: key, fields: missing.join(', ') }).message,
       missing,
     }
   }
@@ -253,7 +257,12 @@ export interface ResolveLxTrackInput {
   deps?: LxHostDeps | null
 }
 
-/** 取址结果：成功给直链与**实际取到的档位**；失败给 null 地址与原因（绝不抛错） */
+/**
+ * 取址结果：成功给直链与**实际取到的档位**；失败给 null 地址与原因（绝不抛错）。
+ *
+ * `reason` 是**结构化错误载荷**（`AURORA_ERR:{code,params,detail}`）或脚本抛出的自由文本，
+ * 显示端一律用 `translateError(reason, t)` 渲染；不要把它的原文直接拼进界面文案。
+ */
 export type LxResolveOutcome = { url: string; quality: string } | { url: null; reason: string }
 
 /**
@@ -263,7 +272,7 @@ export type LxResolveOutcome = { url: string; quality: string } | { url: null; r
 export async function resolveLxTrack(input: ResolveLxTrackInput): Promise<LxResolveOutcome> {
   const ref = input?.lx
   if (!ref || !ref.sourceId || !ref.platform) {
-    return { url: null, reason: '曲目缺少洛雪取址定位信息（lx）' }
+    return { url: null, reason: auroraError('core.error.lxTrackRefMissing').message }
   }
 
   const source =
@@ -271,18 +280,31 @@ export async function resolveLxTrack(input: ResolveLxTrackInput): Promise<LxReso
     (input.sources || []).find((s) => s && s.id === ref.sourceId) ||
     null
   if (!source) {
-    return { url: null, reason: `未找到洛雪音源配置（id=${ref.sourceId}）` }
+    return { url: null, reason: auroraError('core.error.lxSourceNotFound', { id: ref.sourceId }).message }
   }
   if (source.kind !== 'lx') {
-    return { url: null, reason: `音源「${source.name}」不是洛雪脚本源（kind=${source.kind || 'aurora'}）` }
+    return {
+      url: null,
+      reason: auroraError('core.error.lxNotScriptSource', {
+        name: source.name,
+        kind: source.kind || 'aurora',
+      }).message,
+    }
   }
   if (!source.enabled) {
-    return { url: null, reason: `洛雪音源「${source.name}」已停用` }
+    return { url: null, reason: auroraError('core.error.lxSourceDisabled', { name: source.name }).message }
   }
 
   const scriptSource = await asLxScriptSource(source)
   if (!scriptSource) {
-    return { url: null, reason: `洛雪音源「${source.name}」的脚本源码不可得（未内联且无脚本供应器）` }
+    return {
+      url: null,
+      reason: auroraError(
+        'core.error.lxScriptUnavailable',
+        { name: source.name },
+        'not inlined and no script provider registered'
+      ).message,
+    }
   }
 
   const rawMeta = (ref.meta || {}) as Record<string, unknown>
@@ -295,7 +317,7 @@ export async function resolveLxTrack(input: ResolveLxTrackInput): Promise<LxReso
 
   const deps = input.deps ?? getLxHostDeps()
   if (!deps || typeof deps.request !== 'function') {
-    return { url: null, reason: '洛雪音源宿主未初始化（缺少 lx.request 实现）' }
+    return { url: null, reason: auroraError('core.error.lxHostNotReady').message }
   }
 
   try {
@@ -332,9 +354,9 @@ export async function searchLxSourceForAggregate(
 ): Promise<OnlineTrackSearchResult[]> {
   const hostDeps = deps ?? getLxHostDeps()
   if (!hostDeps || typeof hostDeps.request !== 'function') {
-    throw new Error('洛雪音源宿主未初始化（缺少 lx.request 实现）')
+    throw auroraError('core.error.lxHostNotReady')
   }
   const scriptSource = await asLxScriptSource(source)
-  if (!scriptSource) throw new Error(`洛雪音源「${source.name}」的脚本源码不可得`)
+  if (!scriptSource) throw auroraError('core.error.lxScriptUnavailable', { name: source.name })
   return await searchLxSource(scriptSource, query, hostDeps, { limit: LX_SEARCH_LIMIT })
 }

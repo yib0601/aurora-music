@@ -4,6 +4,7 @@ import type { LyricLine } from '@/types'
 import { parseLRC, findActiveLine, loadLyricsForTrack } from '@/services/lyrics.service'
 import { usePlayerStore } from '@/stores/playerStore'
 import { cn } from '@/lib/utils'
+import { useT } from '@/i18n'
 
 interface LyricsViewProps {
   lyricsText?: string
@@ -32,6 +33,7 @@ const sampleLyrics = `[00:00.00]Aurora Music
 `
 
 export function LyricsView({ lyricsText, className, large, onLineClick, onHasLyricsChange }: LyricsViewProps) {
+  const t = useT()
   const progress = usePlayerStore((s) => s.progress)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -174,7 +176,7 @@ export function LyricsView({ lyricsText, className, large, onLineClick, onHasLyr
             strokeWidth={1.4}
           />
           <p className={cn('text-white/30', large ? 'text-[15px]' : 'text-[13px]')}>
-            {loading ? '正在搜索歌词…' : '暂无歌词'}
+            {loading ? t('player.lyrics.searching') : t('player.lyrics.empty')}
           </p>
         </div>
       )}

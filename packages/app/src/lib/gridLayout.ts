@@ -228,30 +228,33 @@ export function getVirtualRowHeight(containerWidth: number, colCount: number): n
  *    （封面被 pad/border 内缩 22px），再加一次就是重复计数，会得到恒差 -22px 的
  *    假告警——这正是上一版 P0 的直接原因。正确写法即 `expanded = CARD_EXTRA_HEIGHT`
  *    （唯一真源，不含内边距/边框），故此处直接引用 `CARD_EXTRA_HEIGHT`。
+ *
+ * 问题描述串用**英文**：它们是开发者诊断（DEV 自检日志 / 单测断言），不进界面，
+ * 也不随界面语言变化——放进字典反而会让人误以为需要翻译。
  */
 export function assertGridLayoutInvariants(): string[] {
   const problems: string[] = []
 
   for (let w = 320; w <= 4096; w += 1) {
     const cols = getGridColumnCount(w)
-    if (cols < 1 || cols > MAX_COLUMN_COUNT) problems.push(`列数越界: ${w}px -> ${cols}`)
+    if (cols < 1 || cols > MAX_COLUMN_COUNT) problems.push(`column count out of range: ${w}px -> ${cols}`)
     if (cols > 1 && getGridColumnCount(w - 1) > cols) {
-      problems.push(`列数分档不单调: ${w}px`)
+      problems.push(`column count not monotonic: ${w}px`)
     }
     const cardHeight = getCardHeight(w, cols)
     if (getGridRowHeight(w, cols) !== cardHeight + GRID_GAP) {
-      problems.push(`平铺行高与卡高+GRID_GAP 不一致: ${w}px`)
+      problems.push(`flow row height != card height + GRID_GAP: ${w}px`)
     }
     if (getVirtualRowHeight(w, cols) !== cardHeight + GRID_GAP) {
-      problems.push(`虚拟行高与卡高+GRID_GAP 不一致: ${w}px`)
+      problems.push(`virtual row height != card height + GRID_GAP: ${w}px`)
     }
     if (cols < MAX_COLUMN_COUNT && getGridColumnWidth(w, cols + 1) >= getGridColumnWidth(w, cols)) {
-      problems.push(`列宽未随列数递减: ${w}px ${cols}->${cols + 1} 列`)
+      problems.push(`column width not decreasing as column count grows: ${w}px ${cols}->${cols + 1}`)
     }
     // 卡片高恒等式等价于「卡高 = 列宽 + 额外高度」，其中额外高度只有 CARD_EXTRA_HEIGHT
     // 一个真源（不含内边距/边框，理由见该常量上方的推导）。
     if (Math.abs(cardHeight - (getGridColumnWidth(w, cols) + CARD_EXTRA_HEIGHT)) > 1e-9) {
-      problems.push(`卡片高与「列宽 + CARD_EXTRA_HEIGHT」不一致: ${w}px`)
+      problems.push(`card height != column width + CARD_EXTRA_HEIGHT: ${w}px`)
     }
   }
 

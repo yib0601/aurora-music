@@ -1,4 +1,5 @@
 import { fetchWithTimeout, isTimeoutError, setCustomFetch, TimeoutError } from '../fetchWithTimeout'
+import { expectCode, rejectionOf } from './i18nAssert'
 
 describe('fetchWithTimeout', () => {
   afterEach(() => setCustomFetch(null))
@@ -36,7 +37,7 @@ describe('fetchWithTimeout', () => {
     await expect(fetchWithTimeout('https://example.test/slow', {}, 30)).rejects.toThrow()
   })
 
-  it('超时抛中文 TimeoutError，而不是底层 fetch 的英文 AbortError', async () => {
+  it('超时抛结构化的 TimeoutError（码 errors.network.timeout），而不是底层 fetch 的英文 AbortError', async () => {
     // 真实场景：本机音源服务慢于超时预算，renderer 的 AbortController 中止请求，
     // 原生 fetch 抛 DOMException('The operation was aborted.', 'AbortError')
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -46,15 +47,13 @@ describe('fetchWithTimeout', () => {
         )
       })
     }) as typeof fetch
-    await expect(fetchWithTimeout('https://example.test/slow', {}, 30)).rejects.toThrow('请求超时（30ms）')
-    try {
-      await fetchWithTimeout('https://example.test/slow', {}, 30)
-    } catch (err) {
-      expect(err).toBeInstanceOf(TimeoutError)
-      expect((err as Error).name).toBe('TimeoutError')
-      expect((err as Error).message).not.toMatch(/aborted/i)
-      expect(isTimeoutError(err)).toBe(true)
-    }
+    // 文案在产生地只给码 + 参数，中文/英文由显示端按当前语言渲染
+    const err = await rejectionOf(fetchWithTimeout('https://example.test/slow', {}, 30))
+    expectCode(err, 'errors.network.timeout', { ms: 30 })
+    expect(err).toBeInstanceOf(TimeoutError)
+    expect((err as Error).name).toBe('TimeoutError')
+    expect((err as Error).message).not.toMatch(/aborted/i)
+    expect(isTimeoutError(err)).toBe(true)
   })
 
   it('调用方自己的 signal 中止时原样抛出取消错误，不误报超时', async () => {

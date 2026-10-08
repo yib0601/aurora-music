@@ -28,7 +28,8 @@ import {
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
-import { HOME_ROUTE, LIBRARY_LABEL, LIBRARY_ROUTE } from '@/lib/routes'
+import { HOME_ROUTE, LIBRARY_ROUTE, NAV_LABEL_KEYS } from '@/lib/routes'
+import { useT } from '@/i18n'
 import { SubPageTitle } from '@/components/PageHeading'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 export function PlaylistPage() {
+  const t = useT()
   // 返回兜底：历史栈底时 navigate(-1) 是 no-op，回主屏
   const goBack = useGoBack()
   const { id } = useParams<{ id: string }>()
@@ -77,9 +79,9 @@ export function PlaylistPage() {
       <div className="flex flex-col items-center justify-center h-full p-8 text-white/50">
         <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
           <ListMusic className="h-16 w-16 mb-4 text-mint" strokeWidth={1.5} />
-          <p className="text-tagline text-white mb-3">播放列表不存在</p>
+          <p className="text-tagline text-white mb-3">{t('library.playlist.notFound')}</p>
           <Button variant="link" onClick={() => navigate(LIBRARY_ROUTE)}>
-            返回{LIBRARY_LABEL}
+            {t('library.action.backToLibrary', { label: t(NAV_LABEL_KEYS.library) })}
           </Button>
         </div>
       </div>
@@ -116,16 +118,16 @@ export function PlaylistPage() {
     if (!content) return
     const paths = parseM3U(content)
     if (paths.length === 0) {
-      toast('文件中没有找到有效的音乐路径', { type: 'error' })
+      toast(t('library.playlist.importInvalidFile'), { type: 'error' })
       return
     }
     const matchedTracks = matchTracksByPaths(paths, tracks)
     if (matchedTracks.length === 0) {
-      toast(`没有匹配到${LIBRARY_LABEL}中的歌曲，请先扫描包含这些歌曲的目录`, { type: 'error' })
+      toast(t('library.playlist.importNoMatch', { label: t(NAV_LABEL_KEYS.library) }), { type: 'error' })
       return
     }
     // 从文件名推断播放列表名称
-    const newPlaylist = createPlaylist('导入的播放列表')
+    const newPlaylist = createPlaylist(t('library.playlist.defaultImportName'))
     addTracksToPlaylist(newPlaylist.id, matchedTracks.map((t) => t.id))
     // 可选：导航到新播放列表
     navigate(`/playlist/${newPlaylist.id}`)
@@ -150,10 +152,10 @@ export function PlaylistPage() {
             <ListMusic className="h-20 w-20 text-mint" strokeWidth={1.3} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-text text-caption text-white/50 mb-2">播放列表</p>
+            <p className="font-text text-caption text-white/50 mb-2">{t('library.playlist.title')}</p>
             <SubPageTitle className="mb-3">{playlist.name}</SubPageTitle>
             <div className="flex items-center gap-3 font-text text-caption text-white/50">
-              <span>{playlistTracks.length} 首歌曲</span>
+              <span>{t('common.unit.songs', { count: playlistTracks.length })}</span>
               {totalDuration > 0 && (
                 <>
                   <span>•</span>
@@ -186,15 +188,15 @@ export function PlaylistPage() {
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={handleExport} disabled={playlistTracks.length === 0}>
                 <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                导出为 M3U
+                {t('library.playlist.exportM3u')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleImport}>
                 <Upload className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                导入 M3U 文件
+                {t('library.playlist.importM3u')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
                 <Link2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                导入歌单（链接/文本）
+                {t('library.playlist.importLink')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -205,7 +207,7 @@ export function PlaylistPage() {
                 }}
               >
                 <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                删除播放列表
+                {t('library.playlist.delete')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -220,8 +222,10 @@ export function PlaylistPage() {
               <div className="w-20 h-20 rounded-[16px] glass-regular border border-white/[0.08] flex items-center justify-center mb-5">
                 <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
               </div>
-              <p className="text-tagline text-white mb-1">播放列表为空</p>
-              <p className="font-text text-caption text-white/50">从{LIBRARY_LABEL}中添加歌曲</p>
+              <p className="text-tagline text-white mb-1">{t('library.playlist.emptyTitle')}</p>
+              <p className="font-text text-caption text-white/50">
+                {t('library.playlist.emptyHint', { label: t(NAV_LABEL_KEYS.library) })}
+              </p>
             </div>
           </div>
         ) : (
@@ -229,7 +233,7 @@ export function PlaylistPage() {
             {/* 表头与数据行使用同一套列宽（3rem/4rem 固定尾列），保证对齐 */}
             <div className="grid grid-cols-[40px_1fr_3rem_4rem] gap-3 px-4 py-3 font-text text-caption text-white/50 border-b border-white/10">
               <span>#</span>
-              <span>标题</span>
+              <span>{t('common.label.title')}</span>
               <span className="text-right">
                 <Clock className="h-3.5 w-3.5 inline-block" strokeWidth={1.6} />
               </span>
@@ -318,7 +322,7 @@ export function PlaylistPage() {
                         addToQueue(track)
                       }}>
                         <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        添加到队列
+                        {t('library.action.addToQueue')}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -329,7 +333,7 @@ export function PlaylistPage() {
                         }}
                       >
                         <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        从播放列表移除
+                        {t('library.playlist.removeTrack')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

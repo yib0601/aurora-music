@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite'
 import { Filesystem, Directory } from '@capacitor/filesystem'
+import { auroraError } from '@aurora/shared'
 import type { DatabaseAdapter, Track, Album, Playlist } from '@/types'
 
 const DB_NAME = 'aurora-music-library'
@@ -50,8 +51,9 @@ function rowToTrack(row: TrackRow): Track {
     id: row.id,
     path: row.path,
     title: row.title,
-    artist: row.artist || '未知艺术家',
-    album: row.album || '未知专辑',
+    // 落库占位值保持中文原样：它参与 shared/coverMatch 的 PLACEHOLDER_ARTISTS 匹配
+    artist: row.artist || '未知艺术家', // i18n-exempt: 参与匹配的领域占位值
+    album: row.album || '未知专辑', // i18n-exempt: 参与匹配的领域占位值
     year: row.year || undefined,
     genre: row.genre || undefined,
     duration: row.duration || 0,
@@ -69,7 +71,7 @@ function rowToAlbum(row: AlbumRow): Album {
   return {
     id: row.id,
     name: row.name,
-    artist: row.artist || '未知艺术家',
+    artist: row.artist || '未知艺术家', // i18n-exempt: 参与匹配的领域占位值
     coverPath: row.cover_path || undefined,
     year: row.year || undefined,
     trackCount: 0,
@@ -176,13 +178,13 @@ export class MobileDatabase implements DatabaseAdapter {
   }
 
   private async query<T>(statement: string, values: any[] = []): Promise<T[]> {
-    if (!dbConn) throw new Error('数据库未初始化')
+    if (!dbConn) throw auroraError('runtime.error.databaseNotInited')
     const res = await dbConn.query(statement, values)
     return (res.values || []) as T[]
   }
 
   private async run(statement: string, values: any[] = []): Promise<number> {
-    if (!dbConn) throw new Error('数据库未初始化')
+    if (!dbConn) throw auroraError('runtime.error.databaseNotInited')
     const res = await dbConn.run(statement, values, true)
     return res.changes?.changes ?? 0
   }

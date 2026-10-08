@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, globalShortcut, protocol, Tray, Menu, native
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
+import { mainTranslate, onMainLocaleChange } from './i18n'
 import { attachEdgeSnap } from './edgeSnap'
 import { closeDatabase } from './ipc/database'
 import { getLibrarySource } from './ipc/librarySource'
@@ -32,6 +33,8 @@ app.setPath('userData', path.join(app.getPath('appData'), '@aurora', 'desktop'))
 
 // 托盘：点击窗口关闭按钮时最小化到托盘继续播放，从托盘菜单可真正退出
 let tray: Tray | null = null
+// 托盘菜单指向的窗口：语言切换后要按它重建菜单，所以单独留一份引用
+let trayWindow: BrowserWindow | null = null
 let isQuitting = false
 
 function getTrayIconPath(): string {
@@ -39,6 +42,58 @@ function getTrayIconPath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'icon.png')
     : path.join(__dirname, '../resources/icon.png')
+}
+
+/**
+ * 应用名（托盘提示与「退出」项共用）。
+ *
+ * 品牌名不翻译，两种语言同值；这里刻意经 `nav.brand.name` 取一次品牌名，
+ * 让托盘与界面品牌区用同一条来源，将来改名时两边一起变。
+ * 「Aurora」与固定后缀的组合放在字典里（`desktop.tray.appName` = `{brand} Music`），
+ * 不在代码里拼字符串。
+ */
+function appDisplayName(): string {
+  const t = mainTranslate()
+  return t('desktop.tray.appName', { brand: t('nav.brand.name') })
+}
+
+/** 显示并聚焦窗口（托盘单击与托盘菜单共用同一语义） */
+function focusMainWindow(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+/**
+ * 构造托盘右键菜单。
+ *
+ * **必须在函数内构造**：菜单模板里的 label 是「构造那一刻」的语言快照，
+ * 一旦提到模块级求值，语言就被冻结在加载时刻，之后切语言菜单不会变。
+ */
+function buildTrayMenu(win: BrowserWindow): Menu {
+  const t = mainTranslate()
+  return Menu.buildFromTemplate([
+    {
+      label: t('desktop.tray.show'),
+      click: () => focusMainWindow(win),
+    },
+    { type: 'separator' },
+    {
+      label: t('desktop.tray.quit', { appName: appDisplayName() }),
+      click: () => {
+        isQuitting = true
+        app.quit()
+      },
+    },
+  ])
+}
+
+/** 语言变化后刷新托盘：提示语与右键菜单都要按新语言重建 */
+function refreshTray(): void {
+  if (!tray || tray.isDestroyed() || !trayWindow) return
+  tray.setToolTip(appDisplayName())
+  tray.setContextMenu(buildTrayMenu(trayWindow))
 }
 
 function createTray(win: BrowserWindow) {
@@ -52,33 +107,10 @@ function createTray(win: BrowserWindow) {
     console.error('[Tray] 创建托盘失败:', err)
     return
   }
-  tray.setToolTip('Aurora Music')
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: '显示主窗口',
-      click: () => {
-        if (win.isDestroyed()) return
-        if (win.isMinimized()) win.restore()
-        win.show()
-        win.focus()
-      },
-    },
-    { type: 'separator' },
-    {
-      label: '退出 Aurora Music',
-      click: () => {
-        isQuitting = true
-        app.quit()
-      },
-    },
-  ])
-  tray.setContextMenu(contextMenu)
-  tray.on('click', () => {
-    if (win.isDestroyed()) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-  })
+  trayWindow = win
+  tray.setToolTip(appDisplayName())
+  tray.setContextMenu(buildTrayMenu(win))
+  tray.on('click', () => focusMainWindow(win))
 }
 
 // 主进程未捕获异常兜底：记录日志而不是直接崩溃，避免播放中静默退出
@@ -289,7 +321,7 @@ function injectX11BackendOnLinux(): void {
   // Xwayland 不可达则不切换（否则应用直接起不来）
   if (!isXwaylandReachable()) {
     console.warn('[ozone] 未检测到可用的 X 显示（Xwayland），保持 Wayland 后端启动；' +
-      '拖拽上/左边缘将表现为从底部/右侧缩放')
+      '拖拽上/左边缘将表现为从底部/右侧缩放') // i18n-exempt: 开发者日志，不进界面
     return
   }
 
@@ -468,6 +500,10 @@ if (!gotTheLock) {
     initMediaCache()
     const win = createWindow()
     createTray(win)
+    // 渲染层确定语言后会经 i18n:set-locale 同步过来（用户可能选了「跟随系统」或指定语言，
+    // 只有渲染层知道最终结果）。托盘提示与右键菜单是「构造期固化成快照」的元素，必须在
+    // 语言变化时重建；其余元素（原生对话框、通知）每次取文案时自然跟随，无需订阅。
+    onMainLocaleChange(() => refreshTray())
 
     if (process.platform === 'linux') {
       // Linux 上通过 MPRIS 协议（DBus）响应媒体键

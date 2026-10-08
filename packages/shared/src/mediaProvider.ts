@@ -26,6 +26,10 @@ import {
 /** 来源可用性探测结果（设置页「测试连接」） */
 export interface MediaProbeResult {
   ok: boolean
+  /**
+   * 结论文案。形态：结构化信封（`AURORA_ERR:{code,params}`，成功的结论也走它）
+   * 或平台侧自由文本；显示端统一 `translateError(message, t)` 渲染。
+   */
   message: string
   /** 根目录下的示例文件名 */
   sample?: string[]

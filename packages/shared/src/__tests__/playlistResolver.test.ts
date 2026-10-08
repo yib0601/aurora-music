@@ -5,6 +5,7 @@ import {
 } from '../playlistResolver'
 import { playlistEndpointOf } from '../auroraPreset'
 import { setCustomFetch } from '../fetchWithTimeout'
+import { expectCode, rejectionOf } from './i18nAssert'
 import type { OnlineSourceConfig } from '../types'
 
 const SHARE_URL = 'https://y.qq.com/n/ryqq/playlist/7344515327'
@@ -126,18 +127,20 @@ describe('parsePlaylistLink（音源合并后）', () => {
   })
 
   it('只有搜索接口的音源不参与解析，给出可读提示', async () => {
-    await expect(
+    const err = await rejectionOf(
       parsePlaylistLink([makeSource({ sourceUrl: 'https://api.example/search?q={query}' })], SHARE_URL)
-    ).rejects.toThrow(/尚未配置可解析歌单的音源/)
+    )
+    expectCode(err, 'core.error.playlistNoSource')
   })
 
   it('未启用的音源被跳过', async () => {
-    await expect(
+    const err = await rejectionOf(
       parsePlaylistLink(
         [makeSource({ enabled: false, playlistUrl: 'https://api.example/playlist?url={url}' })],
         SHARE_URL
       )
-    ).rejects.toThrow(/尚未配置可解析歌单的音源/)
+    )
+    expectCode(err, 'core.error.playlistNoSource')
   })
 
   it('只做歌单解析的音源（音源地址留空）仍可解析', async () => {
@@ -173,16 +176,18 @@ describe('parsePlaylistLink（音源合并后）', () => {
 
   it('响应里没有歌曲条目时抛错', async () => {
     setCustomFetch(async () => jsonResponse({ songs: [] }))
-    await expect(
+    const err = await rejectionOf(
       parsePlaylistLink([makeSource({ playlistUrl: 'https://a.example/playlist?url={url}' })], SHARE_URL)
-    ).rejects.toThrow(/未返回任何歌曲/)
+    )
+    expectCode(err, 'core.error.playlistEmpty', { name: '我的音源' })
   })
 
   it('HTTP 非 2xx 时抛出带状态码的错误', async () => {
     setCustomFetch(async () => jsonResponse({ error: 'nope' }, 500))
-    await expect(
+    const err = await rejectionOf(
       parsePlaylistLink([makeSource({ playlistUrl: 'https://a.example/playlist?url={url}' })], SHARE_URL)
-    ).rejects.toThrow(/HTTP 500/)
+    )
+    expectCode(err, 'core.error.playlistHttpStatus', { name: '我的音源', status: 500 })
   })
 
   // ── 扩展字段（专辑 / 时长 / 封面 / songmid）：歌单详情页的时长与序号靠它们 ──

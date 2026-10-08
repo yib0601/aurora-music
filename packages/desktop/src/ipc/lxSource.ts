@@ -17,6 +17,7 @@ import vm from 'node:vm'
 import { createHash, createCipheriv, publicEncrypt, randomBytes as nodeRandomBytes, constants as nodeCryptoConstants } from 'crypto'
 import { deflate as zlibDeflate, inflate as zlibInflate } from 'zlib'
 import {
+  auroraError,
   clearLxSourceCache,
   fetchLxScript,
   inspectLxSource,
@@ -39,6 +40,7 @@ import type {
   LxTrackRef,
   OnlineSourceConfig,
 } from '@aurora/shared'
+import { mainErrorText, mainTranslate } from '../i18n'
 
 /** 单次请求超时上限：脚本给的 timeout 可能很大，统一压到 60s 内，避免主进程挂住 */
 const MAX_REQUEST_TIMEOUT = 60000
@@ -194,10 +196,12 @@ export function createNodeLxRequest(): LxRequestFn {
         )
       } catch (err) {
         const e = err as Error
+        // 这个 Error 是交给脚本宿主的（脚本可能捕获并读取 message），
+        // 所以渲染成当前语言的成品句，而不是塞结构化载荷
         const message =
           e?.name === 'AbortError'
-            ? `请求超时（${pickTimeout(opts)}ms）`
-            : e?.message || '网络请求失败'
+            ? mainTranslate()('desktop.error.lx.requestTimeout', { ms: pickTimeout(opts) })
+            : e?.message || mainTranslate()('desktop.error.lx.requestFailed')
         finish(new Error(message), null)
       }
     })()
@@ -225,7 +229,7 @@ function toBuffer(input: unknown): Buffer {
   if (input && typeof input === 'object' && Array.isArray((input as any).data)) {
     return Buffer.from((input as any).data)
   }
-  throw new Error('不支持的二进制入参')
+  throw auroraError('desktop.error.lx.binaryUnsupported')
 }
 
 /** Node 版 crypto：与洛雪桌面端 preload 暴露的接口对齐 */
@@ -346,7 +350,7 @@ function clearScriptCacheByUrl(url: string): void {
 async function ensureScript(source: LxScriptSource): Promise<string> {
   const inline = typeof source.script === 'string' ? source.script.trim() : ''
   if (inline) return String(source.script)
-  if (!source.sourceUrl) throw new Error('音源未填写脚本地址')
+  if (!source.sourceUrl) throw auroraError('desktop.error.lx.scriptUrlMissing')
   const key = scriptCacheKeyOf(source)
   let pending = scriptCache.get(key)
   if (!pending) {
@@ -380,8 +384,9 @@ function isLxTrackRef(value: unknown): value is LxTrackRef {
   )
 }
 
+/** 错误文本：结构化错误渲染成当前语言的成品句，其余沿用原始 message（技术原文） */
 function errText(err: unknown): string {
-  return (err as Error)?.message || String(err)
+  return mainErrorText(err)
 }
 
 /**
@@ -404,23 +409,27 @@ async function resolveWithFallback(
       const script = await ensureScript(source)
       return await resolveLxSourceUrl({ ...source, script }, ref, quality)
     } catch (err) {
-      errors.push(`原样取址：${errText(err)}`)
+      errors.push(mainTranslate()('desktop.error.lx.directAttempt', { reason: errText(err) }))
     }
   }
 
   const mapped = toLxMusicInfo(ref.platform, ref.meta)
   if (!mapped.ok) {
-    errors.push(mapped.reason)
+    // reason 是结构化信封（AURORA_ERR:{…}）：它会被拼进 resolveFailed 的 {reasons}，
+    // 不渲染就会把 JSON 拼进用户可见的句子
+    errors.push(mainErrorText(mapped.reason))
   } else {
     try {
       const script = await ensureScript(source)
       return await resolveLxSourceUrl({ ...source, script }, { ...ref, meta: mapped.musicInfo }, quality)
     } catch (err) {
-      errors.push(`映射取址：${errText(err)}`)
+      errors.push(mainTranslate()('desktop.error.lx.mappedAttempt', { reason: errText(err) }))
     }
   }
 
-  throw new Error(errors.join('；'))
+  // 两路的失败原因合并成一条结构化错误：display 端按当前语言渲染外层整句，
+  // 子句在收集时已按当时的语言渲染好（主进程与渲染层语言由 i18n:set-locale 保持同步）
+  throw auroraError('desktop.error.lx.resolveFailed', { reasons: errors.join('; ') })
 }
 
 export function registerLxSourceIpc(): void {
@@ -428,7 +437,7 @@ export function registerLxSourceIpc(): void {
 
   // 拉取脚本源码（设置页填脚本链接时用；主进程拉取可避开渲染层 CORS）
   ipcMain.handle('lx:fetchScript', async (_event, url: string, force?: boolean): Promise<string> => {
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) throw new Error('脚本地址无效')
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) throw auroraError('desktop.error.lx.scriptUrlInvalid')
     if (force) clearScriptCacheByUrl(url)
     return await fetchLxScript(url, SCRIPT_FETCH_TIMEOUT)
   })
@@ -437,7 +446,9 @@ export function registerLxSourceIpc(): void {
   ipcMain.handle(
     'lx:inspect',
     async (_event, source: LxScriptSource, force?: boolean): Promise<LxSourceInspection> => {
-      if (!isLxSource(source)) return { ok: false, platforms: {}, error: '音源配置无效' }
+      if (!isLxSource(source)) {
+        return { ok: false, platforms: {}, error: mainTranslate()('desktop.error.lx.sourceInvalid') }
+      }
       try {
         if (force) clearScriptCacheOf(source)
         const script = await ensureScript(source)
@@ -452,7 +463,7 @@ export function registerLxSourceIpc(): void {
   ipcMain.handle(
     'lx:search',
     async (_event, source: LxScriptSource, query: string, limit?: number): Promise<LxSearchResult[]> => {
-      if (!isLxSource(source)) throw new Error('音源配置无效')
+      if (!isLxSource(source)) throw auroraError('desktop.error.lx.sourceInvalid')
       if (typeof query !== 'string' || !query.trim()) return []
       const script = await ensureScript(source)
       return await searchLxSource({ ...source, script }, query, undefined, {
@@ -470,10 +481,14 @@ export function registerLxSourceIpc(): void {
       source: OnlineSourceConfig,
       quality?: DownloadQuality
     ): Promise<{ url: string; quality: string }> => {
-      if (!isLxTrackRef(ref)) throw new Error('曲目缺少洛雪定位信息')
-      if (!isLxSource(source)) throw new Error('音源配置无效')
-      if (source.kind && source.kind !== 'lx') throw new Error(`音源「${source.name}」不是洛雪脚本源`)
-      if (source.enabled === false) throw new Error(`洛雪音源「${source.name}」已停用`)
+      if (!isLxTrackRef(ref)) throw auroraError('desktop.error.lx.refMissing')
+      if (!isLxSource(source)) throw auroraError('desktop.error.lx.sourceInvalid')
+      if (source.kind && source.kind !== 'lx') {
+        throw auroraError('desktop.error.lx.notScriptSource', { name: source.name })
+      }
+      if (source.enabled === false) {
+        throw auroraError('desktop.error.lx.sourceDisabled', { name: source.name })
+      }
       // 默认档位与 App 的默认下载音质一致（flac）；lxHost 内部按脚本声明的档位回落，不会硬要无损
       return await resolveWithFallback(source, ref, quality || 'flac')
     }

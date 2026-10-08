@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react'
+import { useT } from '@/i18n'
 
 export interface ToastAction {
   label: string
@@ -54,6 +55,7 @@ export function dismissToast(id: number) {
 
 /** Toast 挂载点：渲染到 body 顶层，z-index 高于搜索浮层（z-[80]）与右键菜单（z-[90]） */
 export function ToastHost() {
+  const t = useT()
   const [toasts, setToasts] = useState<ToastItem[]>(items)
 
   useEffect(() => {
@@ -65,38 +67,38 @@ export function ToastHost() {
 
   return createPortal(
     <div className="pointer-events-none fixed left-1/2 top-12 z-[100] flex w-full max-w-md -translate-x-1/2 flex-col items-center gap-2 px-4">
-      {toasts.map((t) => (
+      {toasts.map((item) => (
         <div
-          key={t.id}
+          key={item.id}
           role="status"
           /* 入场仅淡入：位移/缩放动画会让玻璃模糊区域逐帧变化，软件渲染下掉帧 */
           className="pointer-events-auto flex max-w-full items-start gap-2.5 rounded-[10px] glass-floating px-4 py-2.5 animate-in fade-in-0 duration-200"
         >
-          {t.type === 'error' ? (
+          {item.type === 'error' ? (
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-coral" strokeWidth={1.8} />
-          ) : t.type === 'info' ? (
+          ) : item.type === 'info' ? (
             <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-mint/80" strokeWidth={1.8} />
           ) : (
             <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint" strokeWidth={1.8} />
           )}
           <p className="min-w-0 whitespace-pre-line break-all font-text text-[13px] leading-5 text-white/85">
-            {t.message}
+            {item.message}
           </p>
-          {t.action && (
+          {item.action && (
             <button
               className="flex-shrink-0 pill pill-sm pill-mint"
               onClick={() => {
-                t.action!.onClick()
-                dismissToast(t.id)
+                item.action!.onClick()
+                dismissToast(item.id)
               }}
             >
-              {t.action.label}
+              {item.action.label}
             </button>
           )}
           <button
-            aria-label="关闭提示"
+            aria-label={t('common.action.close')}
             className="btn-icon -mr-1 flex-shrink-0 rounded-full text-white/50 hover:text-white"
-            onClick={() => dismissToast(t.id)}
+            onClick={() => dismissToast(item.id)}
           >
             <X className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>

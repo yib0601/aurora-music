@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createAppTranslator, toErrorInfo, translateError } from '@aurora/shared'
 import {
   fetchFastest,
   isAllowedDownloadUrl,
@@ -11,6 +12,10 @@ import {
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+/** 显示端渲染函数：与组件里 useT() 的键集收窄版是同一套内核，这里直接取内核实例 */
+const t = createAppTranslator('zh-CN')
+const tEn = createAppTranslator('en')
 
 const ASSET = 'https://github.com/yib0601/aurora-music/releases/download/v0.5.7/Aurora-Music-0.5.7-android.apk'
 const API = 'https://api.github.com/repos/yib0601/aurora-music/releases/latest'
@@ -101,6 +106,34 @@ describe('fetchFastest 并发竞速', () => {
     await expect(
       fetchFastest(['https://a.test/1', 'https://a.test/2'], (res) => res.json(), { timeoutMs: 2000 })
     ).rejects.toThrow('HTTP 500')
+  })
+
+  it('失败原因是结构化错误：码 + detail 里的状态码，显示端按语言渲染', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('rate limited', { status: 403 })))
+    // 抛出点不再拼中文，只给码与 detail；文案由显示端按当前语言渲染
+    const err = await fetchFastest(['https://a.test/1'], (res) => res.json(), { timeoutMs: 2000 }).catch(
+      (e: unknown) => e
+    )
+    const info = toErrorInfo(err)
+    expect(info.code).toBe('errors.network.unreachable')
+    expect(info.detail).toBe('HTTP 403')
+    expect(translateError(err, t)).toMatch(/网络不可达/)
+    expect(translateError(err, tEn)).toMatch(/Network unreachable/i)
+  })
+
+  it('取消与空候选各有专属错误码，不再抛裸 Error', async () => {
+    const ctrl = new AbortController()
+    ctrl.abort()
+    const canceled = await fetchFastest(['https://a.test/1'], (res) => res.json(), {
+      timeoutMs: 2000,
+      signal: ctrl.signal,
+    }).catch((e: unknown) => e)
+    expect(toErrorInfo(canceled).code).toBe('update.error.canceled')
+    expect(translateError(canceled, t)).toBe('已取消')
+
+    const empty = await fetchFastest([], (res) => res.json(), { timeoutMs: 2000 }).catch((e: unknown) => e)
+    expect(toErrorInfo(empty).code).toBe('update.error.offline')
+    expect(translateError(empty, t)).toBe('网络不可用')
   })
 
   it('HTML 错误页不能冒充 JSON（镜像站伪装 200 的场景）', async () => {

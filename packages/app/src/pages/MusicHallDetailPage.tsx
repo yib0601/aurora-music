@@ -16,11 +16,12 @@ import { PageSubtitle, SubPageTitle } from '@/components/PageHeading'
 import { HallEmpty } from '@/pages/MusicHallPage'
 import { cn, formatTime } from '@/lib/utils'
 import { useGoBack } from '@/lib/navigation'
-import { ROUTE_PATHS, isRoute, HALL_LABEL, LIBRARY_LABEL, LIBRARY_ROUTE, ROUTES } from '@/lib/routes'
+import { ROUTE_PATHS, isRoute, LIBRARY_ROUTE, NAV_LABEL_KEYS, ROUTES } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
-import { matchTracksByNames } from '@aurora/shared'
+import { useT } from '@/i18n'
+import { matchTracksByNames, type AppTranslator } from '@aurora/shared'
 import type { Track } from '@/types'
 
 /**
@@ -41,6 +42,7 @@ import type { Track } from '@/types'
 export function MusicHallDetailPage() {
   const navigate = useNavigate()
   const goBack = useGoBack()
+  const t = useT()
   const params = useParams<{ id: string }>()
   const id = params.id || ''
   // 详情类型由路由模式判定（同一组件承接榜单与歌单两种详情），不手写字符串比较
@@ -102,9 +104,10 @@ export function MusicHallDetailPage() {
     return []
   }, [isToplist, toplistDetail, playlistDetail])
 
+  // 上游没给名称时退到类型名：榜单「榜单」/ 歌单「推荐歌单」，两者语义不同故各占一键
   const title = isToplist
-    ? toplistDetail?.data?.name || '榜单'
-    : playlistDetail?.data?.name || '推荐歌单'
+    ? toplistDetail?.data?.name || t('hall.toplist.fallbackName')
+    : playlistDetail?.data?.name || t('hall.recommend.title')
   const total = isToplist ? toplistDetail?.data?.total ?? rows.length : rows.length
 
   /**
@@ -197,28 +200,40 @@ export function MusicHallDetailPage() {
     return out
   }, [rows])
 
-  /** Hero 副标题：来源性质 / 曲目数 / 总时长 / 榜单更新时间 */
+  /**
+   * Hero 副标题：来源性质 / 曲目数 / 总时长 / 榜单更新时间。
+   * 各片段本身就是字典里的整句，这里只是把同级元信息用「 · 」摆成一排，不构成句子拼接。
+   */
   const heroMeta = useMemo(() => {
     const shown = rows.length
-    const parts = [isToplist ? '排行榜' : '推荐歌单']
+    const parts = [isToplist ? t('hall.toplist.title') : t('hall.recommend.title')]
     // 榜单的上游 total 是 300 而本次只取了 100 首：写「100 / 300 首」而不是照抄 total，
     // 否则页面宣称有 300 首、列表却只有 100 行，用户会以为还没加载完
-    if (shown > 0) parts.push(total > shown ? `${shown} / ${total} 首` : `${shown} 首`)
-    if (totalDuration > 0) parts.push(formatTotalDuration(totalDuration))
+    if (shown > 0) {
+      parts.push(
+        total > shown
+          ? t('hall.detail.meta.songsOfTotal', { shown, total })
+          : t('hall.detail.meta.songs', { count: shown })
+      )
+    }
+    if (totalDuration > 0) parts.push(formatTotalDuration(totalDuration, t))
     const updated = isToplist ? toplistDetail?.data?.updateTime : ''
-    if (updated) parts.push(`更新 ${updated}`)
+    if (updated) parts.push(t('hall.detail.meta.updated', { time: updated }))
     return parts.join(' · ')
-  }, [isToplist, rows.length, total, totalDuration, toplistDetail])
+  }, [isToplist, rows.length, total, totalDuration, toplistDetail, t])
 
-  const unavailable = hallUnavailableReason()
+  const unavailable = hallUnavailableReason(t)
   if (unavailable) {
     return (
       <PageLayout header={<BackBar onBack={goBack} />}>
         <HallEmpty
-          title={`${HALL_LABEL}暂不可用`}
+          title={t('hall.empty.title', { hall: t(NAV_LABEL_KEYS.hall) })}
           desc={unavailable}
-          action={{ label: '去配置音源', onClick: () => navigate(ROUTES.settings) }}
-          secondaryAction={{ label: `去${LIBRARY_LABEL}`, onClick: () => navigate(LIBRARY_ROUTE) }}
+          action={{ label: t('hall.empty.configureSource'), onClick: () => navigate(ROUTES.settings) }}
+          secondaryAction={{
+            label: t('hall.empty.goLibrary', { library: t(NAV_LABEL_KEYS.library) }),
+            onClick: () => navigate(LIBRARY_ROUTE),
+          }}
         />
       </PageLayout>
     )
@@ -237,14 +252,16 @@ export function MusicHallDetailPage() {
           <button
             type="button"
             className="btn-icon flex-shrink-0"
-            title="重新加载"
+            title={t('hall.detail.reload')}
             onClick={() => (isToplist ? void loadToplistDetail(id, true) : void loadPlaylistDetail(id, true))}
           >
             <RefreshCw className="h-4 w-4" strokeWidth={1.6} />
           </button>
         </div>
       ) : rows.length === 0 ? (
-        <p className="font-text text-[13px] text-white/50 py-6">这个{isToplist ? '榜单' : '歌单'}里没有曲目</p>
+        <p className="font-text text-[13px] text-white/50 py-6">
+          {isToplist ? t('hall.detail.empty.toplist') : t('hall.detail.empty.playlist')}
+        </p>
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           {/* Hero 与曲目表同宽：列表限宽 720 后，Hero 若铺满内容区，页面上会同时存在
@@ -259,7 +276,7 @@ export function MusicHallDetailPage() {
                   <Sparkles className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
                 )
               }
-              meta={loading ? '加载中…' : heroMeta}
+              meta={loading ? t('common.state.loading') : heroMeta}
               covers={heroCovers}
             >
               <button
@@ -269,7 +286,7 @@ export function MusicHallDetailPage() {
                 className="pill pill-md pill-mint inline-flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Play className="h-4 w-4" strokeWidth={1.8} fill="currentColor" />
-                播放全部
+                {t('hall.detail.playAll')}
               </button>
               <button
                 type="button"
@@ -278,7 +295,7 @@ export function MusicHallDetailPage() {
                 className="pill pill-md pill-soft inline-flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Shuffle className="h-4 w-4" strokeWidth={1.8} />
-                随机播放
+                {t('hall.detail.shuffle')}
               </button>
             </DetailHero>
 
@@ -287,8 +304,10 @@ export function MusicHallDetailPage() {
             <div className="flex items-center gap-3 px-2 pb-2 mb-1 border-b border-white/[0.06] font-text text-[12px] text-white/35">
               <span className="w-6 flex-shrink-0 text-center">#</span>
               <span className="w-9 flex-shrink-0" />
-              <span className="flex-1">歌曲</span>
-              {hasDuration && <span className="w-12 flex-shrink-0 text-right">时长</span>}
+              <span className="flex-1">{t('hall.detail.column.song')}</span>
+              {hasDuration && (
+                <span className="w-12 flex-shrink-0 text-right">{t('common.label.duration')}</span>
+              )}
             </div>
 
             <ul className="flex flex-col">
@@ -394,9 +413,10 @@ function RowCover({ url }: { url?: string }) {
 
 /** 详情页顶栏：只剩返回入口。标题与操作已下沉到 Hero（随内容滚动，不长期占用顶部空间） */
 function BackBar({ onBack }: { onBack: () => void }) {
+  const t = useT()
   return (
     <div className="flex items-center mb-3">
-      <button className="btn-icon" onClick={onBack} title="返回">
+      <button className="btn-icon" onClick={onBack} title={t('common.action.back')}>
         <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
       </button>
     </div>
@@ -484,11 +504,17 @@ function CoverTile({ url, className }: { url: string; className?: string }) {
   )
 }
 
-/** 整单时长：够一小时按「X 小时 Y 分」，否则「Y 分钟」——秒级精度在这一层没有意义 */
-function formatTotalDuration(seconds: number): string {
+/**
+ * 整单时长：够一小时按「X 小时 Y 分」，否则「Y 分钟」——秒级精度在这一层没有意义。
+ * 分钟 / 小时这类数量单位复用 common.unit（两种语言各自补复数形态），
+ * 「X 小时 Y 分」这种组合式表述才是本域自己的键。
+ */
+function formatTotalDuration(seconds: number, t: AppTranslator): string {
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} 分钟`
+  if (minutes < 60) return t('common.unit.minutes', { count: minutes })
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
-  return rest === 0 ? `${hours} 小时` : `${hours} 小时 ${rest} 分`
+  return rest === 0
+    ? t('common.unit.hours', { count: hours })
+    : t('hall.detail.meta.hoursMinutes', { hours, minutes: rest })
 }

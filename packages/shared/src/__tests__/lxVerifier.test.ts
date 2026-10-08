@@ -33,6 +33,7 @@ import {
 import { searchOnlineTracks, clearSearchCache } from '../musicSource'
 import type { OnlineSourceConfig } from '../types'
 import { esbuildBin, lxScriptReason, readLxScript } from './lxScriptFixture'
+import { expectCode, rejectionOf } from './i18nAssert'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /**
@@ -349,12 +350,14 @@ globalThis.liscript = {
 
   it('A6 callTimeoutMs 生效：脚本 search 永不 resolve 时按可读超时失败，不挂进程', async () => {
     const started = Date.now()
-    await expect(
+    // 单平台 + 同一原因：上抛的就是那个具体的码（「超时」不该被概括成「没有结果」）
+    const err = await rejectionOf(
       searchLxSource(lxSource(stubScript({ search: 'hang' })) as any, '测试', {
         request: countingRequest().request,
         callTimeoutMs: 300,
       })
-    ).rejects.toThrow(/超时/)
+    )
+    expectCode(err, 'core.error.lxCallTimeout', { source: 'kw', action: 'search', ms: 300 })
     expect(Date.now() - started).toBeLessThan(3000)
   })
 
@@ -456,8 +459,9 @@ describe('B. 聚合搜索行为', () => {
       expect(out.filter((r) => r.source === 'au').length).toBe(1)
       expect(out.filter((r) => r.source === 'lx-noscript').length).toBe(0)
       expect(warns.some((w) => String(w[0]).includes('脚本源码不可得'))).toBe(true)
-      // 单源入口直接抛可读错误（由聚合层按单源失败处理）
-      await expect(searchLxSourceForAggregate(source, '起风了')).rejects.toThrow(/脚本源码不可得/)
+      // 单源入口直接抛结构化错误（由聚合层按单源失败处理）
+      const err = await rejectionOf(searchLxSourceForAggregate(source, '起风了'))
+      expectCode(err, 'core.error.lxScriptUnavailable', { name: '无脚本源' })
     } finally {
       console.warn = orig
       await fixture.close()
@@ -475,13 +479,13 @@ describe('C. 取址降级路径', () => {
   it('C1 缺定位信息 → {url:null, reason}', async () => {
     const out = await resolveLxTrack({ lx: undefined as any })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('缺少洛雪取址定位信息')
+    expectCode((out as any).reason, 'core.error.lxTrackRefMissing')
   })
 
   it('C2 源不存在 → 可读原因', async () => {
     const out = await resolveLxTrack({ lx: okRef, sources: [] })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('未找到洛雪音源配置')
+    expectCode((out as any).reason, 'core.error.lxSourceNotFound', { id: 'lx-verifier-1' })
   })
 
   it('C3 源非 lx → 可读原因', async () => {
@@ -490,13 +494,13 @@ describe('C. 取址降级路径', () => {
       onlineSource: { id: 'lx-verifier-1', name: 'Aurora', sourceUrl: 'http://a', enabled: true } as OnlineSourceConfig,
     })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('不是洛雪脚本源')
+    expectCode((out as any).reason, 'core.error.lxNotScriptSource', { name: 'Aurora', kind: 'aurora' })
   })
 
   it('C4 源停用 → 可读原因', async () => {
     const out = await resolveLxTrack({ lx: okRef, onlineSource: lxSource(stubScript(), { enabled: false }) })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('已停用')
+    expectCode((out as any).reason, 'core.error.lxSourceDisabled', { name: '验证桩源' })
   })
 
   it('C5 脚本源码不可得 → 可读原因', async () => {
@@ -506,14 +510,14 @@ describe('C. 取址降级路径', () => {
       onlineSource: { id: 'lx-verifier-1', name: '无脚本源', kind: 'lx', sourceUrl: 'http://x/y.js', enabled: true },
     })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('脚本源码不可得')
+    expectCode((out as any).reason, 'core.error.lxScriptUnavailable', { name: '无脚本源' })
   })
 
   it('C6 宿主未注册 → 可读原因', async () => {
     setLxHostDeps(null)
     const out = await resolveLxTrack({ lx: okRef, onlineSource: lxSource(stubScript()) })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('宿主未初始化')
+    expectCode((out as any).reason, 'core.error.lxHostNotReady')
   })
 
   it('C7 必要字段缺失 → 可读原因且**零请求**（假 request 计数证明）', async () => {
@@ -526,8 +530,8 @@ describe('C. 取址降级路径', () => {
       deps: { request: counter.request },
     })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('缺少必要字段')
-    expect((out as any).reason).toContain('酷我')
+    // 平台给**协议标识**（kw），展示名由显示端按语言渲染，不在底层烧中文
+    expectCode((out as any).reason, 'core.error.lxMetaMissing', { platform: 'kw', fields: 'hash, songmid' })
     expect(counter.urls().length).toBe(0)
   })
 
@@ -549,7 +553,7 @@ describe('C. 取址降级路径', () => {
       deps: { request: countingRequest().request },
     })
     expect(out.url).toBeNull()
-    expect((out as any).reason).toContain('不支持平台')
+    expectCode((out as any).reason, 'core.error.lxPlatformUnsupported', { name: '验证桩源', platform: 'qsvip' })
   })
 
   it('C10 脚本返回非 http 地址 → 判失败而非误用', async () => {

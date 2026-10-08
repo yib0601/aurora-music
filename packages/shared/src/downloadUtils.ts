@@ -75,6 +75,9 @@ export function sanitizeFileName(name: string): string {
   // 截断后可能重新出现结尾的点或空格，需再清一次
   cleaned = truncateToBytes(cleaned, MAX_FILENAME_BYTES).replace(/[. ]+$/, '').trim()
 
+  // i18n-exempt: 匹配数据 —— 这个占位值与 coverMatch.PLACEHOLDER_ARTISTS 及扫描器的
+  // 占位值集合同源（参与「这是不是真标题」的判定），且会作为落盘文件名，
+  // 翻译它等于让同一首歌在不同界面语言下产生两个文件名
   return cleaned || '未知歌曲'
 }
 

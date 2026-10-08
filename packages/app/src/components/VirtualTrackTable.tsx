@@ -26,6 +26,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { isDesktop, formatTime, cn } from '@/lib/utils'
+import { useT } from '@/i18n'
 import { CoverImage } from '@/components/common/CoverImage'
 import { DuplicateBadge } from '@/components/common/DuplicateInfo'
 import type { DuplicateGroup } from '@aurora/shared'
@@ -129,13 +130,14 @@ export const PlaylistSubmenuItems = memo(function PlaylistSubmenuItems({
   kit?: MenuKit
 }) {
   const playlists = usePlaylistStore((s) => s.playlists)
+  const t = useT()
   const { Item, Separator } = kit
 
   if (playlists.length === 0) {
     return (
       <Item onClick={() => onCreatePlaylist(trackId)}>
         <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        新建播放列表...
+        {t('library.playlist.newMenu')}
       </Item>
     )
   }
@@ -154,7 +156,7 @@ export const PlaylistSubmenuItems = memo(function PlaylistSubmenuItems({
       <Separator />
       <Item onClick={() => onCreatePlaylist(trackId)}>
         <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        新建播放列表...
+        {t('library.playlist.newMenu')}
       </Item>
     </>
   )
@@ -182,30 +184,31 @@ const TrackMenuItems = memo(function TrackMenuItems({
   kit: MenuKit
 }) {
   const { Item, Separator, Sub, SubTrigger, SubContent } = kit
+  const t = useT()
   return (
     <>
       <Item onClick={onOpenDetail}>
         <Info className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        查看歌曲详情
+        {t('library.action.viewDetails')}
       </Item>
       <Separator />
       <Item onClick={() => onPlay(idx)}>
         <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        立即播放
+        {t('common.action.play')}
       </Item>
       <Item onClick={() => usePlayerStore.getState().addToPlayNext(track)}>
         <ListEnd className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        下一首播放
+        {t('library.action.playNext')}
       </Item>
       <Item onClick={() => usePlayerStore.getState().addToQueue(track)}>
         <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-        添加到队列
+        {t('library.action.addToQueue')}
       </Item>
       <Separator />
       <Sub>
         <SubTrigger>
           <ListPlus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          添加到播放列表
+          {t('library.action.addToPlaylist')}
         </SubTrigger>
         <SubContent className="w-48">
           <PlaylistSubmenuItems trackId={track.id} onCreatePlaylist={onCreatePlaylist} kit={kit} />
@@ -214,7 +217,7 @@ const TrackMenuItems = memo(function TrackMenuItems({
       <Separator />
       <Item onClick={() => useLibraryStore.getState().toggleLike(track.id)}>
         <Heart className={cn('h-4 w-4 mr-2', liked && 'fill-coral text-coral')} strokeWidth={1.5} />
-        {liked ? '取消收藏' : '收藏'}
+        {liked ? t('library.action.unlike') : t('library.action.like')}
       </Item>
     </>
   )
@@ -245,12 +248,13 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
   duplicateGroup?: DuplicateGroup<Track>
 }) {
   const navigate = useNavigate()
+  const t = useT()
   // 网络存储曲目的来源名：用来在列表里区分「本机」与 NAS 曲目。
   // 注：虚拟化下同时挂载的行只有二三十行，且该 selector 返回稳定引用
   // （库内数组不重建就不触发重渲染），逐行订阅的代价可以忽略
   const librarySources = useLibraryStore((s) => s.librarySources)
   const sourceName = track.sourceId
-    ? librarySources.find((s) => s.id === track.sourceId)?.name || '网络存储'
+    ? librarySources.find((s) => s.id === track.sourceId)?.name || t('nav.source.webdav')
     : undefined
 
   return (
@@ -278,7 +282,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                   usePlaylistStore.getState().setMobileNowPlaying(true)
                 }
               }}
-              title="查看歌曲详情"
+              title={t('library.action.viewDetails')}
               className="w-11 h-11 rounded-[12px] bg-white/[0.04] flex items-center justify-center overflow-hidden flex-shrink-0 transition-transform duration-200 ease-apple hover:scale-105"
             >
               <CoverImage
@@ -295,7 +299,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                 {duplicateGroup && <DuplicateBadge group={duplicateGroup} />}
                 {sourceName && (
                   <span
-                    title={`来自网络存储「${sourceName}」`}
+                    title={t('library.source.fromNetworkStorage', { name: sourceName })}
                     className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-mint/[0.08] border border-mint/20 px-1.5 py-[1px] font-text text-[10px] text-mint/85 tracking-[-0.1px]"
                   >
                     <Cloud className="h-2.5 w-2.5" strokeWidth={1.8} />
@@ -348,8 +352,8 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  title="更多操作"
-                  aria-label="更多操作"
+                  title={t('library.action.moreActions')}
+                  aria-label={t('library.action.moreActions')}
                   onClick={(e) => e.stopPropagation()}
                   className="btn-icon opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
                 >
@@ -401,6 +405,7 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
   duplicateMap?: ReadonlyMap<string, DuplicateGroup<Track>>
 }) {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
+  const t = useT()
 
   const virtualizer = useVirtualizer({
     count: tracks.length,
@@ -414,11 +419,11 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
     <>
       {/* 表头：移动端隐藏（列表语义已由双行布局表达） */}
       <div className={cn('hidden md:grid items-center border-b border-white/[0.08]', GRID_TEMPLATE)}>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">标题</div>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-artist">艺术家</div>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-album">专辑</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">{t('common.label.title')}</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-artist">{t('common.label.artist')}</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-album">{t('common.label.album')}</div>
         <div />
-        <div className="text-right py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">时长</div>
+        <div className="text-right py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">{t('common.label.duration')}</div>
         <div />
       </div>
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>

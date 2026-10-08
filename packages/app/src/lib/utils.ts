@@ -1,8 +1,26 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { translateError, type MessageKey, type TFunction } from '@aurora/shared'
+import { appTranslate } from '@/i18n'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * 把任意异常渲染成一句当前语言的人话（AuroraError 的码 → 字典文案，
+ * 其余按内核的三级降级：已知底层异常 → 通用码 → 原文透出）。
+ *
+ * 为什么要这层包装：`translateError` 的形参是内核的 TFunction（键为任意字符串），
+ * 而应用侧翻译器的键是**具体联合**（MessageKey）—— 函数参数逆变，具体联合
+ * 不能赋给 `string`。收口在这里，避免每个调用点各写一遍类型断言。
+ *
+ * 无渲染周期（service / 事件回调），译文在**每次调用时**取。
+ */
+export function renderErrorMessage(error: unknown): string {
+  const t = appTranslate()
+  const narrow: TFunction = (key, params) => t(key as MessageKey, params)
+  return translateError(error, narrow)
 }
 
 export function formatTime(seconds: number): string {

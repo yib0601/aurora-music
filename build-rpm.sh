@@ -21,11 +21,13 @@ echo "开始打包 RPM..."
 echo "版本: $VERSION"
 echo "源目录: $SOURCE_DIR"
 
+# 描述只给英文：fpm 的 rpm 输出没有 i18n 描述通道（--rpm-summary / --description
+# 都是单值），桌面软件中心里 rpm 的本地化描述走 AppStream metainfo，不在包头上。
 fpm -s dir -t rpm \
   -n "$APP_NAME" \
   -v "$VERSION" \
   --architecture x86_64 \
-  --description "Aurora Music - 跨平台音乐播放器" \
+  --description "Aurora Music - Cross-platform music player" \
   --url "https://github.com/aurora-music/aurora-music" \
   --vendor "Aurora Music" \
   --maintainer "Aurora Music <aurora-music@example.com>" \

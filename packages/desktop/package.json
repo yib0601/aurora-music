@@ -121,7 +121,9 @@
       "desktop": {
         "entry": {
           "Name": "Aurora Music",
+          "Name[zh_CN]": "Aurora Music",
           "Comment": "An elegant cross-platform music player",
+          "Comment[zh_CN]": "优雅的跨平台音乐播放器",
           "Categories": "AudioVideo;Audio;",
           "Terminal": false,
           "Type": "Application"

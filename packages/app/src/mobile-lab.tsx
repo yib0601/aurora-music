@@ -15,6 +15,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
+import { translateDefault } from '@aurora/shared'
 import './styles/globals.css'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { MobileNowPlaying } from '@/components/player/MobileNowPlaying'
@@ -81,8 +82,11 @@ const track: Track = {
   id: 'lab-track-1',
   path: '/music/Melody.flac',
   title: 'Melody',
-  artist: '周传雄',
-  album: '男人海洋',
+  // 假数据：歌手与专辑都不进字典（它们是内容，不是界面文案），
+  // 用通用「未知」词条占位，避免验收台里留下未国际化的中文字面量。
+  // 本文件是 dev 专用单页入口（无 I18nProvider），取译文用 translateDefault。
+  artist: translateDefault('common.label.unknownArtist'),
+  album: translateDefault('common.label.unknownAlbum'),
   duration: 275,
   addedAt: Date.now(),
   playCount: 12,

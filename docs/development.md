@@ -23,6 +23,86 @@ cd android && ./gradlew assembleDebug   # 产物在 app/build/outputs/apk/
 
 Web 层改动需先 `build:app` 再 `cap sync`，否则打包旧资源；原生代码改动只需重跑 gradlew。
 
+## 多语言开发
+
+界面文案的权威规范（分层、写界面的三条路径、硬规则）见 [docs/i18n.md](./i18n.md)。
+本节只覆盖**不在 React 字典里、但同样不能把中文烧死在代码里**的两段：原生层与打包元数据。
+
+### Android 资源组织
+
+- `packages/mobile/android/app/src/main/res/values/strings.xml` 是**英文默认**资源，
+  `values-zh/strings.xml` 是中文。默认资源放英文是 Android 的兜底语义：系统语言匹配不到
+  任何语言限定符目录（values-ja / values-de …）时回落到默认资源，若默认放中文，
+  非中文系统一律看到中文。
+- 品牌名与包标识（`app_name` / `title_activity_main` / `package_name` / `custom_url_scheme`）
+  标 `translatable="false"`，只在默认资源里出现一份，两种语言同值。
+- 应用自有文案统一 `aurora_` 前缀（与 Capacitor 模板字符串隔离）：通知频道名与描述、
+  通知栏动作按钮（上一首 / 播放 / 暂停 / 下一首）都在这里。
+  `npx cap sync` 对 strings.xml 只做 `My App` / `com.getcapacitor.myapp` 的字面替换，
+  不会重写文件，新增条目安全。
+- Kotlin 侧一律 `getString(R.string.aurora_xxx)`，不做字符串拼接；开发者日志与注释继续用
+  中文，含中文字面量的日志行在该行尾加 `// i18n-exempt: 开发者日志`
+  （`scripts/check-i18n.mjs` 的行级豁免；日志面向开发者，不进界面）。
+
+### 原生错误码 → 字典键
+
+原生插件（`UpdatePlugin` / `MediaSessionPlugin` / `PermissionPlugin`）**不回传中文句子**，
+只回传机器码：`<域>_error_<小驼峰名>`，需要参数时以查询串追加（值做 URL 编码）。
+
+映射是**可逆的单行规则**：键路径 = `mobile.` + 码把 `_` 换成 `.`（段内小驼峰原样保留）。
+
+```ts
+// JS 侧解析示例：拿到原生回传的字符串 → 可直接喂给 translateError 的键与参数
+function parseNativeError(raw: string): { code: string; params?: Record<string, string> } {
+  const [code, query] = raw.trim().split('?')
+  const key = `mobile.${code.split('_').join('.')}`
+  if (!query) return { code: key }
+  const params: Record<string, string> = {}
+  for (const [k, v] of new URLSearchParams(query)) params[k] = v
+  return { code: key, params }
+}
+```
+
+码与 `packages/shared/src/i18n/messages/{zh-CN,en}/mobile.ts` 一一对应（`?x=` 表示该码会带该参数）：
+
+| 原生码 | 字典键 |
+| --- | --- |
+| `update_error_busy` | `mobile.update.error.busy` |
+| `update_error_urlInvalid` | `mobile.update.error.urlInvalid` |
+| `update_error_httpStatus?status=` | `mobile.update.error.httpStatus` |
+| `update_error_canceled` | `mobile.update.error.canceled` |
+| `update_error_incomplete?received=&expected=` | `mobile.update.error.incomplete` |
+| `update_error_pathInvalid` | `mobile.update.error.pathInvalid` |
+| `update_error_apkMissing` | `mobile.update.error.apkMissing` |
+| `update_error_launchFailed?detail=` | `mobile.update.error.launchFailed` |
+| `update_error_permissionSettings?detail=` | `mobile.update.error.permissionSettings` |
+| `update_error_downloadFailed` | `mobile.update.error.downloadFailed` |
+| `media_error_serviceStartFailed?detail=` | `mobile.media.error.serviceStartFailed` |
+| `media_error_serviceStopFailed?detail=` | `mobile.media.error.serviceStopFailed` |
+| `media_error_serviceNotRunning` | `mobile.media.error.serviceNotRunning` |
+| `media_error_playQueueFailed?detail=` | `mobile.media.error.playQueueFailed` |
+| `media_error_syncQueueFailed?detail=` | `mobile.media.error.syncQueueFailed` |
+| `permission_error_settingsUnavailable?detail=` | `mobile.permission.error.settingsUnavailable` |
+
+### 打包元数据
+
+- **桌面 .desktop**（`packages/desktop/package.json` 的 `build.linux.desktop.entry`）：
+  英文默认 `Name` / `Comment`，另给 freedesktop 规范的本地化键 `Name[zh_CN]` /
+  `Comment[zh_CN]`（语言标签用 `_`，不是 `-`）。品牌名不翻译，两种语言同值。
+- **deb**（`build-deb.sh`）：`--description` 给英文默认，中文走
+  `--deb-field "Description-zh_CN: …"`。dpkg 接受并保留该字段（可用
+  `dpkg-deb -f <pkg>.deb Description-zh_CN` 读回），但 apt / 软件中心不显示包描述的
+  语言变体——那由仓库的 DDTP 翻译索引或 AppStream metainfo 提供，中文只是包内自描述。
+- **rpm**（`build-rpm.sh`）：只给英文。fpm 的 rpm 输出没有 i18n 描述字段
+  （`--rpm-summary` / `--description` 都是单值），软件中心的本地化描述同样走 AppStream。
+
+### 语言作用域的字体
+
+`packages/app/index.html` 一次加载 Inter / Noto Sans SC / JetBrains Mono，
+切换语言不重新请求字体；`packages/app/src/styles/globals.css` 用
+`html[data-locale="en"]` 把 Inter 提到 `--font-sans` 最前（中文界面沿用中文优先栈）。
+`data-locale` 的真值只有一处来源：`index.html` 首屏脚本与 `I18nProvider`，不要再写第三份。
+
 ## 平台注意事项
 
 - **Linux** 走 X11 后端（Wayland 会话下由 Xwayland 承载）；无边框窗口的边缘缩放依赖客户端设置
