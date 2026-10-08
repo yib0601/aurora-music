@@ -24,7 +24,8 @@
     "smoke:cache": "electron scripts/smoke-media-cache.js",
     "smoke:cover": "electron scripts/smoke-cover-stale.js",
     "smoke:cover-online": "electron scripts/smoke-online-cover-pick.js",
-    "smoke:updater": "electron scripts/smoke-updater-download.js"
+    "smoke:updater": "electron scripts/smoke-updater-download.js",
+    "smoke:edge-snap": "electron --ozone-platform=x11 scripts/smoke-edge-snap.js"
   },
   "dependencies": {
     "@aurora/shared": "workspace:*",

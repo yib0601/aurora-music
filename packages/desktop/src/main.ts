@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, globalShortcut, protocol, Tray, Menu, native
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
+import { attachEdgeSnap } from './edgeSnap'
 import { closeDatabase } from './ipc/database'
 import { getLibrarySource } from './ipc/librarySource'
 import {
@@ -198,6 +199,10 @@ function createWindow() {
   win.on('unmaximize', () => {
     win.webContents.send('window:maximized', false)
   })
+
+  // Linux 顶边吸附：无边框窗没有 WM 标题栏，拖到屏幕顶部不会触发 GNOME 的贴顶
+  // （详见 edgeSnap.ts 顶部说明），这里在主进程侧补上同一语义
+  attachEdgeSnap(win)
 
   // 关闭按钮 → 隐藏窗口到托盘继续播放，而不是直接退出
   // 只有从托盘菜单选择「退出」时才真正关闭（isQuitting=true）
