@@ -24,10 +24,13 @@ export function SearchEntry({ className }: { className?: string }) {
       aria-label="搜索"
       className={cn('search-entry', className)}
     >
-      <Search className="h-4 w-4 flex-shrink-0" strokeWidth={1.5} />
+      {/* 图标与文字的字号/尺寸一律由 .search-entry / .search-entry-compact 给
+          （见 globals.css）：这两个 css 类在同一层里能互相覆盖，而写在这里的
+          Tailwind 尺寸类在 utilities 层，会把 compact 档的字号/图标一起钉死成 md 档规格 */}
+      <Search className="search-entry-icon flex-shrink-0" strokeWidth={1.5} />
       {/* 占位写明搜索范围（歌曲/歌手/专辑），比单字「搜索」更能说明这个框能做什么；
           小屏由 .search-entry 媒体查询隐藏文字只留放大镜 */}
-      <span className="search-entry-label font-text text-[13px] tracking-[-0.15px] whitespace-nowrap">
+      <span className="search-entry-label font-text tracking-[-0.15px] whitespace-nowrap">
         搜索歌曲、歌手、专辑
       </span>
     </button>

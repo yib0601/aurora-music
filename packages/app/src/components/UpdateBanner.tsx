@@ -51,21 +51,23 @@ export function UpdateBanner({
     setTimeout(onClose, 1200)
   }
 
-  // 紧凑态：图标 + 版本号 + 下载按钮 + 关闭，全部压进 30px 高的一枚胶囊。
+  // 紧凑态：图标 + 版本号 + 下载按钮 + 关闭，压进 36px 高的一枚胶囊（与窗口控制
+  // 按钮同档，也贴住 44px 搜索入口的高度带）。整行横幅塞进顶栏带会溢出，
+  // 而带子里只有左侧一个入口、右侧全空时那个框就看着孤零零地飘在窗口顶。
   // 当前版本号、包类型标签在带子里放不下（也不值得为它撑高那条带），省略。
   if (variant === 'compact') {
     return (
-      <div className="flex items-center gap-1 rounded-full border border-mint/20 bg-mint/[0.06] pl-3 pr-1 h-[30px] backdrop-blur-ds">
-        <ArrowDownCircle className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
-        <p className="font-text text-[12px] text-white/85 tracking-[-0.15px] whitespace-nowrap">
+      <div className="flex items-center gap-1 rounded-full border border-mint/20 bg-mint/[0.06] pl-3 pr-1 h-9 backdrop-blur-ds">
+        <ArrowDownCircle className="h-[18px] w-[18px] text-mint flex-shrink-0" strokeWidth={1.6} />
+        <p className="font-text text-[13px] text-white/85 tracking-[-0.15px] whitespace-nowrap">
           新版本 <span className="text-mint font-semibold">v{info.version}</span>
         </p>
         <button
           onClick={handleDownload}
           title={inAppAvailable ? '应用内下载，完成后可直接安装' : info.installHint || undefined}
-          className="ml-1 flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.1] px-2.5 h-[22px] flex items-center gap-1 font-text text-[12px] text-mint hover:bg-mint/20 transition-colors whitespace-nowrap"
+          className="ml-1 flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.1] px-3 h-7 flex items-center gap-1.5 font-text text-[13px] text-mint hover:bg-mint/20 transition-colors whitespace-nowrap"
         >
-          <Download className="h-3 w-3" strokeWidth={2} />
+          <Download className="h-3.5 w-3.5" strokeWidth={2} />
           {downloading ? '已打开' : '下载更新'}
         </button>
         <button
@@ -73,7 +75,7 @@ export function UpdateBanner({
           aria-label="关闭更新提示"
           className="btn-icon rounded-full text-white/50 hover:text-white"
         >
-          <X className="h-3.5 w-3.5" strokeWidth={1.8} />
+          <X className="h-4 w-4" strokeWidth={1.8} />
         </button>
       </div>
     )

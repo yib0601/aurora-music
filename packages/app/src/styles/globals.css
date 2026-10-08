@@ -434,6 +434,23 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     @apply border-border;
   }
 
+  :root {
+    /* ===== 窗口顶部浮层带高度（唯一事实源） =====
+     * 这条带子不占文档流（TitleBar 与内容列的顶栏工具带都是 absolute 浮层），
+     * 因此它的高度会被三处引用：① 侧栏 / 内容列 / 右侧瓷砖的顶部留白补偿；
+     * ② 内容列顶栏工具带自身；③ 歌曲详情页滚动容器的上延量与内容首行留白。
+     * 三处原先各写 `pt-11` / `h-11` / `-top-11` / `md:pt-[76px]` 四个魔数，
+     * 改一次高度要同时找齐四个落点（漏一处就是「内容被顶栏压住」或「凭空多一段空白」）。
+     * 现在带高只在这里定义，各处一律引用本变量。
+     *
+     * 为什么是 68px：带内主控件是 44px 的搜索入口（DS lg 档，与主播放按钮同档），
+     * 上下各留 12px（DS 间距阶梯的标准档）= 68px。带高沿用 44px 时，控件要么顶满
+     * 整条（上下 0 空隙、贴着窗口边），要么被压到 30px 才放得下 —— 前者是「过于靠近顶部」，
+     * 后者是「有点小」，两个抱怨同源：带子本身太矮，装不下一个正经的主入口控件。
+     * 60px 试过（上下各 8px），入口只从 y=4 挪到 y=8，仍读作贴在天花板上。 */
+    --titleband-h: 68px;
+  }
+
   html, body {
     background: var(--fc-bg);
     color: var(--fc-ink);
@@ -836,23 +853,33 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   }
   .search-entry:hover { color: var(--btn-icon-hover-color); background: var(--btn-icon-hover-bg); border-color: rgb(var(--tw-white) / .16); transform: translateY(-1px); }
   .search-entry:active { transform: translateY(0) scale(.97); }
+  /* 图标与占位文字尺寸写在这里而不是组件里的 Tailwind 类：
+   * 组件里写 `h-4 w-4` / `text-[13px]` 落在 utilities 层，会把 .search-entry-compact
+   * 那一档的字号/图标一起钉死成 md 档规格（compact 是 44px 高的大档，配 13px 字
+   * 就是「框大了字没大」，正是「有点小」的第三个来源）。 */
+  .search-entry-icon { width: 16px; height: 16px; }
+  .search-entry-label { font-size: 13px; }
 
   /* 顶栏工具带里的入口形态：高度取 DS 的 lg 档 44px（与主播放按钮同档），
    * 宽度 380px。尺寸一律在这里管，调用方不再写 Tailwind 尺寸类：
    * utilities 层会压过本层，窄窗那道压缩态就收不成图标钮（详见下方媒体查询）。
    *
    * 为什么不是「小档」也不是「与窗口按钮齐平」：
-   * 与 30px 的窗口控制按钮逐像素拉平过，代价是入口在一条 56px 的带子里
-   * 又小又扁——窗口按钮是原生资产区，不该绑架内容区入口的尺寸档。
-   * 现在入口坐在带的底线上（App 的工具带行用 items-end），下沿与内容列起点齐平，
-   * 上方留出 12px 呼吸，读作「顶栏主体」而不是「贴在窗框上的小胶囊」。 */
+   * 与 30px 的原生窗口按钮逐像素拉平过，代价是入口在窗口顶栏里又小又扁 ——
+   * 窗口按钮是原生资产区（各平台自带档位），不该绑架内容区入口的尺寸档。
+   * 现在带高 68px（--titleband-h）、入口 44px 居中，上下各留 12px：
+   * 既离开窗口上沿，又撑得起这块面积。 */
   .search-entry-compact {
     height: 44px;
     width: 380px;
     min-width: 0;
-    padding: 0 16px;
-    gap: 10px;
+    padding: 0 18px;
+    gap: 12px;
   }
+  /* 大档规格：44px 的框要配 15px 占位文字与 18px 图标才立得住，
+   * 沿用 md 档的 13px/16px 会显得「框撑大了、内容还是小的」。 */
+  .search-entry-compact .search-entry-label { font-size: 15px; }
+  .search-entry-compact .search-entry-icon { width: 18px; height: 18px; }
 
   /* 小屏（<640px，手机）压缩态：手机内容列仅约 358px，保留 120px 硬性 min-width
    * 会把同行页面大标题挤成 0 宽（标题文字消失）、工具栏整体溢出屏幕右缘。
