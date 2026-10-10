@@ -3,6 +3,10 @@
   "version": "0.6.2",
   "license": "PolyForm-Noncommercial-1.0.0",
   "private": true,
+  "scripts": {
+    "sync:android": "pnpm --filter @aurora/app build && npx cap sync android && node scripts/patch-capacitor-agp.mjs",
+    "build:android": "pnpm run sync:android && cd android && ./gradlew assembleRelease"
+  },
   "dependencies": {
     "@capacitor/android": "^6.2.0",
     "@capacitor/app": "^6.0.1",
