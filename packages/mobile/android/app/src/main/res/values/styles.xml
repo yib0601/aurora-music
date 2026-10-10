@@ -30,12 +30,26 @@
     </style>
 
     <!--
-      启动主题。缺失 postSplashScreenTheme 时，core-splashscreen 无法把窗口切回
-      运行时主题，系统栏会一直停留在启动主题的默认样式上（真机实测：状态栏
-      #757575 灰、导航栏 #FAFAFA 白，与深色播放器割裂），这里补上必须的一行。
+      启动主题。启动链路上的每一层都要显式给值，不能吃库/系统的默认值：
+
+        1. android:background —— 冷启动第一帧的窗口背景（启动图）。Capacitor 模板
+           自带的 res/drawable*/splash.png 是白底占位图，与深色主界面割裂；本仓库
+           的启动图由品牌 SVG 生成（scripts/generate-icons.sh），底色与
+           colors.xml 的 aurora_window_bg 同值。
+        2. windowSplashScreenBackground —— AndroidX core-splashscreen 的启动画面
+           底色（API < 31 的兼容路径与 API >= 31 的系统路径都读它）。不显式给值时
+           取主题的 colorBackground，浅色系统主题下会先闪一帧白底。
+        3. postSplashScreenTheme —— 缺失时 core-splashscreen 无法把窗口切回运行时
+           主题，系统栏会一直停留在启动主题的默认样式上（真机实测：状态栏 #757575
+           灰、导航栏 #FAFAFA 白，与深色播放器割裂）。
+        4. 不声明 windowSplashScreenAnimatedIcon：默认取应用图标
+           （@mipmap/ic_launcher，同样由 scripts/generate-icons.sh 从品牌 SVG 生成），
+           与启动图里的居中图形同源；显式再挂一份只在 API < 31 的兼容路径上多出
+           一层与启动图叠加的图标，收益为零。
     -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/aurora_window_bg</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

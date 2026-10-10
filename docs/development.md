@@ -16,12 +16,21 @@ pnpm --filter @aurora/app test      # 渲染层与移动端缓存落盘
 ## Android 构建
 
 ```bash
-pnpm build:app
-cd packages/mobile && npx cap sync android
-cd android && ./gradlew assembleDebug   # 产物在 app/build/outputs/apk/
+pnpm build:android   # 前端产物 → cap sync → release APK，一条命令
+# 只改原生代码（Web 层没动）时可以省掉同步，直接重跑 gradle：
+cd packages/mobile/android && ./gradlew assembleRelease
 ```
 
-Web 层改动需先 `build:app` 再 `cap sync`，否则打包旧资源；原生代码改动只需重跑 gradlew。
+产物在 `packages/mobile/android/app/build/outputs/apk/`。
+
+Web 层改动必须先 `build:app` 再 `cap sync`，否则打进 APK 的是上一次的前端产物 ——
+`pnpm build:android` 就是把这两步串在一起，让这条依赖没机会被跳过。
+
+应用图标、启动图与 web favicon 都由 `packages/desktop/resources/icon*.svg` 派生，统一交给
+`scripts/generate-icons.sh` 生成（`pnpm verify:brand` 校验一致性，CI 的 android job 已接入）。
+换品牌图形时改 SVG 后重跑一次即可，不要单独去改 `res/drawable*/splash.png` 或 mipmap：
+启动图曾长期停留在 Capacitor 模板的白底占位图上，根因就是那次「替换全平台图标」漏掉了
+这一组派生资源，而当时没有任何东西会提示漏了。
 
 ## 多语言开发
 

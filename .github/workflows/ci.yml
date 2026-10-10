@@ -125,6 +125,15 @@ jobs:
       - name: Build shared
         run: pnpm --filter @aurora/shared build
 
+      - name: Verify brand assets match SVG sources
+        # 启动图曾长期停在 Capacitor 模板的白底占位图上：「替换全平台图标」那次只
+        # 覆盖了 mipmap 与桌面图标，车机开屏依旧是旧图且没有任何提示。这一步把
+        # 派生资源（启动图 / 应用图标 / favicon / 启动链路底色）与品牌 SVG 的一致性
+        # 卡在 PR 阶段，而不是等用户装到车机上才发现。
+        run: |
+          command -v identify >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y imagemagick; }
+          bash scripts/generate-icons.sh --check
+
       - name: Build app bundle (vite)
         run: pnpm --filter @aurora/app build
 
@@ -143,11 +152,8 @@ jobs:
       - name: Patch Capacitor libraries for AGP 9.x compatibility
         # AGP 9.x 移除了对 getDefaultProguardFile('proguard-android.txt') 的支持，
         # 但 Capacitor 6.x 各包仍使用旧文件名，需在 cap sync 后批量替换。
-        run: |
-          find node_modules/.pnpm/@capacitor*/node_modules -name "build.gradle" \
-            -exec sed -i "s|proguard-android\.txt|proguard-android-optimize.txt|g" {} \;
-          find node_modules/.pnpm/@capacitor-community*/node_modules -name "build.gradle" \
-            -exec sed -i "s|proguard-android\.txt|proguard-android-optimize.txt|g" {} \;
+        # 与本地 `pnpm build:android` 共用同一个脚本，避免两边逻辑漂移。
+        run: node packages/mobile/scripts/patch-capacitor-agp.mjs
 
       - name: Cache Gradle
         uses: actions/cache@v4

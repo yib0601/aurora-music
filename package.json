@@ -18,9 +18,11 @@
     "build:app": "pnpm --filter @aurora/app build",
     "build:desktop": "pnpm --filter @aurora/desktop build",
     "build:deb": "bash build-deb.sh",
+    "build:android": "pnpm --filter @aurora/mobile build:android",
     "preview": "pnpm --filter @aurora/app preview",
     "install:all": "pnpm install",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "verify:brand": "bash scripts/generate-icons.sh --check",
     "verify:hall-error": "node scripts/verify-hall-error-message.cjs",
     "verify:i18n": "node scripts/check-i18n.mjs",
     "verify:i18n:strict": "node scripts/check-i18n.mjs --strict"
