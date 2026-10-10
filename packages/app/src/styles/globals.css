@@ -870,11 +870,19 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    * 那一档的字号/图标一起钉死成 md 档规格（compact 是 44px 高的大档，配 13px 字
    * 就是「框大了字没大」，正是「有点小」的第三个来源）。 */
   .search-entry-icon { width: 16px; height: 16px; }
-  .search-entry-label { font-size: 13px; }
+  /* 占位文案必须自己让位：label 是 flex item，默认 `min-width: auto` 会按内容撑开，
+   * 框被压窄时文字直接顶到圆角外；给 0 + 裁剪后最坏也只是把文案截短，不会溢出框体。 */
+  .search-entry-label { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
-  /* 顶栏工具带里的入口形态：高度取 DS 的 lg 档 44px（与主播放按钮同档），
-   * 宽度 380px。尺寸一律在这里管，调用方不再写 Tailwind 尺寸类：
-   * utilities 层会压过本层，窄窗那道压缩态就收不成图标钮（详见下方媒体查询）。
+  /* 顶栏工具带里的入口形态：高度取 DS 的 lg 档 44px（与主播放按钮同档）。
+   * 尺寸一律在这里管，调用方不再写 Tailwind 尺寸类：utilities 层会压过本层，
+   * 窄窗那道压缩态就收不成图标钮（见下方小屏媒体查询）。
+   *
+   * 宽度**自适应**：--top-search-w 由 App 按带子实测可用宽度算出
+   * （`clamp(220, 带子宽 × .3, 380)`，见 App 的 TOP_SEARCH_* / topSearchWidth），
+   * 这里只留 380 作兜底（变量未注入的场合）。老写法灌死 380：内容列限宽 1200 时
+   * 就占掉将近三分之一，窗口一路拖窄它还是 380 —— 「小屏模式这个搜索框有点大」
+   * 的根因就是它不认识带子还剩多少宽度。
    *
    * 为什么不是「小档」也不是「与窗口按钮齐平」：
    * 与 30px 的原生窗口按钮逐像素拉平过，代价是入口在窗口顶栏里又小又扁 ——
@@ -883,7 +891,7 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    * 既离开窗口上沿，又撑得起这块面积。 */
   .search-entry-compact {
     height: 44px;
-    width: 380px;
+    width: var(--top-search-w, 380px);
     min-width: 0;
     padding: 0 18px;
     gap: 12px;

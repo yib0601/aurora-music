@@ -60,10 +60,28 @@ let initialScanTriggered = false
 
 /**
  * 顶栏工具带「左入口 + 右更新胶囊」并排所需的最小内联宽度（px）。
- * 组成：入口 380 + 两端间距 16 + 更新胶囊约 250 ≈ 646，取 700 留出余量
- * （带子在 1200px 内容列上内联宽约 1136，在 600px 窄桌面窗口上只剩约 344）。
+ * 组成：入口 380（它的上限，实际宽度自适应，见 TOP_SEARCH_*）+ 两端间距 16
+ * + 更新胶囊约 250 ≈ 646，取 700 留出余量。
+ * 带子内联宽度实测（浏览器预览；它只由侧栏 / 右瓷砖 / 内容列限宽决定，与是否 Electron 外壳无关）：
+ * 视口 1200 → 976，视口 700 → 476，视口 ≥1600 被内容列的 max-w-[1200px] 截住。
  */
 const TOP_BAND_MIN_INLINE = 700
+
+/**
+ * 顶栏搜索入口的宽度自适应参数：入口宽度 = `clamp(MIN, 带子实测宽度 × RATIO, MAX)`。
+ * - 上限 380 保住大屏观感（内容列限宽 1200 时带子约 1200，算出来 360，够立住）
+ * - 下限 220 是**占位文案完整显示**所需的最小宽度：中文那串
+ *   「搜索歌曲、歌手、专辑」（15px 约 149px）+ 图标 18 + 间距 12 + 左右内边距 36 + 边框 2
+ *   ≈ 217。再往下压就只能把文案裁成半句，不如到此为止（英文文案更长，
+ *   label 上的 ellipsis 会在窄档替它收尾）
+ * - 手机档（<640px）仍由 globals.css 的媒体查询收成图标钮，与本参数无关
+ * 判据一律用**带子实测宽度**，不用视口宽度 —— 理由同 TOP_BAND_MIN_INLINE：
+ * 带子被侧栏 / 右侧瓷砖 / 内容列 max-w-[1200px] 三重约束，与视口宽度不成正比
+ * （实测：视口 1200 → 带子 976，视口 1600 → 带子 1200）。
+ */
+const TOP_SEARCH_MAX_W = 380
+const TOP_SEARCH_MIN_W = 220
+const TOP_SEARCH_BAND_RATIO = 0.3
 
 // 扫描增量入库的批量阈值：攒满 SCAN_BATCH_SIZE 首、或距首次入队超过 SCAN_FLUSH_MS 毫秒，
 // 才写一次 store。逐首写入意味着「N 首歌 = N 次整表重渲染」，是歌曲多时卡顿的主因。
@@ -141,20 +159,27 @@ function AppLayout() {
   const setSearchOpen = useUIStore((s) => s.setSearchOpen)
   const isSettings = isRoute(ROUTES.settings, location.pathname)
   // 搜索入口两副形态，互斥渲染（同一个组件、同一份浮层，只是落点与宽度不同）：
-  // - 宽档：顶栏工具带左端（下方 JSX），固定在 380×44 —— 它上面没有任何容器边界，
-  //   太窄会在 1200px 内容列上显得像一枚孤零零的小胶囊，太矮则顶不住整条窗口顶栏
+  // - 宽档：顶栏工具带左端（下方 JSX），高度固定 44、宽度随带子自适应（见 TOP_SEARCH_*）
   // - 窄档手机：MobileNav 顶栏右缘，保持自然宽度（<640px 会退化成 44px 方形图标按钮）
-  // 宽档只给形态类，尺寸（380×44）写在 .search-entry-compact 里统一管：
-  // Tailwind 的尺寸类在 utilities 层，会压过 CSS 里窄窗那道压缩态（见 globals.css）。
-  const topSearch = isSettings ? null : <SearchEntry className="search-entry-compact" />
+  // 宽档只给形态类，尺寸写在 .search-entry-compact 里统一管：
+  // Tailwind 的尺寸类在 utilities 层，会压过 CSS 里那道压缩态（见 globals.css）。
   const mobileSearch = isSettings ? null : <SearchEntry />
   // 顶栏工具带能否同时容下「左入口 + 右更新胶囊」：按**实测可用宽度**分档，
   // 不用视口宽度 —— 带子被内容列宽度与 max-w-[1200px] 双重约束，两者不成正比。
-  // 需要的内联宽度 = 左右内边距 + 入口 280 + 间距 16 + 胶囊 237（约 597；取 620 留余量）；
+  // 需要的内联宽度 = 左右内边距 + 入口（上限 380）+ 间距 16 + 胶囊 237（约 646；取 700 留余量）；
   // 不够时把更新提示退回内容流里的整行横幅，避免两端叠在一起（520px 窗口实测会重叠
   // 200px 以上：入口 240–276 与胶囊 133–370）。
   const { ref: topBandRef, width: topBandWidth } = useContainerWidth<HTMLDivElement>()
   const inlineUpdate = hasFloatingTopBar && topBandWidth !== null && topBandWidth >= TOP_BAND_MIN_INLINE
+  // 入口宽度：`clamp(下限, 带子宽 × 比例, 上限)`。未测量时先按上限画，
+  // 随后由 useContainerWidth 的 useLayoutEffect 在 paint 前修正，不会闪。
+  const topSearchWidth =
+    topBandWidth === null
+      ? TOP_SEARCH_MAX_W
+      : Math.round(
+          Math.min(TOP_SEARCH_MAX_W, Math.max(TOP_SEARCH_MIN_W, topBandWidth * TOP_SEARCH_BAND_RATIO))
+        )
+  const topSearch = isSettings ? null : <SearchEntry className="search-entry-compact" />
   const isSettingsRef = useRef(isSettings)
   useEffect(() => { isSettingsRef.current = isSettings }, [isSettings])
   useEffect(() => {
@@ -951,7 +976,15 @@ function AppLayout() {
                     className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex items-center justify-between"
                   >
                     {topSearch && (
-                      <div className="titlebar-no-drag pointer-events-auto">{topSearch}</div>
+                      <div
+                        className="titlebar-no-drag pointer-events-auto"
+                        /* 入口宽度由带子实测宽度算好后经 CSS 变量下传：
+                           尺寸只写在 .search-entry-compact 一处（utilities 层会压过它，
+                           见 globals.css），这里不下发任何尺寸类 */
+                        style={{ '--top-search-w': `${topSearchWidth}px` } as React.CSSProperties}
+                      >
+                        {topSearch}
+                      </div>
                     )}
                     {/* 更新胶囊：外壳标题栏已代为承载时不重复渲染（二者同高同行，
                         只是落在窗口控制按钮左侧——那里是窗口级的右端）；
