@@ -16,5 +16,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // 语言夹具（见 src/test/localeFixture.ts）：
+    // 断言文案的用例必须知道自己跑在哪种语言下。Node 21 起全局 navigator 真实存在，
+    // 不锁的话同一批断言会随 runner 的语言（en-US）与开发机（zh-CN）一个红一个绿。
+    setupFiles: ['./src/test/localeFixture.ts'],
   },
 })
