@@ -25,7 +25,8 @@
     "verify:brand": "bash scripts/generate-icons.sh --check",
     "verify:hall-error": "node scripts/verify-hall-error-message.cjs",
     "verify:i18n": "node scripts/check-i18n.mjs",
-    "verify:i18n:strict": "node scripts/check-i18n.mjs --strict"
+    "verify:i18n:strict": "node scripts/check-i18n.mjs --strict",
+    "verify:webview": "node scripts/verify-webview-compat.mjs"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
