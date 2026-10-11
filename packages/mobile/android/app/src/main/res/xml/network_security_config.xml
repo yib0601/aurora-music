@@ -12,4 +12,16 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">kuwo.cn</domain>
     </domain-config>
+
+    <!-- QQ 音乐直链域名（封面 qpic.y.qq.com、音频 aqqmusic.tc.qq.com 等全部子域）。
+         仅放开 WebView 混合内容不够：明文 HTTP 在 OS 层还会被 base-config 拦一次 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">qq.com</domain>
+    </domain-config>
+
+    <!-- 本机自建的音源服务（localhost 明文 HTTP）：用户在本机/模拟器跑源服务是
+         常见部署，本地回环没有公网窃听风险，放行 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
 </network-security-config>
