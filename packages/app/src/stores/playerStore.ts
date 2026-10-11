@@ -189,11 +189,17 @@ function confirmResolved(ready: Track): boolean {
  * 在线曲目在落盘时也剥离了地址。
  * 没有这道闸门，播放器会拿着空地址去加载，表现为「双击了但没声音」，且毫无提示。
  *
+ * 判据只看**有没有可播放地址**：此前还额外要求曲目自带 trackRef / onlineSource /
+ * onlineId 才放行，于是音乐库的歌单/榜单详情页构造出来的条目（只有歌名与歌手）
+ * 被判成「无需取址」直接进播放器，加载必然失败——进度停在 0:00、一声不出，
+ * 随后还会被 error 路径当成坏文件逐首踢出队列（见 confirmResolved 与 audioEvents 的
+ * error 订阅）。带令牌的曲目由 ensurePlayableTrack 内部优先按令牌取址，
+ * 无令牌的退化为「歌名 + 歌手」重新搜索，两条路都归它收口。
+ *
  * 取址失败不阻断：返回原曲目，交给播放器按原有语义处理（无地址即不播放）。
  */
 async function resolveBeforePlay(track: Track): Promise<Track> {
-  if (track.path || track.onlineUrl || track.remoteUrl) return track
-  if (!track.trackRef && !track.onlineSource && !track.onlineId) return track
+  if (hasPlayableSrc(track)) return track
   try {
     const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
     return (await ensurePlayableTrack(track)) || track
@@ -211,10 +217,12 @@ async function resolveBeforePlay(track: Track): Promise<Track> {
  * 已解封的 await 回调**里按入队顺序执行 —— 第二首的 markPlaying 会落在第一首的
  * 回调之后，形成「点的是 B，最后显示 A」。有了这个同步分支，有地址的曲目走
  * 全同步路径，调用顺序严格等于用户点击顺序。
+ *
+ * 判据与 resolveBeforePlay 同一份：本地曲目（path 有值）与已取到地址的在线曲目
+ * 都短路，零开销不变；**没有地址的一律视作有待取址**，不再要求自带定位令牌。
  */
 function hasResolvableGap(track: Track): boolean {
-  if (hasPlayableSrc(track)) return false
-  return !!(track.trackRef || track.onlineSource || track.onlineId)
+  return !hasPlayableSrc(track)
 }
 
 /** 取址 → 播放（自动续播路径共用）：取址失败就按原样交给播放器，保持既有语义 */

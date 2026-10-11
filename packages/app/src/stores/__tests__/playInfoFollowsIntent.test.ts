@@ -123,7 +123,11 @@ function trackOf(over: Partial<Record<string, any>> = {}) {
   } as any
 }
 
-/** 无地址的在线条目：唯一触发取址闸门的形态（无 path / onlineUrl / remoteUrl） */
+/**
+ * 无地址的在线条目：触发取址闸门的典型形态（无 path / onlineUrl / remoteUrl）。
+ * 闸门判据只有「有没有可播放地址」，带不带定位令牌都会进水；令牌只决定
+ * ensurePlayableTrack 内部走「按令牌取址」还是「按歌名 + 歌手重搜」。
+ */
 function unresolved(id: string) {
   return trackOf({ id, title: `歌-${id}`, onlineSource: 'src-1', onlineId: id })
 }
@@ -396,5 +400,39 @@ it('2b 乱序回填：A 的取址在用户已切到 B 之后返回，不得覆�
     // 出错的就是当前曲目时，既有自动跳过语义不变
     audioEvents.emit('error', { error: new Error('now'), trackId: 'B' })
     expect(store.getState().queue.map((t: any) => t.id)).toEqual(['A'])
+  })
+
+  /**
+   * 音乐库的歌单/榜单详情页构造的条目只有歌名与歌手（来源 id、源内 id 都可能缺席）。
+   * 闸门早先要求「自带 trackRef / onlineSource / onlineId」才放行，这类条目于是被判成
+   * 「无需取址」直接拿空地址进播放器：加载必然失败，且 error 路径会把它们当坏文件
+   * 逐首踢出队列——用户看到的就是「点了没声音、进度停在 0:00、队列自己变短」。
+   */
+  it('10 无定位令牌的曲目（歌单/榜单形态）同样走取址闸门并起播', async () => {
+    const store = await loadStore()
+    h.resolve = (t: any) =>
+      Promise.resolve({ ...t, onlineUrl: 'http://x/hall.mp3', onlineSource: 'src-1', onlineId: 'songmid-1' })
+    const hall = trackOf({ id: 'hall-70-0', title: '榜单曲目', artist: '歌手' })
+
+    store.setState({ queue: [], currentIndex: -1, currentTrack: null, resolvingTrackId: null })
+    await store.getState().playQueue([hall], 0)
+
+    expect(h.resolveCalls).toEqual(['hall-70-0']) // 进了闸门
+    expect(h.audio.length).toBe(1)
+    expect(h.audio[0].track.onlineUrl).toBe('http://x/hall.mp3')
+    expect(store.getState().currentTrack?.onlineUrl).toBe('http://x/hall.mp3')
+  })
+
+  it('11 有地址的曲目仍零开销：本地文件与已取址曲目都不触发取址', async () => {
+    const store = await loadStore()
+    const local = trackOf({ id: 'L1', title: '本地', path: '/music/a.flac' })
+    const online = trackOf({ id: 'O1', title: '在线', onlineUrl: 'http://x/o.mp3', onlineSource: 'src-1' })
+
+    store.setState({ queue: [], currentIndex: -1, currentTrack: null, resolvingTrackId: null })
+    await store.getState().playQueue([local, online], 1)
+
+    expect(h.resolveCalls).toEqual([])
+    expect(h.audio.length).toBe(1)
+    expect(h.audio[0].track.id).toBe('O1')
   })
 })
