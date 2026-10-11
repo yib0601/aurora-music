@@ -21,8 +21,8 @@ import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStor
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useT } from '@/i18n'
-import { matchTracksByNames, type AppTranslator } from '@aurora/shared'
-import type { Track } from '@/types'
+import { matchTracksByNames, musicHallSourceOf, type AppTranslator } from '@aurora/shared'
+import type { MusicHallSource, Track } from '@/types'
 
 /**
  * 音乐库详情页：推荐歌单 / 榜单共用。
@@ -55,6 +55,9 @@ export function MusicHallDetailPage() {
   const loadPlaylistDetail = useMusicHallStore((s) => s.loadPlaylistDetail)
 
   const libraryTracks = useLibraryStore((s) => s.tracks)
+  // 音源配置：构造可播放曲目时要带上「来源 id + 源内 id」（见 baseTracks），
+  // 订阅它则保证设置页改过音源后本页曲目立即跟着换源
+  const onlineSources = useLibraryStore((s) => s.onlineSources)
   // 正在播放的曲目：用于把列表里对应的那一行点亮（详情页属于「浏览中」，必须能看出
   // 当前在放的是本页第几首，否则点下去只有底部播放条有反应，列表看起来毫无变化）
   const currentTrack = usePlayerStore((s) => s.currentTrack)
@@ -88,6 +91,7 @@ export function MusicHallDetailPage() {
         artist: s.artist,
         duration: s.duration,
         coverUrl: s.coverUrl,
+        songmid: s.songmid,
       }))
     }
     if (!isToplist && playlistDetail?.data) {
@@ -99,6 +103,7 @@ export function MusicHallDetailPage() {
         artist: s.artist,
         duration: s.duration ?? 0,
         coverUrl: s.coverUrl,
+        songmid: s.songmid,
       }))
     }
     return []
@@ -117,6 +122,11 @@ export function MusicHallDetailPage() {
    *
    * ⚠️ id 必须**确定性**（`hall-<详情id>-<序号>`）：早先用 generateId() 每次调用都生成新 id，
    * 导致「按 id 把取到地址的曲目替换回队列」永远匹配不上，点歌静默无声。
+   *
+   * ⚠️ 在线占位要带上来源（onlineSource）与源内 id（onlineId / songmid）：缓存键由
+   * 「来源 + 源内 id」推导，缺了它每次播放都要重下一遍；来源也是「网络来源曲目加载
+   * 失败不踢队列」判据（isNetworkBackedTrack）的依据之一。封面同理——不带就只能显示占位图标。
+   *
    * 同时整表用 useMemo 冻结，播放时不再重复构造。
    */
   const baseTracks = useMemo<Track[]>(() => {
@@ -124,6 +134,8 @@ export function MusicHallDetailPage() {
       rows.map((r) => ({ title: r.title, artist: r.artist })),
       libraryTracks
     )
+    // 与 musicHallStore 内部同一判据（首个「已启用 + 服务形态」的音源）
+    const source = musicHallSourceOf(onlineSources as unknown as MusicHallSource[])
     return rows.map((r, i) => {
       const local = localMatches[i]
       if (local) return local
@@ -137,9 +149,12 @@ export function MusicHallDetailPage() {
         addedAt: 0,
         playCount: 0,
         liked: false,
+        coverUrl: r.coverUrl,
+        onlineSource: source?.id,
+        onlineId: r.songmid || undefined,
       }
     })
-  }, [rows, libraryTracks, id])
+  }, [rows, libraryTracks, id, onlineSources])
 
   const handlePlayAll = () => {
     if (baseTracks.length === 0) return
