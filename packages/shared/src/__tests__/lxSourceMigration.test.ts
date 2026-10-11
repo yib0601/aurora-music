@@ -83,10 +83,10 @@ describe('migrateOnlineSources（洛雪脚本源）', () => {
       { id: '', name: '', kind: 'lx', sourceUrl: LX_URL, enabled: true },
     ])
     expect(out[0].id).toMatch(/^src-/)
-    expect(out[0].name).toBe('洛雪音源')
+    expect(out[0].name).toBe('LX source')
     expect(out[0].enabled).toBe(false)
     expect(out[1].id).toMatch(/^src-/)
-    expect(out[1].name).toBe('洛雪音源')
+    expect(out[1].name).toBe('LX source')
     expect(out[1].enabled).toBe(true)
   })
 

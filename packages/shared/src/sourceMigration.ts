@@ -3,7 +3,7 @@ import { translateDefault } from './i18n'
 import type { OnlineSourceConfig, PlaylistResolverConfig } from './types'
 
 /**
- * 迁移时给无名音源补的默认名，一律走 `translateDefault`（源语言 zh-CN）**在调用时**取值：
+ * 迁移时给无名音源补的默认名，一律走 `translateDefault`（默认语言，现为英文）**在调用时**取值：
  * 这两个函数写出的是**持久化数据**（用户可改名，随后落库），同一份配置在切换界面语言后
  * 不该改名 —— 否则同一张音源卡片会在中英界面下显示成两个名字，引用它的地方各说各话。
  * 模块级不许求值文案，因此这里只写键，取值发生在每次迁移调用里（函数仍是纯函数：

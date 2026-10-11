@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-locale="zh-CN" class="dark">
+<html lang="en" data-locale="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -13,7 +13,7 @@
       // 1. <html lang> 决定首屏字体回退、断词与屏幕阅读器发音，等 React 挂载再改
       //    会让首屏用错字形（英文界面下先按 CJK 字形排一遍再重排，肉眼可见跳动）；
       // 2. 语言判定规则必须与 packages/shared/src/i18n/locale.ts 完全一致
-      //    （zh* → zh-CN、en* → en、其余 → 默认 zh-CN），所以下面这段是那份规则的
+      //    （zh* → zh-CN、en* → en、其余 → 默认 en），所以下面这段是那份规则的
       //    等价实现，改一处必须同步另一处；
       // 3. localStorage key 与 packages/app/src/stores/localeStore.ts 的持久化 key
       //    一致（aurora-locale）；存储形状是 { state: { language }, version: 1 }，
@@ -21,7 +21,7 @@
       // <html> 标签上的 lang / data-locale 静态初值与 DEFAULT_LOCALE 一致：
       // 脚本执行前与 JS 不可用时，语言作用域样式也不会落到「无属性」状态。
       ;(function () {
-        // 语言判定规则（与 localeStore 一致）：zh* → zh-CN，en* → en，其余 → 默认 zh-CN
+        // 语言判定规则（与 localeStore 一致）：zh* → zh-CN，en* → en，其余 → 默认 en
         var normalize = function (tag) {
           if (typeof tag !== 'string') return null
           var primary = tag.trim().toLowerCase().replace(/_/g, '-').split('-')[0]
@@ -36,7 +36,7 @@
             var matched = normalize(candidates[i])
             if (matched) return matched
           }
-          return 'zh-CN'
+          return 'en'
         }
         // 读取偏好：localStorage 里可能是坏 JSON、也可能被写成非法值。
         // 这里**必须**用局部 try 包住：整段共用一个 try 时，一次 JSON.parse 抛错
@@ -63,7 +63,7 @@
         try {
           applyLocale(readLocale())
         } catch (e) {
-          // 连 navigator 都不可用（极端环境）：静态初值 zh-CN 已在 <html> 上
+          // 连 navigator 都不可用（极端环境）：静态初值 en 已在 <html> 上
         }
 
         // ---- 主题 ----

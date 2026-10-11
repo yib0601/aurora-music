@@ -14,8 +14,13 @@ export const LOCALES = ['zh-CN', 'en'] as const
 
 export type Locale = (typeof LOCALES)[number]
 
-/** 未做任何设置、也匹配不到系统语言时的界面语言（项目源语言） */
-export const DEFAULT_LOCALE: Locale = 'zh-CN'
+/**
+ * 未做任何设置、也匹配不到系统语言时的界面语言。
+ *
+ * 字典源语言仍是中文，但兜底默认是英文：目录站（AppImageHub）面向全球用户，
+ * 要求非中文环境可回退到英文界面；中文系统（zh*）永远直接命中中文，不受影响。
+ */
+export const DEFAULT_LOCALE: Locale = 'en'
 
 /** 界面语言偏好的用户可选值：跟随系统 + 具体语言 */
 export const LANGUAGE_PREFERENCES = ['system', 'zh-CN', 'en'] as const
