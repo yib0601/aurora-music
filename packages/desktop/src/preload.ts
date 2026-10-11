@@ -81,11 +81,13 @@ const electronAPI = {
   // 从曲库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
   removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),
-  // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）
-  ensureCover: (id: string): Promise<string | null> => ipcRenderer.invoke('covers:ensure', id),
+  // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）；
+  // fallback 为不在曲库的曲目（在线快照）的元信息兜底，见主进程 covers:ensure
+  ensureCover: (id: string, fallback?: unknown): Promise<string | null> =>
+    ipcRenderer.invoke('covers:ensure', id, fallback),
   // 在线补齐封面（文件无内嵌封面时按标题/艺术家搜索在线歌源）
-  fetchOnlineCover: (id: string, options?: OnlineSearchOptions): Promise<string | null> =>
-    ipcRenderer.invoke('covers:fetchOnline', id, options),
+  fetchOnlineCover: (id: string, options?: OnlineSearchOptions, fallback?: unknown): Promise<string | null> =>
+    ipcRenderer.invoke('covers:fetchOnline', id, options, fallback),
   saveCover: async (coverData: ArrayBuffer, trackId: string): Promise<string> => {
     return ''
   },

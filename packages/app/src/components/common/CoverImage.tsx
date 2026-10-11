@@ -59,12 +59,12 @@ async function withCoverSlot<T>(task: () => Promise<T>): Promise<T> {
 /** 提取失败后的退避重试间隔（ms），重试耗尽后等下次挂载再试 */
 const COVER_RETRY_DELAYS = [2000, 4000, 8000]
 
-function requestCover(trackId: string): Promise<string | null> {
+function requestCover(trackId: string, fallback?: CoverTrack): Promise<string | null> {
   if (resolvedCovers.has(trackId)) return Promise.resolve(resolvedCovers.get(trackId)!)
   const running = inflightCovers.get(trackId)
   if (running) return running
 
-  const task = withCoverSlot(() => Promise.resolve(platform.ensureCover?.(trackId)))
+  const task = withCoverSlot(() => Promise.resolve(platform.ensureCover?.(trackId, fallback)))
     .then((result) => {
       // 成功与"确认无内嵌封面"都是终态，缓存避免重复解析同一音频文件
       resolvedCovers.set(trackId, result ?? null)
@@ -87,7 +87,7 @@ const resolvedOnlineCovers = new Map<string, string | null>()
 /** 进行中的在线获取，同一首歌的多个渲染实例复用同一个 Promise */
 const inflightOnlineCovers = new Map<string, Promise<string | null>>()
 
-function requestOnlineCover(trackId: string): Promise<string | null> {
+function requestOnlineCover(trackId: string, fallback?: CoverTrack): Promise<string | null> {
   if (resolvedOnlineCovers.has(trackId)) return Promise.resolve(resolvedOnlineCovers.get(trackId)!)
   const running = inflightOnlineCovers.get(trackId)
   if (running) return running
@@ -98,7 +98,7 @@ function requestOnlineCover(trackId: string): Promise<string | null> {
     if (!platform.fetchOnlineCover || !sources || sources.length === 0) {
       return Promise.resolve(null)
     }
-    return platform.fetchOnlineCover(trackId, { sources })
+    return platform.fetchOnlineCover(trackId, { sources }, fallback)
   })
     .then((result) => {
       // 成功与"确认无匹配"都缓存：在线没找到时本次会话不再重复刷歌源
@@ -117,8 +117,11 @@ function requestOnlineCover(trackId: string): Promise<string | null> {
   return task
 }
 
-/** 仅取封面相关字段，便于传入 playerStore 队列项等 Track 副本 */
-type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'coverUrl' | 'onlineUrl' | 'onlineId' | 'onlineSource'>
+/** 仅取封面相关字段，便于传入 playerStore 队列项等 Track 副本；
+ *  元信息字段（可选）供不在曲库的曲目（在线快照）下传主进程做封面兜底查询，
+ *  主进程对它们做运行时校验，缺标题即视为无效快照 */
+type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'coverUrl' | 'onlineUrl' | 'onlineId' | 'onlineSource'> &
+  Partial<Pick<Track, 'title' | 'artist' | 'album' | 'duration'>>
 
 /**
  * 远端封面（在线曲目的 coverUrl）的本地缓存地址。
@@ -229,7 +232,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
     let retryTimer: ReturnType<typeof setTimeout> | undefined
 
     const attempt = (retryIndex: number) => {
-      requestCover(trackId!).then(async (path) => {
+      requestCover(trackId!, track!).then(async (path) => {
         if (cancelled) return
         if (path) {
           setResolved(path)
@@ -248,7 +251,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
           return
         }
         // 确认无内嵌封面：在线歌源兜底（在线没找到则本次挂载到此为止）
-        const onlinePath = await requestOnlineCover(trackId!)
+        const onlinePath = await requestOnlineCover(trackId!, track!)
         if (cancelled || !onlinePath) return
         setResolved(onlinePath)
         updateTrack(trackId!, { coverPath: onlinePath })
@@ -272,7 +275,7 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
     img.onload = () => {
       if (cancelled) return
       if (Math.min(img.naturalWidth, img.naturalHeight) >= LOWRES_COVER_THRESHOLD) return
-      requestOnlineCover(trackId).then((onlinePath) => {
+      requestOnlineCover(trackId, track!).then((onlinePath) => {
         if (!cancelled && onlinePath) {
           setUpgraded(onlinePath)
           updateTrack(trackId, { coverPath: onlinePath })

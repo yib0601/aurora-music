@@ -431,25 +431,40 @@ export function registerIpcHandlers() {
   })
 
   // 按需补齐封面：扫描时为提速跳过了嵌入图片读取，UI 需要时单独提取并缓存
-  ipcMain.handle('covers:ensure', async (_event, id: string): Promise<string | null> => {
-    let track = getTrackById(id)
-    if (!track) {
-      // 渐进式扫描期间 UI 可能先于批量入库请求封面：等当前扫描队列落库后重查一次，
-      // 避免把"记录尚未写入"误判成"无封面"（渲染层会把 null 缓存一整个会话）
-      await scanChain
-      track = getTrackById(id)
-      if (!track) return null
+  ipcMain.handle(
+    'covers:ensure',
+    async (_event, id: string, fallback?: Partial<Track>): Promise<string | null> => {
+      let track = getTrackById(id)
+      if (!track) {
+        // 渐进式扫描期间 UI 可能先于批量入库请求封面：等当前扫描队列落库后重查一次，
+        // 避免把"记录尚未写入"误判成"无封面"（渲染层会把 null 缓存一整个会话）
+        await scanChain
+        track = getTrackById(id)
+      }
+      if (!track) {
+        // 在线曲目不进曲库（最近播放只存元数据快照），按 id 永远查不到：
+        // 用渲染层下传的快照兜底。快照无本地文件可解析，直接确认无内嵌封面，
+        // 交给渲染层走在线歌源兜底；带 path 的快照（扫描窗口期的本地曲目）才解析
+        if (!fallback || typeof fallback.title !== 'string' || !fallback.title) return null
+        if (!fallback.path) return null
+        track = { ...fallback, id } as Track
+      }
+      // 远端曲目走 Range 读文件头（不下载整曲），本地仍读磁盘文件
+      if (track.sourceId) return ensureRemoteCover(track, app.getPath('userData'))
+      return ensureCover(track, app.getPath('userData'))
     }
-    // 远端曲目走 Range 读文件头（不下载整曲），本地仍读磁盘文件
-    if (track.sourceId) return ensureRemoteCover(track, app.getPath('userData'))
-    return ensureCover(track, app.getPath('userData'))
-  })
+  )
 
   // 在线补齐封面：文件无内嵌封面时，按标题/艺术家搜索用户配置的在线歌源，
   // 取标题匹配（艺术家/时长加分）的候选封面下载缓存。无匹配返回 null。
   ipcMain.handle(
     'covers:fetchOnline',
-    async (_event, id: string, options?: OnlineSearchOptions): Promise<string | null> => {
+    async (
+      _event,
+      id: string,
+      options?: OnlineSearchOptions,
+      fallback?: Partial<Track>
+    ): Promise<string | null> => {
       // trackId 白名单校验：封面以 id 为文件名落盘，防路径穿越
       if (typeof id !== 'string' || !isValidTrackId(id)) return null
       // 标题/艺术家/时长一律以库内记录为准，不信任渲染层下传；记录未入库时同样等扫描落库
@@ -457,7 +472,18 @@ export function registerIpcHandlers() {
       if (!track) {
         await scanChain
         track = getTrackById(id)
-        if (!track) return null
+      }
+      if (!track) {
+        // 在线曲目快照（最近播放等）不在曲库：仅取元信息字段构造查询目标，
+        // 地址类字段一律丢弃——播放地址以源现搜为准，不信任渲染层副本
+        if (!fallback || typeof fallback.title !== 'string' || !fallback.title) return null
+        track = {
+          id,
+          title: fallback.title,
+          artist: typeof fallback.artist === 'string' ? fallback.artist : '',
+          album: typeof fallback.album === 'string' ? fallback.album : '',
+          duration: typeof fallback.duration === 'number' ? fallback.duration : 0,
+        } as Track
       }
       return fetchOnlineCover(track, app.getPath('userData'), options)
     }
