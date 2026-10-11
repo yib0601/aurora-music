@@ -1,27 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  网络安全配置：
-  - 默认禁止明文 HTTP（Android 9+ 行为）
-  - 音乐源返回的音频/封面存在 http 直链（如酷我 car-er.kuwo.cn 等），
-    按域名白名单放行明文，避免「搜索正常但播放失败」
+  网络安全配置：明文 HTTP 全量放行（不做域名白名单——白名单方案已被实践证伪，勿改回）
+
+  音源是**用户自己配置**的第三方服务，它返回的封面/音频直链域名不可穷举，且自家
+  上游就在多个注册域之间横跳：腾讯的封面既有 qpic.y.qq.com（qq.com 子域）也有
+  p.qpic.cn（另一个注册域，与 qq.com 没有后缀关系）。白名单漏一个域的表现是
+  「**部分**卡片封面只剩音符占位、其余正常」——用户既看不出规律也无法自查，只会
+  反馈「有些图加载不出来」。换源（网易 126.net / 酷狗 kugou.com / 咪咕等）还会
+  不断引入新域，白名单永远追不上。
+
+  桌面版（Electron）没有这一层限制，行为必须对齐：同一条源在两端看到同样的封面。
+
+  历史：582f183 曾以 kuwo.cn + qq.com + localhost 的白名单放行明文，仅覆盖了当时
+  实测到的域名；p.qpic.cn 的封面因此长期在移动端空白。
+
+  影响面：仅本应用进程走明文；应用不接第三方统计/广告 SDK，唯一的外呼对象就是
+  用户自己填的音源与其返回的直链。
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-
-    <!-- 酷我音乐直链域名（含全部子域：car-er/car-r/mobi/antiserver 等） -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">kuwo.cn</domain>
-    </domain-config>
-
-    <!-- QQ 音乐直链域名（封面 qpic.y.qq.com、音频 aqqmusic.tc.qq.com 等全部子域）。
-         仅放开 WebView 混合内容不够：明文 HTTP 在 OS 层还会被 base-config 拦一次 -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">qq.com</domain>
-    </domain-config>
-
-    <!-- 本机自建的音源服务（localhost 明文 HTTP）：用户在本机/模拟器跑源服务是
-         常见部署，本地回环没有公网窃听风险，放行 -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">localhost</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
