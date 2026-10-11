@@ -154,9 +154,15 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         {/* 无歌词时整组已在剩余空间内居中，空白上下对称；此时封面再放大一档
             （70vw/34vh → 80vw/42vh），把居中后仍然松散的下半屏填起来，
             否则「居中」只是把同一块纯黑从下方搬到了上下两侧 */}
+        {/* 矮屏（高 <780，见 lib/viewportTiers）：封面按**高度**让位。
+            915×412 实测：header 44 + 封面 42vh(173) + 标题块 70 + 空态歌词 75
+            + 进度条 40 + 控件 72 = 474 > 412，flex 压不下时进度条与「暂无歌词」
+            叠在一起。矮屏改取 26vh（412 → 107），并把标题/歌词的上下内距各收一档，
+            合计 ~405 落回屏内；竖屏手机（915 高）不入档，封面尺寸逐像素不变 */}
         <div className={cn(
           'relative aspect-square',
-          lyricsEmpty ? 'w-[min(80vw,42vh)]' : 'w-[min(70vw,34vh)]'
+          lyricsEmpty ? 'w-[min(80vw,42vh)]' : 'w-[min(70vw,34vh)]',
+          'short:w-[min(70vw,26vh)]'
         )}>
           <div
             aria-hidden
@@ -177,7 +183,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
       </div>
 
       {/* 标题区：歌名是画面第二焦点，曲目信息层级用字号+透明度两档表达 */}
-      <div className="relative px-10 pt-5 text-center">
+      <div className="relative px-10 pt-5 short:pt-3 text-center">
         <p className="font-display text-[19px] font-semibold text-white/[0.96] tracking-[-0.4px] truncate">
           {currentTrack?.title || t('player.state.notPlaying')}
         </p>
@@ -188,7 +194,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
 
       {/* 歌词：占据剩余高度。用 large 档——全屏页与桌面详情页同属「大面积」场景，
           13px 的默认档在整屏宽度上显得空；行高与上下渐隐由 LyricsView 内部给出 */}
-      <div className={cn('relative px-5 pt-3', lyricsEmpty ? 'flex-none' : 'flex-1 min-h-0')}>
+      <div className={cn('relative px-5 pt-3 short:pt-2', lyricsEmpty ? 'flex-none' : 'flex-1 min-h-0')}>
         <LyricsView
           large
           className="h-full"

@@ -327,7 +327,7 @@ export function SongDetailPage() {
       {/* 前景内容：收窄居中成列，Hero/歌词/专辑共用同一视觉轴，避免宽屏下内容松散 */}
       {/* 桌面端滚动容器上延到窗口顶（裁切边移出可视区），故 md 以上需补一条浮层带
           的高度（--titleband-h）加上本页自己的 pt-8，返回按钮同理下移 16px */}
-      <div className="relative mx-auto w-full max-w-[1160px] 2xl:max-w-[1400px] px-4 md:px-8 pt-4 md:pt-[calc(var(--titleband-h)+32px)] pb-32">
+      <div className="relative mx-auto w-full max-w-[1160px] 2xl:max-w-[1400px] ultrawide:max-w-[1560px] px-4 md:px-8 pt-4 md:pt-[calc(var(--titleband-h)+32px)] short:md:pt-[calc(var(--titleband-h)+16px)] pb-32 squat:pb-24">
         {/* 返回：圆形玻璃按钮，绝对定位悬浮左上角，与 Hero 同行，不独占一行以压缩纵向空间 */}
         <button
           onClick={goBack}
@@ -343,9 +343,16 @@ export function SongDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12 xl:gap-20 lg:items-center">
           <div className="min-w-0">
         {/* Hero：黑胶唱片 + 歌曲信息（宽屏左栏内改为纵向堆叠居中） */}
-        <section className="flex flex-col md:flex-row items-center gap-6 md:gap-12 lg:flex-col lg:gap-8">
+        {/* ⚠️ 矮屏（高 ≤780，见 lib/viewportTiers）：lg 档的竖排 + 320px 唱片在
+            1280×600 / 915×412 这类屏幕比例下必然把标题与操作按钮推到窗口底部、
+            被悬浮播放条永久遮住（.tmp-aspect 实测截图）。`short:lg:flex-row` 把
+            宽档竖排改回横排，纵向占用从 ~560px 压到 ~260px；宽度档位与间距都不动，
+            所以 1280×800（Electron 默认窗口）及以上的观感逐像素不变 */}
+        <section className="flex flex-col md:flex-row items-center gap-6 md:gap-12 lg:flex-col short:lg:flex-row lg:gap-8 short:lg:gap-8">
           {/* 唱片：移动端居中缩小，桌面端放大；宽屏左栏纵向堆叠时进一步放大 */}
-          <div className="w-[min(56vw,240px)] md:w-[260px] lg:w-[320px] xl:w-[360px] 2xl:w-[400px] flex-shrink-0">
+          {/* 矮屏下限 200px：唱片是详情页的视觉主体，再小就只剩一个黑圆；
+              横排下它与右侧标题块并置，200px 正好与标题块（~180px）等高 */}
+          <div className="w-[min(56vw,240px)] md:w-[260px] lg:w-[320px] xl:w-[360px] 2xl:w-[400px] short:lg:w-[200px] flex-shrink-0">
             <VinylCover track={track} spinning={isCurrent && isPlaying} />
           </div>
 
@@ -457,7 +464,11 @@ export function SongDetailPage() {
           {/* 歌词：宽屏右栏独占一列，当前行居中滚动；窄屏回退为 Hero 下方整行。
               无框悬浮设计：歌词直接浮于沉浸背景上（与左栏信息一致，不包卡片），
               上下渐隐由 LyricsView 自带渐变 mask 负责 */}
-          <section className="mt-10 md:mt-12 lg:mt-0 lg:h-[calc(100vh-220px)] lg:min-h-[480px] lg:max-h-[760px]">
+          {/* 矮屏高度收敛：`calc(100vh-220px)` 在 600px 高窗口算出 380px、又被
+              min-h-[480px] 顶回 480px，加 Hero 后整页 ~800px 塞进 600px 视口，
+              超出部分滚掉、正好落在悬浮播放条背后。矮屏档改为固定 340px
+              （约 9 行歌词 + 上下渐隐，够用），并解除 480px 下限 */}
+          <section className="mt-10 md:mt-12 lg:mt-0 lg:h-[calc(100vh-220px)] lg:min-h-[480px] lg:max-h-[760px] short:lg:h-[340px] short:lg:min-h-0 short:lg:max-h-[420px] short:mt-8">
             <div className="h-[360px] md:h-[480px] lg:h-full">
               <TrackLyrics
                 track={track}

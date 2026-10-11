@@ -8,6 +8,8 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { CoverImage } from '@/components/common/CoverImage'
 import { useContainerWidth } from '@/hooks/useContainerWidth'
+import { useViewportMatch } from '@/hooks/useViewportMatch'
+import { SQUAT_VIEWPORT_QUERY } from '@/lib/viewportTiers'
 
 interface PlayerBarProps {
   currentTrack?: Track | null
@@ -64,12 +66,19 @@ export function PlayerBar(props: PlayerBarProps) {
   // 与视口宽度不成正比，必须实测。测量用 useLayoutEffect 同步落值，
   // 首帧即定格在正确档位，不会先画完整档再翻紧凑档
   const { ref, width } = useContainerWidth<HTMLDivElement>()
+  // 极矮屏（高 <560，见 lib/viewportTiers）额外降一档：
+  // 手机横屏 915×412 时播放条被 clamp 到 640px ⇒ 宽度判据认为「宽敞」，
+  // 于是用完整档（高约 130px，含封面列 + 音量条 + 进度行），一屏只剩 282px；
+  // 紧凑档单行 62px，同样的内容区直接多出 68px。判据取视口高度而非容器宽度，
+  // 因为这里要解决的问题是**纵向**不够，宽度测量对高度信息一无所知。
+  const squatViewport = useViewportMatch(SQUAT_VIEWPORT_QUERY)
 
   return (
     <div ref={ref} className="w-full">
       {/* width 为 null = 尚未测量（首帧）。此帧给完整档：它是功能超集，
-          且内部各有 flex-wrap 兜底，极窄下只会换行不会溢出 */}
-      {width !== null && width < COMPACT_MAX_WIDTH ? (
+          且内部各有 flex-wrap 兜底，极窄下只会换行不会溢出。
+          squatViewport 走 matchMedia 惰性初值，首帧即正确，不依赖上面那次测量 */}
+      {squatViewport || (width !== null && width < COMPACT_MAX_WIDTH) ? (
         <CompactBar {...props} />
       ) : (
         <FullBar {...props} />
