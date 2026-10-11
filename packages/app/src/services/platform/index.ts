@@ -79,14 +79,21 @@ export interface PlatformExtension {
    * 按需补齐封面（桌面端）：扫描阶段用 skipCovers 跳过内嵌图片读取以提速，
    * 记录中无 coverPath 时由 UI 调用本方法单独提取并缓存，返回封面绝对路径。
    * 曲目无内嵌封面时返回 null。移动端扫描阶段已内联提取，故不实现此方法。
+   * fallback：不在曲库的曲目（在线快照）的元信息兜底，主进程据此判定形态。
    */
-  ensureCover?: (trackId: string) => Promise<string | null>
+  ensureCover?: (trackId: string, fallback?: Partial<Track>) => Promise<string | null>
   /**
    * 在线补齐封面（桌面端）：文件无内嵌封面时，按标题/艺术家搜索用户配置的
    * 在线歌源，下载匹配候选的封面并缓存，返回封面绝对路径。无匹配返回 null。
    * options.sources 为渲染层持有的歌源配置（应用不内置源）。
+   * fallback：不在曲库的曲目（在线快照）的元信息兜底，主进程仅取标题/艺术家/
+   * 时长构造查询，地址类字段一律不信任。
    */
-  fetchOnlineCover?: (trackId: string, options?: OnlineSearchOptions) => Promise<string | null>
+  fetchOnlineCover?: (
+    trackId: string,
+    options?: OnlineSearchOptions,
+    fallback?: Partial<Track>
+  ) => Promise<string | null>
   /**
    * 从曲库移除某个扫描目录：连该目录下的曲目记录一起删除，返回移除后的全库曲目。
    * 目录条目本身由调用方从 scanFolders 中删除（库数据与配置分离）。
@@ -372,13 +379,13 @@ export function createDesktopPlatform(): Platform {
       if (!api?.getAllTracks) return []
       return api.getAllTracks()
     },
-    async ensureCover(trackId: string) {
+    async ensureCover(trackId: string, fallback?: Partial<Track>) {
       if (!api?.ensureCover) return null
-      return api.ensureCover(trackId)
+      return api.ensureCover(trackId, fallback)
     },
-    async fetchOnlineCover(trackId: string, options?: OnlineSearchOptions) {
+    async fetchOnlineCover(trackId: string, options?: OnlineSearchOptions, fallback?: Partial<Track>) {
       if (!api?.fetchOnlineCover) return null
-      return api.fetchOnlineCover(trackId, options)
+      return api.fetchOnlineCover(trackId, options, fallback)
     },
     async removeFolder(folderPath: string) {
       if (!api?.removeFolder) return []
