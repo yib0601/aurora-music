@@ -281,6 +281,40 @@
   }
 }
 
+/* ===== 老 WebView 的按钮背景兜底（车机整片白块事故） =====
+ * 病灶：preflight 的按钮复位规则把选择器写成
+ *   button, input:where([type=button]), input:where([type=reset]), input:where([type=submit]) { background-color: transparent; … }
+ * 而 CSS 对**选择器列表**是全有或全无：解析不出 `:where()` 的老引擎（该伪类要
+ * Chrome 88+，车机 WebView 常年停在 65–87）判定这条选择器无效，于是**整条规则连
+ * 其中本来有效的 `button` 一起被丢弃**。后果是所有没有显式背景类的裸 <button>
+ * 失去作者背景声明，回落到 UA 默认的 buttonface；车机上又缺 `color-scheme: dark`
+ * （Chrome 81+）去把它压暗，就落成浅灰 #EFEFEF。
+ *
+ * 为什么症状出现在曲目列表：列表每一行恰好都是裸 <button>（MusicHallDetailPage /
+ * PlaylistPage / RecentPage / LikedPage / VirtualTrackTable / SearchOverlay），
+ * 于是一整张表变成一片白块，白底白字把歌名、歌手、时长全吃掉；正在播放的那行因为
+ * 带 `bg-mint/[0.07]`（自带作者背景）反而正常，画面读起来就是「一行深色 + 一大片白」。
+ *
+ * 为什么补在这里而不是改 preflight：preflight 来自 tailwindcss 包，改 node_modules
+ * 不进版本库。这里用不含 `:where()` 的老语法重述同一条复位，语义与 preflight 等价
+ * （元素选择器，specificity 0,0,1），`.pill` / `bg-*` / `.row-hover` 等类选择器照旧
+ * 覆盖它；现代浏览器上这条与 preflight 里那条完全重复，表现一个字都不变。
+ * 另外两条含 `:where()` 的 preflight 规则不需要兜底：`abbr:where([title])` 有同义 UA
+ * 规则，`[hidden]:where(:not([hidden=until-found]))` 的 display:none 由 UA 样式表保证。
+ *
+ * 回归方法：把产物 CSS 中「选择器列表含 `:where(` 」的规则整条剔除（等价于老引擎的
+ * 解析结果）后渲染同一份曲目行 DOM —— 修复前行背景算出 rgb(239,239,239)，修复后与
+ * 深色底一致。 */
+@layer base {
+  button,
+  input[type='button'],
+  input[type='reset'],
+  input[type='submit'] {
+    background-color: transparent;
+    background-image: none;
+  }
+}
+
 /* ===== 浅色主题：html 未带 .dark 时整体翻转 =====
  * 深色为默认（:root 中是暗色值）；用户选择浅色/系统浅色时，
  * App.tsx 移除 .dark 类，此块翻转所有主题感知变量。
