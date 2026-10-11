@@ -4,6 +4,7 @@ import { audioEvents } from './audioEvents'
 import { platform } from '@/services/platform'
 import { resolveCachedAudioSrc } from './audioCache.service'
 import { isRemoteAudioUrl } from '@aurora/shared'
+import { isNoticeLikeClip } from '@/lib/audioGuard'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
@@ -167,6 +168,24 @@ function startHowl(track: Track, src: string, isOnline: boolean, targetVolume: n
     },
     onload: () => {
       const dur = howl.duration()
+      // 上源提示音闸门：实际时长远短于元数据时，这个地址指向的是版权提示音/试听片段，
+      // 不是本曲音频。旧行为会照播两三秒再自动跳下一首——用户只看到进度条闪一下、
+      // 歌没了，还以为「这首歌不能放」。这里当场停住并如实说明原因。
+      // 不走「加载失败」分支：网络来源曲目本就该留在队列里（见 audioEvents.error 注释）。
+      if (isOnline && isNoticeLikeClip(track, dur)) {
+        stopTick()
+        try {
+          howl.unload()
+        } catch {
+          /* 已卸载/未完成装载时 unload 抛错无害 */
+        }
+        currentHowl = null
+        audioEvents.emit('error', {
+          error: { code: 'shortStream', actual: dur, expected: track.duration || 0 },
+          trackId: track.id,
+        })
+        return
+      }
       audioEvents.emit('duration', { duration: dur })
     },
     onloaderror: (_id, error) => {

@@ -823,14 +823,28 @@ audioEvents.on('trackChange', ({ track }) => {
   usePlayerStore.setState({ currentTrack: track, duration: 0, progress: 0, resolvingTrackId: null })
 })
 
+/** 是否为「上源返回提示音 / 试听片段」标记（由 audio.service 的时长闸门发出） */
+function isShortStreamError(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { code?: string }).code === 'shortStream'
+}
+
 // 本地文件加载失败（文件被删除/移动/损坏）时自动跳过，避免播放卡住；网络来源（在线流 / 远端媒体库）出错不自动跳
-audioEvents.on('error', ({ trackId }) => {
+audioEvents.on('error', ({ error, trackId }) => {
   const state = usePlayerStore.getState()
   const { currentTrack, queue, currentIndex } = state
   if (!currentTrack) return
   // 出错的是已经被切走的那一首（Howl 的失败回调可能晚到）：什么都不做。
   // 否则会拿「当前曲目」去判定，把用户刚点的新歌当成坏文件删掉
   if (trackId && currentTrack.id !== trackId) return
+  // 上源给的是版权提示音 / 试听片段（时长只有几秒）：停住并如实说明原因。
+  // 不能按「文件损坏」处理——把这条踢出队列解决不了问题，同源再取一次还是它；
+  // 也不能照播，那正是用户看到的「放了两秒就没了、像是这首歌不能播」。
+  if (isShortStreamError(error)) {
+    const seconds = Math.max(1, Math.round(Number((error as { actual?: number }).actual) || 0))
+    usePlayerStore.setState({ isPlaying: false, progress: 0, resolvingTrackId: null })
+    toast(appTranslate()('runtime.player.abnormalAudio', { seconds }), { type: 'error', duration: 6000 })
+    return
+  }
   if (isNetworkBackedTrack(currentTrack)) return
   if (queue.length <= 1) {
     state.clearQueue()
