@@ -497,6 +497,17 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     --titleband-h: 68px;
   }
 
+  /* 矮屏（高 <780px，判据与 Tailwind 的 short: 档同源，见 lib/viewportTiers.ts）：
+   * 浮层带收窄到 56px。带内主控件是 44px 的搜索入口，56px 仍留上下各 6px 余量，
+   * 不会压到窗口边；而这 12px 在手机横屏（一屏 412px）、车机 720p、窗口最小高度上
+   * 是实打实的内容高度。所有引用本变量的留白（侧栏 / 内容列 / 详情页首行）同步收窄，
+   * 不会出现「内容被顶栏压住」或「凭空多一段空白」——这正是本变量存在的意义。 */
+  @screen short {
+    :root {
+      --titleband-h: 56px;
+    }
+  }
+
   html, body {
     background: var(--fc-bg);
     color: var(--fc-ink);

@@ -1,4 +1,12 @@
 import type { Config } from 'tailwindcss'
+// 空间档位的数值只有一个来源（src/lib/viewportTiers.ts），此处只负责翻译成 screen。
+// 直接写死数值会让「改了常量、class 没跟着变」变成静默漂移——本项目已经吃过
+// 同源判据分叉的亏（见 lib/gridLayout.ts 头部记录的列数漂移事故）。
+import {
+  SHORT_VIEWPORT_MAX_HEIGHT,
+  SQUAT_VIEWPORT_MAX_HEIGHT,
+  ULTRAWIDE_MIN_RATIO,
+} from './src/lib/viewportTiers'
 
 const config: Config = {
   darkMode: ['class'],
@@ -8,6 +16,22 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // ===== 空间档位（高度 + 宽高比）=====
+      // 默认的 sm/md/lg/xl/2xl 全是宽度维度，比例失衡的屏幕（手机横屏 915×412、
+      // 车机 1280×720、21:9 超宽屏）在宽度上被判成宽档、纵向却装不下宽档尺寸。
+      // 三个 raw 查询补上高度与比例维度，数值来源见 lib/viewportTiers.ts。
+      //
+      // ⚠️ 顺序语义：extend 的 screen 排在默认 screen **之后**生成，同层同权重时
+      //    后出现的规则胜出 —— 这正是 `short:` 能盖掉 `lg:` 的机制（如详情页
+      //    `lg:flex-col short:flex-row`）。改动本对象的键顺序前先读这段。
+      screens: {
+        /** 矮屏：≤780px 可用高度（车机 720p、窗口最小高度、手机横屏） */
+        short: { raw: `(max-height: ${SHORT_VIEWPORT_MAX_HEIGHT}px)` },
+        /** 极矮屏：≤560px 可用高度（手机横屏一档） */
+        squat: { raw: `(max-height: ${SQUAT_VIEWPORT_MAX_HEIGHT}px)` },
+        /** 超宽屏：宽高比 ≥2:1（21:9 / 32:9） */
+        ultrawide: { raw: `(min-aspect-ratio: ${ULTRAWIDE_MIN_RATIO})` },
+      },
       fontFamily: {
         sans: ['"Noto Sans SC"', '"PingFang SC"', '"HarmonyOS Sans SC"', '"Inter"', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
         display: ['"Noto Sans SC"', '"PingFang SC"', '"Inter"', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
