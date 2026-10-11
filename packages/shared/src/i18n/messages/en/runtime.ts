@@ -29,6 +29,8 @@ const en: LocalizedOf<typeof runtime> = {
   },
   player: {
     resolveFailed: 'Cannot play this online song: no source is configured or the search returned no results',
+    abnormalAudio:
+      'The source returned only {seconds}s of audio (likely a copyright notice or preview clip); playback stopped — try another source or retry later',
   },
   error: {
     scanFolderMissing: 'The folder does not exist or cannot be accessed',
