@@ -8,6 +8,13 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
   },
+  android: {
+    // 歌源返回的封面/音频直链存在明文 http（实测 qpic.y.qq.com、aqqmusic.tc.qq.com），
+    // 而 WebView 源是 https://localhost：默认混合内容策略下 <img>/<audio> 的 http
+    // 资源全被拦掉，表现为推荐歌单封面整页空白。OS 层明文放行见
+    // android/app/src/main/res/xml/network_security_config.xml 的域名白名单
+    allowMixedContent: true,
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
