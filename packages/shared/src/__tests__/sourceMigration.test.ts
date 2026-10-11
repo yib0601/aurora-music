@@ -189,7 +189,7 @@ describe('migrateOnlineSources（v10 音源地址归一）', () => {
   it('缺 id / 缺名称时补默认值；非法入参安全', () => {
     const out = migrateOnlineSources([{ apiUrl: 'https://x.example/aurora?query={query}' }])
     expect(out[0].id).toMatch(/^src-/)
-    expect(out[0].name).toBe('音源')
+    expect(out[0].name).toBe('Source')
     expect(migrateOnlineSources(null)).toEqual([])
     expect(migrateOnlineSources([null, 42, 'x'])).toEqual([])
   })

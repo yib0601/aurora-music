@@ -51,7 +51,7 @@ describe('locale 归一与探测', () => {
   })
 
   it('全落空时退回默认语言', () => {
-    expect(detectLocale(['fr-FR'])).toBe('zh-CN')
+    expect(detectLocale(['fr-FR'])).toBe('en')
     expect(detectLocale(['en-AU'])).toBe('en')
   })
 })

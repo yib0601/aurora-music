@@ -56,11 +56,11 @@ describe('语言偏好解析', () => {
     expect(resolveLocale('system')).toBe('en')
   })
 
-  it('系统语言无法识别时落到默认语言（中文源语言）', async () => {
+  it('系统语言无法识别时落到默认语言（英文兜底）', async () => {
     stubLocalStorage()
     stubNavigator(['fr-FR', 'de-DE'])
     const { resolveLocale } = await import('@/stores/localeStore')
-    expect(resolveLocale('system')).toBe('zh-CN')
+    expect(resolveLocale('system')).toBe('en')
   })
 
   it('只有 navigator.language 没有 languages 时也能判定', async () => {
