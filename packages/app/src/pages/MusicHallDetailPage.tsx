@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   ArrowLeft,
   Play,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react'
 import { PageLayout } from '@/components/PageLayout'
 import { PageSubtitle, SubPageTitle } from '@/components/PageHeading'
+import { useBindScrollElement } from '@/components/VirtualTrackTable'
 import { HallEmpty } from '@/pages/MusicHallPage'
 import { cn, formatTime } from '@/lib/utils'
 import { useGoBack } from '@/lib/navigation'
@@ -23,6 +25,14 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useT } from '@/i18n'
 import { matchTracksByNames, musicHallSourceOf, type AppTranslator } from '@aurora/shared'
 import type { MusicHallSource, Track } from '@/types'
+
+/**
+ * 曲目行高（px）：36px 封面 + 上下各 8px（``py-2``）。
+ *
+ * ⚠️ 必须与行内实际高度严格一致，否则虚拟列表会累积偏移（与 ``VirtualTrackTable`` 同款约束）。
+ * 歌名与歌手都是单行截断，行高不会随文案变化。
+ */
+const ROW_HEIGHT = 52
 
 /**
  * 音乐库详情页：推荐歌单 / 榜单共用。
@@ -108,6 +118,36 @@ export function MusicHallDetailPage() {
     }
     return []
   }, [isToplist, toplistDetail, playlistDetail])
+
+  // 曲目表虚拟化：歌单详情动辄几百首（实测 647 首），整表铺开等于几百个 button + 封面节点
+  // 一次性进 DOM，进入/返回都在重建整表。这里只渲染视口内的行（与本地曲库 VirtualTrackTable
+  // 同一套 @tanstack/react-virtual 方案），滚动时按需挂载。
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const listRef = useRef<HTMLUListElement | null>(null)
+  // 列表相对滚动容器顶部的偏移：Hero 与列头都在同一个滚动容器里，虚拟列表必须知道
+  // 自己的起点，否则滚动位置与渲染窗口整体错位（行会「跳」到错误的位置）
+  const [scrollMargin, setScrollMargin] = useState(0)
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: useCallback(() => ROW_HEIGHT, []),
+    overscan: 10,
+    scrollMargin,
+  })
+  useBindScrollElement(rowVirtualizer, scrollRef)
+
+  useEffect(() => {
+    const list = listRef.current
+    const container = scrollRef.current
+    if (!list || !container) return
+    const sync = () => setScrollMargin(list.offsetTop)
+    sync()
+    // Hero 高度随封面图/标题换行变化，容器尺寸也会变（窗口缩放）—— 偏移必须跟着重算
+    const observer = new ResizeObserver(sync)
+    observer.observe(list)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [rows.length, loading, error])
 
   // 上游没给名称时退到类型名：榜单「榜单」/ 歌单「推荐歌单」，两者语义不同故各占一键
   const title = isToplist
@@ -278,7 +318,7 @@ export function MusicHallDetailPage() {
           {isToplist ? t('hall.detail.empty.toplist') : t('hall.detail.empty.playlist')}
         </p>
       ) : (
-        <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
+        <div ref={scrollRef} className="relative flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           {/* Hero 与曲目表同宽：列表限宽 720 后，Hero 若铺满内容区，页面上会同时存在
               两个视觉轴（宽的 Hero + 窄的表），读起来像是拼错版 */}
           <div className="max-w-[720px]">
@@ -325,11 +365,30 @@ export function MusicHallDetailPage() {
               )}
             </div>
 
-            <ul className="flex flex-col">
-              {rows.map((row, i) => {
+            <ul
+              ref={listRef}
+              className="relative w-full m-0 p-0 list-none"
+              style={{ height: rowVirtualizer.getTotalSize() }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const i = virtualRow.index
+                const row = rows[i]
+                if (!row) return null
                 const isCurrent = i === currentIndex
                 return (
-                  <li key={row.key}>
+                  <li
+                    key={row.key}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: virtualRow.size,
+                      // scrollMargin = 列表相对滚动容器顶部的偏移：start 里已含它，这里减掉才是
+                      // 相对列表自身的位移（Hero 与列头占掉的那段高度不算在列表内）
+                      transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={() => void handlePlayRow(i)}

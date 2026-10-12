@@ -53,7 +53,7 @@ describe('playlistEndpointOf（执行时解析）', () => {
   it('服务地址形态：歌单端点由协议派生，不必手填', () => {
     const s = makeSource({ sourceUrl: 'https://music.example.com?key=K1' })
     expect(playlistEndpointOf(s)).toBe(
-      'https://music.example.com/aurora/playlist?url={url}&key=K1'
+      'https://music.example.com/aurora/playlist?url={url}&limit={limit}&key=K1'
     )
   })
 
@@ -233,6 +233,95 @@ describe('parsePlaylistLink（音源合并后）', () => {
     // 「源没给」必须与「源给了空值」可区分：歌单页据此隐藏时长列
     expect('duration' in out.songs[0]).toBe(false)
     expect('album' in out.songs[0]).toBe(false)
+  })
+
+  // ── 首屏 limit 与 truncated（服务端 ?limit= 协议） ──
+  // 背景：大歌单（实测 647 首）上游一次要吐 ~1.1MB，服务端因此提供 ?limit= 让客户端
+  // 先取一页渲染首屏；`truncated` 是「要不要再补一次全量」的判据。
+  it('limit 填进端点模板的 {limit} 占位符', async () => {
+    let called = ''
+    setCustomFetch(async (input) => {
+      called = String(input)
+      return jsonResponse({ songs: [{ title: '七里香', artist: '周杰伦' }] })
+    })
+    await parsePlaylistLink(
+      [
+        makeSource({
+          sourceUrl: 'https://music.example.com',
+          endpoints: { playlist: '/aurora/playlist?url={url}&limit={limit}' },
+        }),
+      ],
+      SHARE_URL,
+      { limit: 200 }
+    )
+    expect(called).toBe(
+      `https://music.example.com/aurora/playlist?url=${encodeURIComponent(SHARE_URL)}&limit=200`
+    )
+  })
+
+  it('不传 limit 时把 {limit} 占位参数整段剔除，不把字面量发给服务端', async () => {
+    let called = ''
+    setCustomFetch(async (input) => {
+      called = String(input)
+      return jsonResponse([{ title: '晴天', artist: '周杰伦' }])
+    })
+    await parsePlaylistLink(
+      [
+        makeSource({
+          sourceUrl: 'https://music.example.com',
+          endpoints: { playlist: '/aurora/playlist?url={url}&limit={limit}' },
+        }),
+      ],
+      SHARE_URL
+    )
+    expect(called).toBe(
+      `https://music.example.com/aurora/playlist?url=${encodeURIComponent(SHARE_URL)}`
+    )
+    expect(called).not.toContain('{limit}')
+  })
+
+  it('limit 非法（0 / 负数 / 非数字）视同不传', async () => {
+    const seen: string[] = []
+    setCustomFetch(async (input) => {
+      seen.push(String(input))
+      return jsonResponse([{ title: '晴天', artist: '周杰伦' }])
+    })
+    const source = makeSource({
+      sourceUrl: 'https://music.example.com',
+      endpoints: { playlist: '/aurora/playlist?url={url}&limit={limit}' },
+    })
+    for (const limit of [0, -5, Number.NaN]) {
+      await parsePlaylistLink([source], SHARE_URL, { limit })
+    }
+    expect(seen).toHaveLength(3)
+    for (const url of seen) {
+      expect(url).not.toContain('limit')
+      expect(url).not.toContain('{limit}')
+    }
+  })
+
+  it('源回了 truncated 才带出该字段（老源不给 → 缺省视为全量）', async () => {
+    setCustomFetch(async () =>
+      jsonResponse({
+        name: '甜度爆表 | 旋律说唱狙击少女心',
+        songs: [{ title: '你的', artist: 'DouDou' }],
+        total: 647,
+        truncated: true,
+      })
+    )
+    const cut = await parsePlaylistLink(
+      [makeSource({ playlistUrl: 'https://api.example/playlist?url={url}' })],
+      SHARE_URL,
+      { limit: 200 }
+    )
+    expect(cut.truncated).toBe(true)
+
+    setCustomFetch(async () => jsonResponse({ songs: [{ title: '你的', artist: 'DouDou' }] }))
+    const plain = await parsePlaylistLink(
+      [makeSource({ playlistUrl: 'https://api.example/playlist?url={url}' })],
+      SHARE_URL
+    )
+    expect('truncated' in plain).toBe(false)
   })
 
   it('专辑三种形状（字符串 / album.name / albumname）与封面两个位置都认', async () => {

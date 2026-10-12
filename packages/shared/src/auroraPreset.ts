@@ -38,10 +38,21 @@ export interface AuroraEndpoints {
   toplist: string
 }
 
-/** 服务端未给自描述时的兜底模板（与 QQ_Music 的 GET / 一致） */
+/**
+ * 服务端未给自描述时的兜底模板（与 QQ_Music 的 GET / 一致）。
+ *
+ * ⚠️ 兜底模板必须与协议同形，**包括客户端这次未必用得上的可选占位符**：
+ *    `fillEndpointTemplate` 只替换模板里出现过的占位符，模板没写的键会被静默丢弃。
+ *    playlist 的 `{limit}` 正是踩过这个坑 —— 服务端早已支持 `?limit=`（首屏只取前 N 首，
+ *    并按 `truncated` 回报是否截断），但兜底模板漏了它，于是「有没有 endpoints 自描述」
+ *    决定了首屏取数是一页还是全量：用户没在设置页点过「测试连接」→ 库里没有 endpoints
+ *    → 走兜底 → limit 被丢弃 → 首屏仍等全量 JSON（实测 979 首歌单 ~150KB、上游 0.8s）。
+ *    漏写可选占位符不会报错，只会让功能静默失效，所以这里按协议补齐。
+ *    不传该参数时由 `dropUnfilledParams` 把整段删掉，老服务端不会收到字面量 `{limit}`。
+ */
 export const AURORA_ENDPOINT_FALLBACK: AuroraEndpoints = {
   search: '/aurora?query={query}&quality={quality}&key=<API_KEY>',
-  playlist: '/aurora/playlist?url={url}&key=<API_KEY>',
+  playlist: '/aurora/playlist?url={url}&limit={limit}&key=<API_KEY>',
   lyric: '/aurora/lyric?track={track}&artist={artist}&duration={duration}&key=<API_KEY>',
   recommend: '/aurora/recommend?categoryId={categoryId}&sortId={sortId}&page={page}&limit={limit}&key=<API_KEY>',
   toplists: '/aurora/toplists?preview={preview}&key=<API_KEY>',
