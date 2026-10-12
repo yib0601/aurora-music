@@ -307,6 +307,13 @@ export interface PlaylistParseResult {
   /** 歌单标题（源未提供时为空字符串） */
   name: string
   songs: ParsedSong[]
+  /**
+   * 源明确表示「这份曲目不是全量」时才有（服务端 `truncated`）。
+   *
+   * 用途：首屏用 `limit` 只取一页时，调用方据此决定要不要再补一次全量；
+   * 老源不给这个字段 → 缺省视为全量（与过去行为一致，不会平白多发一次请求）。
+   */
+  truncated?: boolean
 }
 
 // ─── 源探测（设置页「测试」的原生结果形态） ─────────────────────

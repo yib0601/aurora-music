@@ -125,7 +125,7 @@ export {
   pickCoverCandidate,
 } from './coverMatch'
 export type { CoverMatchTarget } from './coverMatch'
-export type { PlaylistCapableSource } from './playlistResolver'
+export type { PlaylistCapableSource, ResolvePlaylistOptions } from './playlistResolver'
 export { mergeLegacyPlaylistSources, migrateOnlineSources } from './sourceMigration'
 export {
   AURORA_ENDPOINT_FALLBACK,

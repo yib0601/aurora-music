@@ -1,6 +1,6 @@
 import type { PlaylistParseResult, ParsedSong } from './types'
 import type { SourceEndpointInput } from './auroraPreset'
-import { playlistEndpointOf } from './auroraPreset'
+import { fillEndpointTemplate, playlistEndpointOf } from './auroraPreset'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { auroraError, toErrorInfo } from './i18n/errors'
 
@@ -28,6 +28,32 @@ const DEFAULT_HEADERS: Record<string, string> = {
 
 /** 单条歌单解析请求超时（大歌单服务端要分页取，给得比在线搜索宽） */
 const PLAYLIST_TIMEOUT_MS = 15000
+
+/**
+ * 删掉模板里**没被替换**的占位参数（形如 `&limit={limit}`）。
+ *
+ * 为什么需要：端点模板来自服务端自描述，可能带客户端这次用不到的占位符（如首屏 `{limit}`）。
+ * 留着就会把 `{limit}` 这种字面量发给服务端 —— 服务端容错得了，但它会污染访问日志、
+ * 也会让缓存键跟着变脏（同一个歌单出现两份缓存）。
+ *
+ * 导出供单测直接断言「模板 → 最终地址」这一段：它与 auroraPreset 的
+ * `fillEndpointTemplate` 是一对（先填后剔），两处都会静默失效，需要各自钉住。
+ */
+export function dropUnfilledParams(url: string): string {
+  return url
+    .replace(/([?&])[^?&=]+=\{[^}&]*\}/g, '$1')
+    .replace(/([?&])&+/g, '$1')
+    .replace(/[?&]+$/, '')
+}
+
+/** 歌单解析的可选参数 */
+export interface ResolvePlaylistOptions {
+  /**
+   * 只取前 N 首（服务端 `?limit=`）：首屏先渲染一页，再按 `truncated` 决定是否补全量。
+   * 不传即取源上限（老行为）。
+   */
+  limit?: number
+}
 
 /** 从粘贴文本中提取第一个 http/https 链接（分享文案通常夹带描述文字） */
 export function extractShareUrl(text: string): string | null {
@@ -93,7 +119,8 @@ function toSong(item: any): ParsedSong | null {
  */
 export async function resolvePlaylistUrl(
   source: PlaylistCapableSource,
-  shareUrl: string
+  shareUrl: string,
+  options?: ResolvePlaylistOptions
 ): Promise<PlaylistParseResult> {
   const endpoint = playlistEndpointOf(source)
   // 源没填名字时给空串：兜底名是界面文案，在数据层写死等于把它冻在一种语言上
@@ -101,7 +128,11 @@ export async function resolvePlaylistUrl(
   if (!endpoint) {
     throw auroraError('core.error.playlistUrlMissing', { name: label, url: '{url}' })
   }
-  const url = endpoint.replace('{url}', encodeURIComponent(shareUrl))
+  const limit = Number(options?.limit)
+  const values: Record<string, string | number> = { url: shareUrl }
+  if (Number.isFinite(limit) && limit > 0) values.limit = Math.floor(limit)
+  // 占位符统一由 fillEndpointTemplate 替换（url 走 URL 编码）；没传的占位参数整段清掉
+  const url = dropUnfilledParams(fillEndpointTemplate(endpoint, values))
   let resp: Response
   try {
     resp = await fetchWithTimeout(
@@ -139,7 +170,8 @@ export async function resolvePlaylistUrl(
       : typeof json?.data?.name === 'string' && json.data.name.trim()
         ? json.data.name.trim()
         : ''
-  return { name, songs }
+  // 「源明确说了这是截断」才挂键：老源不给该字段时保持原样，调用方据此不必多发一次全量请求
+  return json?.truncated === true ? { name, songs, truncated: true } : { name, songs }
 }
 
 /**
@@ -149,7 +181,8 @@ export async function resolvePlaylistUrl(
  */
 export async function parsePlaylistLink(
   sources: PlaylistCapableSource[],
-  shareUrl: string
+  shareUrl: string,
+  options?: ResolvePlaylistOptions
 ): Promise<PlaylistParseResult> {
   const enabled = (sources || []).filter((s) => s && s.enabled && playlistEndpointOf(s))
   if (enabled.length === 0) {
@@ -158,7 +191,7 @@ export async function parsePlaylistLink(
   let lastError: unknown = null
   for (const source of enabled) {
     try {
-      return await resolvePlaylistUrl(source, shareUrl)
+      return await resolvePlaylistUrl(source, shareUrl, options)
     } catch (err) {
       lastError = err
       console.warn(`[歌单解析] 「${source.name || '未命名'}」解析失败:`, err)

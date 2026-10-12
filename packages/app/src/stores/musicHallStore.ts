@@ -32,6 +32,15 @@ export interface RecommendQuery {
 
 const DEFAULT_QUERY: RecommendQuery = { categoryId: '10000000', sortId: '5', page: 1 }
 
+/**
+ * 歌单详情首屏取数（首屏只取前 N 首，随后按源回的 `truncated` 决定是否补全量）。
+ *
+ * 200 是「一屏滚动几下的量」与「上游一次取数的成本」之间的折中：歌单详情页一屏约 12 行，
+ * 200 首足够覆盖用户进页面后的前几次滚动；再大就接近全量（实测 647 首的上游 JSON ~1.1MB），
+ * 首屏优势会被吃掉。源不支持 `?limit=` 时这个参数会被自动剔除，退化成一次全量请求。
+ */
+const PLAYLIST_FIRST_PAGE = 200
+
 /** 单条异步资源的状态：loading / error / data 三态互斥 */
 interface Resource<T> {
   loading: boolean
@@ -210,6 +219,12 @@ export const useMusicHallStore = create<MusicHallState>()((set, get) => ({
    * 歌单详情：复用**既有**歌单解析端点（`{url}` 协议，支持 `?server=qq&id=` 直取）。
    * 走 shared 的 parsePlaylistLink 而非新端点，避免为同一能力再定义一套协议。
    *
+   * **两段式加载**（首屏快 + 全量准）：
+   *   1. 先用 `?limit=` 只取前 `PLAYLIST_FIRST_PAGE` 首 —— 大歌单（实测 647 首）上游要吐
+   *      ~1.1MB JSON，服务端解析与客户端 JSON.parse 都压在首屏上；只取一页即可先渲染出列表；
+   *   2. 源回了 `truncated` 说明不是全量，再后台补一次全量替换。
+   *   补全量失败时**静默保留首屏**：已经显示出来的列表不该因为一次补齐失败变成错误页。
+   *
    * 曲目字段与榜单详情**同名同义**（album / duration / coverUrl / songmid）：音源服务侧
    * 的 /aurora/playlist 与 /aurora/toplist 由同一份口径描述，客户端不因「这是歌单」
    * 就少认字段——过去正是在这一层把曲目裁成两个字段，歌单详情页才只剩歌名 + 歌手。
@@ -225,6 +240,18 @@ export const useMusicHallStore = create<MusicHallState>()((set, get) => ({
         [key]: { loading: true, error: null, data: current?.data ?? null },
       },
     })
+    const setData = (name: string, songs: ParsedSong[]) =>
+      set({
+        playlistDetail: {
+          ...get().playlistDetail,
+          [key]: {
+            loading: false,
+            error: null,
+            // 整份曲目透传：源给多少字段就留多少（见 PlaylistDetailData 的说明）
+            data: { name, songs },
+          },
+        },
+      })
     try {
       const sources = useLibraryStore.getState().onlineSources.filter((s) => s.enabled && searchEndpointOf(s))
       if (sources.length === 0) {
@@ -237,18 +264,18 @@ export const useMusicHallStore = create<MusicHallState>()((set, get) => ({
         return
       }
       const { parsePlaylistLink } = await import('@aurora/shared')
-      const result = await parsePlaylistLink(sources, `https://y.qq.com/n/ryqq/playlist/${key}`)
-      set({
-        playlistDetail: {
-          ...get().playlistDetail,
-          [key]: {
-            loading: false,
-            error: null,
-            // 整份曲目透传：源给多少字段就留多少（见 PlaylistDetailData 的说明）
-            data: { name: result.name || '', songs: result.songs },
-          },
-        },
-      })
+      const shareUrl = `https://y.qq.com/n/ryqq/playlist/${key}`
+      const first = await parsePlaylistLink(sources, shareUrl, { limit: PLAYLIST_FIRST_PAGE })
+      setData(first.name || '', first.songs)
+      if (first.truncated) {
+        try {
+          const full = await parsePlaylistLink(sources, shareUrl)
+          setData(full.name || first.name || '', full.songs)
+        } catch (err) {
+          // 首屏已经可用了：补齐失败只留日志，不把列表换成错误态
+          console.warn('[音乐库] 歌单全量补齐失败，保留首屏曲目:', err)
+        }
+      }
     } catch (err) {
       set({
         playlistDetail: {

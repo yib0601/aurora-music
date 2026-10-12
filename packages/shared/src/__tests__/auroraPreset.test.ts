@@ -14,6 +14,7 @@ import {
   probeAuroraService,
   searchEndpointOf,
 } from '../auroraPreset'
+import { dropUnfilledParams } from '../playlistResolver'
 import { setCustomFetch } from '../fetchWithTimeout'
 import { expectCode } from './i18nAssert'
 
@@ -243,7 +244,7 @@ describe('searchEndpointOf / playlistEndpointOf（执行时解析端点）', () 
       `https://music.lighthouses.top/aurora?query={query}&quality={quality}&key=${KEY}`
     )
     expect(playlistEndpointOf(s)).toBe(
-      `https://music.lighthouses.top/aurora/playlist?url={url}&key=${KEY}`
+      `https://music.lighthouses.top/aurora/playlist?url={url}&limit={limit}&key=${KEY}`
     )
   })
 
@@ -329,7 +330,7 @@ describe('buildAuroraEndpoints', () => {
   it('按兜底模板组装六个端点（搜索 / 歌单解析 / 歌词 / 在线音乐三项）', () => {
     expect(buildAuroraEndpoints('https://music.lighthouses.top', 'K1')).toEqual({
       search: 'https://music.lighthouses.top/aurora?query={query}&quality={quality}&key=K1',
-      playlist: 'https://music.lighthouses.top/aurora/playlist?url={url}&key=K1',
+      playlist: 'https://music.lighthouses.top/aurora/playlist?url={url}&limit={limit}&key=K1',
       lyric:
         'https://music.lighthouses.top/aurora/lyric?track={track}&artist={artist}&duration={duration}&key=K1',
       recommend:
@@ -375,7 +376,7 @@ describe('buildAuroraEndpoints', () => {
       search: '/v2/search?q={query}&key=<API_KEY>',
     })!
     expect(ep.search).toBe('https://x.com/v2/search?q={query}&key=K1')
-    expect(ep.playlist).toBe('https://x.com/aurora/playlist?url={url}&key=K1')
+    expect(ep.playlist).toBe('https://x.com/aurora/playlist?url={url}&limit={limit}&key=K1')
   })
 
   it('子路径部署时拼接正确', () => {
@@ -390,7 +391,32 @@ describe('buildAuroraEndpoints', () => {
   })
 
   it('兜底模板与服务端 GET / 的取值一致', () => {
-    expect(AURORA_ENDPOINT_FALLBACK.playlist).toBe('/aurora/playlist?url={url}&key=<API_KEY>')
+    expect(AURORA_ENDPOINT_FALLBACK.playlist).toBe('/aurora/playlist?url={url}&limit={limit}&key=<API_KEY>')
+  })
+
+  /**
+   * 兜底模板必须带上**可选**占位符 `{limit}`，否则「有没有 endpoints 自描述」会决定
+   * 首屏取全量还是一页 —— 用户在设置页点过「测试连接」才有 endpoints 缓存，没点过就走
+   * 兜底模板；模板漏写 `{limit}` 时 `fillEndpointTemplate` 会静默丢弃 limit 参数，
+   * 首屏又退化成等全量 JSON（实测 979 首歌单 ~150KB / 上游 0.8s）。
+   * 漏写不报错、只静默失效，所以用断言钉住整条链路。
+   */
+  it('无 endpoints 自描述时，兜底模板仍能把 limit 填进歌单解析地址', () => {
+    const endpoint = playlistEndpointOf({
+      sourceUrl: 'https://music.example.com?key=K1',
+      // 刻意不给 endpoints：模拟用户从未点过「测试连接」
+    })
+    expect(endpoint).toContain('{limit}')
+    expect(dropUnfilledParams(fillEndpointTemplate(endpoint, { url: 'https://y.qq.com/x', limit: 200 }))).toBe(
+      'https://music.example.com/aurora/playlist?url=https%3A%2F%2Fy.qq.com%2Fx&limit=200&key=K1'
+    )
+  })
+
+  it('不传 limit 时兜底模板的 {limit} 整段剔除，不发字面量给服务端', () => {
+    const endpoint = playlistEndpointOf({ sourceUrl: 'https://music.example.com?key=K1' })
+    const url = dropUnfilledParams(fillEndpointTemplate(endpoint, { url: 'https://y.qq.com/x' }))
+    expect(url).toBe('https://music.example.com/aurora/playlist?url=https%3A%2F%2Fy.qq.com%2Fx&key=K1')
+    expect(url).not.toContain('{limit}')
   })
 })
 
