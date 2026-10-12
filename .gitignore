@@ -79,6 +79,15 @@ coverage
 *.tgz
 *.local
 test-userdata
+# 桌面端冒烟脚本：开发者在**自己机器上**手动跑一次的验证工具，不参与构建与 CI
+# （CI 只跑 typecheck / vitest / vite build）。它们天然要读本机曲库、本机音源服务、
+# Electron 运行时，属于机器私有资产，不进公开仓库。文件保留在本地工作区可直接使用。
+packages/desktop/scripts/smoke-*.js
+# 项目级记忆的本地覆盖层：DSH 会把它与 AGENTS.md 一起加载，但内容含本机私有
+# 信息（域名 / 凭据角色 / 部署与排查细节），本仓库是公开仓库，绝不能入库。
+# 注意 `*.local` 匹配不到 `.md` 结尾，必须单独列一条。
+AGENTS.local.md
+CLAUDE.local.md
 # 试验与视觉验收用的临时目录（正式应用截图在 screenshots/）。
 # 通配整个 .tmp-* 家族：曾经逐目录列举，漏了 .tmp-phone / .tmp-repro，
 # 结果 6MB 手机截图与 howler 复现页被误提交入库（2026-10-05 清理）。
