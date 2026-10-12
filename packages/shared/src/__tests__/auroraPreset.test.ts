@@ -18,10 +18,16 @@ import { dropUnfilledParams } from '../playlistResolver'
 import { setCustomFetch } from '../fetchWithTimeout'
 import { expectCode } from './i18nAssert'
 
-/** 用户手里流传的真实形态：老端口 + 完整占位符 + 明文密钥 */
+/**
+ * 用户手里流传的真实形态：老端口 + 完整占位符 + 带密钥。
+ *
+ * ⚠️ 密钥一律用**假值**：这里只做 URL 解析/组装的字符串比对，不发任何真实请求，
+ *    用真 key 不会让断言更严格，只会把生产凭据写进公开仓库。
+ */
+const FAKE_KEY = '00000000-0000-0000-0000-000000000000'
 const OLD_LINK =
-  'https://music.lighthouses.top:81/aurora?query={query}&quality={quality}&key=00000000-0000-0000-0000-000000000000'
-const KEY = '00000000-0000-0000-0000-000000000000'
+  `https://music.lighthouses.top:81/aurora?query={query}&quality={quality}&key=${FAKE_KEY}`
+const KEY = FAKE_KEY
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
