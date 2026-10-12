@@ -62,7 +62,9 @@ const REAL_DB =
   path.join(os.homedir(), '.config/@aurora/desktop/aurora-music/library.db')
 const REAL_COVERS = path.join(path.dirname(REAL_DB), 'covers')
 
-const API_KEY = process.env.AURORA_SMOKE_KEY || '00000000-0000-0000-0000-000000000000'
+// 本地源密钥必须由环境显式提供：这个脚本只打本地 3201 服务，
+// 写死生产凭据默认值等于把密钥随手带进公开仓库（且会让本地跑不动时静默打错后端）。
+const API_KEY = process.env.AURORA_SMOKE_KEY || 'local-dev-key'
 const SOURCE_BASE = process.env.AURORA_SMOKE_SOURCE || 'http://127.0.0.1:3201'
 
 // 沙箱目录：数据库与封面缓存都复制一份，绝不动真实数据。
