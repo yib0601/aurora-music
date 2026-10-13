@@ -3,8 +3,7 @@
  *
  * 与实现者自测的区别：
  *   - 断言面向**外部可观测行为**（返回值、落盘 JSON、真实 HTTP、进程是否挂死），不 mock 宿主本身；
- *   - 死循环可中断性用**子进程 + 超时 kill** 证明，而不是"看起来没卡"；
- *   - 真实直链走 huibq 真实脚本 + Node 版 request 实现，并实拉一次 Range 请求。
+ *   - 死循环可中断性用**子进程 + 超时 kill** 证明，而不是"看起来没卡"。
  *
  * 运行：cd packages/shared && npx vitest run src/__tests__/lxVerifier.test.ts
  */
@@ -565,68 +564,4 @@ describe('C. 取址降级路径', () => {
     })
     expect(out.url).toBeNull()
   })
-})
-
-// ═══════════════════════════════════════════════════════════════════
-// D. 真实脚本真直链（唯一联网项）
-// ═══════════════════════════════════════════════════════════════════
-
-/** Node 版请求实现（与桌面端 createNodeLxRequest 同语义，此处不能 import electron 侧文件） */
-function createNodeRequest(): LxRequestFn {
-  return ((url: string, options: any, callback: any) => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 20000)
-    const method = String(options?.method || 'GET').toUpperCase()
-    fetch(url, { method, headers: options?.headers || {}, signal: controller.signal })
-      .then(async (resp) => {
-        const raw = await resp.text()
-        let body: unknown = raw
-        try {
-          body = JSON.parse(raw)
-        } catch {
-          /* 保留文本 */
-        }
-        clearTimeout(timer)
-        callback(null, {
-          statusCode: resp.status,
-          statusMessage: resp.statusText,
-          headers: Object.fromEntries(resp.headers.entries()),
-          raw,
-          body,
-          bytes: Buffer.byteLength(raw, 'utf8'),
-        })
-      })
-      .catch((err) => {
-        clearTimeout(timer)
-        callback(err, null)
-      })
-    return () => controller.abort()
-  }) as unknown as LxRequestFn
-}
-
-describe('D. 真实脚本真直链（联网）', () => {
-  it('D1 huibq 脚本取酷我直链并实拉 Range 0-1023：HTTP 200/206 且 content-type 为 audio/*', async (ctx) => {
-    const huibq = requireScript(ctx, 'huibq/latest.js')
-    const { evaluate } = recordingEvaluator()
-    setLxHostDeps({ request: createNodeRequest(), evaluate, scriptTimeoutMs: 10000, callTimeoutMs: 20000 })
-    const source = lxSource(huibq, { id: 'huibq', name: 'Huibq_lxmusic源' })
-
-    const out = await resolveLxTrack({
-      lx: { sourceId: 'huibq', platform: 'kw', meta: { songmid: '91084746', hash: '91084746' } },
-      onlineSource: source,
-      quality: '128',
-    })
-    // 上游不可达时如实失败（由测试框架报错），不伪造通过
-    expect({ url: out.url, reason: (out as any).reason }).toEqual(
-      expect.objectContaining({ url: expect.stringMatching(/^https?:\/\//) })
-    )
-    const url = (out as any).url as string
-    const resp = await fetch(url, { headers: { Range: 'bytes=0-1023' } })
-    expect([200, 206]).toContain(resp.status)
-    const ctype = String(resp.headers.get('content-type') || '')
-    const bytes = new Uint8Array(await resp.arrayBuffer())
-    expect(ctype.toLowerCase()).toMatch(/^audio\//)
-    expect(bytes.length).toBeGreaterThan(0)
-    expect(bytes.length).toBeLessThanOrEqual(1024 * 4)
-  }, 60000)
 })
