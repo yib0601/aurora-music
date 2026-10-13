@@ -108,7 +108,17 @@ export async function searchMusicSource(
   }
   if (!resp.ok) throw auroraError('core.error.sourceHttpStatus', { name: source.name, status: resp.status })
 
-  const json = (await resp.json()) as any
+  // 读体纳入同一套错误映射：超时/非 JSON 若不在这里分流，用户看到的是 TimeoutError
+  // 的编码串（无源名、无「源」语境），而不是「源「X」请求超时（10000ms）」
+  let json: any
+  try {
+    json = (await resp.json()) as any
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      throw auroraError('core.error.sourceTimeout', { name: source.name, ms: SEARCH_TIMEOUT_MS })
+    }
+    throw auroraError('core.error.sourceNotJson', { name: source.name })
+  }
   const rawItems = extractItems(json)
 
   const results: OnlineTrackSearchResult[] = []

@@ -48,6 +48,7 @@ const en: LocalizedOf<typeof desktop> = {
       kindUnsupported: 'Unsupported library source type: {kind}',
       remoteReadFailed: 'Failed to read the remote file: HTTP {status}',
       coverHttpStatus: 'Cover download failed: HTTP {status}',
+      coverTimeout: 'Timed out downloading the cover ({ms}ms)',
       coverInvalid: 'Cover download failed: the content is not a valid image',
     },
     lx: {

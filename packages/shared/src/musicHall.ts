@@ -85,7 +85,12 @@ async function requestJson(source: MusicHallSource, url: string): Promise<any> {
   if (!resp.ok) throw auroraError('core.error.hallHttpStatus', { name: source.name, status: resp.status })
   try {
     return await resp.json()
-  } catch {
+  } catch (err) {
+    // 读体超时（上游送完响应头停住 body）必须报「请求超时」而不是「不是 JSON」——
+    // 后者会让用户去查音源配置，而实际原因是网络慢
+    if (isTimeoutError(err)) {
+      throw auroraError('core.error.hallTimeout', { name: source.name, ms: HALL_TIMEOUT_MS })
+    }
     throw auroraError('core.error.hallNotJson', { name: source.name })
   }
 }

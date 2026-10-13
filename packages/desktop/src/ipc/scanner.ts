@@ -7,8 +7,11 @@ import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
 import { registerCoverFile } from './mediaCache'
 import { isUsableCoverFile } from './coverFile'
-import { auroraError, searchOnlineTracks, fetchWithTimeout, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate } from '@aurora/shared'
+import { auroraError, searchOnlineTracks, fetchWithTimeout, isTimeoutError, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate } from '@aurora/shared'
 import type { OnlineSearchOptions } from '@aurora/shared'
+
+/** 在线封面下载超时：封面是可选增强，等太久不如放着让下次重试 */
+const COVER_TIMEOUT_MS = 15000
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav', '.wma', '.opus'])
 
@@ -314,18 +317,33 @@ export async function fetchOnlineCover(
   })
   if (!best?.coverUrl) return null
 
-  const resp = await fetchWithTimeout(
-    best.coverUrl,
-    {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      best.coverUrl,
+      {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
       },
-    },
-    15000
-  )
+      COVER_TIMEOUT_MS
+    )
+  } catch (err) {
+    // 响应头阶段失败此前裸抛：渲染层按错误 name 分流时会拿到底层英文 AbortError，
+    // 且「封面下载超时」这种能自解释的结论会退化成一条无主语的英文
+    if (isTimeoutError(err)) throw auroraError('desktop.error.source.coverTimeout', { ms: COVER_TIMEOUT_MS })
+    throw err
+  }
   if (!resp.ok) throw auroraError('desktop.error.source.coverHttpStatus', { status: resp.status })
-  const buf = new Uint8Array(await resp.arrayBuffer())
+  let buf: Uint8Array
+  try {
+    buf = new Uint8Array(await resp.arrayBuffer())
+  } catch (err) {
+    // 读体同样纳入超时映射：上游发完响应头停住 body 时，报「下载超时」而不是英文 AbortError
+    if (isTimeoutError(err)) throw auroraError('desktop.error.source.coverTimeout', { ms: COVER_TIMEOUT_MS })
+    throw err
+  }
   if (buf.length < 100) throw auroraError('desktop.error.source.coverInvalid')
 
   const coverDest = getCoverCachePath(userData, track.id, coverExtensionFor(buf))

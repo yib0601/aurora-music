@@ -1,6 +1,7 @@
 import type { PlaylistParseResult, ParsedSong } from './types'
 import type { SourceEndpointInput } from './auroraPreset'
-import { fillEndpointTemplate, playlistEndpointOf } from './auroraPreset'
+import { dropUnfilledParams, fillEndpointTemplate, playlistEndpointOf } from './auroraPreset'
+import { firstSuccess } from './concurrency'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { auroraError, toErrorInfo } from './i18n/errors'
 
@@ -30,21 +31,13 @@ const DEFAULT_HEADERS: Record<string, string> = {
 const PLAYLIST_TIMEOUT_MS = 15000
 
 /**
- * 删掉模板里**没被替换**的占位参数（形如 `&limit={limit}`）。
+ * 只在 import 路径上转出 `dropUnfilledParams`（实现在 auroraPreset）。
  *
- * 为什么需要：端点模板来自服务端自描述，可能带客户端这次用不到的占位符（如首屏 `{limit}`）。
- * 留着就会把 `{limit}` 这种字面量发给服务端 —— 服务端容错得了，但它会污染访问日志、
- * 也会让缓存键跟着变脏（同一个歌单出现两份缓存）。
- *
- * 导出供单测直接断言「模板 → 最终地址」这一段：它与 auroraPreset 的
- * `fillEndpointTemplate` 是一对（先填后剔），两处都会静默失效，需要各自钉住。
+ * 为什么留这个 re-export：它与 `fillEndpointTemplate` 是一对，早期两者都住在本模块，
+ * 外部（与单测）按这条路径导入。实现搬去 auroraPreset 是为了让「先填后剔」共处一模块，
+ * 而 auroraPreset 反过来 import 本模块会成环 —— 所以出口留在这里，调用方零改动。
  */
-export function dropUnfilledParams(url: string): string {
-  return url
-    .replace(/([?&])[^?&=]+=\{[^}&]*\}/g, '$1')
-    .replace(/([?&])&+/g, '$1')
-    .replace(/[?&]+$/, '')
-}
+export { dropUnfilledParams } from './auroraPreset'
 
 /** 歌单解析的可选参数 */
 export interface ResolvePlaylistOptions {
@@ -154,7 +147,17 @@ export async function resolvePlaylistUrl(
     )
   }
   if (!resp.ok) throw auroraError('core.error.playlistHttpStatus', { name: label, status: resp.status })
-  const json = (await resp.json()) as any
+  // 读体同样纳入上面的错误映射：超时/非 JSON 若不在这里分流，用户看到的是
+  // TimeoutError 的编码串（无源名、无「歌单解析」语境），而不是「音源「X」请求超时（15000ms）」
+  let json: any
+  try {
+    json = (await resp.json()) as any
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      throw auroraError('core.error.playlistTimeout', { name: label, ms: PLAYLIST_TIMEOUT_MS })
+    }
+    throw auroraError('core.error.playlistNotJson', { name: label })
+  }
 
   const songs: ParsedSong[] = []
   for (const item of extractItems(json)) {
@@ -175,9 +178,26 @@ export async function resolvePlaylistUrl(
 }
 
 /**
- * 聚合解析：按配置顺序依次尝试「具备歌单解析能力且已启用」的源，第一个成功即返回；
- * 全部失败时抛最后一个错误（前端展示直白的中文提示）。
- * 传入的通常是用户在设置里配置的音源列表（具备歌单解析端点的才参与）。
+ * 歌单解析的对冲延迟与同时在途上限。
+ *
+ * 串行版的失败耗时按源数累加：单源超时 15s（见 PLAYLIST_TIMEOUT_MS），
+ * 用户配三个源而全不可用时，最坏要 45s 才报错——用户感知就是「点了导入卡死」。
+ *
+ * 1000ms 比歌词的窗口宽：歌单解析端点在大歌单上本来就要几百毫秒到数秒
+ * （上游要分页取再聚合），窗口给窄了会把「第一档马上就好」的常见情形误判成
+ * 「它不行」，白白多发请求去抢同一个歌单。
+ */
+const PLAYLIST_HEDGE_MS = 1000
+const PLAYLIST_MAX_IN_FLIGHT = 3
+
+/**
+ * 聚合解析：按配置顺序尝试「具备歌单解析能力且已启用」的源，**首个成功即返回**；
+ * 全部失败时抛**配置顺序上最后一个尝试过的源**的错误（前端展示直白的中文提示）。
+ *
+ * 并发策略是**延迟对冲**而非纯竞速（见 shared/concurrency.ts）：排在前面的源在
+ * 其对冲窗口内成功时，后面的源根本不会被启动，因此「源配置顺序」仍是决定性的优先级
+ * ——这对歌单尤其重要，不同源返回的字段厚度与服务端分页行为差别很大，
+ * 不该让网络快慢替用户决定用哪一份。
  */
 export async function parsePlaylistLink(
   sources: PlaylistCapableSource[],
@@ -188,13 +208,36 @@ export async function parsePlaylistLink(
   if (enabled.length === 0) {
     throw auroraError('core.error.playlistNoSource')
   }
+
+  // 失败原因**按源下标记位**，而不是 push 进一个数组。
+  //
+  // 为什么要这么做：并发后各源的失败是**完成顺序**回来的，push 出来的数组顺序随机，
+  // 「取最后一项」会变成一个不确定的结果 —— 同一组源、同一次回退，用户这次看到
+  // 「源B 解析失败」、下次看到「源A 解析失败」。按下标记位再按配置顺序取，
+  // 得到的才是与旧串行版完全一致的那一条（配置顺序上最后被尝试的源）。
+  // 抛错本身不能打断对冲调度，故先存起来、收场后再抛。
+  const failures = new Array<unknown>(enabled.length).fill(null)
+  const hit = await firstSuccess(
+    enabled,
+    async (source, index) => {
+      try {
+        return await resolvePlaylistUrl(source, shareUrl, options)
+      } catch (err) {
+        failures[index] = err
+        console.warn(`[歌单解析] 「${source.name || '未命名'}」解析失败:`, err)
+        return null
+      }
+    },
+    { hedgeMs: PLAYLIST_HEDGE_MS, maxInFlight: PLAYLIST_MAX_IN_FLIGHT }
+  )
+  if (hit) return hit.result
+
+  // 从尾部往前找最后一个真正失败过的源（配置顺序上的「最后尝试过的」）
   let lastError: unknown = null
-  for (const source of enabled) {
-    try {
-      return await resolvePlaylistUrl(source, shareUrl, options)
-    } catch (err) {
-      lastError = err
-      console.warn(`[歌单解析] 「${source.name || '未命名'}」解析失败:`, err)
+  for (let i = failures.length - 1; i >= 0; i--) {
+    if (failures[i] !== null) {
+      lastError = failures[i]
+      break
     }
   }
   throw lastError instanceof Error ? lastError : auroraError('core.error.playlistFailed')

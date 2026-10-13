@@ -23,7 +23,8 @@
  */
 
 import LZString from 'lz-string'
-import { fetchWithTimeout } from './fetchWithTimeout'
+import { mapWithConcurrency } from './concurrency'
+import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { auroraError, describeError, toErrorInfo } from './i18n/errors'
 import type { MessageKey } from './i18n'
 import type { DownloadQuality, OnlineSourceConfig, OnlineTrackSearchResult, SourceTrackRef } from './types'
@@ -731,8 +732,23 @@ function normalizeSearchPayload(payload: any): Record<string, any>[] {
 }
 
 /**
+ * 同一脚本内多平台并发搜索的在途上限。
+ *
+ * 为什么需要上限而不是全量铺开：这里并发的是**同一个脚本实例**上的多次调用，
+ * 脚本内部可能持有 cookie / 签名时间戳 / 限流计数这类跨平台共享的可变状态，
+ * 铺得太开会把「上游限流」变成「脚本自身状态踩踏」（更难排查）。
+ * 3 是在途重叠与脚本安全之间的折中：多数脚本声明 1~3 个平台，实际很少触顶。
+ */
+const LX_SEARCH_MAX_IN_FLIGHT = 3
+
+/**
  * 用洛雪脚本自带的搜索能力搜曲（仅部分脚本有：幻音咪咕、全豆要汽水等）。
  * 返回条目**不含直链**（audioUrl 为空），播放/下载时用 resolveLxSourceUrl 按 meta 取址。
+ *
+ * 多平台**并发**取数：旧实现逐平台 `await`，同一个脚本声明 3 个平台时耗时按平台数累加
+ * （单平台超时 20s，见 DEFAULT_CALL_TIMEOUT_MS），而各平台之间没有任何依赖关系。
+ * 并发不会改变结果形状 —— 组装顺序仍严格按 `inspection.platforms` 的声明顺序，
+ * 调用方看到的条目顺序与串行版逐字一致。
  */
 export async function searchLxSource(
   source: LxScriptSource,
@@ -744,43 +760,65 @@ export async function searchLxSource(
   if (!trimmed) return []
   const box = await boxOf(source, deps)
   const limit = options?.limit ?? 30
-  const out: LxSearchResult[] = []
-  const failures: Array<{ platform: string; error: unknown }> = []
 
-  for (const [platform, cap] of Object.entries(box.inspection.platforms)) {
-    const action = cap.actions.includes('search')
-      ? 'search'
-      : cap.actions.includes('musicSearch')
-        ? 'musicSearch'
-        : null
-    if (!action) continue
+  // 先按声明顺序定档：没有 search / musicSearch 能力的平台不参与
+  const plans = Object.entries(box.inspection.platforms)
+    .map(([platform, cap]) => ({
+      platform,
+      action: cap.actions.includes('search')
+        ? 'search'
+        : cap.actions.includes('musicSearch')
+          ? 'musicSearch'
+          : null,
+    }))
+    .filter((p): p is { platform: string; action: string } => p.action !== null)
+
+  // 并发取回原始载荷；抛出的异常随槽位一起带出，由下面按序统一处理
+  const gathered = await mapWithConcurrency(plans, LX_SEARCH_MAX_IN_FLIGHT, async (plan) => {
     try {
-      const payload = await box.call(platform, action, { keyword: trimmed, page: 1, limit, pagesize: limit })
-      for (const item of normalizeSearchPayload(payload).slice(0, limit)) {
-        const title = String(item.name || item.title || item.songName || '').trim()
-        if (!title) continue
-        const meta = { ...item } as Record<string, unknown>
-        out.push({
-          id: `${source.id}-${platform}-${lxKeyOf(item)}`,
-          title,
-          // i18n-exempt: 匹配数据 —— coverMatch.PLACEHOLDER_ARTISTS 拿这个串判定「歌手未知」，
-          // 按语言翻译它会让英文界面下的封面匹配门禁行为漂移
-          artist: String(item.singer || item.artist || item.artists || '未知艺术家'),
-          album: String(item.albumName || item.album || ''),
-          duration: lxDurationOf(item),
-          coverUrl: item.picUrl || item.coverUrl || item.img || undefined,
-          // 直链留空：脚本源的搜索只给元信息，地址在播放/下载时按需取
-          audioUrl: '',
-          audioQuality: undefined,
-          source: source.id,
-          sourceName: source.name,
-          trackRef: { sourceId: source.id, platform, meta },
-        })
-      }
+      const payload = await box.call(plan.platform, plan.action, {
+        keyword: trimmed,
+        page: 1,
+        limit,
+        pagesize: limit,
+      })
+      return { platform: plan.platform, payload, error: null as unknown }
     } catch (err) {
       // 单平台失败只记录不中断（其它平台可能仍有结果）。原始异常**整个留着**：
       // 下面要按它的码决定上抛什么，诊断串则交给 describeError 现场生成。
-      failures.push({ platform, error: err })
+      return { platform: plan.platform, payload: null, error: err as unknown }
+    }
+  })
+
+  const out: LxSearchResult[] = []
+  const failures: Array<{ platform: string; error: unknown }> = []
+  // 按声明顺序组装：并发只影响取数时机，不影响结果顺序（下游有测试钉住这一点）
+  for (const entry of gathered) {
+    if (entry.error !== null) {
+      failures.push({ platform: entry.platform, error: entry.error })
+      continue
+    }
+    const { platform } = entry
+    for (const item of normalizeSearchPayload(entry.payload).slice(0, limit)) {
+      const title = String(item.name || item.title || item.songName || '').trim()
+      if (!title) continue
+      const meta = { ...item } as Record<string, unknown>
+      out.push({
+        id: `${source.id}-${platform}-${lxKeyOf(item)}`,
+        title,
+        // i18n-exempt: 匹配数据 —— coverMatch.PLACEHOLDER_ARTISTS 拿这个串判定「歌手未知」，
+        // 按语言翻译它会让英文界面下的封面匹配门禁行为漂移
+        artist: String(item.singer || item.artist || item.artists || '未知艺术家'),
+        album: String(item.albumName || item.album || ''),
+        duration: lxDurationOf(item),
+        coverUrl: item.picUrl || item.coverUrl || item.img || undefined,
+        // 直链留空：脚本源的搜索只给元信息，地址在播放/下载时按需取
+        audioUrl: '',
+        audioQuality: undefined,
+        source: source.id,
+        sourceName: source.name,
+        trackRef: { sourceId: source.id, platform, meta },
+      })
     }
   }
 
@@ -838,19 +876,34 @@ const LX_SCRIPT_MAX_MB = 4
 
 /** 拉取远程脚本源码（用户填脚本链接时用）；失败抛结构化错误，文案由显示端按语言渲染 */
 export async function fetchLxScript(url: string, timeoutMs = 15000): Promise<string> {
-  const resp = await fetchWithTimeout(
-    url,
-    {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: '*/*',
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: '*/*',
+        },
       },
-    },
-    timeoutMs
-  )
+      timeoutMs
+    )
+  } catch (err) {
+    // 响应头阶段的失败此前裸抛：用户看到的是底层 fetch 的英文 AbortError，
+    // 而这里本该是「脚本下载超时（15000ms）」这类可自解释的结论
+    if (isTimeoutError(err)) throw auroraError('core.error.lxScriptTimeout', { ms: timeoutMs })
+    throw err
+  }
   if (!resp.ok) throw auroraError('core.error.lxScriptDownload', { status: resp.status })
-  const text = await resp.text()
+  let text: string
+  try {
+    text = await resp.text()
+  } catch (err) {
+    // 读体同样纳入超时映射：上游发完响应头停住 body 时，报「下载超时」而不是英文 AbortError
+    if (isTimeoutError(err)) throw auroraError('core.error.lxScriptTimeout', { ms: timeoutMs })
+    throw err
+  }
   if (!text.trim()) throw auroraError('core.error.lxScriptEmpty')
   if (text.length > LX_SCRIPT_MAX_MB * 1024 * 1024) {
     throw auroraError('core.error.lxScriptTooLarge', { limit: LX_SCRIPT_MAX_MB })

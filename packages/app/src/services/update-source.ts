@@ -6,9 +6,13 @@
  * 表现为「检查更新失败」或下载进度停在 0 MB。更麻烦的是存在一类网络环境：
  * GitHub 主站 IP 放行而 CDN 域名被污染——检查更新能成功，下载却候选全灭。
  *
- * 策略：所有请求按「GitHub 官方 → 公共加速前缀」依次尝试，前一个失败（网络异常 /
- * 超时 / 限流 / 5xx）才降级到下一个，任一成功即返回。全部失败时抛出最后一个错误，
- * 由调用方按原有逻辑展示失败提示。
+ * 策略：本模块只保留**并发竞速**（见 fetchFastest）——检查更新这类小请求不值得为
+ * 「官方优先」多等一轮超时，直连与加速前缀同时发起、谁先成功用谁。
+ * 安装包下载的「官方优先、失败换源」仍走主进程 updater 的串行换源+续传逻辑：
+ * 那里不能竞速（会白白吞多份完整流量），本模块只负责把候选列表展开给它
+ * （withGithubProxies / releasesApiCandidates）。
+ *
+ * 候选列表的顺序语义仍在：GitHub 官方排第一，其余是加速前缀。
  *
  * 注意：加速前缀只拼接 GitHub 域名的原始链接（公开、无凭证），不承载任何用户数据。
  *
@@ -95,53 +99,12 @@ export function releasesApiCandidates(repoApi: string): string[] {
   return [repoApi, ...API_PROXY_PREFIXES.map((prefix) => prefix + repoApi)]
 }
 
-/** 带超时的 fetch：AbortController + 外部取消信号联动 */
-async function fetchWithTimeout(
-  url: string,
-  { timeoutMs, signal, headers }: { timeoutMs: number; signal?: AbortSignal; headers?: Record<string, string> }
-): Promise<Response> {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-  const onAbort = () => ctrl.abort()
-  signal?.addEventListener('abort', onAbort)
-  try {
-    return await fetch(url, { signal: ctrl.signal, headers })
-  } finally {
-    clearTimeout(timer)
-    signal?.removeEventListener('abort', onAbort)
-  }
-}
-
-/** 依次尝试候选地址，返回第一个成功响应的 body；失败则抛最后一个错误 */
-export async function fetchWithFallback<T>(
-  candidates: string[],
-  parse: (res: Response) => Promise<T>,
-  opts: { timeoutMs: number; headers?: Record<string, string>; signal?: AbortSignal }
-): Promise<T> {
-  // 兜底错误：候选为空（或首个候选就 abort）时用它收场，而不是抛一个无码的裸 Error
-  let lastError: unknown = auroraError('update.error.offline')
-  for (const url of candidates) {
-    if (opts.signal?.aborted) throw lastError
-    try {
-      const res = await fetchWithTimeout(url, { timeoutMs: opts.timeoutMs, signal: opts.signal, headers: opts.headers })
-      if (!res.ok) {
-        // 状态码进 detail（诊断用），文案由显示端按语言渲染
-        lastError = auroraError('errors.network.unreachable', undefined, `HTTP ${res.status}`)
-        continue
-      }
-      return await parse(res)
-    } catch (err) {
-      lastError = err
-    }
-  }
-  throw lastError
-}
-
 /**
  * 并发竞速：所有候选同时发起，第一个成功解析的胜出，其余立刻中止。
  *
  * 串行降级最坏要等「候选数 × 单次超时」才报失败（三个候选即 18s，用户感知就是卡死），
  * 竞速只等一个超时窗口。适合检查更新这类小请求；大文件下载不要用（会白白吞多份流量）。
+ * 共享一个 AbortController：任一候选胜出后立刻掐掉其余在途请求，不白等剩余超时窗口。
  */
 export async function fetchFastest<T>(
   candidates: string[],

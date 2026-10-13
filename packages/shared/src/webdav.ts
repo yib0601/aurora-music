@@ -441,7 +441,19 @@ export async function listWebdavDir(
   if (resp.status !== 207 && resp.status !== 200) {
     throw webdavErrorOf('core.error.webdavStatus', { name: cfg.name, status: resp.status }, resp.status)
   }
-  const xml = await resp.text()
+  // 读体纳入错误映射：超时（NAS 发完响应头后卡住）若不在这里分流，
+  // 用户看到的是 TimeoutError 的编码串，而不是「无法连接到网络存储「X」：…」
+  let xml: string
+  try {
+    xml = await resp.text()
+  } catch (err) {
+    throw webdavErrorOf(
+      'core.error.webdavConnect',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
+  }
   return parseMultiStatus(xml, cfg.baseUrl || '', cfg.rootPath || '', relPath)
 }
 
