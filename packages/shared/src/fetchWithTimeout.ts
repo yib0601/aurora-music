@@ -29,27 +29,30 @@
  * 修复放在**源头**（本函数）而不是给每个调用方加截止：调用方有 8 处，
  * 漏一处就漏一处挂死，且各处自定的截止还会互相打架。
  *
- * ## 覆盖范围与它**不**覆盖的两件事（别把结论读过头）
+ * ## 覆盖范围：两条「看起来该漏、实际不漏」的路径
  *
- * 读体预算只作用于四个读方法：`json` / `text` / `arrayBuffer` / `blob`。
- * 以下两条路径**不受约束**，仍会挂在停滞的 body 上（实测确认，与旧实现一致）：
- *   1. `resp.clone()` 得到的新对象——方法覆盖不随 clone 传播，而计时器又只在
- *      被覆盖的方法里惰性武装，于是 clone 上根本没有预算；
- *   2. `resp.body` 裸流读取（`Readable.fromWeb(resp.body)` 等）——绕过读方法，
- *      同样不会触发武装。
- * 当前仓库对 fetchWithTimeout 的返回值没有这两类消费点（handlers.ts / mediaCache.ts
- * 的下载路径用的是**全局原生 fetch**，不经过本函数），所以不是现存缺陷；
- * 但要把「四方法以外不受预算约束」当作本函数的显式接口契约对待，新增调用方前先看这条。
- * （实测教训：一度以为「socket 被 abort，所以 clone 也会跟着失败」——不成立。
- *  惰性武装意味着没人读体时计时器从未建立，压根没发生 abort。验证这类结论必须
- *  直接跑**当前源码**：我当时跑的是上一版构建产物，差点把逃逸写成受约束。）
+ * 读体预算的**方法覆盖**只作用于四个读方法（`json` / `text` / `arrayBuffer` / `blob`），
+ * 因为就地覆盖只改这一个实例、不碰原型。但真正的兜底不是那层覆盖，而是
+ * **返回时就武装的计时器到点 → abort 断掉底层 socket**，于是下面两条路径同样受约束：
+ *   1. `resp.clone()` 得到的新对象——方法覆盖不随 clone 传播，但共享同一条底层流；
+ *   2. `resp.body` 裸流读取（`Readable.fromWeb(resp.body)` 等）。
+ * 差异只在错误类型：这两条拿到的是底层 AbortError（方法覆盖才是做错误归一的地方），
+ * 所以依赖 `isTimeoutError` 分流的调用方应优先用四个读方法。
  *
- * 另有一条路径**不释放连接**：调用方拿到响应头后自行抛错、**从不读体**
- * （例如 `!resp.ok` 就 throw）。惰性武装的设计意味着此时读体计时器从未建立，
- * 于是没有任何人 abort，socket 会留到 undici 的 keep-alive / socket 超时自然回收
- * （实测 T+2.45s 仍存活，新旧实现一致）。这是既有行为，不是本轮引入；
- * 若要在该路径上也立刻断开，得改成在返回时就武装计时器，但那会重新带回
- * 「调用方慢处理响应头被算作超时」的问题，需要单独的取舍。
+ * 关键约束：**这两条之所以能被兜住，正是因为计时器在返回时就存在**。
+ * 早先的实现是「首次读体时才惰性武装」，当时这两条路径实测会挂死
+ * （没人调用被覆盖的方法 ⇒ 计时器从未建立 ⇒ 无人 abort）。改动这段时
+ * 不要把武装时机挪回读体入口，否则 clone / 裸流读会重新变成永久挂起的缺口。
+ *
+ * 同理，**「调用方拿到响应头后从不读体」时的连接释放也依赖这一点**：
+ * 只看 `resp.ok` 就返回的调用方不会再触发任何读方法，只有返回时武装的计时器
+ * 能在预算到点后把 socket 断掉（实测 300ms 预算下连接在 3s 内 destroyed）。
+ *
+ * 代价与补偿：返回时武装意味着「拿到响应头后闲置超过 timeoutMs」会被判超时。
+ * `readBody` 在开始读时会把预算**重置为完整一份**，所以正常路径（立即读体）
+ * 不受影响，也不会退化成 deadline 语义（NAS 慢响应头 + 大文件仍然能读完）。
+ * 只有「闲置超过一整个预算还不知道要读」这种情形会失败——那本来也说明
+ * 调用方拿完响应头就不该继续占着连接。
  */
 
 import { encodeErrorInfo } from './i18n/errors'
@@ -117,12 +120,11 @@ function unrefTimer(timer: unknown): void {
  * 于是把「慢但能成功」变成「稳定报超时」。两阶段各自一份预算则精确覆盖该缺陷：
  * 每个阶段都必然在有限时间内结束，不会无限等；同时不改变任何「本来能读完」的路径。
  *
- * 中止来源仍靠 `controller` 统一收敛：读体**进行中**时计时器到点 abort 会真的断掉
- * 底层 socket（与只让调用方拿到异常而底层继续挂着有本质区别）。
- * 这只覆盖「读体已经开始」的情形 —— 调用方拿到响应头后不读体就自行抛错时，
- * 计时器从未建立，连接不由本函数释放（见文件头「覆盖范围」一节）。
- * 移动端亦不满足，但影响与桌面端不同：`createNativeFetch()` 基于 CapacitorHttp 且
- * 忽略 `init.signal`，然而它把**完整 body 物化**后才 `new Response(body, ...)` 返回，
+ * 中止来源仍靠 `controller` 统一收敛：计时器到点 abort 会真的断掉底层 socket
+ * （与只让调用方拿到异常而底层继续挂着有本质区别）。因为计时器在**返回时就武装**，
+ * 这一点对「读体进行中」「调用方从不读体」「clone / 裸流读」三种情形都成立。
+ * 移动端是例外：`createNativeFetch()` 基于 CapacitorHttp 且忽略 `init.signal`，
+ * 然而它把**完整 body 物化**后才 `new Response(body, ...)` 返回，
  * 所以移动端压根没有「可停滞的增量 body」，读体预算在那里是空转；
  * 真正的挂起点在 `CapacitorHttp.request` 本身，而响应头阶段的 race 第二路已经兜住
  * （实测：impl 永不 resolve 时 301ms 抛 TimeoutError）。代价只是 abort 无法取消
@@ -138,22 +140,19 @@ function withBodyTimeout(resp: Response, ctx: {
   const { controller, external, timeoutMs, isByTimer } = ctx
   const signal = controller.signal
 
-  // 计时器与监听器都**惰性**武装（首次读体时才建）：
-  //   1. 调用方完全可能拿到 Response 后不读体（例如只看 resp.ok、只取 status），
-  //      急切挂载会让 abort 监听器按未读响应数在调用方 signal 上累积，永不摘除；
-  //   2. 预算应当从「开始读」起算。若在返回时就武装，调用方读体前做的其它事
-  //      （日志、写库、下一个请求）会凭空吃掉这份预算，把慢一点但正常的读判成超时。
   let bodyTimer: ReturnType<typeof setTimeout> | null = null
   let bodyTimedOut = false
   let externalListenerAttached = false
 
   const onExternalAbort = () => controller.abort(external?.reason)
 
-  const cleanup = () => {
+  const clearBodyTimer = () => {
     if (bodyTimer !== null) {
       clearTimeout(bodyTimer)
       bodyTimer = null
     }
+  }
+  const detachExternal = () => {
     if (externalListenerAttached) {
       external?.removeEventListener('abort', onExternalAbort)
       externalListenerAttached = false
@@ -166,25 +165,41 @@ function withBodyTimeout(resp: Response, ctx: {
     return reason instanceof TimeoutError ? reason : new TimeoutError(timeoutMs)
   }
 
-  const armBodyBudget = () => {
-    if (bodyTimer !== null) return
-    if (external && !externalListenerAttached) {
-      // 读体阶段仍要响应外部取消（响应头阶段那次监听已随 cleanupHeader 摘除）
-      if (external.aborted) controller.abort(external.reason)
-      else {
-        external.addEventListener('abort', onExternalAbort, { once: true })
-        externalListenerAttached = true
+  /** 到点：断 socket，并顺手撤销外部取消桥接（「调用方从不读体」时没人会来撤） */
+  const onBudgetExpired = () => {
+    bodyTimedOut = true
+    detachExternal()
+    controller.abort(new TimeoutError(timeoutMs))
+  }
+
+  /**
+   * 武装一份完整的读体预算。
+   *
+   * `attachExternal` 只在**开始读体**时为 true：外部取消桥接是给「读体进行中被取消」
+   * 用的，没读体就不需要它，也就不会在调用方那个可能长命百岁的 signal 上留下监听。
+   */
+  const armBodyBudget = (attachExternal: boolean) => {
+    clearBodyTimer()
+    if (attachExternal && external && !externalListenerAttached) {
+      if (external.aborted) {
+        controller.abort(external.reason)
+        return
       }
+      external.addEventListener('abort', onExternalAbort, { once: true })
+      externalListenerAttached = true
     }
-    bodyTimer = setTimeout(() => {
-      bodyTimedOut = true
-      controller.abort(new TimeoutError(timeoutMs))
-    }, timeoutMs)
-    // 只 unref 这一个：读体预算不该把进程退出推迟最多 timeoutMs。
-    // 响应头阶段那个计时器保持原样 —— 它的存在本身就是「请求进行中」的语义，
-    // unref 会让「自定义实现永不 resolve」在无人持有事件循环时静默退出而非按超时失败。
+    bodyTimer = setTimeout(onBudgetExpired, timeoutMs)
     unrefTimer(bodyTimer)
   }
+
+  // ── 请求返回即武装：这是两件事的**唯一**手段 ─────────────────────────
+  //   1. `resp.clone()` 与 `resp.body` 裸流读不经过下面被覆盖的读方法，
+  //      惰性武装会让它们完全不受约束（实测挂死）；能兜住它们的只有
+  //      「到点 abort 断 socket」，而这要求计时器在没人读体时也已经存在。
+  //   2. 「调用方拿到响应头后抛错、从不读体」时，这是释放连接的唯一机会。
+  // 代价是「拿到响应头后闲置超过 timeoutMs 再读」会被判超时——见下方 readBody
+  // 的重置逻辑与文件头「覆盖范围」一节，那里写明了为什么这个取舍可接受。
+  armBodyBudget(false)
 
   const readBody = <T>(call: () => Promise<T>): Promise<T> =>
     new Promise<T>((resolve, reject) => {
@@ -192,25 +207,26 @@ function withBodyTimeout(resp: Response, ctx: {
         reject(reasonError(signal.reason))
         return
       }
-      armBodyBudget()
+      // 开始读体：重置为一份**完整**预算，而不是「响应头到手后剩下的那点时间」。
+      // 不重置就退化成 deadline 语义（总预算减响应头耗时），而那是刻意拒绝的：
+      // NAS 上大文件先花 25s 出响应头（预算 30s）、body 再读 10s 本来是能成功的，
+      // deadline 会把它变成稳定报超时。重置保证「读体」永远拿到完整的一份。
+      armBodyBudget(true)
       // 兜底监听：部分内核 / 自定义实现的中止不会传播到 body 读，显式接住才有超时语义
       const onAbort = () => reject(reasonError(signal.reason))
       signal.addEventListener('abort', onAbort, { once: true })
       const raw = call()
       // 中止后底层读的拒绝无人接收（Chrome 会打 unhandledrejection），先挂空处理器
       raw.catch(() => {})
+      const settle = (fn: () => void) => {
+        signal.removeEventListener('abort', onAbort)
+        clearBodyTimer()
+        detachExternal()
+        fn()
+      }
       raw.then(
-        (value) => {
-          signal.removeEventListener('abort', onAbort)
-          cleanup()
-          resolve(value)
-        },
-        (err) => {
-          signal.removeEventListener('abort', onAbort)
-          cleanup()
-          // 读失败若发生在中止之后，报超时而非底层的 AbortError（后者文案是英文）
-          reject(signal.aborted ? reasonError(signal.reason) : err)
-        }
+        (value) => settle(() => resolve(value)),
+        (err) => settle(() => reject(signal.aborted ? reasonError(signal.reason) : err))
       )
     })
 
@@ -229,8 +245,9 @@ function withBodyTimeout(resp: Response, ctx: {
   resp.text = () => readBody(() => originalText.call(resp))
   resp.arrayBuffer = () => readBody(() => originalArrayBuffer.call(resp))
   resp.blob = () => readBody(() => originalBlob.call(resp))
-  // 已知未覆盖（实测确认为逃逸，不是「也会超时」）：`resp.clone()` 得到的新对象、
-// 以及 `resp.body` 的裸流读取。原因见文件头「覆盖范围」一节。当前无调用方。
+  // clone() 与 resp.body 裸流读不经过上面四个方法，**不受此处覆盖**。
+  // 它们的超时由返回时武装的计时器兜住：到点 abort 断掉底层 socket，共享同一条
+  // 流的 clone / body 随之失败（错误是底层 AbortError，不经这里的错误归一）。
   return resp
 }
 

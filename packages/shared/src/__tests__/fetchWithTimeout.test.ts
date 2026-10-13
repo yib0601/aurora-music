@@ -1,6 +1,6 @@
 import http from 'node:http'
 import { getEventListeners } from 'node:events'
-import type { AddressInfo } from 'node:net'
+import type { AddressInfo, Socket as NetSocket } from 'node:net'
 import { fetchWithTimeout, isTimeoutError, setCustomFetch, TimeoutError } from '../fetchWithTimeout'
 import { expectCode, rejectionOf } from './i18nAssert'
 
@@ -264,33 +264,35 @@ describe('fetchWithTimeout：读体超时', () => {
     expect(listeners()).toBe(0)
   })
 
-  it('读体预算从「开始读」起算，而不是从响应头到达起算', async () => {
+  it('响应头到手后闲置一段时间再读，只要没超预算就能成功（未退化成 deadline 语义）', async () => {
     mode.current = 'ok'
     const TIMEOUT_MS = 500
     const resp = await fetchWithTimeout(url('/ok'), {}, TIMEOUT_MS)
-    // 故意拖延超过一个超时窗口再读：若预算在返回时就武装，这里会误报超时
-    await new Promise((r) => setTimeout(r, TIMEOUT_MS + 300))
+    // 返回时就会武装预算，但**开始读体时会重置为完整一份**。
+    // 这里拖延 250ms（不到预算）再读：若计时器不重置、按「响应头到手起算」递减，
+    // 就变成 deadline 语义 —— 那是刻意的拒绝项（NAS 慢响应头 + 大文件会被误杀）。
+    await new Promise((r) => setTimeout(r, TIMEOUT_MS - 250))
     expect(await resp.json()).toEqual({ ok: true })
   })
 
-  it('已知契约：clone() 与 resp.body 裸流读取**逃逸**读体预算（不是「也会超时」）', async () => {
-    // 这条钉住一个我一开始写反、外部复核抓出来的事实。
-    // 我当时的错误推理：「计时器 abort 断掉底层 socket，共享同一条流的 clone 自然也失败」
-    // ——不成立。惰性武装意味着**没人调用被覆盖的读方法时计时器从未建立**，
-    // 压根没有 abort 发生，于是 clone 和裸流都会挂到上游自然结束为止。
-    //
-    // 这个文件存在的意义就是把「四方法以外不受约束」写成显式接口契约：
-    // 当前仓库没有这两类消费点（下载路径用全局原生 fetch），所以不是现存缺陷，
-    // 但新增调用方若绕过 json/text/arrayBuffer/blob，就会重新掉进永久挂起的坑。
+  it('clone() 与 resp.body 裸流读取同样受预算约束（不再逃逸，实测会 timeout）', async () => {
+    // 这两条路径不经过 json/text/arrayBuffer/blob 的方法覆盖，
+    // 但返回时就武装的计时器到点会 abort 断掉底层 socket，共享同一条流的
+    // clone / body 随之失败。这是本次修掉的一个真实缺口：
+    // 早先的实现是「首次读体才武装」，于是没人调用被覆盖的方法时计时器从未建立，
+    // clone 与裸流会挂到上游自然结束（实测挂死）。
     const TIMEOUT_MS = 300
-    const HANG_PROBE_MS = TIMEOUT_MS + 1200
+    const HANG_PROBE_MS = TIMEOUT_MS + 1500
 
     const respA = await fetchWithTimeout(url('/hang'), {}, TIMEOUT_MS)
     const cloneOutcome = await Promise.race([
-      respA.clone().json().then(() => 'settled').catch(() => 'settled'),
+      respA.clone().json().then(
+        () => 'resolved',
+        (e) => `rejected:${(e as Error).name}`
+      ),
       new Promise<string>((r) => setTimeout(() => r('hung'), HANG_PROBE_MS)),
     ])
-    expect(cloneOutcome).toBe('hung')
+    expect(cloneOutcome).toBe('rejected:TimeoutError')
 
     const respB = await fetchWithTimeout(url('/hang'), {}, TIMEOUT_MS)
     const streamOutcome = await Promise.race([
@@ -298,20 +300,58 @@ describe('fetchWithTimeout：读体超时', () => {
         const reader = respB.body!.getReader()
         for (;;) {
           const { done } = await reader.read()
-          if (done) return 'settled'
+          if (done) return 'done'
         }
-      })().catch(() => 'settled'),
+      })().then(
+        () => 'done',
+        (e) => `rejected:${(e as Error).name}`
+      ),
       new Promise<string>((r) => setTimeout(() => r('hung'), HANG_PROBE_MS)),
     ])
-    expect(streamOutcome).toBe('hung')
+    expect(streamOutcome).toBe('rejected:TimeoutError')
 
-    // 反向对照：受覆盖的读方法在同一窗口内**确实**会收敛，
-    // 否则上面两条「hung」可能只是上游/环境问题，而不是「逃逸」的证据
+    // 反向对照：受覆盖的读方法在同一窗口内也必须收敛，
+    // 否则上面两条不能归因于「预算生效」，可能只是环境问题
     const respC = await fetchWithTimeout(url('/hang'), {}, TIMEOUT_MS)
     const coveredOutcome = await Promise.race([
-      respC.json().then(() => 'settled').catch(() => 'settled'),
+      respC.json().then(
+        () => 'resolved',
+        (e) => `rejected:${(e as Error).name}`
+      ),
       new Promise<string>((r) => setTimeout(() => r('hung'), HANG_PROBE_MS)),
     ])
-    expect(coveredOutcome).toBe('settled')
+    expect(coveredOutcome).toBe('rejected:TimeoutError')
+  }, 20000)
+
+  it('拿到响应头后始终不读体：预算到点也会释放连接（不再挂到 keep-alive 超时）', async () => {
+    // 这条对应「调用方只看 resp.ok / resp.status 就返回」的真实用法。
+    // 旧（惰性武装）实现下计时器从未建立 ⇒ 没人 abort ⇒ socket 一直挂着。
+    const sockets: NetSocket[] = []
+    const dedicated = http.createServer((req, res) => {
+      req.socket.on('error', () => {})
+      req.resume()
+      sockets.push(req.socket)
+      res.writeHead(200, { 'content-type': 'application/json', 'content-length': '100' })
+      res.write('{"a":')
+    })
+    await new Promise<void>((r) => dedicated.listen(0, '127.0.0.1', r))
+    const dedicatedPort = (dedicated.address() as AddressInfo).port
+    try {
+      const TIMEOUT_MS = 300
+      const resp = await fetchWithTimeout(`http://127.0.0.1:${dedicatedPort}/x`, {}, TIMEOUT_MS)
+      expect(resp.status).toBe(200)
+      expect(sockets.length).toBe(1)
+      // 自证构造有效：此刻连接应当是活的
+      expect(sockets[0].destroyed).toBe(false)
+
+      const deadline = Date.now() + 3000
+      while (Date.now() < deadline && !sockets[0].destroyed) {
+        await new Promise((r) => setTimeout(r, 25))
+      }
+      expect(sockets[0].destroyed).toBe(true)
+    } finally {
+      dedicated.closeAllConnections?.()
+      await new Promise<void>((r) => dedicated.close(() => r()))
+    }
   }, 20000)
 })
