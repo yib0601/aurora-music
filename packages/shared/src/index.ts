@@ -74,7 +74,12 @@ export {
   correctSuspiciousAudioSources,
   clearSearchCache,
 } from './musicSource'
-export { searchLyrics, searchLyricsSource, BUILTIN_LYRICS_SOURCE } from './lyricsSource'
+export {
+  searchLyrics,
+  searchLyricsSource,
+  BUILTIN_LYRICS_GET_SOURCE,
+  BUILTIN_LYRICS_SOURCE,
+} from './lyricsSource'
 export {
   fetchRecommendPlaylists,
   fetchToplistGroups,
@@ -210,4 +215,6 @@ export {
   testWebdavConnection,
   openWebdavRange,
 } from './webdav'
+export { firstSuccess, mapWithConcurrency } from './concurrency'
+export type { FirstSuccessOptions, FirstSuccessHit } from './concurrency'
 export * from './i18n'

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 import { AudioLines, Music2 } from 'lucide-react'
 import type { LyricLine } from '@/types'
-import { parseLRC, findActiveLine, loadLyricsForTrack } from '@/services/lyrics.service'
+import { parseLRC, findActiveLine, loadLyricsForTrack, lyricsLoadKey, nextLyricsText } from '@/services/lyrics.service'
 import { usePlayerStore } from '@/stores/playerStore'
 import { cn } from '@/lib/utils'
 import { useT } from '@/i18n'
@@ -45,21 +45,64 @@ export function LyricsView({ lyricsText, className, large, onLineClick, onHasLyr
   const activeLineRef = useRef<number>(-2)
   const lastScrollRef = useRef<number>(0)
 
+  // 只按「曲目 id + 外部歌词」这个键重新加载：currentTrack 在播放中会被封面补齐
+  // （CoverImage 的 syncPlayerStoreCover）、取址回填、persist rehydrate 换成新对象，
+  // 依赖整个对象会让这些「字段没变、只是新引用」的更新也重跑加载——而重跑里一次
+  // 失败/超时的搜索就会把已经显示出来的歌词清成「暂无歌词」。
+  const loadKey = lyricsLoadKey(currentTrack, lyricsText)
+  const trackId = currentTrack?.id ?? null
+
+  // 真正发起加载要用曲目的完整字段（title/artist/album/duration），而加载 effect 又不能
+  // 依赖 currentTrack 对象本身，所以用 ref 持有最新值。本 effect 先于下面的加载 effect
+  // 声明，同一次 commit 里 ref 先更新，切歌时读到的就是新曲目。
+  const trackRef = useRef(currentTrack)
   useEffect(() => {
-    if (!currentTrack) {
+    trackRef.current = currentTrack
+  }, [currentTrack])
+
+  useEffect(() => {
+    if (!trackId) {
       setLoadedLyrics('')
+      setLoading(false)
       return
     }
     // 如果外部传了 lyricsText 优先用外部的
     if (lyricsText) {
       setLoadedLyrics(lyricsText)
+      setLoading(false)
       return
     }
+    const track = trackRef.current
+    if (!track || track.id !== trackId) {
+      setLoading(false)
+      return
+    }
+    // 切歌（id 变化）时清空上一首的歌词；同一首歌重复进入由服务层的同曲缓存兜底，
+    // 落地失败也不降级为空态
+    let cancelled = false
+    setLoadedLyrics('')
     setLoading(true)
-    loadLyricsForTrack(currentTrack)
-      .then((lrc) => setLoadedLyrics(lrc || ''))
-      .finally(() => setLoading(false))
-  }, [currentTrack, lyricsText])
+    loadLyricsForTrack(track)
+      .then((lrc) => {
+        // 竞态守卫：结果回来时已经切到别的歌，过期结果一律丢弃
+        if (cancelled) return
+        setLoadedLyrics((prev) => nextLyricsText(prev, lrc))
+      })
+      .catch((err) => {
+        // 拒绝一律吞掉：这里没有任何可补救的信息，把拒绝放出去只会让整棵 React 树
+        // 吃掉一个 unhandled rejection，而 UI 该做的是保持现状（已显示的歌词不清空）
+        console.warn('[lyrics] 歌词加载失败:', track.id, err)
+      })
+      .finally(() => {
+        // 收尾必须无条件进行：否则 loading 卡在 true，父级的纵向分配一直按「有歌词」排
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // trackId / lyricsText 单独列出只是为了让依赖数组自洽：两者都是 loadKey 的组成，
+    // 值不变则键不变、effect 不重跑，行为与只看 loadKey 一致
+  }, [loadKey, trackId, lyricsText])
 
   useEffect(() => {
     if (!loadedLyrics) {
