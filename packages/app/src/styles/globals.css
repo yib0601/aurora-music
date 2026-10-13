@@ -1071,10 +1071,47 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .scrollbar-thin { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
-  .scrollbar-thin::-webkit-scrollbar { width: 3px; }
+  .scrollbar-thin::-webkit-scrollbar { width: 3px; height: 3px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; margin: 6px 0; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+  .scrollbar-thin::-webkit-scrollbar-corner { background: transparent; }
+}
+
+/*
+ * 触屏平台的滚动条抑制（**按输入能力判定，不用宽度媒体查询近似**）。
+ *
+ * 问题：`.scrollbar-thin` 的 3px 自绘条是为桌面鼠标准备的常驻可见滚动条，
+ * 它隐含两个只在指针设备上成立的假设，到手机上全部落空：
+ *   1. 常驻可见 —— 条子长期悬在列表右缘，压住「时长」列的末位数字（实机截图：
+ *      WebView 里哪怕没人碰屏幕它也一直画着）；
+ *   2. 方向只管竖 —— 该规则只声明了 `width`，横轴与滚动条拐角继承 Chromium 的
+ *      ~15px 默认尺寸，横向容器（如移动端文件夹选择器的路径面包屑）就会浮出
+ *      一条又粗又长的横条。
+ *   触屏本就有系统自带的滚动指示器（Android 的 scrollbar-fade、iOS 的水下压条），
+ *   自带淡出，网页再画一条纯属重复。
+ *
+ * 判据取 `(hover: none) and (pointer: coarse)` 而非 `max-width: 1023px`：
+ * 宽度描述的是布局宽度，这里要判的是「此刻是否用触摸操作」，两者不等价
+ * （窄窗口的桌面、配鼠标的平板都会被宽度判据判错）。
+ *
+ * 只抑制 `.scrollbar-thin`（全站唯一的滚动条来源），`scrollbar-hide` 本就隐藏。
+ * 横条也在触屏一并关掉：它的常态是一条错向的粗横条，而「这里能横滚」的提示
+ * 由内容被右缘裁断本身承担，触屏用户一划即知，不需要一条常驻的条来告知。
+ * 桌面与 dev 浏览器（`pointer: fine`）不受影响，条宽仍照旧可调。
+ *
+ * 本层**不放进 `@layer components`**：Tailwind 的 utilities 排在 components 之后，
+ * 写进 components 的话，任何带 scrollbar 工具类的元素都会把这条抑制覆盖回去。
+ */
+@media (hover: none) and (pointer: coarse) {
+  .scrollbar-thin { scrollbar-width: none; }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb,
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-corner { background: transparent; }
 }
 
 /* ===== Range Slider — Mineradio 深色风格 ===== */
