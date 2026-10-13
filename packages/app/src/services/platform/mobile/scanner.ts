@@ -85,17 +85,49 @@ async function getLyricsPath(trackId: string): Promise<string> {
   return `${dir}/${trackId}.lrc`
 }
 
-async function processFile(
-  filePath: string,
-  coverCache: Map<string, string>,
-  db: MobileDatabase
-): Promise<Track | null> {
+/**
+ * 单文件解析结果：曲目本体 + 封面决策所需的两个事实。
+ *
+ * 为什么不在这里就地决定封面：专辑内「无内嵌封面的曲目借用同专辑封面」这件事
+ * **依赖文件顺序**（并发前是逐文件串行，同专辑里带封面那首只要排在前面就必然已登记）。
+ * 并发化后文件完成次序被打乱，「就地查表」会让后面的曲目漏借封面
+ * （表现为「同一张专辑部分曲目没封面」，而串行版是全部都有）。
+ * 因此解析阶段只负责产出事实，封面借用/登记交给**按文件顺序推进**的提交阶段，
+ * 语义与串行版逐字一致。
+ */
+interface ParsedFile {
+  track: Track
+  /**
+   * 专辑级复用键（专辑与艺术家标签都真实存在时才有，否则为 null）。
+   * 为 null 表示本曲**既不登记也不借用**（无标签曲目落到同一个键上会彼此串用封面）。
+   */
+  albumKey: string | null
+  /**
+   * 本曲是否要参与封面复用，取值有三种，直接对应旧实现的分支走向：
+   *
+   * - `'own'`：本曲自带内嵌封面且已成功落盘 → 由提交阶段**登记**到复用表；
+   * - `'borrow'`：本曲确认无内嵌封面 → 由提交阶段**借用**表里已有的封面；
+   * - `'none'`：本曲有内嵌封面但落盘失败 → **既不登记也不借用**。
+   *
+   * 最后一个取值是刻意保留旧实现语义的结果：旧代码里落盘失败发生在 `if (picture)`
+   * 分支内部，被 catch 吞掉后 `coverPath` 保持 undefined，且因为是 `if/else if`
+   * 结构，**根本不会走到借用分支**。若把它降级成「视同无自有封面 → 允许借用」，
+   * 这个文件就会拿到别的曲目的封面 —— 那是本次改造不该引入的行为改变。
+   */
+  coverPlan: 'own' | 'borrow' | 'none'
+}
+
+/**
+ * 解析单个文件的元数据（**只读文件 + 落本曲自有封面，不碰数据库**）。
+ *
+ * 与 db 解耦是并发的前提：并发只覆盖「读 blob + 解析标签 + 写封面文件」这段真正的耗时
+ * 主体，数据库读写全部留在 scanFolder 的串行阶段 —— Capacitor SQLite 的并发写行为
+ * 没有本机可验证的保障（真机才跑得起来），不为一次扫描提速去赌它。
+ * 查重（getTrackByPath）同样属于读库，也留在 scanFolder 的串行阶段。
+ */
+async function parseNewFile(filePath: string): Promise<ParsedFile | null> {
   try {
     const fileName = filePath.split('/').pop() || filePath
-
-    // 查重前置：已入库的歌曲直接复用记录，避免每次扫描重复读取大文件
-    const existing = await db.getTrackByPath(filePath)
-    if (existing) return existing
 
     // 流式读取：Filesystem.readFile 会把整个文件转成 base64 字符串，
     // 原生堆在 40MB 级 flac 上直接 OOM 崩溃；改用 fetch(convertFileSrc) 走流式
@@ -134,8 +166,10 @@ async function processFile(
         ? `${metadata.common.album}|${metadata.common.artist}`
         : null
 
-    if (metadata.common.picture && metadata.common.picture.length > 0) {
-      const pic = metadata.common.picture[0]
+    const hadPicture = Boolean(metadata.common.picture && metadata.common.picture.length > 0)
+    let coverPlan: ParsedFile['coverPlan'] = hadPicture ? 'none' : 'borrow'
+    if (hadPicture) {
+      const pic = metadata.common.picture![0]
       try {
         // 将 pic.data (Uint8Array) 转 base64 写入
         let bin = ''
@@ -158,14 +192,13 @@ async function processFile(
         // 直接存可访问 URL 到 coverPath，UI 层 getCoverSrc 原样返回即可
         const { uri } = await Filesystem.getUri({ path: coverDest, directory: Directory.Data })
         coverPath = Capacitor.convertFileSrc(uri)
-        if (albumKey) coverCache.set(albumKey, coverPath)
+        coverPlan = 'own'
       } catch (err) {
+        // 落盘失败保持 coverPlan='none'：**不登记也不借用**，与旧实现的 if/else-if
+        // 分支走向一致（旧代码在这里吞掉异常后 coverPath 保持 undefined，
+        // 且不会落到 else-if 的借用分支）
         console.warn('保存封面失败:', err)
       }
-    } else if (albumKey) {
-      // 本曲无内嵌封面时借用同专辑已缓存的封面
-      const cached = coverCache.get(albumKey)
-      if (cached) coverPath = cached
     }
 
     const track: Track = {
@@ -185,13 +218,21 @@ async function processFile(
       playCount: 0,
       liked: false,
     }
-    await db.insertTrack(track)
-    return track
+    return { track, albumKey, coverPlan }
   } catch (err) {
     console.error('处理文件失败:', filePath, err)
     return null
   }
 }
+
+/**
+ * 单次扫描的在飞解析上限。
+ *
+ * 与桌面端（PARSE_CONCURRENCY=8）、Web 端（4）同量级，取 4：手机端的瓶颈是
+ * `fetch(convertFileSrc)` 走 WebView 流式读 + `parseBlob` 解析，
+ * 4 路已足以盖住 IO 等待，再高在低端机上有把内存与文件描述符顶上去的风险。
+ */
+const SCAN_CONCURRENCY = 4
 
 export async function scanFolder(
   rootPath: string,
@@ -207,16 +248,165 @@ export async function scanFolder(
   if (removed > 0) console.log('[Mobile] scanFolder removed stale tracks:', removed)
 
   const tracks: Track[] = []
+  /**
+   * 专辑封面复用表：`albumKey → 本专辑已确定可用的封面地址`。
+   *
+   * 并发下它**只在提交阶段被读写**（提交严格按文件顺序串行），因此语义与
+   * 逐文件串行的旧实现逐字一致：「无内嵌封面的曲目」借到的是**排在自己之前**的
+   * 同专辑曲目已登记的封面。若放到并发解析阶段就地查表，后面的曲目可能比带封面那首
+   * 先跑完而漏借（表现为同一张专辑部分曲目没有封面）。
+   */
   const coverCache = new Map<string, string>()
 
-  for (const file of files) {
-    const track = await processFile(file, coverCache, db)
-    if (track) {
+  // ── 台账 ──
+  // parsed[i]：第 i 个文件的解析结果（已入库的复用记录按「无专辑键」处理；null=解析失败）
+  const parsed = new Array<ParsedFile | null>(files.length).fill(null)
+  // existingTrack[i]：已入库时直接复用的原记录（这类曲目本就带 coverPath，不参与借用）
+  const existingTrack = new Array<Track | null>(files.length).fill(null)
+  // needsInsert[i]：只有新解析出来的才写库。已入库的曲目**不重新写库**
+  // （旧实现里它们由 getTrackByPath 直接返回、从不 insert）：虽然 insertTrack 是
+  // 「保留原 id 与用户数据」的 upsert，但为几百首没变的歌各发一次写，既白耗 IO，
+  // 也平白多出一次「upsert 是否真的保住了播放统计」的信任成本。
+  const needsInsert = new Array<boolean>(files.length).fill(false)
+  /** 第 i 个文件是否已进入终态（解析完成 / 复用命中 / 解析失败） */
+  const settled = new Array<boolean>(files.length).fill(false)
+
+  /**
+   * 提交闸门：只提交**从 commitCursor 开始连续就绪**的前缀，因此提交顺序恒等于文件顺序。
+   *
+   * 这是「渐进式刷新」与「并发」能同时成立的关键：先完成的文件不必等后面的文件
+   * （此前三阶段实现里查重段与解析段各是一个屏障，首条通知要等全部查重结束才出现，
+   * 已在库的大曲库上首条曲目会明显更晚才显示出来）。
+   *
+   * 提交（封面借用 + 写库 + onTrack）必须串行：Capacitor SQLite 的并发写行为没有
+   * 本机可验证的保障（真机才跑得起来），不为一次扫描提速去赌它。串行化用一条
+   * promise 链实现——解析 worker 完成时会调用本函数，可能同时有多个调用者，必须互斥。
+   */
+  let commitCursor = 0
+  let commitChain: Promise<void> = Promise.resolve()
+
+  const commitReady = async (): Promise<void> => {
+    while (commitCursor < files.length && settled[commitCursor]) {
+      const i = commitCursor
+      const reused = existingTrack[i]
+      const entry = parsed[i]
+
+      if (reused) {
+        // 已入库：原样复用（含原有 coverPath），不写库、不参与封面借用
+        tracks.push(reused)
+        // 先推进游标、再回调：onTrack 是外部注入的（生产路径是 store 更新），
+        // 一旦它抛错，若游标还停在原地，下一次 commitReady 会把同一首**重复 push 并重复通知**
+        // （实测可复现 [a,b,b,c]）。推进在前保证「提交一次且仅一次」。
+        commitCursor++
+        if (onTrack) onTrack(reused)
+        continue
+      }
+      if (!entry) {
+        // 解析失败：本文件整条丢弃（与旧实现一致），继续推进游标
+        commitCursor++
+        continue
+      }
+
+      const track = entry.track
+      // ── 封面决策（严格按文件顺序，与串行版 if/else-if 分支走向一一对应） ──
+      if (entry.coverPlan === 'own' && entry.albumKey && track.coverPath) {
+        // 本曲自带封面且已落盘：登记供同专辑的**后续**曲目复用
+        coverCache.set(entry.albumKey, track.coverPath)
+      } else if (entry.coverPlan === 'borrow' && entry.albumKey) {
+        // 本曲确认无内嵌封面：借同专辑「排在自己之前」的曲目已登记的封面
+        const borrowed = coverCache.get(entry.albumKey)
+        if (borrowed) track.coverPath = borrowed
+      }
+      // coverPlan === 'none'（有封面但落盘失败）：既不登记也不借用，
+      // 与旧实现一致（见 ParsedFile.coverPlan 的说明）
+
+      if (needsInsert[i]) {
+        try {
+          await db.insertTrack(track)
+        } catch (err) {
+          // 单条写入失败不中断整轮扫描（旧实现里这个错误会让该文件被整条丢弃）
+          console.error('写入曲目失败:', track.path, err)
+          commitCursor++
+          continue
+        }
+      }
       tracks.push(track)
+      // 同 reused 分支：先推进游标再通知，避免 onTrack 抛错导致重复提交
+      commitCursor++
       // 立即通知 UI 追加显示（渐进式刷新），不等全部扫描完
       if (onTrack) onTrack(track)
     }
   }
+
+  /** 串行化地触发一次提交；返回的 promise 在本次提交做完后 resolve */
+  const flush = (): Promise<void> => {
+    const next = commitChain.then(commitReady)
+    // 不让链条因某次提交抛错而断掉：commitReady 内部已吞掉写库错误，
+    // 这里的 catch 只兜「不该发生」的意外，保证后续 flush 仍能推进。
+    commitChain = next.catch(() => {})
+    return next
+  }
+
+  // ── 在飞解析数信号量（≤ SCAN_CONCURRENCY），避免一次把整个曲库读进内存 ──
+  let inFlight = 0
+  const slotsFree: Array<() => void> = []
+  const acquire = async (): Promise<void> => {
+    if (inFlight >= SCAN_CONCURRENCY) {
+      await new Promise<void>((resolve) => slotsFree.push(resolve))
+    }
+    inFlight++
+  }
+  const release = (): void => {
+    inFlight--
+    slotsFree.shift()?.()
+  }
+
+  // ── 流水线：查重按文件顺序串行推进，解析投进并发池且不阻塞后续查重 ──
+  //
+  // 查重（getTrackByPath）保持**串行**：它也是数据库访问，和写库同理不并发。
+  // 但它只占「每文件一次查询」的时间，解析才是耗时主体——把解析挪出主循环后，
+  // 首条通知只需等「第一个文件查重完 + 它自己解析完」，不再等整轮查重。
+  const parseJobs: Array<Promise<void>> = []
+  for (let i = 0; i < files.length; i++) {
+    // 查重抛错必须**只跳过该文件**，不能让整轮扫描 reject。
+    //
+    // 旧实现把这次查询放在 processFile 的 try/catch 内，读库出错时该文件被跳过、
+    // 其余文件继续入库（实测旧版在同样输入下返回 [a,c]）。新流水线把查重提到了
+    // 主循环，若放任异常冒泡就会 reject 整个 scanFolder —— 单条记录读不出来
+    // 会让整张库扫不动，这是明确的退化。按旧语义降级为「该文件本次跳过」，
+    // 并把 settled[i] 置位让提交游标能越过它。
+    let existing: Track | null = null
+    try {
+      existing = await db.getTrackByPath(files[i])
+    } catch (err) {
+      console.warn('查重失败，本次跳过该文件:', files[i], err)
+      settled[i] = true
+      await flush()
+      continue
+    }
+    if (existing) {
+      existingTrack[i] = existing
+      settled[i] = true
+      await flush()
+      continue
+    }
+    await acquire()
+    parseJobs.push(
+      (async () => {
+        try {
+          parsed[i] = await parseNewFile(files[i])
+          needsInsert[i] = true
+        } finally {
+          settled[i] = true
+          release()
+          await flush()
+        }
+      })()
+    )
+  }
+
+  await Promise.all(parseJobs)
+  await flush()
 
   return tracks
 }

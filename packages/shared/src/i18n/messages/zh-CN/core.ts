@@ -84,6 +84,7 @@ const core = {
     lxUrlInvalid: '脚本返回的地址无效',
     lxResolveFailed: '取址失败',
     lxScriptDownload: '脚本下载失败：HTTP {status}',
+    lxScriptTimeout: '脚本下载超时（{ms}ms）',
     lxScriptTooLarge: '脚本体积异常（>{limit}MB），已放弃加载',
     lxTrackRefMissing: '曲目缺少洛雪取址定位信息（lx）',
     lxSourceNotFound: '未找到洛雪音源配置（id={id}）',
@@ -97,6 +98,7 @@ const core = {
     sourceTimeout: '源「{name}」请求超时（{ms}ms）',
     sourceRequestFailed: '源「{name}」请求失败：{reason}',
     sourceHttpStatus: '源「{name}」返回 HTTP {status}',
+    sourceNotJson: '源「{name}」返回的不是 JSON',
     sourceUnavailable: '源不可用',
     allSourcesFailed: '所有音乐源请求失败，请检查网络连接或源配置',
 
@@ -105,6 +107,7 @@ const core = {
     lyricsTimeout: '歌词源「{name}」请求超时（{ms}ms）',
     lyricsRequestFailed: '歌词源「{name}」请求失败：{reason}',
     lyricsHttpStatus: '歌词源「{name}」返回 HTTP {status}',
+    lyricsNotJson: '歌词源「{name}」返回的不是 JSON',
 
     // ── 在线音乐读取执行器（musicHall） ──────────────────────────────
     hallTimeout: '音源「{name}」请求超时（{ms}ms）',
@@ -117,6 +120,7 @@ const core = {
     playlistTimeout: '音源「{name}」请求超时（{ms}ms）',
     playlistRequestFailed: '音源「{name}」请求失败：{reason}',
     playlistHttpStatus: '音源「{name}」返回 HTTP {status}',
+    playlistNotJson: '音源「{name}」返回的不是 JSON',
     playlistEmpty: '音源「{name}」未返回任何歌曲',
     playlistNoSource: '尚未配置可解析歌单的音源，请在设置页添加音源（填一条音源地址即可），或改用纯文本粘贴导入',
     playlistFailed: '歌单解析失败',

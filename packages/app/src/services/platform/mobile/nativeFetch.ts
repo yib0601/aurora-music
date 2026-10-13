@@ -9,6 +9,17 @@ import { CapacitorHttp } from '@capacitor/core'
  * 改用原生 HTTP 发请求不受浏览器同源策略约束（与下载封面用
  * CapacitorHttp 的原因一致），再把结果包装回标准 Response，
  * 使 @aurora/shared 的协议执行器无需改动。
+ *
+ * ## 已知限制：本实现**忽略 `init.signal`**
+ *
+ * 只取 `{method, headers, responseType}` 转发给 CapacitorHttp，不传 signal，
+ * 因此 `fetchWithTimeout` 的超时**无法取消**底层原生请求 —— 超时只保证调用方
+ * 按时拿到异常，原生侧仍会跑完（框架未提供取消入口）。
+ * 这不影响「不永久挂起」这个结论：`fetchWithTimeout` 的响应头阶段有
+ * `Promise.race` 兜底（实测 impl 永不 resolve 时也能按预算抛出），
+ * 而本实现把**完整 body 物化**后才 `new Response(body, ...)` 返回，
+ * 所以移动端没有「可停滞的增量 body」，读体预算在那里是空转。
+ * 改动本函数时不要把「传了 signal」当成已实现能力。
  */
 export function createNativeFetch(): (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
   return async (input, init = {}) => {

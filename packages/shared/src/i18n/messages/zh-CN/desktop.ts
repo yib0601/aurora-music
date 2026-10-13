@@ -79,6 +79,7 @@ const desktop = {
       kindUnsupported: '暂不支持的媒体库来源类型：{kind}',
       remoteReadFailed: '读取远端文件失败：HTTP {status}',
       coverHttpStatus: '封面下载失败：HTTP {status}',
+      coverTimeout: '封面下载超时（{ms}ms）',
       coverInvalid: '封面下载失败：内容不是有效图片',
     },
     /** 洛雪（LX）脚本音源宿主 */

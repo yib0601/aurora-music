@@ -59,6 +59,7 @@ const en: LocalizedOf<typeof core> = {
     lxUrlInvalid: 'The script returned an invalid URL',
     lxResolveFailed: 'Could not resolve the audio URL',
     lxScriptDownload: 'Failed to download the script: HTTP {status}',
+    lxScriptTimeout: 'Timed out downloading the script ({ms}ms)',
     lxScriptTooLarge: 'The script is abnormally large (over {limit}MB); loading aborted',
     lxTrackRefMissing: 'The track has no LX resolution token (lx)',
     lxSourceNotFound: 'No LX source configuration found (id={id})',
@@ -72,6 +73,7 @@ const en: LocalizedOf<typeof core> = {
     sourceTimeout: 'Source "{name}" timed out ({ms}ms)',
     sourceRequestFailed: 'Source "{name}" request failed: {reason}',
     sourceHttpStatus: 'Source "{name}" returned HTTP {status}',
+    sourceNotJson: 'Source "{name}" did not return JSON',
     sourceUnavailable: 'The source is unavailable',
     allSourcesFailed: 'Every music source failed; check the network connection or the source configuration',
 
@@ -81,6 +83,7 @@ const en: LocalizedOf<typeof core> = {
     lyricsTimeout: 'Lyrics source "{name}" timed out ({ms}ms)',
     lyricsRequestFailed: 'Lyrics source "{name}" request failed: {reason}',
     lyricsHttpStatus: 'Lyrics source "{name}" returned HTTP {status}',
+    lyricsNotJson: 'Lyrics source "{name}" did not return JSON',
 
     // ── 在线音乐读取执行器 ──────────────────────────────────────────
     hallTimeout: 'Source "{name}" timed out ({ms}ms)',
@@ -93,6 +96,7 @@ const en: LocalizedOf<typeof core> = {
     playlistTimeout: 'Source "{name}" timed out ({ms}ms)',
     playlistRequestFailed: 'Source "{name}" request failed: {reason}',
     playlistHttpStatus: 'Source "{name}" returned HTTP {status}',
+    playlistNotJson: 'Source "{name}" did not return JSON',
     playlistEmpty: 'Source "{name}" returned no songs',
     playlistNoSource:
       'No playlist-capable source is configured; add one in Settings (a single source URL is enough), or paste the songs as plain text',

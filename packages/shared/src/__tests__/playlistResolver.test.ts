@@ -7,6 +7,7 @@ import { playlistEndpointOf } from '../auroraPreset'
 import { setCustomFetch } from '../fetchWithTimeout'
 import { expectCode, rejectionOf } from './i18nAssert'
 import type { OnlineSourceConfig } from '../types'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const SHARE_URL = 'https://y.qq.com/n/ryqq/playlist/7344515327'
 
@@ -348,5 +349,153 @@ describe('parsePlaylistLink（音源合并后）', () => {
     expect(out.songs[2]).toMatchObject({ album: '起风了', duration: 325, coverUrl: 'https://p1.music.126.net/1.jpg', songmid: '1001' })
     expect(out.songs[3].album).toBe('旧专辑')
     expect(out.songs[3].duration).toBeUndefined()
+  })
+})
+
+/**
+ * 对冲调度（延迟对冲取代了旧的逐源串行）的语义回归。
+ *
+ * 改造前是 `for (const source of enabled) await resolvePlaylistUrl(...)`：失败耗时按源数
+ * 累加，单源超时 15s、三个源全挂最坏 45s。改成对冲后必须钉住三件事：优先级没丢、
+ * 累计等待确实消失、全部失败时抛的仍是「最后试过的那一个」的错误。
+ *
+ * 这里用**真实的计时**（上游桩里 sleep 一段）而不是假计时器：被验证的性质就是
+ * 「谁先被启动、什么时刻被启动」，假计时器要手工推进到恰好 tick 才不 flaky。
+ * 每档的延时都在 10~60ms 量级，与 1000ms 的对冲窗口拉开两个数量级，判据稳定。
+ */
+describe('parsePlaylistLink：对冲调度', () => {
+  afterEach(() => {
+    setCustomFetch(null)
+    vi.restoreAllMocks()
+  })
+
+  /** 上游桩：按 URL 里的 tag 决定延时与响应，并记录每次请求的时刻 */
+  function installTimedUpstream(spec: Record<string, { ms: number; body?: unknown; status?: number }>) {
+    const t0 = Date.now()
+    const started: Array<{ tag: string; at: number }> = []
+    setCustomFetch(async (input) => {
+      const url = String(input)
+      const tag = /tag=([^&]*)/.exec(url)?.[1] || ''
+      started.push({ tag, at: Date.now() - t0 })
+      const rule = spec[tag] || { ms: 0 }
+      if (rule.ms) await new Promise((r) => setTimeout(r, rule.ms))
+      return jsonResponse(rule.body ?? { songs: [{ title: `歌-${tag}`, artist: '手' }] }, rule.status ?? 200)
+    })
+    return started
+  }
+
+  const tagSource = (tag: string) =>
+    makeSource({ id: tag, name: tag, playlistUrl: `https://api.example/playlist?url={url}&tag=${tag}` })
+
+  it('首源在窗口内成功时，后续源根本不发请求（优先级不被网络快慢颠倒）', async () => {
+    const started = installTimedUpstream({ a: { ms: 20 } })
+    const out = await parsePlaylistLink([tagSource('a'), tagSource('b'), tagSource('c')], SHARE_URL)
+    expect(out.songs[0].title).toBe('歌-a')
+    expect(started.map((s) => s.tag)).toEqual(['a'])
+  })
+
+  it('首源迟迟不定时并行启动下一源，先回来的胜出（等待不再累加）', async () => {
+    // a 永不返回（可控 deferred），b 20ms 就回 —— 若仍是串行，本用例会一直等到 a 的超时
+    const started: string[] = []
+    let releaseA: () => void = () => {}
+    setCustomFetch(async (input) => {
+      const tag = /tag=([^&]*)/.exec(String(input))?.[1] || ''
+      started.push(tag)
+      if (tag === 'a') await new Promise<void>((resolve) => (releaseA = resolve))
+      else await new Promise((r) => setTimeout(r, 20))
+      return jsonResponse({ songs: [{ title: `歌-${tag}`, artist: '手' }] })
+    })
+    const t0 = Date.now()
+    const out = await parsePlaylistLink([tagSource('a'), tagSource('b')], SHARE_URL)
+    const elapsed = Date.now() - t0
+    expect(out.songs[0].title).toBe('歌-b')
+    // 对冲窗口 1000ms + b 的 20ms：耗时必须是「一个窗口」量级，而不是 a 的整个超时窗口
+    expect(elapsed).toBeLessThan(3000)
+    expect(started).toEqual(['a', 'b'])
+    releaseA()
+  })
+
+  it('首源失败立刻推进下一源，不白等一个对冲窗口', async () => {
+    const started = installTimedUpstream({
+      a: { ms: 0, status: 500 },
+      b: { ms: 0, body: { songs: [{ title: '歌-b', artist: '手' }] } },
+    })
+    const t0 = Date.now()
+    const out = await parsePlaylistLink([tagSource('a'), tagSource('b')], SHARE_URL)
+    expect(out.songs[0].title).toBe('歌-b')
+    expect(started.map((s) => s.tag)).toEqual(['a', 'b'])
+    // 落空后是同一次微任务链上推进的，第二个请求必须在毫秒级出现
+    expect(started[1].at).toBeLessThan(500)
+    expect(Date.now() - t0).toBeLessThan(1000)
+  })
+
+  it('全部失败时抛最后试过的那一个源的错误（与旧串行版口径一致）', async () => {
+    // a 返回 500 -> 抛 playlistHttpStatus(name=a)；b 返回空歌单 -> 抛 playlistEmpty(name=b)
+    installTimedUpstream({
+      a: { ms: 0, status: 500 },
+      b: { ms: 0, body: { songs: [] } },
+    })
+    const err = await rejectionOf(parsePlaylistLink([tagSource('a'), tagSource('b')], SHARE_URL))
+    expectCode(err, 'core.error.playlistEmpty', { name: 'b' })
+  })
+
+  it('失败原因按**配置顺序**取，不随完成顺序漂移（并发下的确定性）', async () => {
+    // 关键构造：让 a **慢到超过对冲窗口**（1500ms > 1000ms）。于是 b 在 1000ms 被对冲启动、
+    // 立刻失败；a 要到 1500ms 才失败 —— 完成顺序 b → a，与配置顺序 a → b 恰好相反。
+    //
+    // 这个构造是必须的：若 a 只慢 300ms（未超过窗口），b 会在 a 失败**之后**才被启动，
+    // 完成顺序就退化成与配置顺序一致，两种实现（按下标记位 / 按完成顺序 push）结果相同，
+    // 用例便没有区分力。此处的时刻差已实测确认（改前实测会抛 a 的 playlistHttpStatus）。
+    const started = installTimedUpstream({
+      a: { ms: 1500, status: 500 },
+      b: { ms: 0, body: { songs: [] } },
+    })
+    const err = await rejectionOf(parsePlaylistLink([tagSource('a'), tagSource('b')], SHARE_URL))
+    // 按配置顺序取「最后尝试过的源」= b；按完成顺序取末项会得到 a
+    expectCode(err, 'core.error.playlistEmpty', { name: 'b' })
+    expect(started.map((s) => s.tag)).toEqual(['a', 'b'])
+  })
+
+  it('三个源全失败时抛的是配置顺序上的第三个（而非最快失败的那个）', async () => {
+    // 失败耗时与配置顺序**完全相反**：越靠前的源越慢才失败
+    installTimedUpstream({
+      a: { ms: 60, status: 503 },
+      b: { ms: 20, status: 502 },
+      c: { ms: 0, status: 500 },
+    })
+    const err = await rejectionOf(
+      parsePlaylistLink([tagSource('a'), tagSource('b'), tagSource('c')], SHARE_URL)
+    )
+    expectCode(err, 'core.error.playlistHttpStatus', { name: 'c', status: 500 })
+  })
+
+  it('同时在途的源不超过上限 3（第 4 个源要等前一个落空）', async () => {
+    // 四个源都「永不返回」：前 3 个被启动后，第 4 个必须等某个在途档让位才有机会。
+    // 用可控 deferred 而非定时器，测完由用例显式放行，不留悬挂的异步任务。
+    const started: string[] = []
+    const gates: Array<() => void> = []
+    setCustomFetch(async (input) => {
+      const tag = /tag=([^&]*)/.exec(String(input))?.[1] || ''
+      started.push(tag)
+      await new Promise<void>((resolve) => gates.push(resolve))
+      return jsonResponse({ songs: [{ title: `歌-${tag}`, artist: '手' }] })
+    })
+
+    const task = parsePlaylistLink(
+      [tagSource('a'), tagSource('b'), tagSource('c'), tagSource('d')],
+      SHARE_URL
+    )
+    // 等过两轮对冲窗口（1000ms × 2）：a/b/c 应已在途，第 4 档被 maxInFlight 挡住
+    await new Promise((r) => setTimeout(r, 2400))
+    expect(started).toEqual(['a', 'b', 'c'])
+
+    // 放行 a → 它成功返回，整体收场；此时第 4 档仍不该被启动
+    gates[0]()
+    const out = await task
+    expect(out.songs[0].title).toBe('歌-a')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(started).toEqual(['a', 'b', 'c'])
+    // 清掉仍在挂的 b / c，避免它们的请求跨用例存活
+    gates.slice(1).forEach((open) => open())
   })
 })
