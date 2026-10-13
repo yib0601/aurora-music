@@ -94,6 +94,12 @@ function TrackLyrics({ track, onLineClick, className, large }: { track: Track; o
       .then((text) => {
         if (!cancelled) setLrc(text || '')
       })
+      .catch((err) => {
+        // 收敛到空态：lrc 停在 null 就是「正在搜索歌词…」永久转圈，
+        // 任何加载失败都必须给出一个终态
+        console.warn('[lyrics] 详情页歌词加载失败:', track.id, err)
+        if (!cancelled) setLrc('')
+      })
     return () => {
       cancelled = true
     }
