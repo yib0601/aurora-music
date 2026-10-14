@@ -19,7 +19,8 @@
     "dev:electron": "wait-on http://localhost:5173 && npx tsc -p tsconfig.electron.json && electron .",
     "build": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --publish never",
     "build:dir": "cd ../app && npx vite build && cd ../desktop && shx rm -rf app-dist && shx cp -r ../app/dist app-dist && npx tsc -p tsconfig.electron.json && npx electron-builder --dir",
-    "typecheck": "tsc --noEmit -p tsconfig.electron.json"
+    "typecheck": "tsc --noEmit -p tsconfig.electron.json && tsc -p tsconfig.test.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@aurora/shared": "workspace:*",
@@ -38,6 +39,7 @@
     "electron-builder": "^26.15.3",
     "shx": "^0.4.0",
     "typescript": "^5.6.3",
+    "vitest": "^3.2.7",
     "wait-on": "^8.0.1"
   },
   "build": {
