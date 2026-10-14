@@ -318,7 +318,14 @@ export function MusicHallDetailPage() {
           {isToplist ? t('hall.detail.empty.toplist') : t('hall.detail.empty.playlist')}
         </p>
       ) : (
-        <div ref={scrollRef} className="relative flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
+        <div
+          ref={scrollRef}
+          className="hall-detail-scroll relative flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin pr-2 -mr-2"
+        >
+          {/* ⚠️ 上面的 overflow-x-hidden 不是可选项：只声明 overflow-y:auto 时，CSS 会把
+              另一轴的 visible 计算成 auto —— 容器因此变成**横向可滚动容器**，Hero 在窄容器
+              里超出几像素（实测 390px 视口溢出 7px、320px 溢出 77px），整页就能被手指左右
+              拖动，且拖动后 Hero 被推到屏幕外、左边露出空白。见 DetailHero 的宽度推导。 */}
           {/* Hero 与曲目表同宽：列表限宽 720 后，Hero 若铺满内容区，页面上会同时存在
               两个视觉轴（宽的 Hero + 窄的表），读起来像是拼错版 */}
           <div className="max-w-[720px]">
@@ -522,16 +529,21 @@ function DetailHero({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-end gap-5 mb-6">
+    // 与封面底部对齐（items-end），标题组自然落在封面下沿，而不是悬在封面半腰。
+    // 窄容器（手机）由 .hall-hero 的容器查询改成纵向堆叠：132px 封面 + 20px 间距横向
+    // 摆开时标题列只剩约 214px（歌单名几乎全部截断），操作按钮也会被挤到换行（见 globals.css）
+    <div className="hall-hero flex items-end gap-5 mb-6">
       <HeroCover covers={covers} />
-      {/* 与封面底部对齐（items-end），标题组自然落在封面下沿，而不是悬在封面半腰 */}
       <div className="min-w-0 flex-1 pb-0.5">
         <SubPageTitle className="truncate flex items-center gap-2">
           {icon}
           {title}
         </SubPageTitle>
         {meta && <PageSubtitle className="mt-1.5 truncate">{meta}</PageSubtitle>}
-        <div className="flex items-center gap-2 mt-4">{children}</div>
+        {/* flex-wrap 是必需的：两个 pill 都是 white-space:nowrap 且不许收缩，不放行的
+            窄容器里它们会把整行顶宽（实测按钮行 min-content 221px）。换行只作兜底，
+            真正的分档在 .hall-hero 的容器查询里 */}
+        <div className="hall-hero__actions flex flex-wrap items-center gap-2 mt-4">{children}</div>
       </div>
     </div>
   )
@@ -545,7 +557,9 @@ function DetailHero({
  * 三种形态**外框尺寸完全一致**，切换数据源时页面不会跳。
  */
 function HeroCover({ covers }: { covers: string[] }) {
-  const box = 'w-[132px] h-[132px] flex-shrink-0 rounded-ds-panel overflow-hidden bg-white/[0.05]'
+  // hall-hero__cover 供 .hall-hero 的容器查询在窄档缩小封面（见 globals.css）；
+  // 三个形态共用同一个 box 常量，尺寸因此始终一致，切换数据源时页面不会跳
+  const box = 'hall-hero__cover w-[132px] h-[132px] flex-shrink-0 rounded-ds-panel overflow-hidden bg-white/[0.05]'
   if (covers.length >= 4) {
     return (
       <div className={cn(box, 'grid grid-cols-2 grid-rows-2 gap-[3px]')}>

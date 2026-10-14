@@ -1397,6 +1397,62 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
   }
 }
 
+/* ===== 音乐库详情页（推荐歌单 / 榜单）的窄容器分档 =====
+ *
+ * 病灶（实机复现 + CDP 实测）：详情页滚动容器只声明了 `overflow-y-auto`，而
+ * CSS 规定「一轴为 auto/scroll 时，另一轴的 visible 会**计算成 auto**」——
+ * 容器因此是**横向可滚动容器**：Hero 的 min-content 宽 373px 在窄容器里放不下
+ * （实测 390px 视口溢出 7px、360px 溢出 37px、320px 溢出 77px），整页就能被手指
+ * 左右拖动，划走之后 Hero 被推出屏幕、左边露出空白。桌面端只是在容器宽
+ * 373–412px 之间恰好不溢出，所以这个坑只在手机上显形。
+ *
+ * 分档方式与 `.track-row-grid` 同源：**容器查询**而非视口断点。详情页列表限宽 720px、
+ * 容器的可用宽度由侧栏 / 右侧瓷砖 / 页面内边距共同决定，与视口宽度没有稳定对应关系
+ * （见 useContainerWidth 顶部说明）。调用方给滚动容器加 `.hall-detail-scroll`
+ * 提供 container-type，Hero 与按钮行按容器宽分档。
+ *
+ * ⚠️ `container-type: inline-size` 只测 inline 轴，不改变块轴滚动行为；
+ * 但**不能加在滚动容器本身之外的祖先上**——那会把 Hero 的可用宽度算成整页宽度。
+ */
+.hall-detail-scroll {
+  container-type: inline-size;
+}
+
+/* 窄档（容器 < 420px：手机竖屏、窄窗口）：Hero 由「封面在左 / 文字在右」改为纵向堆叠，
+ * 封面缩到 96px。横排时标题列只剩约 214px——歌单名几乎全部截断，中英混排的歌名
+ * 更是一眼只看得出前两个字；改纵向后标题列拿到整宽，标题与元信息都读得全。 */
+@container (max-width: 419px) {
+  .hall-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .hall-hero > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hall-hero__cover {
+    width: 96px;
+    height: 96px;
+  }
+  .hall-hero__actions {
+    margin-top: 14px;
+  }
+}
+
+/* 极窄档（容器 < 320px）：两个 pill 并排需要 221px，此时连标题也只剩不到两行宽度。
+ * 按钮改为整宽铺满并纵向排列——触屏上这是更好按的形态，也彻底消掉按钮行撑宽的可能 */
+@container (max-width: 319px) {
+  .hall-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .hall-hero__actions > * {
+    width: 100%;
+  }
+}
+
 /* ===== 旋转黑胶唱片（歌曲详情页封面） =====
  * 播放中匀速旋转；暂停用 animation-play-state 停转，避免回跳
  */
