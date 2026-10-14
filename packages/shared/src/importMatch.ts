@@ -1,4 +1,5 @@
 import type { OnlineTrackSearchResult, ParsedSong } from './types'
+import { isNonOriginalCandidate, targetHasVersionMarker } from './coverMatch'
 
 /**
  * 歌单导入的文本解析与匹配逻辑（纯函数，双端共用，可单测）。
@@ -165,13 +166,50 @@ export function artistScore(artistA: string, artistB: string): number {
 /** 在线结果匹配阈值：标题相似度低于此值直接淘汰 */
 export const TITLE_THRESHOLD = 0.82
 
+/** 时长差的绝对容忍度（秒）：超过它 ∧ 超过比例容忍度，判为不同录音 */
+export const DURATION_TOLERANCE_SECONDS = 20
+/** 时长差的比例容忍度：长曲目允许更大的绝对差，避免误伤 8 分钟的交响乐 */
+export const DURATION_TOLERANCE_RATIO = 0.15
+
+/**
+ * 两侧时长都已知（> 0）且差得离谱 → 不是同一录音。
+ *
+ * 任一侧未知就不判：歌源对无权益曲目常回 0，导入文本也常常没带时长 ——
+ * 把「不知道」当成「不匹配」会把正常结果全部挡掉。
+ */
+export function isDurationMismatch(a: number | undefined, b: number | undefined): boolean {
+  const left = Number(a) || 0
+  const right = Number(b) || 0
+  if (left <= 0 || right <= 0) return false
+  const diff = Math.abs(left - right)
+  return diff > Math.max(DURATION_TOLERANCE_SECONDS, DURATION_TOLERANCE_RATIO * Math.max(left, right))
+}
+
 /**
  * 在线搜索结果与目标歌曲的匹配总分：标题不达标直接 0，
- * 达标后总分 = 标题分 + 歌手分（满分 2，≥1.4 视为可靠匹配）
+ * 版本标记对不上、或时长差得离谱也直接 0；达标后总分 = 标题分 + 歌手分
+ * （满分 2，≥1.4 视为可靠匹配）
+ *
+ * 后两道闸加在「标题 + 歌手」之外，是因为它们都对**同名不同版本**无感：
+ * 归一化会把括号里的版本词整段剥掉，于是「雨天 (变速版)」与「雨天」的标题分是 1，
+ * 歌手也都是汪苏泷，纯标题 + 歌手打分会给变速版满分（实测：274s 的原唱被判给
+ * 115s 的那条，界面显示 4:34、播出来是 1:55）。判据：
+ *   1) 目标没有版本标记而候选有（Live / 翻唱 / DJ 版 / 变速版…）→ 淘汰。
+ *      标记状态**对齐**才放行：目标自己就是 Live 时，同标记的候选仍是正主
+ *      （与封面匹配 pickCoverCandidate 同一套口径）。
+ *   2) 两侧时长都已知且差超阈值 → 淘汰（同一首歌的不同录音很少差到 15% 以上）。
+ * 目标不带版本标记时，宁可判「未匹配」也不给一个别的录音 —— 匹配错比匹配不上更糟。
  */
 export function scoreOnlineResult(result: OnlineTrackSearchResult, song: ParsedSong): number {
   const ts = titleScore(result.title, song.title)
   if (ts < TITLE_THRESHOLD) return 0
+  if (
+    isNonOriginalCandidate({ title: result.title, album: result.album }) &&
+    !targetHasVersionMarker(song)
+  ) {
+    return 0
+  }
+  if (isDurationMismatch(result.duration, song.duration)) return 0
   return ts + artistScore(result.artist, song.artist)
 }
 

@@ -22,6 +22,14 @@ import { encodeErrorInfo } from './i18n/errors'
 export interface AuroraEndpoints {
   /** 搜索端点模板，含 {query} / {quality} / key */
   search: string
+  /**
+   * 单曲取址端点模板，含 {id} / {quality} / key。
+   *
+   * 曲目已经定了（曲库快照 / 榜单条目 / 导入歌单）时用它取直链，而不是拿
+   * 「歌名 + 歌手」重搜一遍：同名不同版本（变速版 / 翻唱 / DJ 版）在按名匹配里
+   * 会拿到与元数据同一档的分数，串到别人的录音去（见 shared/src/trackResolver.ts）。
+   */
+  track: string
   /** 歌单解析端点模板，含 {url} / key */
   playlist: string
   /**
@@ -52,6 +60,7 @@ export interface AuroraEndpoints {
  */
 export const AURORA_ENDPOINT_FALLBACK: AuroraEndpoints = {
   search: '/aurora?query={query}&quality={quality}&key=<API_KEY>',
+  track: '/aurora/track?id={id}&quality={quality}&key=<API_KEY>',
   playlist: '/aurora/playlist?url={url}&limit={limit}&key=<API_KEY>',
   lyric: '/aurora/lyric?track={track}&artist={artist}&duration={duration}&key=<API_KEY>',
   recommend: '/aurora/recommend?categoryId={categoryId}&sortId={sortId}&page={page}&limit={limit}&key=<API_KEY>',
@@ -63,7 +72,7 @@ export const AURORA_ENDPOINT_FALLBACK: AuroraEndpoints = {
  * 端点自描述的字段白名单（服务端 `GET /` 的 `endpoints` 里认哪些键）。
  * 新端点不加进来，服务端自描述就会被**静默丢弃** —— 不报错、页面永远空，最难查的一类问题。
  */
-const ENDPOINT_KEYS = ['search', 'playlist', 'lyric', 'recommend', 'toplists', 'toplist'] as const
+const ENDPOINT_KEYS = ['search', 'track', 'playlist', 'lyric', 'recommend', 'toplists', 'toplist'] as const
 
 /** 链接形态：service = 服务地址（端点由本模块组装）；endpoint = 用户手写的接口模板 */
 export type AuroraSourceKind = 'service' | 'endpoint'
@@ -288,6 +297,7 @@ export interface SourceEndpointInput {
   /** 服务端自描述的端点模板缓存 */
   endpoints?: {
     search?: string
+    track?: string
     playlist?: string
     lyric?: string
     recommend?: string
@@ -305,6 +315,22 @@ export function searchEndpointOf(source: SourceEndpointInput | null | undefined)
   if (!parsed) return ''
   if (parsed.kind === 'endpoint') return parsed.apiUrl || ''
   return buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, source?.endpoints)?.search || ''
+}
+
+/**
+ * 取一条音源的**单曲取址端点模板**（执行时解析，不落盘）。无该能力返回空串。
+ *
+ * 只有服务地址形态能派生它：接口模板形态（用户手写的那一条）只描述了搜索，
+ * 没有「按 id 取址」的写法可言，故返回空串、由调用方回落按名搜索。
+ * 老服务端同样没有这条端点（自描述里读不到、路径也 404），解析器侧有会话内记忆
+ * （见 trackResolver 的 isTrackEndpointKnownMissing），不会每次取址都白打一次。
+ */
+export function trackEndpointOf(source: SourceEndpointInput | null | undefined): string {
+  // 脚本源没有 aurora 端点（调用方通常已按 kind 分流，这里再兜一道）
+  if (source?.kind === 'lx') return ''
+  const parsed = parseSourceInput(source?.sourceUrl || '')
+  if (parsed?.kind !== 'service') return ''
+  return buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, source?.endpoints)?.track || ''
 }
 
 /**

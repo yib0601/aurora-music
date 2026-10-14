@@ -62,7 +62,9 @@ function toImportedTrack(r: OnlineTrackSearchResult): Track {
     coverUrl: r.coverUrl,
     onlineSource: r.source,
     onlineSourceName: r.sourceName,
-    onlineId: r.id,
+    // 源内 id：源回填了 songmid 就用它（自有服务协议），脚本源回落条目 id。
+    // 播放地址过期后按它重新取址，避免「歌名 + 歌手」重搜串到同名不同版本。
+    onlineId: r.songmid || r.id,
     // 源的条目可能只给元信息（地址按需再取），定位令牌必须随曲目留存
     trackRef: r.trackRef,
   }

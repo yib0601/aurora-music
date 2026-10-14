@@ -31,9 +31,11 @@ import {
   auroraProbeToResult,
   encodeFilePathToUrl,
   encodePathSegments,
+  isTrackEndpointKnownMissing,
   lxInspectionToProbe,
   parseSourceInput,
   probeAuroraService,
+  sourceSongIdOf,
   unavailableProbe,
 } from '@aurora/shared'
 import { appTranslate } from '@/i18n'
@@ -330,22 +332,56 @@ export function createDesktopPlatform(): Platform {
     },
 
     async resolveTrackAudio(track: Track): Promise<Track | null> {
-      // 没有定位令牌的条目不走这条路：调用方回落既有搜索取址路径
+      // 两条定位凭据：脚本源的令牌（trackRef）与自有服务协议的源内 id（onlineId）。
+      // 都没有时这条路不适用，调用方回落按名搜索 —— 状态也就不必读。
       const ref = track?.trackRef
-      if (!ref) return null
-      if (!api?.lxSource?.resolveUrl) return null
+      const songId = sourceSongIdOf(track?.onlineSource, track?.onlineId)
+      if (!ref && !songId) return null
       // 音源配置只在调用时读：用户可能在设置页刚改过脚本地址或删过源
       const { sources, quality } = await loadLibraryState()
-      const source = sources.find((s) => s.id === ref.sourceId)
-      // 找不到音源配置或形态对不上时同样返回 null：不猜、不拿别的源硬取
-      if (!source || source.kind !== 'lx') return null
+
+      if (ref) {
+        if (!api?.lxSource?.resolveUrl) return null
+        const source = sources.find((s) => s.id === ref.sourceId)
+        // 找不到音源配置或形态对不上时同样返回 null：不猜、不拿别的源硬取
+        if (!source || source.kind !== 'lx') return null
+        try {
+          const { url } = await api.lxSource.resolveUrl(ref, source, quality)
+          if (!url || !/^https?:\/\//i.test(url)) return null
+          // 只回填副本：直链会过期，不落盘、不写库（持久化时 onlineUrl 本就剥离）
+          return { ...track, onlineUrl: url }
+        } catch (err) {
+          console.warn('[音源] 取址失败:', ref.sourceId, err)
+          return null
+        }
+      }
+
+      // 自有服务协议：按源内 id 取址（服务端 /aurora/track）。比「按歌名 + 歌手重搜」
+      // 准得多 —— 同名不同版本（变速版 / 翻唱 / DJ 版）在按名匹配里与目标同分，
+      // 会串到别人的录音（见 @aurora/shared 的 trackResolver）。
+      const source = sources.find((s) => s.id === track.onlineSource)
+      if (!source || source.kind === 'lx') return null
+      // 老服务端没有这条端点：本进程已知就直接回落（移动端与执行器同进程时最有效）。
+      // 桌面端取址在主进程执行，两边的「已知缺失」记忆各存一份 —— 不知道也只是多一次
+      // IPC，主进程侧的执行器不会再打一次 404。
+      if (isTrackEndpointKnownMissing(source)) return null
+      if (!api?.onlineTrack?.resolveById) return null
       try {
-        const { url } = await api.lxSource.resolveUrl(ref, source, quality)
-        if (!url || !/^https?:\/\//i.test(url)) return null
-        // 只回填副本：直链会过期，不落盘、不写库（持久化时 onlineUrl 本就剥离）
-        return { ...track, onlineUrl: url }
+        const resolved = await api.onlineTrack.resolveById(source, songId, quality)
+        if (!resolved?.audioUrl || !/^https?:\/\//i.test(resolved.audioUrl)) {
+          // 失败原因（无权益 / id 不存在 / 老服务端）在共享层已编码成可渲染文案，
+          // 这里只落日志：取址失败要静默回落按名搜索，不打断播放
+          console.warn('[音源] 按 id 取址未成功:', songId, resolved?.reason || '')
+          return null
+        }
+        return {
+          ...track,
+          onlineUrl: resolved.audioUrl,
+          ...(resolved.qualityUrls ? { onlineQualityUrls: resolved.qualityUrls } : {}),
+          ...(resolved.coverUrl ? { coverUrl: resolved.coverUrl } : {}),
+        }
       } catch (err) {
-        console.warn('[音源] 取址失败:', ref.sourceId, err)
+        console.warn('[音源] 按 id 取址失败:', songId, err)
         return null
       }
     },

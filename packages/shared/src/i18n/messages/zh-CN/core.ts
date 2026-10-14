@@ -102,6 +102,11 @@ const core = {
     sourceUnavailable: '源不可用',
     allSourcesFailed: '所有音乐源请求失败，请检查网络连接或源配置',
 
+    // ── 单曲取址（trackResolver） ────────────────────────────────────
+    trackIdMissing: '曲目缺少源内 id（onlineId），无法按 id 取址',
+    trackEndpointMissing: '源「{name}」不支持按曲目 id 取址（缺少 {id} 端点）',
+    trackNoAudio: '源「{name}」没有给出这条曲目的播放地址',
+
     // ── 歌词执行器（lyricsSource） ──────────────────────────────────
     lyricsUrlNoPlaceholder: '歌词源「{name}」的接口地址无效，必须包含 {track} 或 {query} 占位符',
     lyricsTimeout: '歌词源「{name}」请求超时（{ms}ms）',

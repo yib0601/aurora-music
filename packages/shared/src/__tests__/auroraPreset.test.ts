@@ -13,6 +13,7 @@ import {
   playlistEndpointOf,
   probeAuroraService,
   searchEndpointOf,
+  trackEndpointOf,
 } from '../auroraPreset'
 import { dropUnfilledParams } from '../playlistResolver'
 import { setCustomFetch } from '../fetchWithTimeout'
@@ -291,6 +292,26 @@ describe('searchEndpointOf / playlistEndpointOf（执行时解析端点）', () 
     expect(playlistEndpointOf(s)).toBe('')
   })
 
+  it('服务地址形态派生单曲取址端点，占位符原样保留给执行器替换', () => {
+    const url = trackEndpointOf({ sourceUrl: 'https://music.example.com?key=K1' })
+    expect(url).toBe('https://music.example.com/aurora/track?id={id}&quality={quality}&key=K1')
+  })
+
+  it('服务端自描述里的取址端点优先于默认路径', () => {
+    const url = trackEndpointOf({
+      sourceUrl: 'https://music.example.com',
+      endpoints: { track: '/v2/track?mid={id}' },
+    })
+    expect(url).toBe('https://music.example.com/v2/track?mid={id}')
+  })
+
+  it('脚本源与接口模板形态都没有按 id 取址能力', () => {
+    // 脚本源地址不是服务地址；接口模板形态只描述了搜索，没有「按 id 取址」的写法
+    expect(trackEndpointOf({ sourceUrl: 'https://example.com/lx.js', kind: 'lx' })).toBe('')
+    expect(trackEndpointOf({ sourceUrl: 'https://api.example.com/search?q={query}' })).toBe('')
+    expect(trackEndpointOf({})).toBe('')
+  })
+
   it('未配置 / 地址非法时安全返回空串', () => {
     expect(searchEndpointOf(null)).toBe('')
     expect(playlistEndpointOf(undefined)).toBe('')
@@ -333,9 +354,10 @@ describe('lyricEndpointOf（歌词能力随音源走）', () => {
 })
 
 describe('buildAuroraEndpoints', () => {
-  it('按兜底模板组装六个端点（搜索 / 歌单解析 / 歌词 / 在线音乐三项）', () => {
+  it('按兜底模板组装七个端点（搜索 / 单曲取址 / 歌单解析 / 歌词 / 在线音乐三项）', () => {
     expect(buildAuroraEndpoints('https://music.lighthouses.top', 'K1')).toEqual({
       search: 'https://music.lighthouses.top/aurora?query={query}&quality={quality}&key=K1',
+      track: 'https://music.lighthouses.top/aurora/track?id={id}&quality={quality}&key=K1',
       playlist: 'https://music.lighthouses.top/aurora/playlist?url={url}&limit={limit}&key=K1',
       lyric:
         'https://music.lighthouses.top/aurora/lyric?track={track}&artist={artist}&duration={duration}&key=K1',
@@ -398,6 +420,8 @@ describe('buildAuroraEndpoints', () => {
 
   it('兜底模板与服务端 GET / 的取值一致', () => {
     expect(AURORA_ENDPOINT_FALLBACK.playlist).toBe('/aurora/playlist?url={url}&limit={limit}&key=<API_KEY>')
+    // 单曲取址模板同样要与服务端自描述逐字一致（漏了 {id} 这一项就没有按 id 取址能力）
+    expect(AURORA_ENDPOINT_FALLBACK.track).toBe('/aurora/track?id={id}&quality={quality}&key=<API_KEY>')
   })
 
   /**

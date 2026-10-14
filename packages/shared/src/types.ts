@@ -107,6 +107,14 @@ export interface OnlineSearchOptions {
 
 export interface OnlineTrackSearchResult {
   id: string
+  /**
+   * 源内曲目 id（源提供时才有；自有服务协议的 `/aurora` 会回填，与 `id` 同值）。
+   *
+   * 有了它，曲目上的 `onlineId` 才能统一存**源内 id**：`id` 在不同源形态下含义不同
+   * （脚本源是宿主自造的令牌），而按 id 取址（`shared/src/trackResolver.ts`）要的正是
+   * 「源认识的那个 id」。源没给时回落 `id`。
+   */
+  songmid?: string
   title: string
   artist: string
   album: string

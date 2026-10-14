@@ -51,9 +51,12 @@ import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImag
 import {
   auroraError,
   auroraProbeToResult,
+  isTrackEndpointKnownMissing,
   lxInspectionToProbe,
   parseSourceInput,
   probeAuroraService,
+  resolveAuroraTrack,
+  sourceSongIdOf,
   unavailableProbe,
 } from '@aurora/shared'
 import { appTranslate } from '@/i18n'
@@ -560,21 +563,47 @@ export function createMobilePlatform(): PlatformInterface & {
     },
 
     async resolveTrackAudio(track: Track): Promise<Track | null> {
+      // 两条定位凭据：脚本源的令牌（trackRef）与自有服务协议的源内 id（onlineId）
       const ref = track?.trackRef
-      // 没有定位令牌的条目不走这条路：调用方回落既有搜索取址路径
-      if (!ref) return null
+      const songId = sourceSongIdOf(track?.onlineSource, track?.onlineId)
+      // 都没有时这条路不适用：调用方回落既有搜索取址路径
+      if (!ref && !songId) return null
       try {
         const { useLibraryStore } = await import('@/stores/libraryStore')
         const state = useLibraryStore.getState()
-        const source = state.onlineSources.find((s) => s.id === ref.sourceId)
-        // 找不到音源配置或形态对不上：返回 null 由调用方回落既有取址路径
-        if (!source || source.kind !== 'lx') return null
         // 脚本多数按音质档位取址，档位唯一意图来源是用户的下载音质设置（默认 flac）
-        const { url } = await resolveLxSourceUrl(source, ref, state.downloadQuality || 'flac')
-        if (!url || !/^https?:\/\//i.test(url)) return null
-        return { ...track, onlineUrl: url }
+        const quality = state.downloadQuality || 'flac'
+
+        if (ref) {
+          const source = state.onlineSources.find((s) => s.id === ref.sourceId)
+          // 找不到音源配置或形态对不上：返回 null 由调用方回落既有取址路径
+          if (!source || source.kind !== 'lx') return null
+          const { url } = await resolveLxSourceUrl(source, ref, quality)
+          if (!url || !/^https?:\/\//i.test(url)) return null
+          return { ...track, onlineUrl: url }
+        }
+
+        // 自有服务协议：按源内 id 取址（服务端 /aurora/track）。移动端 fetch 已被换成
+        // CapacitorHttp（原生 HTTP），不受 WebView CORS 限制，直接调共享执行器即可。
+        const source = state.onlineSources.find((s) => s.id === track.onlineSource)
+        if (!source || source.kind === 'lx') return null
+        if (isTrackEndpointKnownMissing(source)) return null
+        const resolved = await resolveAuroraTrack({ source, songId, quality })
+        if (resolved.audioUrl === null) {
+          // 失败原因（无权益 / id 不存在 / 老服务端）在共享层已编码成可渲染文案，
+          // 这里只落日志：取址失败要静默回落按名搜索，不打断播放
+          console.warn('[音源] 移动端按 id 取址未成功:', songId, resolved.reason)
+          return null
+        }
+        if (!/^https?:\/\//i.test(resolved.audioUrl)) return null
+        return {
+          ...track,
+          onlineUrl: resolved.audioUrl,
+          ...(resolved.qualityUrls ? { onlineQualityUrls: resolved.qualityUrls } : {}),
+          ...(resolved.coverUrl ? { coverUrl: resolved.coverUrl } : {}),
+        }
       } catch (err) {
-        console.warn('[音源] 移动端取址失败:', ref?.sourceId, err)
+        console.warn('[音源] 移动端取址失败:', ref?.sourceId || track?.onlineId, err)
         return null
       }
     },

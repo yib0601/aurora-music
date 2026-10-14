@@ -482,7 +482,9 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       onlineSource: r.source,
       onlineSourceName: r.sourceName,
       onlineAudioSource: r.audioSource,
-      onlineId: r.id,
+      // 源内 id：源回填了 songmid 就用它（自有服务协议），脚本源回落条目 id。
+      // 播放时按它向源按 id 取址，避免「歌名 + 歌手」重搜串到同名不同版本。
+      onlineId: r.songmid || r.id,
       // 源给的定位令牌：地址按需向源取，令牌随曲目带走
       trackRef: r.trackRef,
     }))
