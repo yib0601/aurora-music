@@ -24,6 +24,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useT } from '@/i18n'
 import { matchTracksByNames, musicHallSourceOf, type AppTranslator } from '@aurora/shared'
+import { buildLibraryBuckets, matchLibraryDuration } from '@/lib/hallTrackDuration'
 import type { MusicHallSource, Track } from '@/types'
 
 /**
@@ -167,6 +168,12 @@ export function MusicHallDetailPage() {
    * 「来源 + 源内 id」推导，缺了它每次播放都要重下一遍；来源也是「网络来源曲目加载
    * 失败不踢队列」判据（isNetworkBackedTrack）的依据之一。封面同理——不带就只能显示占位图标。
    *
+   * ⚠️ 源没给时长（duration 为 0）时用本地曲库同曲的时长补值（见 matchLibraryDuration）：
+   * 乐源对无权益曲目回落到兜底音源时 duration 恒为 0，条目变成「时长未知」，播放器只能靠
+   * 实际解码时长兜底；补上准确时长才能恢复「元数据与实际是否相符」这条判据。
+   * 只补这里交给播放器的值，**不动展示列**：展示列与 Hero 总时长仍只认真实源数据，
+   * 把推定值算进「整单总时长」等于替源编数据。
+   *
    * 同时整表用 useMemo 冻结，播放时不再重复构造。
    */
   const baseTracks = useMemo<Track[]>(() => {
@@ -174,18 +181,23 @@ export function MusicHallDetailPage() {
       rows.map((r) => ({ title: r.title, artist: r.artist })),
       libraryTracks
     )
+    // 按歌名前两字分桶只建一次，供下面逐行补时长时复用（见 matchLibraryDuration）
+    const buckets = buildLibraryBuckets(libraryTracks)
     // 与 musicHallStore 内部同一判据（首个「已启用 + 服务形态」的音源）
     const source = musicHallSourceOf(onlineSources as unknown as MusicHallSource[])
     return rows.map((r, i) => {
       const local = localMatches[i]
       if (local) return local
+      // 源没给时长（无权益回落时恒为 0）：用本地曲库同曲的时长补上。
+      // 补不到就保持 0，交给播放器的提示音闸门按实际解码时长兜底，不猜
+      const duration = r.duration > 0 ? r.duration : matchLibraryDuration(r, buckets)
       return {
         id: `hall-${id}-${i}`,
         path: '',
         title: r.title,
         artist: r.artist,
         album: '',
-        duration: r.duration,
+        duration,
         addedAt: 0,
         playCount: 0,
         liked: false,

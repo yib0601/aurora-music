@@ -254,52 +254,83 @@ async function restoreOnlineTrack(): Promise<void> {
   if (!track) return
   // 冷启动恢复不占播放意图：在途的旧取址回调不应因为这次恢复而失效
   const intent = playIntent
-  if (useNative()) {
-    // 移动端：原生引擎可能仍持有有效流并续播中（START_STICKY），先对账；
-    // 引擎活跃（snap.index >= 0）则无需重新取址，仅同步 UI
-    await reconcileNativePlayback().catch(() => {})
-    if (nativeBootstrapped) return
+  /**
+   * 从一开始就置「取址中」。
+   *
+   * 这是冷启动后唯一一条会在用户点播放键**之前**主动取址的路径，此前它全程不置位，
+   * 于是 play / togglePlay 里 `if (state.resolvingTrackId) return` 的守卫形同虚设：
+   * 用户点一下播放键就落进 `!hasCurrentHowl()` 分支，拿**还没取到地址**的 currentTrack
+   * 去建 `new Howl({ src: [''] })` —— howler 必然 loaderror，而空 path / 空 onlineUrl
+   * 又让 isNetworkBackedTrack 判成「本地文件损坏」，把这首歌踢出队列并起播下一首，
+   * 于是整条队列连环跳。置位后守卫才真正生效。
+   */
+  usePlayerStore.setState({ resolvingTrackId: track.id })
+  /**
+   * 取址态收尾：**所有**出口都必须经过它，漏一处 resolvingTrackId 就会永久留在界面上，
+   * 守卫从此一直早退——播放键彻底失效，比原 bug 更严重。
+   *
+   * 只清「自己仍是取址发起者」的那一次：用户中途改点别的歌时 playIntent 已自增，
+   * 或 resolvingTrackId 已换成那一首，那一轮的加载态由它自己收尾，这里不能抖掉。
+   */
+  const finishResolve = () => {
+    if (intent !== playIntent) return
+    if (usePlayerStore.getState().resolvingTrackId !== track.id) return
+    usePlayerStore.setState({ resolvingTrackId: null })
   }
 
-  const st0 = usePlayerStore.getState()
-  // 缓存命中（仅桌面端有缓存实现）：跳过搜索取址，直接用缓存协议地址加载
-  const cachedSrc = await resolveCachedAudioSrc(track).catch(() => null)
-  if (cachedSrc && usePlayerStore.getState().currentTrack?.id === track.id) {
-    const playable: Track = { ...track, onlineUrl: cachedSrc }
+  try {
+    if (useNative()) {
+      // 移动端：原生引擎可能仍持有有效流并续播中（START_STICKY），先对账；
+      // 引擎活跃（snap.index >= 0）则无需重新取址，仅同步 UI
+      await reconcileNativePlayback().catch(() => {})
+      if (nativeBootstrapped) return
+    }
+
+    const st0 = usePlayerStore.getState()
+    // 缓存命中（仅桌面端有缓存实现）：跳过搜索取址，直接用缓存协议地址加载
+    const cachedSrc = await resolveCachedAudioSrc(track).catch(() => null)
+    if (cachedSrc && usePlayerStore.getState().currentTrack?.id === track.id) {
+      const playable: Track = { ...track, onlineUrl: cachedSrc }
+      usePlayerStore.setState({
+        currentTrack: playable,
+        queue: st0.queue.map((t) => (t.id === track.id ? playable : t)),
+      })
+      audioPlayTrack(playable, st0.volume, st0.muted, false)
+      const seekPos = st0.progress
+      onCurrentTrackLoad(() => {
+        audioSeekTo(seekPos)
+      })
+      return
+    }
+
+    // 动态导入：playlistIO → stores(library/playlist) 与 playerStore 静态互引会形成模块级循环依赖
+    const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
+    const playable = await ensurePlayableTrack(track)
+    // 取址失败：清掉取址态后**不**静默了事。用户接着点播放键时会走 play/togglePlay 的
+    // 无地址分支重新取址，失败由那次点播的 confirmResolved 给出可读提示；
+    // 冷启动这一刻用户还没要求播放，不主动弹提示打扰。
+    if (!playable) return
+    const st = usePlayerStore.getState()
+    // 重新取址是异步的，期间用户可能已切歌或点了新歌：不覆盖用户的当前操作
+    if (intent !== playIntent || st.currentTrack?.id !== track.id) return
+    // 把取到新地址的曲目回填（队列里同 id 的条目一并更新，避免续播时仍拿旧快照）
     usePlayerStore.setState({
       currentTrack: playable,
-      queue: st0.queue.map((t) => (t.id === track.id ? playable : t)),
+      queue: st.queue.map((t) => (t.id === track.id ? playable : t)),
     })
-    audioPlayTrack(playable, st0.volume, st0.muted, false)
-    const seekPos = st0.progress
+    if (useNative()) {
+      // 移动端：队列已带新地址下发，从持久化进度引导但不自动播放
+      nativeBootstrapPlay(st.progress, false)
+      return
+    }
+    audioPlayTrack(playable, st.volume, st.muted, false)
+    const seekPos = st.progress
     onCurrentTrackLoad(() => {
       audioSeekTo(seekPos)
     })
-    return
+  } finally {
+    finishResolve()
   }
-
-  // 动态导入：playlistIO → stores(library/playlist) 与 playerStore 静态互引会形成模块级循环依赖
-  const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
-  const playable = await ensurePlayableTrack(track)
-  if (!playable) return
-  const st = usePlayerStore.getState()
-  // 重新取址是异步的，期间用户可能已切歌或点了新歌：不覆盖用户的当前操作
-  if (intent !== playIntent || st.currentTrack?.id !== track.id) return
-  // 把取到新地址的曲目回填（队列里同 id 的条目一并更新，避免续播时仍拿旧快照）
-  usePlayerStore.setState({
-    currentTrack: playable,
-    queue: st.queue.map((t) => (t.id === track.id ? playable : t)),
-  })
-  if (useNative()) {
-    // 移动端：队列已带新地址下发，从持久化进度引导但不自动播放
-    nativeBootstrapPlay(st.progress, false)
-    return
-  }
-  audioPlayTrack(playable, st.volume, st.muted, false)
-  const seekPos = st.progress
-  onCurrentTrackLoad(() => {
-    audioSeekTo(seekPos)
-  })
 }
 
 // ─── 移动端原生播放引擎桥接 ──────────────────────────────────────
@@ -538,6 +569,19 @@ export const usePlayerStore = create<PlayerState>()(
         // 播放器只会得到空地址的必然失败（连点还会把加载指示抖掉）。
         // 真取到地址后 playTrack 自己会起播，这里只需忽略这次点击
         if (state.resolvingTrackId) return
+        // ⚠️ 取址**已结束但没拿到地址**（失败/取消）时，绝不能走下面的重建分支：
+        // 拿空地址去 audioPlayTrack 会建出 src 为空串的 Howl，howler 必然 loaderror
+        // （No codec support for selected audio sources），而空 path / 空 onlineUrl
+        // 又让 isNetworkBackedTrack 判成「本地文件损坏」，error 订阅随即把这首歌移出
+        // 队列并起播下一首 —— 整条队列被逐首吃空。上报的「冷启动后点播放键没反应、
+        // 随后疯狂跳下一首」正是这条（原 bug 只堵了「取址在途」，这一半一直敞着）。
+        //
+        // 此刻用户点播放是**明确要求播放**：改走 playResolved 重新取址，失败时
+        // 由 confirmResolved 给可读提示，绝不把空地址交给播放器。
+        if (!hasPlayableSrc(state.currentTrack)) {
+          void playResolved(state.currentTrack, state.volume, state.muted, true)
+          return
+        }
         // 如果 currentHowl 已被清理(如应用从后台恢复/StrictMode cleanup 后),
         // 重建 Howl 并从保存的进度续播,而不是静默失败
         if (!hasCurrentHowl()) {
@@ -562,6 +606,12 @@ export const usePlayerStore = create<PlayerState>()(
         }
         // 同 togglePlay：取址在途时没有可播放的音频，忽略点击等取址结果
         if (state.resolvingTrackId) return
+        // ⚠️ 同 togglePlay：取址结束但没拿到地址时，空地址交给播放器会被 error 路径
+        // 当成「本地文件损坏」逐首吃掉队列。用户此刻明确要求播放，改走取址。
+        if (!hasPlayableSrc(state.currentTrack)) {
+          void playResolved(state.currentTrack, state.volume, state.muted, true)
+          return
+        }
         if (!hasCurrentHowl()) {
           audioPlayTrack(state.currentTrack, state.volume, state.muted, false)
           const seekPos = state.progress
@@ -749,9 +799,17 @@ export const usePlayerStore = create<PlayerState>()(
         // 在线曲目的播放地址（onlineUrl）已在持久化时剥离（歌源直链会过期）；
         // 远端媒体库曲目的 remoteUrl 与本地曲目的 path 会被保留，可直接恢复。
         // 在线曲目需要按元信息重新搜索取址后才能恢复。
+        //
+        // ⚠️ 取址态由 restoreOnlineTrack 自己全程持有（进入即置 resolvingTrackId、
+        // 所有出口在 finally 里清）：冷启动这一刻取址还没开始，这里不能提前清，
+        // 否则「还没取到地址就点播放键」的空地址 Howl 通路又会被打开（见该函数注释）。
         const src = state.currentTrack.onlineUrl || state.currentTrack.remoteUrl || state.currentTrack.path
         if (!src) {
-          void restoreOnlineTrack()
+          // 收尾（清取址态）在 restoreOnlineTrack 的 finally 里，这里只接住异常：
+          // 它是 void 掉的后台任务，抛出会变成启动期无人处理的 rejection
+          void restoreOnlineTrack().catch((err) => {
+            console.warn('[播放] 冷启动恢复取址失败:', err)
+          })
           return
         }
         if (useNative()) {
