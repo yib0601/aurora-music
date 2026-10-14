@@ -25,11 +25,12 @@ import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
 import { registerLxSourceIpc } from './lxSource'
 import { mainErrorText, mainTranslate, registerI18nIpc } from '../i18n'
-import type { OnlineTrackSearchResult, OnlineSearchOptions, Track, LibrarySourceConfig } from '../types'
-import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource } from '@aurora/shared'
+import type { OnlineTrackSearchResult, OnlineSearchOptions, OnlineSourceConfig, Track, LibrarySourceConfig } from '../types'
+import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource, DownloadQuality } from '@aurora/shared'
 import {
   auroraError,
   searchOnlineTracks,
+  resolveAuroraTrack,
   searchLyrics,
   sanitizeFileName,
   audioExtFrom,
@@ -544,6 +545,16 @@ export function registerIpcHandlers() {
     'tracks:searchOnline',
     async (_event, query: string, options?: OnlineSearchOptions): Promise<OnlineTrackSearchResult[]> => {
       return searchOnlineTracks(query, options)
+    }
+  )
+
+  // 单曲取址（自有服务协议）：按源内 id 取播放直链，供「重启后的队列 / 导入歌单 /
+  // 音乐馆榜单条目」这些不持久化直链的场景取址。与搜索同理走主进程执行。
+  // 共享层失败时返回带原因的结果而不抛错：渲染层据此回落按名搜索，不打断播放。
+  ipcMain.handle(
+    'tracks:resolveById',
+    async (_event, source: OnlineSourceConfig, songId: string, quality?: DownloadQuality) => {
+      return resolveAuroraTrack({ source, songId, quality })
     }
   )
 

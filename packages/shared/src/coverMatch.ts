@@ -73,9 +73,11 @@ export function normalizeForMatch(s?: string): string {
 /**
  * 版本标记：这些词一出现就说明候选大概率不是原版条目，其封面多半不是原专辑
  * 封面。不把裸「版」与四位年份写进来——「2002年的第一场雪」这类歌名会被误伤。
+ * 「变速 / 倍速 / 慢速」按同一口径算标记：重传时改播放速度是 UGC 常见做法
+ * （实测「雨天 (变速版)」就是这么一条，且它会被按名匹配当成原唱的正主）。
  */
 const VERSION_MARKER_RE =
-  /(live|演唱会|音乐会|音乐节|巡演|现场|remix|bootleg|acoustic|unplugged|instrumental|karaoke|demo|伴奏|伴唱|纯音乐|器乐|演奏|翻唱|cover|翻版|女声|男声|童声|烟嗓|加速|减速|升调|降调|变调|清唱|口琴|合唱|对唱|串烧|联唱|重制版|混音版|改编版|dj版|dj)/i
+  /(live|演唱会|音乐会|音乐节|巡演|现场|remix|bootleg|acoustic|unplugged|instrumental|karaoke|demo|伴奏|伴唱|纯音乐|器乐|演奏|翻唱|cover|翻版|女声|男声|童声|烟嗓|加速|减速|变速|倍速|慢速|降速|升调|降调|变调|清唱|口琴|合唱|对唱|串烧|联唱|重制版|混音版|改编版|dj版|dj)/i
 
 /** 标题是否带版本标记；书名号同理——「歌手《歌名》」是搬运条目而非原版 */
 export function hasVersionMarker(title: string): boolean {
@@ -102,8 +104,12 @@ export function hasVersionMarkerStrict(album: string): boolean {
  * 反过来本地真的是某个版本时（「输了你赢了世界又如何 (Live)」），
  * 同标记、同歌手、同长的候选就是同一录音，应当出图。
  */
-export function targetHasVersionMarker(target: CoverMatchTarget): boolean {
-  return hasVersionMarker(target.title) || hasVersionMarkerStrict(target.album || '')
+/**
+ * 判据只读标题与专辑，因此入参放宽到这两个字段：歌单导入的 ParsedSong（时长可选）
+ * 与封面匹配的 CoverMatchTarget（时长必填）都能直接传进来，不必各写一份判断。
+ */
+export function targetHasVersionMarker(target: { title?: string; album?: string }): boolean {
+  return hasVersionMarker(target.title || '') || hasVersionMarkerStrict(target.album || '')
 }
 
 /**

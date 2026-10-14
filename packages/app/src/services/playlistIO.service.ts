@@ -99,12 +99,17 @@ const PLAY_RESOLVE_CONCURRENCY = 4
  * 音乐源重新搜索取最佳结果，并回填 importedTracks 供后续播放直接使用。
  * 未配置音乐源或无结果返回 null
  *
- * 带定位令牌（trackRef）的曲目优先按令牌向源取址：令牌定位的是源内部的具体曲目，
- * 比「按歌名重新搜一遍」准得多；取不到再落回下面的统一搜索取址。
+ * 优先**按源内定位信息取址**（脚本源的令牌 trackRef、自有服务协议的曲目 id onlineId）：
+ * 两者定位的都是源内部的具体曲目，比「按歌名重新搜一遍」准得多 —— 同名不同版本
+ * （变速版 / 翻唱 / DJ 版）在按名匹配里与目标同分，会串到别人的录音（实测见
+ * @aurora/shared 的 trackResolver）；取不到再落回下面的统一搜索取址。
+ *
+ * 落回搜索取址时必须过 `scoreOnlineResult` 的版本标记与时长判据：全部候选都不像同一版本
+ * 时返回 null（上屏取址失败），而不是退回「取第一条结果」—— 那等于把别的录音当原唱播。
  */
 export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
   if (track.path || track.onlineUrl) return track
-  if (track.trackRef) {
+  if (track.trackRef || track.onlineId) {
     const viaSource = await platform.resolveTrackAudio?.(track).catch(() => null)
     if (viaSource?.onlineUrl) {
       usePlaylistStore.getState().addImportedTracks([viaSource])
@@ -121,14 +126,30 @@ export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
     let best: OnlineTrackSearchResult | null = null
     let bestScore = 0
     for (const r of results) {
-      const score = scoreOnlineResult(r, { title: track.title, artist: track.artist })
+      // 时长与专辑一并交给打分：同名不同版本（变速版 / 翻唱 / DJ 版）在「标题 + 歌手」
+      // 上是满分，只有版本标记与时长能把它挡掉（判据见 shared/src/importMatch.ts）
+      const score = scoreOnlineResult(r, {
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration,
+      })
       if (score > bestScore) {
         bestScore = score
         best = r
       }
     }
-    const r = best || results[0]
-    if (!r) return null
+    // 全被闸门挡掉时**不给结果**：宁可上屏「取址失败」，也不要把同名不同版本塞进播放器。
+    // 旧行为是 `best || results[0]` —— 那正是「元数据是原唱、播出来是变速版」那条路径。
+    if (!best) {
+      if (results.length > 0) {
+        // 单行保留 console.warn( 与整句中文：i18n 门禁按行判定「日志还是界面文案」，
+        // 把文案拆到下一行会被当成未国际化的界面中文（日志面向开发者，不进界面）
+        console.warn(`[音源] 「${track.title} - ${track.artist}」的 ${results.length} 条结果都不像同一版本（版本标记或时长对不上），已放弃取址`)
+      }
+      return null
+    }
+    const r = best
     const resolved: Track = {
       ...track,
       onlineUrl: r.audioUrl,
@@ -136,7 +157,9 @@ export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
       coverUrl: r.coverUrl || track.coverUrl,
       onlineSource: r.source,
       onlineSourceName: r.sourceName,
-      onlineId: r.id,
+      // 源内 id：优先存源回填的 songmid（自有服务协议），脚本源没有该字段则回落条目 id。
+      // 存源内 id 是「按 id 取址」的前提（见 shared/src/trackResolver.ts）。
+      onlineId: r.songmid || r.id,
       duration: track.duration || r.duration,
       // 源的条目可能只给元信息（地址按需再取），定位令牌一并带上
       trackRef: r.trackRef,

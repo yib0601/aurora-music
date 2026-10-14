@@ -111,6 +111,11 @@ describe('版本标记', () => {
     expect(hasVersionMarker('杀死那个石家庄人 (翻唱)')).toBe(true)
     expect(hasVersionMarker('不万能的喜剧 (Acoustic)')).toBe(true)
     expect(hasVersionMarker('万能青年旅店-杀死那个石家庄人 (盛乾栩 remix)')).toBe(true)
+    // 重传时改播放速度是 UGC 常见做法，且这类条目的名字只比原版多一个后缀
+    // （实测「雨天 (变速版)」被按名匹配当成了原唱的正主）
+    expect(hasVersionMarker('雨天 (变速版)')).toBe(true)
+    expect(hasVersionMarker('七里香 倍速版')).toBe(true)
+    expect(hasVersionMarker('七里香（慢速）')).toBe(true)
     expect(hasVersionMarker('万能青年旅店《杀死那个石家庄人》')).toBe(true)
   })
 

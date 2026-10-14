@@ -75,6 +75,20 @@ export {
   clearSearchCache,
 } from './musicSource'
 export {
+  resolveAuroraTrack,
+  resolveAuroraTrackUrl,
+  isAuroraTrackSource,
+  isTrackEndpointKnownMissing,
+  clearTrackEndpointCache,
+  sourceSongIdOf,
+  TRACK_RESOLVE_TIMEOUT_MS,
+} from './trackResolver'
+export type {
+  AuroraTrackResolve,
+  ResolveAuroraTrackInput,
+  TrackCapableSource,
+} from './trackResolver'
+export {
   searchLyrics,
   searchLyricsSource,
   BUILTIN_LYRICS_GET_SOURCE,
@@ -103,6 +117,9 @@ export {
   titleScore,
   artistScore,
   scoreOnlineResult,
+  isDurationMismatch,
+  DURATION_TOLERANCE_SECONDS,
+  DURATION_TOLERANCE_RATIO,
   matchTracksByNames,
   matchTracksByPaths,
   storageSourceKey,
@@ -139,6 +156,7 @@ export {
   parseSourceInput,
   checkSourceForm,
   searchEndpointOf,
+  trackEndpointOf,
   playlistEndpointOf,
   lyricEndpointOf,
   hallEndpointOf,

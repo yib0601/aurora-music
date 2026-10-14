@@ -131,6 +131,10 @@ export async function searchMusicSource(
     const idStr = rawId != null ? String(rawId) : String(results.length)
     results.push({
       id: `${source.id}-${idStr}`,
+      // 源内曲目 id：自有服务协议在条目上回填 `songmid`（与 id 同值），
+      // 客户端据此把 `Track.onlineId` 统一存成源内 id，播放时按 id 取址
+      // （见 shared/src/trackResolver.ts）。脚本源没有该字段，回落 `id`。
+      songmid: typeof item.songmid === 'string' && item.songmid ? item.songmid : undefined,
       // i18n-exempt: 匹配数据 —— 这两个占位值与 coverMatch.PLACEHOLDER_ARTISTS 同源，
       // 参与标题/歌手匹配与下载文件命名，翻译它等于改匹配规则
       title: String(item.title || item.name || item.songName || '未知歌曲'),

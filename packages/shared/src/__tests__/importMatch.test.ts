@@ -2,6 +2,7 @@ import {
   normalizeName,
   parsePlaylistText,
   artistScore,
+  isDurationMismatch,
   scoreOnlineResult,
   matchTracksByNames,
   matchTracksByPaths,
@@ -74,6 +75,54 @@ describe('打分函数', () => {
       audioUrl: 'https://x/a.mp3', source: 's', sourceName: 's',
     }
     expect(scoreOnlineResult(r, { title: '七里香', artist: '周杰伦' })).toBeGreaterThan(1)
+  })
+
+  /** 造一条候选（默认时长未知 = 0） */
+  const candidate = (over: Partial<OnlineTrackSearchResult> = {}): OnlineTrackSearchResult => ({
+    id: 's-1',
+    title: '七里香',
+    artist: '周杰伦',
+    album: '',
+    duration: 0,
+    audioUrl: 'https://x/a.mp3',
+    source: 's',
+    sourceName: 's',
+    ...over,
+  })
+
+  it('同名不同版本：目标没有版本标记、候选有 → 直接淘汰（哪怕标题与歌手全同）', () => {
+    // 归一化会把「(变速版)」整段剥掉，「雨天 (变速版)」的标题分因此是满分；
+    // 这道闸门就是为它加的（实测：274s 的原唱被判给 115s 的变速版）
+    const speed = candidate({ title: '雨天 (变速版)', artist: '汪苏泷', duration: 115 })
+    expect(scoreOnlineResult(speed, { title: '雨天', artist: '汪苏泷', duration: 274 })).toBe(0)
+    expect(scoreOnlineResult(candidate({ title: '七里香 (Live)' }), { title: '七里香', artist: '周杰伦' })).toBe(0)
+  })
+
+  it('版本标记对齐才放行：目标自己就是该版本时，同标记候选仍是正主', () => {
+    const score = scoreOnlineResult(candidate({ title: '七里香 (Live)' }), {
+      title: '七里香 (Live)',
+      artist: '周杰伦',
+    })
+    expect(score).toBeGreaterThan(1)
+  })
+
+  it('时长差得离谱 → 淘汰；任一侧未知则不判', () => {
+    const want = { title: '雨天', artist: '汪苏泷', duration: 274 }
+    expect(scoreOnlineResult(candidate({ title: '雨天', artist: '汪苏泷', duration: 115 }), want)).toBe(0)
+    // 差 31s / 274s ≈ 11%（< 15%）→ 仍在容忍度内，不因这点差别否掉
+    expect(scoreOnlineResult(candidate({ title: '雨天', artist: '汪苏泷', duration: 243 }), want)).toBeGreaterThan(1)
+    // 目标没给时长（导入文本常见）或源没给时长：不做判据
+    expect(scoreOnlineResult(candidate({ title: '雨天', artist: '汪苏泷', duration: 115 }), { title: '雨天', artist: '汪苏泷' })).toBeGreaterThan(1)
+    expect(scoreOnlineResult(candidate({ title: '雨天', artist: '汪苏泷' }), want)).toBeGreaterThan(1)
+  })
+
+  it('isDurationMismatch：阈值取 max(20s, 15%)，长曲目按比例放宽', () => {
+    expect(isDurationMismatch(0, 274)).toBe(false)
+    expect(isDurationMismatch(115, 274)).toBe(true)
+    expect(isDurationMismatch(243, 274)).toBe(false)
+    // 8 分钟的交响乐：差 60s（≈12.5%）在比例容忍度内
+    expect(isDurationMismatch(480, 540)).toBe(false)
+    expect(isDurationMismatch(480, 620)).toBe(true)
   })
 })
 

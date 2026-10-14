@@ -77,6 +77,11 @@ const en: LocalizedOf<typeof core> = {
     sourceUnavailable: 'The source is unavailable',
     allSourcesFailed: 'Every music source failed; check the network connection or the source configuration',
 
+    // ── Resolving one track by id ───────────────────────────────────
+    trackIdMissing: 'The track has no in-source id (onlineId); it cannot be resolved by id',
+    trackEndpointMissing: 'Source "{name}" cannot resolve by track id (the {id} endpoint is missing)',
+    trackNoAudio: 'Source "{name}" returned no playable URL for this track',
+
     // ── 歌词执行器 ─────────────────────────────────────────────────
     lyricsUrlNoPlaceholder:
       'Lyrics source "{name}" has an invalid endpoint: it must contain the {track} or {query} placeholder',

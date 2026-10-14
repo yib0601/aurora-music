@@ -126,6 +126,13 @@ const electronAPI = {
       ipcRenderer.invoke('lx:resolveUrl', ref, source, quality),
     clearCache: (): Promise<void> => ipcRenderer.invoke('lx:clearCache'),
   },
+  // 自有服务协议的单曲取址（按源内 id 取直链）：与在线搜索同理在主进程执行
+  // （渲染进程直连上游会被 CORS 拦），渲染层只拿结果；失败时返回带原因的结果，
+  // 由调用方回落按名搜索，不抛错。
+  onlineTrack: {
+    resolveById: (source: unknown, songId: string, quality?: string): Promise<unknown> =>
+      ipcRenderer.invoke('tracks:resolveById', source, songId, quality),
+  },
   // 在线音乐（推荐歌单 / 榜单）：与在线搜索同理，主进程执行、渲染层只拿结果。
   // source 为渲染层选定的音源（应用不内置源，配置由用户持有）
   musicHall: {

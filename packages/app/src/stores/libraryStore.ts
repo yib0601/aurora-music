@@ -5,6 +5,7 @@ import {
   migrateOnlineSources,
   clearSearchCache,
   clearLxSourceCache,
+  clearTrackEndpointCache,
 } from '@aurora/shared'
 import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
@@ -247,10 +248,12 @@ export const useLibraryStore = create<LibraryState>()(
       addOnlineSource: (source) => {
         const id = `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         set({ onlineSources: [...get().onlineSources, { ...source, id }] })
-        // 音源集合变了，共享层的搜索缓存（30s TTL）与洛雪脚本宿主缓存必须立即失效，
-        // 否则刚加/刚改的源在半分钟内搜不出东西，看起来像「源没生效」
+        // 音源集合变了，共享层的搜索缓存（30s TTL）、洛雪脚本宿主缓存与
+        // 「该源没有单曲取址端点」的记忆必须立即失效，否则刚加/刚改的源在半分钟内
+        // 搜不出东西（或刚升级的服务端仍被当成老服务端），看起来像「源没生效」
         clearSearchCache()
         clearLxSourceCache()
+        clearTrackEndpointCache()
       },
       updateOnlineSource: (id, updates) => {
         set({
@@ -260,11 +263,13 @@ export const useLibraryStore = create<LibraryState>()(
         })
         clearSearchCache()
         clearLxSourceCache()
+        clearTrackEndpointCache()
       },
       removeOnlineSource: (id) => {
         set({ onlineSources: get().onlineSources.filter((s) => s.id !== id) })
         clearSearchCache()
         clearLxSourceCache()
+        clearTrackEndpointCache()
       },
 
       addLibrarySource: (source) => {
