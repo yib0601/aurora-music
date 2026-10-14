@@ -169,6 +169,9 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@24.13.3)
       wait-on:
         specifier: ^8.0.1
         version: 8.0.5

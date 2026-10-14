@@ -9,6 +9,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openWebdavRange, walkWebdavAudio, listWebdavDir, WebdavError, type LibrarySourceConfig } from '../webdav'
+import { isTimeoutError } from '../fetchWithTimeout'
 import { expectCode, rejectionOf } from './i18nAssert'
 
 const USER = 'bob'
@@ -195,4 +196,57 @@ describe('WebDAV 端到端', () => {
     const audio = await walkWebdavAudio(cfg({ rootPath: 'Empty' }))
     expect(audio).toEqual([])
   })
+})
+
+/**
+ * `openWebdavRange` 与「上游停住 body」的交互。
+ *
+ * 为什么补这一组：`openWebdavRange` 是 fetchWithTimeout 的调用点里**唯一把
+ * Response 交给调用方自行消费**的一个（mediaProvider.openRange）。它自己不做
+ * 读体，所以「读体预算」在它身上体现为「返回的 Response 被消费时是否受约束」。
+ * 真实消费者（desktop 的 librarySource.ts）是 `if (!resp.ok) throw` 之后
+ * 立即 `arrayBuffer()`，且两处都不延迟——这一组把该契约固定下来。
+ */
+describe('WebDAV Range 读取：停滞 body 不永久挂起', () => {
+  /** 送出响应头与 Content-Length，只写一半 body 且永不 end */
+  let stalled: http.Server
+  let stalledPort = 0
+
+  beforeAll(async () => {
+    stalled = http.createServer((req, res) => {
+      req.socket.on('error', () => {})
+      req.resume()
+      res.writeHead(206, { 'content-type': 'audio/mpeg', 'content-length': '99999' })
+      res.write(Buffer.from([0x11, 0x11]))
+    })
+    await new Promise<void>((r) => stalled.listen(0, '127.0.0.1', r))
+    stalledPort = (stalled.address() as { port: number }).port
+  })
+
+  afterAll(async () => {
+    stalled.closeAllConnections?.()
+    await new Promise<void>((r) => stalled.close(() => r()))
+  })
+
+  it('返回的 Response 在消费时受预算约束，报超时而不是永久 pending', async () => {
+    const cfg = {
+      id: 'w-stall',
+      name: '停滞的 NAS',
+      kind: 'webdav' as const,
+      baseUrl: `http://127.0.0.1:${stalledPort}`,
+      username: USER,
+      password: PASS,
+      rootPath: '/Music',
+    }
+    // 自证构造有效：响应头确实拿到了（否则测的是连接失败，不是 body 卡住）
+    const head = await openWebdavRange(cfg as never, 'a.mp3', 0, 1023, 600)
+    expect(head.status).toBe(206)
+
+    const started = Date.now()
+    const err = await rejectionOf(head.arrayBuffer())
+    const elapsed = Date.now() - started
+    expect(elapsed).toBeLessThan(600 + 3000)
+    // 读体超时抛的是我们自己的 TimeoutError（可被 isTimeoutError 识别）
+    expect(isTimeoutError(err)).toBe(true)
+  }, 20000)
 })

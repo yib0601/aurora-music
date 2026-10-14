@@ -72,6 +72,11 @@ jobs:
       - name: Typecheck desktop main (electron)
         run: pnpm --filter @aurora/desktop typecheck
 
+      # 主进程此前没有任何单测，本轮补上（首个是封面下载的读体超时映射）。
+      # 这些用例依赖 Electron 运行时的模块都被 mock 掉了，CI 上可跑。
+      - name: Test desktop
+        run: pnpm --filter @aurora/desktop test
+
       - name: Build app bundle (vite)
         run: pnpm --filter @aurora/app build
 
