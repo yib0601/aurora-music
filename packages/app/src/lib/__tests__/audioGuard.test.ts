@@ -89,9 +89,31 @@ describe('isNoticeLikeClip', () => {
     expect(isNoticeLikeClip(track({ duration: 15 }), 3)).toBe(false)
   })
 
-  it('expected=30 是「长曲」边界：恰好 30 仍按长曲判异常', () => {
-    expect(isNoticeLikeClip(track({ duration: 30 }), 5)).toBe(true)
-    expect(isNoticeLikeClip(track({ duration: 29.9 }), 5)).toBe(false)
+  it('expected=20 是「长曲」边界：恰好 20 仍按长曲判异常', () => {
+    expect(isNoticeLikeClip(track({ duration: 20 }), 5)).toBe(true)
+    expect(isNoticeLikeClip(track({ duration: 19.9 }), 5)).toBe(false)
+  })
+
+  /**
+   * 与音源侧的「可播时长下限」对齐（乐源 `core/http.py` 的 `MIN_AUDIO_SEC = 20`）。
+   *
+   * 两侧错位会留出无人区：音源探测放行（>= 20）并把时长回填，客户端却因「元数据没到 30」
+   * 而不认定异常 —— 一条 3 秒提示音只要元数据落在 20~29 就照播并触发自动下一首。
+   * 这条断言把数字钉死，改任何一侧时都会在这里失败，逼着一起改。
+   */
+  it('20~29 秒区间的元数据必须判异常（曾与音源阈值 30/20 错位而漏判）', () => {
+    for (const dur of [20, 22, 25, 29, 29.9]) {
+      expect(isNoticeLikeClip(track({ duration: dur }), 3)).toBe(true)
+      expect(isNoticeLikeClip(track({ duration: dur }), 2)).toBe(true)
+    }
+    // 实际够长就放行，与元数据无关
+    expect(isNoticeLikeClip(track({ duration: 25 }), 25)).toBe(false)
+  })
+
+  it('元数据 < 20 秒仍按「短素材」放行（铃声/提示音素材不该被拦）', () => {
+    expect(isNoticeLikeClip(track({ duration: 19.9 }), 3)).toBe(false)
+    expect(isNoticeLikeClip(track({ duration: 15 }), 3)).toBe(false)
+    expect(isNoticeLikeClip(track({ duration: 6 }), 6)).toBe(false)
   })
 })
 
