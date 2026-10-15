@@ -18,7 +18,6 @@ const en: LocalizedOf<typeof search> = {
     emptyDesc: 'Type a keyword to search {library} and online sources',
     historyTitle: 'Recent searches',
     historyRemove: 'Remove this entry',
-    localTruncated: 'Many local matches, showing the first {count}',
     noMatch: 'No songs found for "{query}"',
     noSource: 'The app ships with no music sources. Configure a protocol-compatible search endpoint in Settings first.',
     goSettings: 'Set up music sources',

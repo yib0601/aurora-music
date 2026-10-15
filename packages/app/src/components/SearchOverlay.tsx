@@ -37,8 +37,12 @@ type RegisterRow = (id: string, el: HTMLDivElement | null) => void
  */
 const ONLINE_SOURCE_FALLBACK_KEY = 'online'
 
-/** 本地结果展示上限：键盘导航与渲染共用同一个切片长度（文案里的条数也取自它） */
-const LOCAL_RESULT_LIMIT = 30
+/**
+ * 本地结果的分页步长：滚到本地段末尾（或键盘高亮触底）时按这个粒度追加一批。
+ * 不设总量上限——本地过滤是纯内存运算，截断只会把命中的歌藏起来
+ * （旧行为：只显示前 30 条 + 底部提示，用户既搜不到也点不到后面的结果）。
+ */
+const LOCAL_PAGE_SIZE = 30
 
 /** 行通用样式：content-visibility 让可视区外的行跳过渲染，百行级列表滚动不卡。
  * 水平内边距取 8px（而非卡片时代的 16px）：行直接铺在浮层玻璃上，
@@ -385,6 +389,11 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   // 行 DOM 引用：键盘高亮移动时把目标行滚动到可视区
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
+  // 结果区滚动容器（懒加载 observer 的 root）与其末尾的哨兵
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+  // 本地结果已展开条数：随滚动/键盘触底按 LOCAL_PAGE_SIZE 递增，查询变化时复位
+  const [localVisibleCount, setLocalVisibleCount] = useState(LOCAL_PAGE_SIZE)
 
   // 关闭浮层（卸载）时把非空搜索词写入历史：
   // 覆盖「点结果播放后关闭 / 搜完 Esc 关闭」等此前不记录的场景，
@@ -490,8 +499,25 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     }))
   }, [onlineResults])
 
-  // 本地只展示前 LOCAL_RESULT_LIMIT 条（渲染与键盘导航共用同一份切片，保持一致）
-  const localSlice = useMemo(() => localResults.slice(0, LOCAL_RESULT_LIMIT), [localResults])
+  // 播放队列经 ref 取最新值：tracks 因后台封面回写换引用时回调保持稳定，行不重渲染
+  const localResultsRef = useRef<Track[]>([])
+  localResultsRef.current = localResults
+
+  // 本地结果按页展开：渲染与键盘导航共用同一份切片，两者长度始终一致
+  const localSlice = useMemo(
+    () => localResults.slice(0, localVisibleCount),
+    [localResults, localVisibleCount]
+  )
+  const hasMoreLocal = localResults.length > localSlice.length
+
+  /** 追加一批本地结果；已全量展开时保持不动（滚动哨兵与键盘触底共用） */
+  const loadMoreLocal = useCallback(() => {
+    setLocalVisibleCount((n) => {
+      const total = localResultsRef.current.length
+      // 只在还有剩余时递增：把 total 写进结果会让「结果变少」的瞬间把已展开条数压回去
+      return total > n ? Math.min(n + LOCAL_PAGE_SIZE, total) : n
+    })
+  }, [])
 
   /**
    * 在线行的渲染数据：本地与在线同栏混排（本地在前、在线在后），
@@ -522,10 +548,31 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     [localSlice, onlineTracks]
   )
 
-  // 查询变化后旧的高亮已失效，重置
+  // 查询变化后旧的高亮已失效，重置；已展开条数一并回到首页
   useEffect(() => {
     setActiveIdx(-1)
+    setLocalVisibleCount(LOCAL_PAGE_SIZE)
   }, [debouncedQuery])
+
+  /**
+   * 懒加载哨兵：本地段末尾的哨兵进入视口（提前 240px）就追加下一批。
+   * root 取结果区滚动容器本身，且哨兵位于在线结果**之前**——滚过本地段即触发，
+   * 不让在线结果挡在中间。加载是纯内存切片、瞬时完成，所以不给 loading 态；
+   * 展开后哨兵仍在视口内时 observer 会立刻再报一次，自然补满一屏。
+   */
+  useEffect(() => {
+    const root = scrollRef.current
+    const target = loadMoreRef.current
+    if (!root || !target || !hasMoreLocal) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadMoreLocal()
+      },
+      { root, rootMargin: '240px 0px' }
+    )
+    io.observe(target)
+    return () => io.disconnect()
+  }, [hasMoreLocal, loadMoreLocal])
 
   // 高亮移动时把对应行滚入可视区
   useEffect(() => {
@@ -540,10 +587,6 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     if (el) rowRefs.current.set(id, el)
     else rowRefs.current.delete(id)
   }, [])
-
-  // 播放队列经 ref 取最新值：tracks 因后台封面回写换引用时回调保持稳定，行不重渲染
-  const localResultsRef = useRef<Track[]>([])
-  localResultsRef.current = localResults
 
   const handlePlayLocal = useCallback((track: Track, index: number) => {
     usePlayerStore.getState().playQueue(localResultsRef.current, index)
@@ -597,7 +640,15 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     if (e.nativeEvent.isComposing) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActiveIdx((i) => Math.min(i + 1, activeList.length - 1))
+      const next = activeIdx + 1
+      // 高亮仍在本地段内、且正要跨过已展开段的末尾时先追加一批再下移，
+      // 否则键盘用户永远够不到第 31 条之后的本地结果
+      if (hasMoreLocal && activeIdx < localSlice.length && next >= localSlice.length) {
+        loadMoreLocal()
+        setActiveIdx(next)
+        return
+      }
+      setActiveIdx(Math.min(next, activeList.length - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActiveIdx((i) => Math.max(i - 1, -1))
@@ -669,7 +720,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
         {/* 结果区：内容超出时内部滚动，不撑破面板。
             左右 8px + 行内 8px = 16px，与搜索框图标同一左缘 */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin px-2 py-3">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin px-2 py-3">
           {!query.trim() ? (
             searchHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[280px]">
@@ -746,6 +797,9 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                     registerRow={registerRow}
                   />
                 ))}
+                {/* 懒加载哨兵：滚到这里就追加下一批本地结果。
+                    不占位、不写文案——追加是瞬时的，用户看到的只是列表继续长出来 */}
+                {hasMoreLocal && <div ref={loadMoreRef} aria-hidden className="h-px" />}
                 {onlineRows.map((row) => (
                   <OnlineResultRow
                     key={row.track.id}
@@ -767,13 +821,9 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
               {/* 底部状态行：整栏零命中 / 未配置源 / 在线报错 / 搜索中。
                   本地未命中时不渲染任何本地区块（既无标题也无空提示），
-                  只有整栏零命中才给统一空态；本地已命中时在线空结果只留一行淡提示 */}
+                  只有整栏零命中才给统一空态；本地已命中时在线空结果只留一行淡提示。
+                  本地结果不再有「仅显示前 N 条」提示——已改为滚动分页展开，无截断 */}
               <div className="px-2 pt-2 space-y-1">
-                {localResults.length > localSlice.length && (
-                  <p className="py-2 text-center font-text text-[12px] text-white/30 tracking-[-0.12px]">
-                    {t('search.overlay.localTruncated', { count: LOCAL_RESULT_LIMIT })}
-                  </p>
-                )}
                 {!onlineLoading && localResults.length === 0 && onlineTracks.length === 0 && (
                   <p className="py-3 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
                     {t('search.overlay.noMatch', { query })}
