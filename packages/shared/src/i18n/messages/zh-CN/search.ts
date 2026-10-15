@@ -28,8 +28,6 @@ const search = {
     emptyDesc: '输入关键词，搜索{library}与在线音源',
     historyTitle: '历史搜索',
     historyRemove: '删除该记录',
-    /** 本地命中过多时的截断提示：{count} 由组件传本地结果上限 */
-    localTruncated: '本地结果较多，仅显示前 {count} 条',
     noMatch: '没有找到匹配 "{query}" 的歌曲',
     noSource: '应用不内置任何音乐源，请先在设置中配置符合协议的搜索接口',
     goSettings: '前往设置音乐源',
