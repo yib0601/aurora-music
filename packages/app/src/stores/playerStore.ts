@@ -17,6 +17,7 @@ import { audioEvents } from '@/services/audioEvents'
 import { resolveCachedAudioSrc } from '@/services/audioCache.service'
 import { toast } from '@/components/common/Toast'
 import { appTranslate } from '@/i18n'
+import { shouldTreatAsNoticeClip } from '@/lib/audioGuard'
 import {
   isNativePlayerAvailable,
   startNativeService,
@@ -114,10 +115,16 @@ function stripOnlineUrl(track: Track | null): Track | null {
  * 是否为「网络来源」曲目：地址易失或依赖网络，加载失败不应把曲目踢出队列。
  * 本地文件出错意味着文件被删/损坏，跳过是对的；网络抖动只是暂时的，
  * 自动跳曲会让用户在 NAS 短暂不可达时整张歌单被逐首吃掉。
+ *
+ * ⚠️ 判据必须包含「带在线身份但**还没取到地址**」的曲目（只有 onlineSource /
+ * onlineId / trackRef）：惰性取址的源在点播前就是这样一条空地址条目，
+ * 若只认 onlineUrl，它会被判成本地文件损坏——引擎一报错就把它移出队列，
+ * 于是整条音乐馆歌单被逐首吃掉并疯狂切歌（与「取址失败」完全是两回事）。
  */
 function isNetworkBackedTrack(track: Track | null | undefined): boolean {
   if (!track) return false
-  return !!track.onlineUrl || !!track.remoteUrl || /^https?:\/\//i.test(track.path)
+  if (track.onlineUrl || track.remoteUrl || /^https?:\/\//i.test(track.path)) return true
+  return !!(track.onlineSource || track.onlineId || track.trackRef)
 }
 
 /**
@@ -966,6 +973,58 @@ export async function reconcileNativePlayback() {
   else stopNativeTicker()
 }
 
+/**
+ * 原生引擎播到「还没有播放地址」的在线曲目时的补课：取址 → 原位重播。
+ *
+ * 移动端是惰性取址（队列下发的只是元信息，地址要到播到它时才按 id 现取），而原生
+ * 引擎只认现成地址。此前引擎拿空地址建播放器失败，被上报成 `error` 并按「本地文件
+ * 损坏」移出队列，整条歌单被逐首吃掉——本函数就是那条缺失的回路。
+ *
+ * 重播走 nativeBootstrapPlay（= 一次 await 过的 playQueue）：JS 队列是已取地址的
+ * 唯一真相源，整条重下即顺带把其它已取好的地址一起镜像过去；用「syncQueue + playAt」
+ * 两次独立调用会因到达顺序不确定而出现「镜像还没落地、引擎已按空地址重建播放器」，
+ * 于是同一首被反复判成无地址。
+ */
+let resolvingNativeIndex = -1
+async function resolveUnresolvedNativeTrack(index: number): Promise<void> {
+  const st = usePlayerStore.getState()
+  if (index < 0 || index >= st.queue.length) return
+  // 同一条重复上报（引擎可能在校验后再次走到同一位置）只处理一次，避免取址风暴
+  if (resolvingNativeIndex === index) return
+  const track = st.queue[index]
+  if (!track || hasPlayableSrc(track)) return
+  resolvingNativeIndex = index
+  usePlayerStore.setState({ resolvingTrackId: track.id, isPlaying: false, progress: 0 })
+  try {
+    const ready = await resolveBeforePlay(track)
+    const now = usePlayerStore.getState()
+    // 取址期间用户已切歌/删曲：本次结果作废（不改状态，也不回放）
+    if (now.queue[index]?.id !== track.id) return
+    if (ready !== track) {
+      usePlayerStore.setState({
+        queue: now.queue.map((t) => (t.id === ready.id ? ready : t)),
+        currentTrack: ready,
+      })
+    }
+    if (!hasPlayableSrc(ready)) {
+      // 取址失败：停在这一首并如实说明（不静默跳曲，也不把条目踢出队列）
+      usePlayerStore.setState({ resolvingTrackId: null, isPlaying: false, progress: 0 })
+      notifyResolveFailed(ready)
+      return
+    }
+    usePlayerStore.setState({ resolvingTrackId: null })
+    if (useNative()) {
+      usePlayerStore.setState({ currentIndex: index, progress: 0 })
+      nativeBootstrapPlay(0, true)
+    }
+  } catch (err) {
+    usePlayerStore.setState({ resolvingTrackId: null, isPlaying: false })
+    console.warn('[播放] 原生队列取址失败:', err)
+  } finally {
+    resolvingNativeIndex = -1
+  }
+}
+
 if (isNativePlayerAvailable()) {
   void onPlaybackEvent((ev) => {
     const state = usePlayerStore.getState()
@@ -991,6 +1050,25 @@ if (isNativePlayerAvailable()) {
       case 'prepared':
         if (typeof ev.duration === 'number') {
           usePlayerStore.setState({ duration: ev.duration })
+        }
+        // 提示音闸门（移动端原生路径）。
+        // 桌面端在 Howler 的 onload 里拦「上源只给了几秒版权提示音」，移动端此前
+        // 完全没有这道判定：一条 3 秒提示音会被正常播完，ended 触发自动下一首，
+        // 整条队列以每首约 3 秒的节奏跳空——正是「有进度、没声音、疯狂切歌」。
+        // 这里同样停住并如实说明，且**不**把该曲移出队列（取址失败不是文件损坏）。
+        if (useNative() && typeof ev.duration === 'number') {
+          const cur = usePlayerStore.getState()
+          const track = cur.queue[cur.currentIndex]
+          if (track && shouldTreatAsNoticeClip(track, ev.duration, isNetworkBackedTrack(track))) {
+            nativePause()
+            usePlayerStore.setState({ isPlaying: false, progress: 0, resolvingTrackId: null })
+            toast(
+              appTranslate()('runtime.player.abnormalAudio', {
+                seconds: Math.max(1, Math.round(ev.duration)),
+              }),
+              { type: 'error', duration: 6000 }
+            )
+          }
         }
         break
       case 'indexChanged': {
@@ -1020,6 +1098,13 @@ if (isNativePlayerAvailable()) {
         stopNativeTicker()
         usePlayerStore.setState({ isPlaying: false, progress: 0 })
         break
+      case 'unresolved': {
+        // 原生引擎播到一条还没有地址的在线曲目（惰性取址）：取址后原位重播。
+        // 这是「疯狂切下一首」的正解——此前引擎拿空地址建播放器失败，
+        // 被下面的 error 分支按「本地文件损坏」逐首移出队列。
+        void resolveUnresolvedNativeTrack(typeof ev.index === 'number' ? ev.index : state.currentIndex)
+        break
+      }
       case 'error': {
         // 与 Howler 错误路径一致：本地文件出错自动跳过；网络来源不自动跳
         const track = state.queue[state.currentIndex]

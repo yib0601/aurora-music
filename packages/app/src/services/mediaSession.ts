@@ -29,7 +29,17 @@ export interface NativeQueueItem {
 }
 
 export interface NativePlaybackEvent {
-  type: 'play' | 'pause' | 'prepared' | 'indexChanged' | 'seeked' | 'endedAll' | 'stopped' | 'error'
+  type:
+    | 'play'
+    | 'pause'
+    | 'prepared'
+    | 'indexChanged'
+    | 'seeked'
+    | 'endedAll'
+    | 'stopped'
+    /** 引擎播到一条还没有播放地址的在线曲目，交由 JS 取址后重新指定位置播放 */
+    | 'unresolved'
+    | 'error'
   position?: number
   duration?: number
   index?: number
