@@ -485,6 +485,23 @@ class MediaPlaybackService : Service() {
             return
         }
         Log.i(TAG, "startCurrent: index=$currentIndex title=${item.title} autoplay=$autoplay pos=$positionMs")
+        // 未取址的在线曲目：JS 下发队列时 path 还是空的（移动端惰性取址，地址要在
+        // 播到它时按 id 现取）。绝不能把空串当本地路径交给 MediaPlayer——
+        // resolvePath("") 会拼出 /storage/emulated/0/（一个目录），setDataSource 必然
+        // 抛错，进而走 handleError 被上报成「加载失败」。JS 侧把这类上报按「本地文件
+        // 损坏」处理并移出队列，于是整条队列以肉眼可见的速度被逐首吃掉，直到撞上一首
+        // 本地曲目——这正是「跳过第二首后疯狂切歌」的机制。
+        // 正确做法是把「这条还没有地址」如实告诉 JS，由它取址后重新下发队列
+        // （nativeBootstrapPlay）从这个位置继续播。
+        if (item.path.isBlank()) {
+            Log.i(TAG, "startCurrent: index=$currentIndex 无播放地址，交回 JS 取址")
+            releasePlayer()
+            releasePlaybackResources()
+            updateMetadata(item)
+            updateSessionState(false)
+            emitEvent("unresolved", mapOf("index" to currentIndex))
+            return
+        }
         releasePlayer()
         pendingSeekMs = positionMs
         lastWatchPositionMs = -1
@@ -506,6 +523,7 @@ class MediaPlaybackService : Service() {
                 if (prepared !== player) return@setOnPreparedListener
                 // 时长只能在 prepared 之后取：提前问会触发 native error(-38) 中断播放
                 playerPrepared = true
+                prepareStartedAt = 0L
                 playerDurationMs = prepared.duration.toLong().coerceAtLeast(0L)
                 if (pendingSeekMs > 0) {
                     try { prepared.seekTo(pendingSeekMs.toInt()) } catch (_: Throwable) {}
@@ -539,6 +557,10 @@ class MediaPlaybackService : Service() {
                 if (failed === player) handleError(what, extra)
                 true
             }
+            // 记录 prepare 起点：看门狗据此判定「prepareAsync 超过 30 秒未回调」
+            // 并重建播放器重试。此前该变量只被读、从未被赋值，超时分支永远不成立，
+            // 在线直链长时间不响应时引擎会一直空转不恢复。
+            prepareStartedAt = SystemClock.elapsedRealtime()
             mp.prepareAsync()
         } catch (e: Throwable) {
             handleError(-1, -1)
@@ -641,6 +663,7 @@ class MediaPlaybackService : Service() {
         } catch (_: Throwable) {}
         player = null
         playerPrepared = false
+        prepareStartedAt = 0L
         playerDurationMs = 0L
     }
 
