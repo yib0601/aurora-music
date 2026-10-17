@@ -697,20 +697,30 @@ export const usePlayerStore = create<PlayerState>()(
           return
         }
 
+        /**
+         * 随机模式的回退：历史里有**更早的一条**就回退到它（真正的「上一首随机曲目」），
+         * 否则退回顺序上一首。
+         *
+         * ⚠️ 此前「历史里没有更早的一条」时是 `audioSeekTo(0)` 后 return —— 命令被吃掉。
+         * 而历史只有一条正是**点某一首起播**的常态（`playQueue(tracks, i)` 把历史初始化成
+         * `[i]`），于是「点歌单第 N 首 → 按上一曲」只把当前曲回到开头，用户读作
+         * 「上一曲无法播放 / 按了没反应」（用户机器上的持久化状态实测即
+         * `shuffleMode:"on" / currentIndex:3 / shuffleHistory:[3]`）。
+         *
+         * 判据同时要求历史末项**就是当前曲目**：`setCurrentIndex`（队列面板点行）与原生
+         * `playAt` 都会改索引而不动历史，历史陈旧时末项指向别的曲目，按它就是随机跳曲。
+         * 回退后把历史重开在回退位置上，于是连续按上一曲继续往前走（见 previousTrack.test.ts）。
+         */
         let prevIndex: number
-        if (state.shuffleMode === 'on') {
+        if (state.shuffleMode === 'on' && state.shuffleHistory.length >= 2 && state.shuffleHistory[state.shuffleHistory.length - 1] === state.currentIndex) {
           const history = [...state.shuffleHistory]
           history.pop()
-          const last = history[history.length - 1]
-          if (last === undefined) {
-            audioSeekTo(0)
-            return
-          }
-          prevIndex = last
+          prevIndex = history[history.length - 1]
           set({ shuffleHistory: history })
         } else {
           prevIndex = state.currentIndex - 1
           if (prevIndex < 0) prevIndex = state.queue.length - 1
+          if (state.shuffleMode === 'on') set({ shuffleHistory: [prevIndex] })
         }
 
         const prevTrack = state.queue[prevIndex]

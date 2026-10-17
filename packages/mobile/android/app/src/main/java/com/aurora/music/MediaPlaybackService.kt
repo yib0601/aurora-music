@@ -440,10 +440,25 @@ class MediaPlaybackService : Service() {
             seekTo(0)
             return
         }
+        if (queue.isEmpty()) {
+            seekTo(0)
+            return
+        }
+        // 随机模式下「历史里确有一条更早的记录」才走随机回退，否则退回顺序上一首
+        val fromHistory = shuffleMode == "on" && shuffleHistoryValid()
         val prevIdx = computePrevIndex()
         if (prevIdx < 0) { seekTo(0); return }
         currentIndex = prevIdx
-        if (shuffleMode == "on") { if (shuffleHistory.size > 1) shuffleHistory.removeAt(shuffleHistory.size - 1) }
+        if (shuffleMode == "on") {
+            if (fromHistory) {
+                // 丢掉当前这一条，历史末项即回退目标
+                shuffleHistory.removeAt(shuffleHistory.size - 1)
+            } else {
+                // 回退后把历史重开在回退位置上（连续按「上一首」继续往前走，而不是原地打转）
+                shuffleHistory.clear()
+                shuffleHistory.add(prevIdx)
+            }
+        }
         startCurrent(true, 0)
         emitEvent("indexChanged", mapOf("index" to currentIndex))
     }
@@ -632,12 +647,25 @@ class MediaPlaybackService : Service() {
         } else n
     }
 
+    /**
+     * 随机历史是否可用于回退：需要**至少一条更早的记录**，且末项就是当前曲目。
+     *
+     * ⚠️ 两个条件都不可少：
+     * - 只有一条记录（`shuffleHistory == [currentIndex]`）是**点某一首起播**的常态
+     *   （playQueue 只把起播位置写进历史）。此时若还回退到「上一条随机记录」，就是当前曲
+     *   自己 —— 表现为按「上一首」把当前曲从头重放，用户读作「上一曲无法播放」。
+     *   正确行为是退回顺序上一首。
+     * - 末项必须等于当前曲目：playAt / syncQueue 只改索引不动历史，历史陈旧时按它会
+     *   随机跳到别的曲目上去。
+     */
+    private fun shuffleHistoryValid(): Boolean =
+        shuffleHistory.size >= 2 && shuffleHistory[shuffleHistory.size - 1] == currentIndex
+
     private fun computePrevIndex(): Int {
         if (queue.isEmpty()) return -1
-        if (shuffleMode == "on") {
-            // 随机模式：回退到上一个随机曲目
-            if (shuffleHistory.size >= 2) return shuffleHistory[shuffleHistory.size - 2]
-            return currentIndex
+        if (shuffleMode == "on" && shuffleHistoryValid()) {
+            // 随机模式：回退到上一条随机记录（末项是当前曲，故取 size-2）
+            return shuffleHistory[shuffleHistory.size - 2]
         }
         val p = currentIndex - 1
         return if (p < 0) queue.size - 1 else p
