@@ -49,13 +49,6 @@ const en: LocalizedOf<typeof hall> = {
     column: {
       song: 'Song',
     },
-    meta: {
-      songs: '{count} songs',
-      songs_one: '{count} song',
-      songsOfTotal: '{shown} of {total} songs',
-      hoursMinutes: '{hours}h {minutes}m',
-      updated: 'Updated {time}',
-    },
   },
   download: {
     starting: 'Downloading "{title}"…',

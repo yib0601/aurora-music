@@ -60,13 +60,6 @@ const hall = {
     column: {
       song: '歌曲',
     },
-    /** Hero 副标题的各片段（用「 · 」连接的是同级元信息，不是句子拼接） */
-    meta: {
-      songs: '{count} 首',
-      songsOfTotal: '{shown} / {total} 首',
-      hoursMinutes: '{hours} 小时 {minutes} 分',
-      updated: '更新 {time}',
-    },
   },
   download: {
     starting: '正在下载「{title}」…',
