@@ -13,7 +13,7 @@ import {
   Volume2,
 } from 'lucide-react'
 import { PageLayout } from '@/components/PageLayout'
-import { PageSubtitle, SubPageTitle } from '@/components/PageHeading'
+import { SubPageTitle } from '@/components/PageHeading'
 import { useBindScrollElement } from '@/components/VirtualTrackTable'
 import { HallEmpty } from '@/pages/MusicHallPage'
 import { cn, formatTime } from '@/lib/utils'
@@ -23,7 +23,7 @@ import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStor
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useT } from '@/i18n'
-import { matchTracksByNames, musicHallSourceOf, type AppTranslator } from '@aurora/shared'
+import { matchTracksByNames, musicHallSourceOf } from '@aurora/shared'
 import { buildLibraryBuckets, matchLibraryDuration } from '@/lib/hallTrackDuration'
 import type { MusicHallSource, Track } from '@/types'
 
@@ -154,7 +154,6 @@ export function MusicHallDetailPage() {
   const title = isToplist
     ? toplistDetail?.data?.name || t('hall.toplist.fallbackName')
     : playlistDetail?.data?.name || t('hall.recommend.title')
-  const total = isToplist ? toplistDetail?.data?.total ?? rows.length : rows.length
 
   /**
    * 把展示行转成可播放的 Track 列表。
@@ -171,8 +170,8 @@ export function MusicHallDetailPage() {
    * ⚠️ 源没给时长（duration 为 0）时用本地曲库同曲的时长补值（见 matchLibraryDuration）：
    * 乐源对无权益曲目回落到兜底音源时 duration 恒为 0，条目变成「时长未知」，播放器只能靠
    * 实际解码时长兜底；补上准确时长才能恢复「元数据与实际是否相符」这条判据。
-   * 只补这里交给播放器的值，**不动展示列**：展示列与 Hero 总时长仍只认真实源数据，
-   * 把推定值算进「整单总时长」等于替源编数据。
+   * 只补这里交给播放器的值，**不动展示列**：展示列的时长仍只认真实源数据（源没给就整列隐藏），
+   * 把推定值当真实数据展示等于替源编数据。
    *
    * 同时整表用 useMemo 冻结，播放时不再重复构造。
    */
@@ -237,9 +236,6 @@ export function MusicHallDetailPage() {
     usePlayerStore.getState().playQueue(shuffled, 0)
   }
 
-  /** 全单总时长：Hero 里最直观的一份量化信息（比「66 首」更能说明这个歌单的体量） */
-  const totalDuration = useMemo(() => rows.reduce((sum, r) => sum + (r.duration || 0), 0), [rows])
-
   /** 是否有时长数据：整列没有就整列隐藏（源不给时长的老音源不该看到一列 0:00） */
   const hasDuration = useMemo(() => rows.some((r) => r.duration > 0), [rows])
 
@@ -266,28 +262,6 @@ export function MusicHallDetailPage() {
     }
     return out
   }, [rows])
-
-  /**
-   * Hero 副标题：来源性质 / 曲目数 / 总时长 / 榜单更新时间。
-   * 各片段本身就是字典里的整句，这里只是把同级元信息用「 · 」摆成一排，不构成句子拼接。
-   */
-  const heroMeta = useMemo(() => {
-    const shown = rows.length
-    const parts = [isToplist ? t('hall.toplist.title') : t('hall.recommend.title')]
-    // 榜单的上游 total 是 300 而本次只取了 100 首：写「100 / 300 首」而不是照抄 total，
-    // 否则页面宣称有 300 首、列表却只有 100 行，用户会以为还没加载完
-    if (shown > 0) {
-      parts.push(
-        total > shown
-          ? t('hall.detail.meta.songsOfTotal', { shown, total })
-          : t('hall.detail.meta.songs', { count: shown })
-      )
-    }
-    if (totalDuration > 0) parts.push(formatTotalDuration(totalDuration, t))
-    const updated = isToplist ? toplistDetail?.data?.updateTime : ''
-    if (updated) parts.push(t('hall.detail.meta.updated', { time: updated }))
-    return parts.join(' · ')
-  }, [isToplist, rows.length, total, totalDuration, toplistDetail, t])
 
   const unavailable = hallUnavailableReason(t)
   if (unavailable) {
@@ -350,7 +324,6 @@ export function MusicHallDetailPage() {
                   <Sparkles className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
                 )
               }
-              meta={loading ? t('common.state.loading') : heroMeta}
               covers={heroCovers}
             >
               <button
@@ -517,11 +490,14 @@ function BackBar({ onBack }: { onBack: () => void }) {
 }
 
 /**
- * 详情页 Hero：拼图封面 + 标题 + 元信息 + 主操作。
+ * 详情页 Hero：拼图封面 + 标题 + 主操作。
  *
  * 加它的原因：详情页此前只有「一行标题 + 一张 66 行的表」，页面上没有任何视觉锚点，
- * 一整屏都是同密度、同明度的小字，看上去就是「单调」。Hero 给出封面、体量（曲目数 +
- * 总时长）与整单起播入口三件事，页面才有头有身。
+ * 一整屏都是同密度、同明度的小字，看上去就是「单调」。Hero 给出封面与整单起播入口，
+ * 页面才有头有身。
+ *
+ * ⚠️ 刻意**不显示副标题**（曲目数 / 总时长 / 更新时间）：这一排元信息与下方曲目表、
+ * 列头说的是同一件事，只在标题下重复一遍，还让 Hero 多出一行可换行的窄字。
  *
  * 歌单解析协议不提供歌单自身的封面（上游只回名称 + 曲目列表），所以封面用曲目封面拼
  * 2x2——这是「歌单没有自己的封面时用曲目封面顶上」的通行做法，比一个音符占位块交代
@@ -530,13 +506,11 @@ function BackBar({ onBack }: { onBack: () => void }) {
 function DetailHero({
   title,
   icon,
-  meta,
   covers,
   children,
 }: {
   title: string
   icon: React.ReactNode
-  meta: string
   covers: string[]
   children: React.ReactNode
 }) {
@@ -551,7 +525,6 @@ function DetailHero({
           {icon}
           {title}
         </SubPageTitle>
-        {meta && <PageSubtitle className="mt-1.5 truncate">{meta}</PageSubtitle>}
         {/* flex-wrap 是必需的：两个 pill 都是 white-space:nowrap 且不许收缩，不放行的
             窄容器里它们会把整行顶宽（实测按钮行 min-content 221px）。换行只作兜底，
             真正的分档在 .hall-hero 的容器查询里 */}
@@ -602,19 +575,4 @@ function CoverTile({ url, className }: { url: string; className?: string }) {
       className={cn('w-full h-full object-cover', className)}
     />
   )
-}
-
-/**
- * 整单时长：够一小时按「X 小时 Y 分」，否则「Y 分钟」——秒级精度在这一层没有意义。
- * 分钟 / 小时这类数量单位复用 common.unit（两种语言各自补复数形态），
- * 「X 小时 Y 分」这种组合式表述才是本域自己的键。
- */
-function formatTotalDuration(seconds: number, t: AppTranslator): string {
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return t('common.unit.minutes', { count: minutes })
-  const hours = Math.floor(minutes / 60)
-  const rest = minutes % 60
-  return rest === 0
-    ? t('common.unit.hours', { count: hours })
-    : t('hall.detail.meta.hoursMinutes', { hours, minutes: rest })
 }
