@@ -35,15 +35,12 @@ const hall = {
   recommend: {
     /** 栏目名；歌单条目缺创建者信息时也用它兜底 */
     title: '推荐歌单',
-    /** 栏目副标题的数量（{count} 个） */
-    count: '{count} 个',
     empty: '暂无推荐歌单',
     /** 播放量：{plays} 是已按语言压缩的显示值，count 只用于选复数形态 */
     plays: '{plays} 次播放',
   },
   toplist: {
     title: '排行榜',
-    count: '{count} 个榜单',
     empty: '暂无榜单',
     viewFull: '点击查看完整榜单',
     /** 详情页标题的兜底名（上游没给榜单名时用）；与栏目名「排行榜」不是一句，故分列 */

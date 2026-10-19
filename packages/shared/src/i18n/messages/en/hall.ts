@@ -24,16 +24,12 @@ const en: LocalizedOf<typeof hall> = {
   },
   recommend: {
     title: 'Recommended Playlists',
-    count: '{count} playlists',
-    count_one: '{count} playlist',
     empty: 'No recommended playlists yet',
     plays: '{plays} plays',
     plays_one: '{plays} play',
   },
   toplist: {
     title: 'Charts',
-    count: '{count} charts',
-    count_one: '{count} chart',
     empty: 'No charts yet',
     viewFull: 'Open the full chart',
     fallbackName: 'Chart',
