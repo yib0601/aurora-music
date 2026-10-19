@@ -8,7 +8,7 @@ import { NAV_LABEL_KEYS, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/rou
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
 import { useT, useLocale } from '@/i18n'
 import { formatNumber, type Locale } from '@aurora/shared'
-import type { RecommendPlaylist, ToplistBrief, ToplistGroup, ToplistPreviewSong } from '@/types'
+import type { RecommendPlaylist, ToplistBrief, ToplistPreviewSong } from '@/types'
 
 /**
  * 音乐库：推荐歌单 + 排行榜（由音源服务实时提供，只读浏览、即点即播、不入库）。
@@ -85,7 +85,6 @@ export function MusicHallPage() {
           <Section
             icon={<Sparkles className="h-4 w-4 text-mint" strokeWidth={1.6} />}
             title={t('hall.recommend.title')}
-            subtitle={recommend.data.length > 0 ? t('hall.recommend.count', { count: recommend.data.length }) : undefined}
           >
             {recommend.loading && recommend.data.length === 0 ? (
               <SkeletonRow />
@@ -110,7 +109,6 @@ export function MusicHallPage() {
           <Section
             icon={<TrendingUp className="h-4 w-4 text-mint" strokeWidth={1.6} />}
             title={t('hall.toplist.title')}
-            subtitle={toplists.data.length > 0 ? t('hall.toplist.count', { count: totalBoards(toplists.data) }) : undefined}
             className="mt-10"
           >
             {toplists.loading && toplists.data.length === 0 ? (
@@ -147,21 +145,14 @@ export function MusicHallPage() {
   )
 }
 
-/** 榜单总数（分组扁平化后计数） */
-function totalBoards(groups: ToplistGroup[]): number {
-  return groups.reduce((n, g) => n + g.toplists.length, 0)
-}
-
 function Section({
   icon,
   title,
-  subtitle,
   className,
   children,
 }: {
   icon: React.ReactNode
   title: string
-  subtitle?: string
   className?: string
   children: React.ReactNode
 }) {
@@ -170,7 +161,6 @@ function Section({
       <div className="flex items-baseline gap-2 mb-4">
         {icon}
         <h2 className="font-display text-[18px] font-semibold text-white/95 tracking-[-0.3px]">{title}</h2>
-        {subtitle && <span className="font-text text-[12px] text-white/45">{subtitle}</span>}
       </div>
       {children}
     </section>
