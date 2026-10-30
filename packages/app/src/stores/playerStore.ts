@@ -172,6 +172,33 @@ function notifyResolveFailed(track: Track): void {
 }
 
 /**
+ * 「源给了地址，但这条音频播不出来」的提示。
+ *
+ * 与取址失败（源根本没给出地址）是两种情形，文案也不同：这里地址是有的，
+ * 只是内容不可播放——源把加密封装/试听片段当完整音频返回，客户端拿到的是
+ * 一条必然解不出声的流。此前这条通路**完全静默**：在线曲目既不被移出队列
+ * （那是对的，见 isNetworkBackedTrack），也没有任何提示，用户看到的就是
+ * 「点了没反应 / 这首歌没有资源」。
+ *
+ * 静默 return 换成可读提示，行为上仍保持「不踢队列」：同源再取一次还是它，
+ * 换个音源可能就能放。
+ *
+ * 两条通路都要用**同一句文案**（与「取址失败」文案同理，store 没有渲染周期，
+ * 译文每次调用时取）：
+ *   - 桌面端 Howler 的 audioEvents.error；
+ *   - 移动端原生引擎的 playbackevent `case 'error'`（只改一处会让移动端继续静默）。
+ *
+ * 已知重复：原生 `case 'prepared'` 的试听片段闸门是同一现象的另一处上报点，
+ * 但那里有**实测时长**（`ev.duration`），toast 的 waitFor 是异步的，
+ * 与「原生路径提示必须同步可见」冲突；两处并存但不重复弹（一条音频只走其中一条），
+ * 且始终走上文这一句文案。
+ */
+function notifyIncompleteAudio(track: Track): void {
+  console.warn(`[播放] 音源未提供完整音频，无法播放：${track.title} - ${track.artist}`)
+  toast(appTranslate()('runtime.player.incompleteAudio'), { type: 'error', duration: 6000 })
+}
+
+/**
  * 取址收尾：地址仍未取到时给一次提示并停住，不把空地址交给播放器。
  *
  * 空地址会建出一个必然失败的 Howl，其 error 事件会被下面的自动跳曲逻辑
@@ -920,7 +947,17 @@ audioEvents.on('error', ({ error, trackId }) => {
     toast(appTranslate()('runtime.player.abnormalAudio', { seconds }), { type: 'error', duration: 6000 })
     return
   }
-  if (isNetworkBackedTrack(currentTrack)) return
+  if (isNetworkBackedTrack(currentTrack)) {
+    // 在线曲目不出声**不是**「本地文件损坏」：不踢出队列（同源再取一次还是它，
+    // 换音源可能就能放）。但也不能像此前那样静默 return —— 那正是用户上报的
+    // 「点了没反应 / 提示没有资源」：地址是源给的，只是这条音频不可播放
+    // （加密封装、试听片段，或服务端判定后客户端仍拿到的旧直链）。
+    // 停住并如实说明，让用户知道该换音源，而不是以为客户端坏了。
+    // 走到这里已确认出错的就是当前曲目（上面的 trackId 守卫）。
+    usePlayerStore.setState({ isPlaying: false, progress: 0, resolvingTrackId: null })
+    notifyIncompleteAudio(currentTrack)
+    return
+  }
   if (queue.length <= 1) {
     state.clearQueue()
     return
@@ -1116,10 +1153,16 @@ if (isNativePlayerAvailable()) {
         break
       }
       case 'error': {
-        // 与 Howler 错误路径一致：本地文件出错自动跳过；网络来源不自动跳
+        // 与 Howler 错误路径一致：本地文件出错自动跳过；网络来源不自动跳。
+        // ⚠️ 两条路径必须同源，只改一处会让移动端继续「点了没反应」
         const track = state.queue[state.currentIndex]
         if (!track) break
-        if (isNetworkBackedTrack(track)) break
+        if (isNetworkBackedTrack(track)) {
+          // 在线曲目：停住并给可读提示，不踢出队列（与 audioEvents 的 error 路径同一处理）
+          usePlayerStore.setState({ isPlaying: false, progress: 0, resolvingTrackId: null })
+          notifyIncompleteAudio(track)
+          break
+        }
         if (state.queue.length <= 1) {
           state.clearQueue()
         } else {

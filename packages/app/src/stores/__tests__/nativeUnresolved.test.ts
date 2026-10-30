@@ -21,6 +21,7 @@
  *   - 引擎把「无地址」如实上报时，JS 取址后原位重播（新增回路）
  *   - 取址确实失败时停住并提示，既不静默跳曲也不吃队列（row 4/8 的真实情形）
  *   - 提示音闸门对原生路径同样生效（回归 2）
+ *   - 在线曲目加载失败给**可读提示**（与桌面端 Howler 路径同源，回归 3）
  *
  * 运行：cd packages/app && npx vitest run src/stores/__tests__/nativeUnresolved.test.ts
  */
@@ -162,12 +163,33 @@ describe('移动端原生引擎：无地址在线条目', () => {
     expect(st.queue[1].id).toBe('hall-pl-1')
   })
 
+  /**
+   * 与桌面端 Howler 的 error 路径同源：在线曲目失败必须**可读**。
+   *
+   * 此前这里同样是静默 break（`if (isNetworkBackedTrack(track)) break`），
+   * 于是移动端在线曲目播不出时用户看到的就是「点了没反应」。
+   * 只改一条路径会让两端表现不一致，这条断言把原生路径钉住。
+   */
+  it('在线曲目加载失败：停住并给可读提示，不静默、不吃队列', () => {
+    const q = [onlineRow(0, { onlineUrl: 'http://x/a.mp3' }), onlineRow(1)]
+    usePlayerStore.setState({ queue: q, currentIndex: 0, currentTrack: q[0], isPlaying: true, progress: 42 })
+    emit({ type: 'error', index: 0, what: 1, extra: -2147483648 })
+    const st = usePlayerStore.getState()
+    expect(h.toasts.length).toBe(1)
+    expect(String(h.toasts[0].msg)).toContain('未提供这首歌的完整音频')
+    expect(st.isPlaying).toBe(false)
+    expect(st.progress).toBe(0)
+    expect(st.queue.length).toBe(2)
+  })
+
   it('纯本地条目加载失败仍按原语义移除（不因上面的放宽而回归）', () => {
     const q = [localRow(0), localRow(1)]
     usePlayerStore.setState({ queue: q, currentIndex: 0, currentTrack: q[0] })
     emit({ type: 'error', index: 0, what: 1, extra: -2147483648 })
     const st = usePlayerStore.getState()
     expect(st.queue.map((t) => t.id)).toEqual(['local-1'])
+    // 本地文件损坏不发「音源」提示：那条文案对用户是误导
+    expect(h.toasts.length).toBe(0)
   })
 
   it('unresolved 上报 → 取址并原位重播，队列带新地址下发（新增回路）', async () => {
