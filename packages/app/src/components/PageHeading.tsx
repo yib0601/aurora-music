@@ -20,19 +20,17 @@ import { cn } from '@/lib/utils'
  * 数值依据：
  * - 字重 600 而非 700：中文笔画密度远高于拉丁字母，同一字重在中文下更粗更糊，
  *   深色底上尤甚（`design-system.md` §8.3）。全站页头统一 600，不再混用 500/700。
- * - 字距 -0.374px：与全站其余大标题同值。此前「设置」用 -0.02em、「歌名」用 -0.5px、
- *   其余用 -0.374px，三种写法在同一屏相邻时肉眼可辨。
- * - `text-white/98`（而非 `text-white`）：白色的 98% 是画面里柔和的一档，
- *   页头与正文同用纯白会让层级塌掉。
+ * - 字距随字号分档收紧，减少大标题的松散感，不混用 em 与 px。
+ * - 96% 的前景色（而非纯白）：页头与正文同用纯白会让层级塌掉。
  *
  * 新页面一律用 `PageTitle` / `SubPageTitle`，不要再写裸的字号类名。
  */
 export const PAGE_TITLE_CLASS =
-  'font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.374px] text-white/98 leading-tight'
+  'font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.55px] text-white/[0.96] leading-tight'
 
 /** 二级页头（详情页 / 播放列表等带返回入口的页面）字号档 */
 export const SUB_PAGE_TITLE_CLASS =
-  'font-display text-[22px] md:text-[28px] font-semibold tracking-[-0.374px] text-white/98 leading-tight'
+  'font-display text-[22px] md:text-[28px] font-semibold tracking-[-0.45px] text-white/[0.96] leading-tight'
 
 /**
  * 页头副标题档。颜色固定 `text-white/65`。

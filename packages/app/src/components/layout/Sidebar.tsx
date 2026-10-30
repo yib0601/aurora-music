@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Music, Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Library, Radio } from 'lucide-react'
+import { Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Library, Radio } from 'lucide-react'
+import { BrandMark } from '@/components/common/BrandMark'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn, generateId } from '@/lib/utils'
 import { NAV_LABEL_KEYS, ROUTES, type NavItem } from '@/lib/routes'
@@ -61,11 +62,11 @@ const footerItems: NavItem[] = [{ to: ROUTES.settings, icon: Settings, labelKey:
  */
 const navLinkClass = (isActive: boolean, spaced = false) =>
   cn(
-    'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-all duration-200 ease-mineradio border',
+    'nav-link group relative flex items-center gap-3 h-10 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-[background,color,box-shadow] duration-200 ease-mineradio border',
     spaced && 'mt-3',
     isActive
-      ? 'bg-mint/[0.13] border-mint/[0.18] text-mint font-medium shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
-      : 'border-transparent text-white/72 hover:text-white hover:bg-white/[0.05]',
+      ? 'nav-link-active bg-mint/[0.09] border-mint/[0.12] text-white font-medium'
+      : 'border-transparent text-white/65 hover:text-white/95 hover:bg-white/[0.045]',
   )
 
 /**
@@ -130,12 +131,10 @@ export function Sidebar() {
   return (
     <div className="flex-1 flex flex-col min-h-0 h-full">
       {/* 品牌区 */}
-      <div className="flex items-center gap-3 px-4 py-5">
-        <div className="w-8 h-8 rounded-ds-media bg-mint flex items-center justify-center">
-          <Music className="h-4 w-4 text-mint-fg" strokeWidth={2} />
-        </div>
+      <div className="flex items-center gap-3 px-4 pb-6 pt-5">
+        <BrandMark className="h-10 w-10" />
         <div className="flex flex-col">
-          <span className="font-display font-semibold text-[15px] tracking-[-0.224px] text-white/[0.96] leading-tight">
+          <span className="font-display font-semibold text-[16px] tracking-[-0.32px] text-white/[0.96] leading-tight">
             {t('nav.brand.name')}
           </span>
           <span className="font-text text-[11px] text-white/65 leading-tight mt-0.5">
@@ -221,7 +220,7 @@ export function Sidebar() {
                         'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
                         isActive
                           ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
-                          : 'border-transparent text-white/72 hover:text-white hover:bg-white/[0.05]'
+                          : 'border-transparent text-white/65 hover:text-white hover:bg-white/[0.045]'
                       )
                     }
                   >

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Compass, RefreshCw, Music2, TrendingUp, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Compass, RefreshCw, Music2, TrendingUp, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
 import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
@@ -158,9 +158,9 @@ function Section({
 }) {
   return (
     <section className={className}>
-      <div className="flex items-baseline gap-2 mb-4">
-        {icon}
-        <h2 className="font-display text-[18px] font-semibold text-white/95 tracking-[-0.3px]">{title}</h2>
+      <div className="flex items-center gap-2.5 mb-4">
+        <span className="text-white/55">{icon}</span>
+        <h2 className="font-display text-[17px] font-semibold text-white/[0.92] tracking-[-0.3px]">{title}</h2>
       </div>
       {children}
     </section>
@@ -179,7 +179,7 @@ function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpe
     <button
       type="button"
       onClick={onOpen}
-      className="group card-solid rounded-ds-card p-3 text-left transition-colors duration-200 ease-mineradio hover:bg-white/[0.08] border border-white/[0.06] hover:border-white/[0.12]"
+      className="group playlist-card card-solid rounded-ds-panel p-3 text-left transition-[background,border-color,box-shadow] duration-200 ease-mineradio hover:bg-white/[0.06] border border-white/[0.06] hover:border-white/[0.14]"
     >
       <div className="relative aspect-square rounded-ds-media overflow-hidden bg-white/[0.05] mb-3">
         {cover && !failed ? (
@@ -189,13 +189,16 @@ function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpe
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={() => setFailed(true)}
-            className="w-full h-full object-cover"
+            className="media-card-image w-full h-full object-cover"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-white/25">
             <Music2 className="h-8 w-8" strokeWidth={1.2} />
           </div>
         )}
+        <span className="card-affordance absolute right-2.5 top-2.5" aria-hidden="true">
+          <ArrowUpRight className="h-4 w-4" strokeWidth={1.7} />
+        </span>
       </div>
       <p className="font-text text-[13px] text-white/90 leading-snug line-clamp-2 tracking-[-0.2px]">
         {playlist.name}

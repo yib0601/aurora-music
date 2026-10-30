@@ -28,7 +28,7 @@ export function SearchEntry({ className }: { className?: string }) {
       onClick={() => setSearchOpen(true)}
       title={t('common.action.search')}
       aria-label={t('common.action.search')}
-      className={cn('search-entry', className)}
+      className={cn('search-entry glass-control', className)}
     >
       {/* 图标与文字的字号/尺寸一律由 .search-entry / .search-entry-compact 给
           （见 globals.css）：这两个 css 类在同一层里能互相覆盖，而写在这里的

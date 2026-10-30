@@ -6,6 +6,7 @@ import { NAV_LABEL_KEYS, ROUTES, type NavItem } from '@/lib/routes'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { useUIStore } from '@/stores/uiStore'
 import { useT } from '@/i18n'
+import { BrandMark } from '@/components/common/BrandMark'
 
 /**
  * 移动端导航：顶部汉堡菜单 + 左侧抽屉（DS 化）
@@ -54,8 +55,8 @@ const drawerLinkClass = (isActive: boolean, spaced = false) =>
     'group flex items-center gap-3 px-3 py-3 rounded-ds-panel text-[14px] tracking-[-0.2px] transition-all duration-200 border',
     spaced && 'mt-3',
     isActive
-      ? 'bg-white/[0.07] border-white/[0.10] text-white'
-      : 'border-transparent text-white/70 hover:text-white hover:bg-white/[0.05]',
+      ? 'bg-mint/[0.09] border-mint/[0.12] text-white'
+      : 'border-transparent text-white/65 hover:text-white hover:bg-white/[0.045]',
   )
 
 export function MobileNav({ children }: { children?: ReactNode }) {
@@ -94,8 +95,11 @@ export function MobileNav({ children }: { children?: ReactNode }) {
           <Menu className="h-5 w-5" strokeWidth={1.8} />
         </button>
         {/* 顶栏展示品牌名而非页面标题：页面内容区已有同名大标题，重复展示显得冗余 */}
-        <span className="font-display text-[15px] font-semibold text-white/[0.90] tracking-[-0.2px]">
-          {t('nav.brand.name')}
+        <span className="flex items-center gap-2">
+          <BrandMark className="h-7 w-7" />
+          <span className="font-display text-[15px] font-semibold text-white/[0.90] tracking-[-0.2px]">
+            {t('nav.brand.name')}
+          </span>
         </span>
         {/* 右侧：App 注入的常驻控件（全局搜索入口；设置页不注入则为空）。
             ml-auto 把它推到右缘，与汉堡按钮分列两端，中间留出拖拽/点击空白 */}
