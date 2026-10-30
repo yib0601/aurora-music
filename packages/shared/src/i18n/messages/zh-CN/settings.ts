@@ -27,6 +27,7 @@ const settings = {
     storage: '下载与缓存',
     sources: '在线源',
     about: '关于',
+    diagnostics: '诊断日志',
   },
   general: {
     theme: {
@@ -118,6 +119,44 @@ const settings = {
     latest: '当前已是最新版本',
     checkFailed: '检查失败：{reason}',
     checkFailedFallback: '检查失败，请确认网络后重试',
+  },
+  /**
+   * 诊断日志：用户遇到问题时的「把现场交出来」入口。
+   *
+   * 文案口径刻意保守：不承诺日志一定够用（「已自动脱敏」是事实，
+   * 但脱敏只按名字认凭据，用户自己填在别处的原文仍可能出现在文案里），
+   * 所以隐私提示写成「已自动脱敏，但仍请自行检查」而不是「可放心发送」。
+   */
+  diagnostics: {
+    export: {
+      label: '导出日志',
+      hint: '遇到问题时点这里导出一份日志文件，便于定位原因',
+      button: '导出日志',
+      exporting: '导出中…',
+      /** 导出成功后展示落盘路径：用户要自己去把它发出来，路径就是唯一的线索 */
+      done: '已导出到 {path}',
+      copyPath: '复制路径',
+      copied: '路径已复制',
+      failed: '导出失败，请稍后重试',
+      unsupported: '此平台不支持导出日志',
+    },
+    reveal: {
+      label: '打开日志目录',
+      hint: '在文件管理器中定位日志文件',
+      button: '打开目录',
+      failed: '无法打开日志目录',
+    },
+    storage: {
+      label: '日志占用',
+      /** 文件数用复数形态：英文需要 one/other 两档，中文同形 */
+      hint: '{files} 个文件，共 {size}',
+      hintEmpty: '暂无日志文件（应用刚启动时可能还没产生输出）',
+      maxHint: '单个文件上限 {size}，最多保留 {files} 个',
+    },
+    privacy: {
+      title: '隐私提示',
+      body: '日志已自动脱敏（口令、API Key、Cookie、认证头均替换为 ***），但仍可能包含歌名、文件路径等个人信息，发送前请自行检查一遍。',
+    },
   },
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check, Github } from 'lucide-react'
+import { Monitor, Moon, Sun, FolderOpen, Trash2, Plus, Cloud, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Pencil, Check, Github, FileText, Copy, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -27,6 +27,14 @@ import { APP_VERSION, REPO_URL, checkForUpdate, openDownloadPage, type UpdateInf
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 import { getAudioCacheUsage, clearAudioCache } from '@/services/audioCache.service'
 import { resetCoverCache } from '@/components/common/CoverImage'
+import {
+  exportLogs,
+  getLogInfo,
+  revealLogs,
+  supportsLogExport,
+  supportsLogReveal,
+} from '@/services/logging.service'
+import type { LogStorageInfo } from '@/types'
 import {
   LxScriptProbe,
   type LxProbeState,
@@ -62,6 +70,40 @@ function openExternalUrl(url: string) {
     return
   }
   window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+/**
+ * 复制文本到剪贴板，返回是否成功。
+ *
+ * 为什么不用 navigator.clipboard 一把梭：桌面端与移动端的 WebView 都可能因为
+ * 非安全上下文 / 缺用户手势判定而让 clipboard API 返回 rejected，
+ * 而「复制路径」这种操作失败时用户是能感知的（剪贴板没变化），所以我们不静默失败，
+ * 而是回落到 `document.execCommand('copy')` 这条老路径 —— 它在新旧 WebView 里都还在。
+ * 兜底再失败才返回 false，由调用方决定要不要提示。
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // 降级到 execCommand：不中断流程
+  }
+  try {
+    const area = document.createElement('textarea')
+    area.value = text
+    // 放到视口外：不改变布局，也不会让页面跳动
+    area.style.position = 'fixed'
+    area.style.opacity = '0'
+    document.body.appendChild(area)
+    area.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(area)
+    return ok
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -127,14 +169,37 @@ const downloadQualityOptions: ReadonlyArray<{ value: '128' | '320' | 'flac'; lab
  *
  * 库里那一区复用 `nav.item.library`：页名在侧栏、页头、空态按钮等十几处出现，
  * 另开一份键必然漂移。
+ *
+ * `available` 是**能力谓词而非布尔值**：查询平台能力要在运行期做，写成模块级布尔值
+ * 会把「平台不支持」这件事冻结在模块加载那一刻（且 SSR / 单测里没有 window）。
+ * 导航与分区标题都必须用它过滤 —— 少了这一步会出现「导航点了没反应」：
+ * 分区被隐藏、锚点却还在，scrollTo 找不到 DOM 就静默什么都不做。
  */
-const SETTINGS_SECTIONS: ReadonlyArray<{ id: string; labelKey: MessageKey }> = [
+const SETTINGS_SECTIONS: ReadonlyArray<{
+  id: string
+  labelKey: MessageKey
+  available?: () => boolean
+}> = [
   { id: 'general', labelKey: 'settings.nav.general' },
   { id: 'library', labelKey: NAV_LABEL_KEYS.library },
   { id: 'storage', labelKey: 'settings.nav.storage' },
   { id: 'sources', labelKey: 'settings.nav.sources' },
   { id: 'about', labelKey: 'settings.nav.about' },
+  // 「诊断日志」排在「关于」之后：它同属「这套软件本身」的语义（版本 / 更新 / 日志
+  // 都是排障用的），但用户平时用不到，放在最后不至于抢占常用分区的注意力。
+  // 只在平台真接上落盘能力时出现（Web 端没有日志文件可导）。
+  { id: 'diagnostics', labelKey: 'settings.nav.diagnostics', available: supportsLogExport },
 ]
+
+/**
+ * 当前端可见的分区（按分区表顺序）。
+ *
+ * 每次调用现算而不是缓存：能力依赖的平台单例在模块加载后才就绪，
+ * 缓存会把「一开始不支持、后来接上了」的场景永久判死。
+ */
+function visibleSettingsSections(): ReadonlyArray<{ id: string; labelKey: MessageKey }> {
+  return SETTINGS_SECTIONS.filter((section) => !section.available || section.available())
+}
 
 /** 分区 DOM id：导航、滚动定位与 spy 共用，禁止在别处拼字面量 */
 const settingsSectionId = (id: string) => `settings-${id}`
@@ -175,7 +240,7 @@ function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: stri
       data-settings-nav
       className="flex flex-wrap gap-1.5 lg:grid lg:w-fit lg:flex-none lg:flex-shrink-0 lg:grid-cols-[max-content] lg:content-start lg:gap-y-1 lg:self-stretch lg:border-r lg:border-white/[0.06] lg:pr-3"
     >
-      {SETTINGS_SECTIONS.map(({ id, labelKey }) => {
+      {visibleSettingsSections().map(({ id, labelKey }) => {
         const on = active === id
         return (
           <button
@@ -216,7 +281,8 @@ function SettingsNav({ active, onSelect }: { active: string; onSelect: (id: stri
  * 判定线以上，兜底会把 active 永久钉在最后一个分区、前半页导航全部失灵。
  */
 function useSettingsSpy() {
-  const [active, setActive] = useState<string>(SETTINGS_SECTIONS[0].id)
+  const sections = visibleSettingsSections()
+  const [active, setActive] = useState<string>(sections[0].id)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const lockUntilRef = useRef(0)
 
@@ -228,13 +294,15 @@ function useSettingsSpy() {
     const line = scroller
       ? scroller.getBoundingClientRect().top + 96
       : window.innerHeight * 0.2
-    let next: string = SETTINGS_SECTIONS[0].id
-    for (const { id } of SETTINGS_SECTIONS) {
+    // 只遍历**当前端可见**的分区：被能力过滤掉的分区没有 DOM 锚点，
+    // 遍历它既选不中，也会让「滚到底兜底」落到一个不存在的 id 上
+    let next: string = sections[0].id
+    for (const { id } of sections) {
       const el = document.getElementById(settingsSectionId(id))
       if (el && el.getBoundingClientRect().top <= line) next = id
     }
     if (scroller && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
-      next = SETTINGS_SECTIONS[SETTINGS_SECTIONS.length - 1].id
+      next = sections[sections.length - 1].id
     }
     return next
   }
@@ -1575,6 +1643,72 @@ export function SettingsPage() {
   // 添加源弹窗开关：弹窗内校验通过后才写入 store，避免假地址被持久化
   const [addMusicOpen, setAddMusicOpen] = useState(false)
 
+  // ─── 诊断日志 ───
+  // 能力探测与音频缓存同一范式：平台没接上落盘能力（Web / 旧版 preload）时
+  // 整个分区隐藏，而不是给出一个点了必然失败的按钮。
+  const supportsDiagnostics = supportsLogExport()
+  const canRevealLogs = supportsLogReveal()
+  const [logInfo, setLogInfo] = useState<LogStorageInfo | null>(null)
+  const [logExporting, setLogExporting] = useState(false)
+  /** 最近一次导出的落盘路径：展示在行内，用户要自己把文件发出来，路径是唯一线索 */
+  const [logExportPath, setLogExportPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!supportsDiagnostics) return
+    let mounted = true
+    // 只在进入设置页时取一次：日志文件按天滚动，短时间内不会变，
+    // 而 info() 在移动端要逐个 stat 文件，低频调用即可
+    void getLogInfo().then((info) => {
+      if (mounted) setLogInfo(info)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [supportsDiagnostics])
+
+  const handleExportLogs = async () => {
+    if (logExporting) return
+    setLogExporting(true)
+    try {
+      const result = await exportLogs()
+      if (result.ok) {
+        setLogExportPath(result.filePath)
+        toast(t('settings.diagnostics.export.done', { path: result.filePath }), {
+          type: 'success',
+          duration: 8000,
+          // 路径通常很长且应用内无处可粘贴，给一个复制动作比让用户手抄现实
+          action: {
+            label: t('settings.diagnostics.export.copyPath'),
+            onClick: () => {
+              void copyText(result.filePath).then((copied) => {
+                if (copied) toast(t('settings.diagnostics.export.copied'))
+              })
+            },
+          },
+        })
+      } else {
+        toast(
+          result.reason === 'unsupported'
+            ? t('settings.diagnostics.export.unsupported')
+            : t('settings.diagnostics.export.failed'),
+          { type: 'error', duration: 5000 }
+        )
+      }
+      // 导出会新增文件，占用随之变化 —— 刷新一次状态
+      const info = await getLogInfo()
+      if (info) setLogInfo(info)
+    } finally {
+      setLogExporting(false)
+    }
+  }
+
+  const handleRevealLogs = async () => {
+    // 优先定位刚导出的那份文件：用户的心智是「我刚导出的东西在哪」，
+    // 没有导出过才退回打开日志目录本身
+    const ok = await revealLogs(logExportPath ?? undefined)
+    if (!ok) toast(t('settings.diagnostics.reveal.failed'), { type: 'error', duration: 4000 })
+  }
+
   const handleCheckUpdate = async () => {
     if (checking) return
     setChecking(true)
@@ -2212,6 +2346,113 @@ export function SettingsPage() {
                 )}
               </SettingRow>
             </SettingsSection>
+
+            {/*
+              诊断日志：用户遇到问题时的「把现场交出来」入口。
+              放在「关于」之后并按能力探测整体隐藏 —— Web 端与未接上落盘能力的旧版桌面端
+              没有这条链路，显示一个点了必然失败的按钮比不显示更糟。
+            */}
+            {supportsDiagnostics && (
+              <SettingsSection id="diagnostics" title={t('settings.nav.diagnostics')}>
+                <SettingRow
+                  label={t('settings.diagnostics.export.label')}
+                  hint={t('settings.diagnostics.export.hint')}
+                  control={
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-9 px-3.5"
+                      disabled={logExporting}
+                      onClick={handleExportLogs}
+                    >
+                      <FileText className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                      {logExporting
+                        ? t('settings.diagnostics.export.exporting')
+                        : t('settings.diagnostics.export.button')}
+                    </Button>
+                  }
+                >
+                  {/* 导出成功后原地展示路径：用户要自己把文件发出来，toast 会消失，
+                      而路径需要在他切换到聊天窗口时仍然可见 */}
+                  {logExportPath && (
+                    <div className="flex items-center gap-2">
+                      <p className="font-text text-caption text-mint/80 truncate" title={logExportPath}>
+                        {logExportPath}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 flex-shrink-0 px-2 text-white/60"
+                        onClick={() => {
+                          void copyText(logExportPath).then((copied) => {
+                            if (copied) toast(t('settings.diagnostics.export.copied'))
+                          })
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-1" strokeWidth={1.6} />
+                        {t('settings.diagnostics.export.copyPath')}
+                      </Button>
+                    </div>
+                  )}
+                </SettingRow>
+
+                {/* 「打开日志目录」只在平台真有 reveal 能力时出现：移动端没有文件管理器桥，
+                    显示出来就是个点了没反应的按钮 */}
+                {canRevealLogs && (
+                  <SettingRow
+                    label={t('settings.diagnostics.reveal.label')}
+                    hint={t('settings.diagnostics.reveal.hint')}
+                    control={
+                      <Button variant="ghost" size="sm" className="h-9 px-3 text-white/60" onClick={handleRevealLogs}>
+                        <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                        {t('settings.diagnostics.reveal.button')}
+                      </Button>
+                    }
+                  />
+                )}
+
+                <SettingRow
+                  label={t('settings.diagnostics.storage.label')}
+                  hint={
+                    logInfo && logInfo.files.length > 0
+                      ? t('settings.diagnostics.storage.hint', {
+                          files: formatNumber(logInfo.files.length, locale),
+                          size: formatBytes(logInfo.totalBytes, locale),
+                        })
+                      : t('settings.diagnostics.storage.hintEmpty')
+                  }
+                  control={
+                    // 上限写成胶囊而非长句：它是常量说明，不是每次都要读的信息
+                    logInfo ? (
+                      <span className="font-text text-caption text-white/45">
+                        {t('settings.diagnostics.storage.maxHint', {
+                          size: formatBytes(logInfo.maxFileBytes, locale),
+                          files: formatNumber(logInfo.maxFiles, locale),
+                        })}
+                      </span>
+                    ) : undefined
+                  }
+                />
+
+                {/*
+                  隐私提示是**必需**的一条，不是可选的免责声明：
+                  日志可用性建立在「用户愿意把它发出来」之上，而发出来之前他必须知道
+                  这里面可能有什么。脱敏只按名字认凭据，歌名 / 文件路径 / 目录名
+                  依然会原样出现，所以文案写「请自行检查」而不是「可放心发送」。
+                */}
+                <div className="inset-note flex items-start gap-2 px-3 py-2.5">
+                  <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400/80" strokeWidth={1.6} />
+                  <div className="min-w-0">
+                    <p className="font-text text-caption-strong text-white/80">
+                      {t('settings.diagnostics.privacy.title')}
+                    </p>
+                    <p className="font-text text-caption mt-1 leading-[1.5] text-white/55">
+                      {t('settings.diagnostics.privacy.body')}
+                    </p>
+                  </div>
+                </div>
+              </SettingsSection>
+            )}
           </div>
         </div>
       </div>

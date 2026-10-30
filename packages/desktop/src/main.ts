@@ -6,6 +6,8 @@ import { mainTranslate, onMainLocaleChange } from './i18n'
 import { attachEdgeSnap } from './edgeSnap'
 import { closeDatabase } from './ipc/database'
 import { getLibrarySource } from './ipc/librarySource'
+import { installMainLogging, attachMainLogFile, closeMainLogging } from './logging'
+import { registerLoggingIpc } from './ipc/logging'
 import {
   CACHE_SCHEME,
   initMediaCache,
@@ -113,13 +115,14 @@ function createTray(win: BrowserWindow) {
   tray.on('click', () => focusMainWindow(win))
 }
 
-// 主进程未捕获异常兜底：记录日志而不是直接崩溃，避免播放中静默退出
-process.on('uncaughtException', (err) => {
-  console.error('[Main] uncaughtException:', err)
-})
-process.on('unhandledRejection', (reason) => {
-  console.error('[Main] unhandledRejection:', reason)
-})
+// 主进程未捕获异常兜底：**已交给日志内核接管**。
+// installMainLogging() 内部调用 `installErrorCapture('main')`，注册的就是这两个
+// process 事件；此处刻意不再另外注册一遍 —— 两套并存的后果是同一次崩溃产生两条
+// 记录（内核那条带堆栈，原来这条 console.error 又会被 captureConsole 记一遍），
+// 排障时会被误读成「崩了两次」。控制台输出没有变少：captureConsole 默认 echo，
+// 原来能看到的内容照旧能看到，只是额外落到了文件里。
+// 位置：紧跟在 import 之后、其余启动逻辑之前完成装配，更早的启动期故障也抓得到。
+installMainLogging()
 
 // 注册安全的本地文件协议：替代 file://，避免 webSecurity 阻止渲染进程加载本地封面图
 // 用法：cover-local://localhost/absolute/path/to/file.jpg
@@ -376,6 +379,15 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
+    // 日志落盘：第一件事就把文件出口接上，原因有二。
+    // 1) 出口要 `<userData>/logs`，而 app.getPath 只有 ready 之后才可用 ——
+    //    必须在这里接，早于此的启动期记录由 logging 模块的内存缓冲兜住（见其顶部说明）；
+    // 2) 下面协议注册与 IPC 装配失败都属于「用户只看到一个打不开的窗口」的故障，
+    //    接在它们之前，这些失败才有落盘的去处。
+    // attach 之后再注册日志 IPC：四个 handler 都要读文件出口，顺序反了会拿到空状态。
+    attachMainLogFile()
+    registerLoggingIpc()
+
     // 注册 cover-local 协议处理器：读取本地文件并返回，绕过 webSecurity 对 file:// 的限制
     // 用法：cover-local://localhost/absolute/path → 读取 /absolute/path
     protocol.handle('cover-local', async (request) => {
@@ -547,6 +559,11 @@ if (!gotTheLock) {
     tray?.destroy()
     tray = null
     globalShortcut.unregisterAll()
+    // 日志先关（写一条 closed 标记），再关数据库：数据库关闭失败会被记录到日志里，
+    // 反过来就丢在退出路径上了。closeMainLogging 本身不做 I/O ——
+    // 所有写入都是同步 appendFileSync，数据在函数返回时已交给内核，
+    // 留着这个调用只是给「将来改成批量/异步写」留一个明确的挂点。
+    closeMainLogging()
     closeDatabase()
   })
 }

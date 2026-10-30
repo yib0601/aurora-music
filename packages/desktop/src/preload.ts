@@ -1,5 +1,37 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { OnlineSearchOptions, OnlineTrackSearchResult, LyricsSearchOptions, LyricsSearchResult, LibrarySourceConfig } from '@aurora/shared'
+import type {
+  OnlineSearchOptions,
+  OnlineTrackSearchResult,
+  LyricsSearchOptions,
+  LyricsSearchResult,
+  LibrarySourceConfig,
+  LoggingRendererApi,
+} from '@aurora/shared'
+
+/**
+ * 日志通道名的本地副本 —— 只在这里存在，原因是**沙箱 preload 不能 require 共享包**。
+ *
+ * 本文件的唯一运行期依赖是 `electron`（见 createWindow 的 webPreferences 注释：
+ * sandbox:true 下只保证 contextBridge + ipcRenderer 可用）。沙箱 preload 的
+ * `require` 只认 electron 与 events/timers/url 这几个内建模块，也无法 require 相对
+ * 路径的本地文件 —— 所以既不能 `import { LOG_IPC } from '@aurora/shared'`
+ * （会编译成 require("@aurora/shared")，启动即抛错、整个 electronAPI 消失），
+ * 也不能把这张表拆到另一个文件里。
+ *
+ * 防漂移靠两道机器检查，而不是靠人记住：
+ * 1. `satisfies typeof import('@aurora/shared').LOG_IPC` —— 类型级，逐字比对。
+ *    少写、多写、写错任何一个通道名都**编译失败**；`typeof import(...)` 是纯类型
+ *    位置，会被完全擦除，不产生任何 require（已核对编译产物 dist-electron/preload.js）。
+ * 2. `logging/__tests__/preloadChannels.test.ts` 扫描本文件源码，把这张表与
+ *    `LOG_IPC` 逐字比对 —— 覆盖「类型断言被人顺手改成宽类型」这类回退。
+ */
+const LOG_CHANNELS = {
+  bundle: 'logging:bundle',
+  exportFile: 'logging:export',
+  reveal: 'logging:reveal',
+  info: 'logging:info',
+  record: 'logging:record',
+} as const satisfies typeof import('@aurora/shared').LOG_IPC
 
 const electronAPI = {
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -183,6 +215,27 @@ const electronAPI = {
       ipcRenderer.send('i18n:set-locale', locale)
     },
   },
+  // 日志：读全量包 / 导出到下载目录 / 在文件管理器中定位 / 目录状态，
+  // 外加一条单向的「渲染层记录 → 主进程落盘」通道。
+  //
+  // 形状不在这里手写：`satisfies LoggingRendererApi` 让 shared 的契约类型成为唯一真源。
+  // preload 在主进程侧编译（CJS）、调用方在渲染层编译（ESM），两边不共享类型推导链，
+  // 一旦这里手抄一份，字段漂移只会在运行期炸 —— 而这条路径只在「用户来要日志」
+  // 的那一刻被走到，静默失败等于整套日志系统白做。
+  //
+  // 通道名取自文件顶部的 LOG_CHANNELS（类型级钉死等于 shared 的 LOG_IPC）。
+  // 渲染层的 `LoggingRendererApi` 形状由 import type 约束，不产生运行期依赖。
+  logging: {
+    bundle: () => ipcRenderer.invoke(LOG_CHANNELS.bundle),
+    exportFile: () => ipcRenderer.invoke(LOG_CHANNELS.exportFile),
+    reveal: (filePath: string): Promise<void> => ipcRenderer.invoke(LOG_CHANNELS.reveal, filePath),
+    info: () => ipcRenderer.invoke(LOG_CHANNELS.info),
+    // 记录通道用 send：渲染层每条 console 都会走它，等回执只会在高频路径上堆 Promise。
+    // 主进程侧同样不回执（见 ipc/logging.ts 的 ipcMain.on），语义一致。
+    record: (payload) => {
+      ipcRenderer.send(LOG_CHANNELS.record, payload)
+    },
+  } satisfies LoggingRendererApi,
   getBounds: (): Promise<{ x: number; y: number; width: number; height: number } | null> =>
     ipcRenderer.invoke('window:getBounds'),
   setBounds: (bounds: { x: number; y: number; width: number; height: number }) =>

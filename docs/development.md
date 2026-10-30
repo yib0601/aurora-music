@@ -125,6 +125,27 @@ function parseNativeError(raw: string): { code: string; params?: Record<string, 
   会漏掉车机场景。
 - 切换 Node / Electron 版本后需重新 `pnpm rebuild`。
 
+## 诊断日志
+
+用户报问题时的第一动作是让他导出日志，而不是凭描述猜。日志系统分两层：
+`packages/shared/src/logging/` 是**内核**（级别、脱敏、排版、导出包拼装，无平台 API），
+各端只负责「往哪写、怎么导出」。
+
+- **内核**：`initLogging({ sinks, level, origin })` + `captureConsole()` + `installErrorCapture()`。
+  三个端（Electron 主进程 / 渲染进程 / Android WebView）共用同一份实现。
+- **脱敏在记录创建时完成**，不是导出时：命中 `api_key` / `token` / `secret` / `password` /
+  `cookie` / `authorization` 等键名的值、URL query、URL userinfo、`Bearer xxx` 一律打码成 `***`。
+  落盘的那份已经是安全的 —— 用户发出去的文件不会带凭据。
+- **console 被接管**：既有 150+ 处 `console.warn` / `console.error` 无需改动即进入日志包；
+  接管的层默认仍向原始 console 输出（开发期行为不变），且内核自身绝不走 console（避免递归）。
+- **滚动**：桌面端单文件 2 MB、最多 5 个（约 10 MB 上限），同步追加保证崩溃前最后一条不丢。
+- **导出**：设置页「关于」下的诊断日志分区 →「导出日志」把全部日志拼成**一个 .txt**
+  （环境头 + 各分段），落到系统「下载」目录并定位；移动端写到用户可访问目录后展示路径。
+- **入口**：桌面端设置页诊断分区；移动端同页。
+
+排障顺序建议：先看导出包的环境头（版本 / 平台 / 安装形态 / 发行版），再看 `[origin]` 与
+scope 定位是哪条链路，最后看 `crash` scope 有无 `uncaughtException` / `unhandledrejection`。
+
 ## 打包与发布
 
 - **桌面**：`pnpm build:desktop`，产物在 `packages/desktop/release/`（Linux AppImage / deb、
