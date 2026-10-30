@@ -77,7 +77,7 @@ export const TrackCard = memo(function TrackCard({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          className="group card-utility p-2.5 cursor-pointer"
+          className="group media-card card-utility p-2.5 cursor-pointer"
           // 移动端单击卡片即播放；桌面端保留双击，封面单击仍进详情
           onClick={isDesktop() ? undefined : () => onPlay(idx)}
           onDoubleClick={() => onPlay(idx)}
@@ -93,14 +93,26 @@ export const TrackCard = memo(function TrackCard({
               }
             }}
             title={t('library.action.viewDetails')}
-            className="aspect-square rounded-[10px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer transition-transform duration-200 ease-apple group-hover:scale-[1.02]"
+            className="media-card-cover aspect-square rounded-[12px] bg-white/[0.04] mb-2.5 flex items-center justify-center overflow-hidden relative cursor-pointer"
           >
             <CoverImage
               track={track}
               alt={track.title}
-              className="w-full h-full object-cover product-shadow"
+              className="media-card-image w-full h-full object-cover"
               fallback={<MusicIcon className="h-8 w-8 text-white/20" strokeWidth={1.5} />}
             />
+            <button
+              type="button"
+              className="media-card-play"
+              aria-label={t('common.action.play')}
+              title={t('common.action.play')}
+              onClick={(e) => {
+                e.stopPropagation()
+                onPlay(idx)
+              }}
+            >
+              <Play className="h-4 w-4 translate-x-px" fill="currentColor" strokeWidth={1.5} />
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation()

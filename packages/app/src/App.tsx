@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react'
-import { Music, ShieldAlert } from 'lucide-react'
+import { Music2, ShieldAlert } from 'lucide-react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { App as CapApp } from '@capacitor/app'
 import { TitleBar, hasDesktopTitleBar } from '@/components/layout/TitleBar'
@@ -1110,21 +1110,21 @@ function AppLayout() {
                       onClick={() => currentTrack && openSongDetail(currentTrack.id)}
                       title={t('shell.chrome.songDetail')}
                       disabled={!currentTrack}
-                      className="relative aspect-square rounded-ds-card bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.02] disabled:hover:scale-100"
+                      className="now-playing-cover relative aspect-square rounded-[18px] bg-white/[0.04] flex items-center justify-center overflow-hidden w-full cursor-pointer transition-transform duration-200 ease-apple hover:scale-[1.015] disabled:hover:scale-100"
                     >
                       <CoverImage
                         track={currentTrack}
                         alt={currentTrack?.title}
-                        className="w-full h-full object-cover product-shadow"
-                        fallback={<div className="text-4xl text-white/30">🎵</div>}
+                        className="w-full h-full object-cover"
+                        fallback={<Music2 aria-hidden className="h-10 w-10 text-white/30" strokeWidth={1.25} />}
                       />
                     </button>
 
                     <div className="text-center">
-                      <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/96">
+                      <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/[0.94]">
                         {currentTrack?.title || t('shell.chrome.nowPlayingEmpty')}
                       </p>
-                      <p className="font-text text-[14px] text-white/50 truncate mt-1 tracking-[-0.224px]">
+                      <p className="font-text text-[13px] text-white/60 truncate mt-1.5 tracking-[-0.16px]">
                         {currentTrack?.artist || t('shell.chrome.nowPlayingHint')}
                       </p>
                     </div>

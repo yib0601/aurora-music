@@ -144,7 +144,7 @@
      * 外投影画在半透明卡片背后，会从卡片底缘裸进卡片间隙，
      * 在色场背景上形成一条比背景更暗的圆角色带（设置页卡片间最明显），故暗色只留内高光。 */
     --card-utility-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-    --card-utility-hover-shadow: 0 16px 44px rgba(0,0,0,.30), 0 0 0 1px rgba(var(--fc-accent-rgb),.14), inset 0 1px 0 rgba(255,255,255,.08);
+    --card-utility-hover-shadow: 0 14px 34px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
 
     --btn-icon-color: rgba(255,255,255,.70);
     --btn-icon-hover-color: #ffffff;
@@ -543,6 +543,22 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .font-text { font-family: var(--font-sans); }
   .font-mono { font-family: var(--font-mono); }
 
+  /* 桌面软件不是网页：操作热区用清晰的双层焦点环，不用浏览器默认蓝框。 */
+  :where(button, a, input, [role='button']):focus-visible {
+    outline: 2px solid rgb(var(--tw-mint) / .75);
+    outline-offset: 3px;
+  }
+  ::selection { background: rgb(var(--tw-mint) / .24); color: var(--fc-ink); }
+
+  .brand-mark {
+    display: inline-flex;
+    flex: none;
+    overflow: hidden;
+    border-radius: 28%;
+    box-shadow: 0 4px 16px rgba(0,0,0,.22), 0 0 0 1px rgb(var(--tw-white) / .10);
+  }
+  .brand-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
   /* 文本语义类（简化，统一用 Tailwind 任意值更灵活） */
   .text-hero { font-size: clamp(34px, 4.6vw, 58px); font-weight: 760; line-height: 0.98; letter-spacing: 0; color: var(--hero-color); }
   .text-display { font-size: 28px; font-weight: 700; line-height: 1.1; letter-spacing: -0.374px; }
@@ -733,9 +749,62 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   }
   .card-utility:hover {
     transform: translateY(-2px);
-    border-color: rgba(var(--fc-accent-rgb),.30);
+    border-color: rgb(var(--tw-white) / .14);
     box-shadow: var(--card-utility-hover-shadow);
   }
+
+  /* 封面是卡片的主角：材质与位移只发生在媒体区，不让整张卡片发飘。 */
+  .media-card { overflow: hidden; }
+  .media-card:hover { transform: none; }
+  .media-card-cover { isolation: isolate; }
+  .media-card-image {
+    transition: transform .35s var(--ease-mineradio), opacity .2s var(--ease-mineradio);
+  }
+  .media-card-play {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: #030608;
+    background: var(--fc-accent);
+    box-shadow: 0 6px 18px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.3);
+    opacity: 0;
+    transform: translateY(5px);
+    transition: opacity .2s, transform .25s var(--ease-mineradio);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .media-card:hover .media-card-image { transform: scale(1.035); }
+    .media-card:hover .media-card-play,
+    .media-card:focus-within .media-card-play { opacity: 1; transform: translateY(0); }
+  }
+  @media (hover: none), (pointer: coarse) {
+    .media-card-play { display: none; }
+  }
+  .card-affordance {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: rgb(var(--tw-white) / .78);
+    background: rgba(12,18,24,.68);
+    border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 4px 16px rgba(0,0,0,.16);
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity .2s, transform .25s var(--ease-mineradio), color .2s;
+  }
+  .group:hover .card-affordance,
+  .group:focus-visible .card-affordance { opacity: 1; transform: translateY(0); }
+  .playlist-card .media-card-image { transition: transform .35s var(--ease-mineradio); }
+  .playlist-card:hover .media-card-image { transform: scale(1.035); }
+  .now-playing-cover { box-shadow: 0 16px 36px rgba(0,0,0,.22), 0 0 0 1px rgb(var(--tw-white) / .08); }
 
   /* 实色列表卡片：与 card-utility 同观感但无 backdrop-filter——
    * 背景渐变本身已近不透明（.66/.76），blur 折射收益极小，
@@ -901,8 +970,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     min-width: 120px;
     padding: 0 14px;
     flex-shrink: 0;
-    background: rgb(var(--tw-white) / .045);
-    border: 1px solid rgb(var(--tw-white) / .06);
+    background: rgb(var(--tw-white) / .055);
+    border: 1px solid rgb(var(--tw-white) / .09);
     border-radius: var(--r-ds-input);
     color: var(--btn-icon-color);
     cursor: pointer;
@@ -940,6 +1009,17 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     min-width: 0;
     padding: 0 18px;
     gap: 12px;
+  }
+  .search-entry.glass-control {
+    border-radius: 14px;
+    background: linear-gradient(145deg, rgb(var(--tw-white) / .065), rgb(var(--tw-white) / .035));
+    box-shadow: inset 0 1px 0 rgb(var(--tw-white) / .07), 0 3px 12px rgba(0,0,0,.06);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  }
+  .search-entry.glass-control:hover {
+    background: rgb(var(--tw-white) / .09);
+    border-color: rgb(var(--tw-white) / .16);
   }
   /* 大档规格：44px 的框要配 15px 占位文字与 18px 图标才立得住，
    * 沿用 md 档的 13px/16px 会显得「框撑大了、内容还是小的」。 */
@@ -999,6 +1079,25 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   }
   .segmented-item:hover { color: rgb(var(--tw-white)); background: rgb(var(--tw-white) / .05); }
   .segmented-item.is-on { background: rgb(var(--tw-mint)); color: rgb(var(--tw-mint-fg)); font-weight: 600; }
+
+  /* 导航选中：位置锚点 + 弱品牌底色，不靠整块高亮。 */
+  .nav-link-active {
+    box-shadow: inset 0 1px 0 rgb(var(--tw-white) / .035);
+  }
+  .nav-link-active::before {
+    content: '';
+    position: absolute;
+    left: -9px;
+    top: 11px;
+    width: 3px;
+    height: 18px;
+    border-radius: 0 3px 3px 0;
+    background: var(--fc-accent);
+  }
+  .player-console {
+    border: 1px solid rgb(var(--tw-white) / .10);
+    background: linear-gradient(135deg, rgb(var(--tw-white) / .075), rgb(var(--tw-white) / .04));
+  }
 
   /* 主播放按钮（移动端迷你条 44px / 全屏页 64px 共用）
    *
@@ -1637,6 +1736,15 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
  * 而 animation 属性不继承——选择器必须命中子层本身，写在父层上会静默失效。 */
 @media (prefers-reduced-motion: reduce) {
   .ambient-blob__drift { animation: none; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .media-card-image,
+  .media-card-play,
+  .card-affordance { transform: none; }
 }
 
 /* ===== 歌词排版与高亮（渐变文字 + 发光） =====

@@ -175,7 +175,7 @@ function CompactBar({
           空态下点任意位置都统一展开全屏播放器 */}
       {/* 主播放按钮与全屏播放页保持一致：mint 实心圆 + 深色图标 */}
       <button
-        className="w-[46px] h-[46px] flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_4px_12px_-6px_rgba(var(--fc-accent-rgb),.18),0_1px_4px_rgba(15,23,42,.10),inset_0_1px_0_rgba(255,255,255,.26)] dark:shadow-[0_4px_12px_-4px_rgba(var(--fc-accent-rgb),.38),0_2px_4px_rgba(0,0,0,.2),inset_0_1px_0_rgba(255,255,255,.2)] active:scale-95 transition disabled:opacity-35 disabled:pointer-events-none"
+        className="play-fab w-[46px] h-[46px] flex items-center justify-center rounded-full bg-mint text-mint-fg shadow-[0_4px_12px_-6px_rgba(var(--fc-accent-rgb),.18),0_1px_4px_rgba(15,23,42,.10),inset_0_1px_0_rgba(255,255,255,.26)] dark:shadow-[0_4px_12px_-4px_rgba(var(--fc-accent-rgb),.38),0_2px_4px_rgba(0,0,0,.2),inset_0_1px_0_rgba(255,255,255,.2)] active:scale-95 transition disabled:opacity-35 disabled:pointer-events-none"
         onClick={(e) => {
           e.stopPropagation()
           onTogglePlay()
@@ -298,10 +298,10 @@ function FullBar({
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
 
   return (
-    <div className="glass-saved-panel border border-white/[0.06] rounded-[24px] px-6 min-[1500px]:px-8 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
+    <div className="player-console glass-saved-panel rounded-[24px] px-6 min-[1500px]:px-8 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
       {/* 进度条 - 居中 */}
       <div className="flex items-center gap-3">
-        <span className="text-[12px] min-[1500px]:text-[13px] text-white/50 w-12 text-right tabular-nums">
+        <span className="font-mono text-[11px] min-[1500px]:text-[12px] text-white/55 w-12 text-right tabular-nums">
           {formatTime(displayedProgress)}
         </span>
         <div className="flex-1 relative flex items-center">
@@ -322,7 +322,7 @@ function FullBar({
             style={{ '--seek': `${progressPercent}%` } as React.CSSProperties}
           />
         </div>
-        <span className="text-[12px] min-[1500px]:text-[13px] text-white/50 w-12 tabular-nums">
+        <span className="font-mono text-[11px] min-[1500px]:text-[12px] text-white/55 w-12 tabular-nums">
           {formatTime(duration)}
         </span>
       </div>
@@ -348,14 +348,20 @@ function FullBar({
               fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
             />
           </button>
-          <div className="min-w-0 flex flex-col gap-0.5">
-            <p className="text-[12.5px] min-[1500px]:text-[14px] font-medium text-white/92 truncate transition-colors hover:text-white">
+          <button
+            type="button"
+            className="min-w-0 flex flex-col gap-0.5 text-left disabled:cursor-default"
+            disabled={!currentTrack}
+            onClick={() => currentTrack && openSongDetail(currentTrack.id)}
+            title={currentTrack ? t('player.track.viewDetail') : undefined}
+          >
+            <p className="text-[12.5px] min-[1500px]:text-[14px] font-medium text-white/[0.92] truncate transition-colors hover:text-white">
               {currentTrack?.title || t('player.state.notPlaying')}
             </p>
             <p className="text-[10.5px] min-[1500px]:text-[12px] text-white/65 truncate">
               {currentTrack?.artist || t('player.state.idleHint')}
             </p>
-          </div>
+          </button>
         </div>
 
         {/* 中列：播放控制（shuffle / prev / play / next / queue） */}
@@ -395,7 +401,7 @@ function FullBar({
           </button>
           {/* 主播放按钮：圆形实心 mint（44×44），DS 的 pill 语义 + 项目品牌色 */}
           <button
-            className="w-[44px] h-[44px] min-[1500px]:w-[52px] min-[1500px]:h-[52px] rounded-full bg-mint flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none shadow-[0_2px_6px_rgba(0,0,0,.18),inset_0_1px_0_rgba(255,255,255,.18)] transition-transform duration-200 ease-apple hover:scale-[1.03]"
+            className="play-fab w-[44px] h-[44px] min-[1500px]:w-[52px] min-[1500px]:h-[52px] rounded-full bg-mint flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none shadow-[0_2px_6px_rgba(0,0,0,.18),inset_0_1px_0_rgba(255,255,255,.18)] transition-transform duration-200 ease-apple hover:scale-[1.03]"
             onClick={onTogglePlay}
             disabled={!currentTrack}
             style={{ color: 'rgb(var(--tw-mint-fg))' }}
