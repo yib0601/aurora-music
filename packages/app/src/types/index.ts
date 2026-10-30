@@ -26,6 +26,13 @@ import type {
   SourceProbeResult,
   LxSourceInspection,
   LxScriptSource,
+  // 诊断日志契约：形状由 shared 的 logging/ipcContract 定义，preload 与渲染层共用同一份，
+  // app 内（平台层 / 服务层 / 设置页）从这里取即可，不必各自 import @aurora/shared
+  LoggingRendererApi,
+  LogStorageInfo,
+  LogBundleResult,
+  LogExportResult,
+  LogFileInfo,
 } from '@aurora/shared'
 
 export type {
@@ -55,6 +62,12 @@ export type {
   SourceProbeResult,
   LxSourceInspection,
   LxScriptSource,
+  // 诊断日志契约（同上方 import 的说明）：从 app 内部统一经 @/types 取，避免多处直连 shared
+  LoggingRendererApi,
+  LogStorageInfo,
+  LogBundleResult,
+  LogExportResult,
+  LogFileInfo,
 }
 
 export interface Track {

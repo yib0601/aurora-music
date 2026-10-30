@@ -236,3 +236,4 @@ export {
 export { firstSuccess, mapWithConcurrency } from './concurrency'
 export type { FirstSuccessOptions, FirstSuccessHit } from './concurrency'
 export * from './i18n'
+export * from './logging'

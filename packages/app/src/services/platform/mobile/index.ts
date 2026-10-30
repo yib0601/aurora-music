@@ -66,6 +66,9 @@ import {
   checkAllFilesAccess,
   openAllFilesAccessSettings,
 } from '@/services/permission'
+import { createMobileLogging, type MobileLoggingApi } from './logging'
+import { currentLocale } from '@/stores/localeStore'
+import { APP_VERSION } from '@/services/update.service'
 
 // WebView 的原生 fetch 受 CORS 约束，而用户配置的歌源/歌词源普遍不带
 // Access-Control-Allow-Origin，在线搜索会全部失败。注入基于原生 HTTP 的
@@ -247,6 +250,9 @@ export function setFolderPickerHandler(handler: FolderPickerHandler | null) {
   folderPickerHandler = handler
 }
 
+/** 移动端日志能力实例（懒创建，见 createMobilePlatform 的 logging getter 注释） */
+let mobileLogging: MobileLoggingApi | null = null
+
 /** 扫描队列：多个目录串行执行（与桌面端一致），避免并发写数据库 */
 let scanChain: Promise<Track[]> = Promise.resolve([])
 function enqueueScan(folderPath: string): Promise<Track[]> {
@@ -347,6 +353,12 @@ export function createMobilePlatform(): PlatformInterface & {
   configureAudioCache: (opts: { limitMB: number }) => Promise<void>
   getAudioCacheUsage: () => Promise<{ usedBytes: number; count: number }>
   clearAudioCache: () => Promise<void>
+  /**
+   * 诊断日志能力：落盘走应用专属存储 + Capacitor Filesystem。
+   * 形状与桌面端网关一致（services/platform/index.ts 的 LoggingGateway），
+   * 多出的 flush 供导出前显式冲刷攒批队列。
+   */
+  logging: MobileLoggingApi
 } {
   return {
     platform: 'mobile',
@@ -746,6 +758,25 @@ export function createMobilePlatform(): PlatformInterface & {
       const removed = await db.deleteTracksByFolder(folderPath)
       if (removed > 0) console.log('[Mobile] 已移除扫描目录并清理曲目:', folderPath, removed)
       return db.getAllTracks()
+    },
+
+    // ─── 诊断日志：写应用专属存储（无需权限），导出时才尝试公共目录 ───
+    // 懒创建：日志能力在启动最早期就会用到，但 createMobilePlatform 的返回对象是
+    // 冻结的单例；用 getter 让「第一次访问时才装配」与「后续访问返回同一实例」同时成立，
+    // 实例一旦建好就持有攒批队列，重复创建会把队列清空。
+    get logging() {
+      if (!mobileLogging) {
+        mobileLogging = createMobileLogging(() => ({
+          appVersion: APP_VERSION,
+          // Capacitor.getPlatform() 而非 process.platform：WebView 里没有 process，
+          // 这里要的是 android / ios 而不是宿主 OS
+          platform: Capacitor.getPlatform(),
+          locale: currentLocale(),
+          runtime: `Capacitor ${Capacitor.getPlatform()}`,
+          arch: undefined,
+        }))
+      }
+      return mobileLogging
     },
 
     async scanFolder(folderPath: string) {

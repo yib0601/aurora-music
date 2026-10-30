@@ -5,6 +5,7 @@ import App from './App'
 import './styles/globals.css'
 import { platform } from '@/services/platform'
 import { I18nProvider } from '@/i18n'
+import { initRendererLogging } from '@/services/logging.service'
 
 // Polyfill: music-metadata-browser 内部使用 Node.js 的 Buffer 和 global，
 // 在移动端 WebView（无 Node 全局）下会 ReferenceError。注入 buffer 包作为 Buffer，
@@ -12,6 +13,11 @@ import { I18nProvider } from '@/i18n'
 import { Buffer } from 'buffer'
 if (typeof (window as any).global === 'undefined') (window as any).global = window
 if (typeof (window as any).Buffer === 'undefined') (window as any).Buffer = Buffer
+
+// 日志在渲染之前接管：首屏期间的报错（资源加载、数据拉取、样式）正是用户报得最多的一类，
+// 晚一步就只能从第二次交互开始记。initRendererLogging 只做同步的内存配置（挂 sink、
+// 接管 console），一个字节都没写盘，所以不会拖慢首屏 —— 真正的 I/O 在有记录要发时才发生。
+initRendererLogging()
 
 console.log('Aurora Music platform:', platform.platform)
 

@@ -19,6 +19,7 @@ import type {
   ToplistDetail,
   MusicHallOptions,
   MusicHallSource,
+  LoggingRendererApi,
 } from '@/types'
 import {
   createMobilePlatform as createMobilePlatformImpl,
@@ -167,6 +168,40 @@ export interface PlatformExtension {
   getAudioCacheUsage?: () => Promise<{ usedBytes: number; count: number }>
   /** 清空全部缓存 */
   clearAudioCache?: () => Promise<void>
+
+  // ─── 诊断日志（桌面端主进程落盘、移动端 Filesystem、Web 无落盘）──
+  /**
+   * 渲染层日志的落盘出口。
+   *
+   * 形状直接复用 shared 的 `LoggingRendererApi`（由 preload 与该契约共同定义），
+   * 只多一个可选的 `flush`：桌面端每条记录经单向 IPC 异步写盘、不需要调用方等待；
+   * 移动端是攒批写文件，导出前必须先把队列冲刷掉，否则用户刚遇到的那次失败
+   * 恰好还在内存里、不在包里。
+   *
+   * 未定义即代表该端**没有落盘能力**（Web / 未知环境），UI 据此隐藏导出入口，
+   * 而不是让用户点下去再看到失败。
+   */
+  logging?: LoggingGateway
+}
+
+/**
+ * 日志网关。
+ *
+ * 之所以不直接写成 `LoggingRendererApi`：移动端实现是自己拼包后写文件，
+ * 多一个 flush 语义；桌面端则原样转发 preload 暴露的对象。
+ * 两边对外必须是同一个形状，否则 logging.service 就得分支处理宿主差异 ——
+ * 而那段差异本来就属于平台适配层。
+ */
+export interface LoggingGateway extends Omit<LoggingRendererApi, 'reveal'> {
+  /** 把攒批中的记录冲刷到落盘层（无队列的端可以不实现） */
+  flush?: () => Promise<void>
+  /**
+   * 在文件管理器中定位文件。**刻意可选**：移动端没有文件管理器桥
+   * （未安装 @capacitor/share 及同类插件，也不新增依赖），能力确实不存在。
+   * 写成必选会让移动端不得不提供一个「假装成功」的空实现，
+   * 而 UI 会因此显示一个点了没反应的「打开日志目录」按钮。
+   */
+  reveal?: (filePath: string) => Promise<void>
 }
 
 class NoopDatabase implements DatabaseAdapter {
@@ -499,6 +534,26 @@ export function createDesktopPlatform(): Platform {
     async clearAudioCache() {
       if (!api?.audioCache?.clear) return
       return api.audioCache.clear()
+    },
+
+    // ─── 诊断日志：原样转发 preload 暴露的 window.electronAPI.logging ───
+    // 不在这里吞异常：logging.service 的 transportSink 已经做了「出口故障只丢一条记录」
+    // 的兜底，再包一层会让失败原因被吞掉、日志里查不到为什么没落盘。
+    // 方法名与形状来自 shared 的 LOG_IPC / LoggingRendererApi，两侧靠同一份类型对齐。
+    get logging(): LoggingGateway | undefined {
+      const logging = api?.logging
+      // 能力逐个判：老版本 preload 可能只暴露了 record，缺哪个就少哪个入口，
+      // 不能让「导出」按钮因为 record 存在就以为整条链路可用
+      if (!logging || typeof logging.record !== 'function') return undefined
+      return {
+        record: (payload) => logging.record(payload),
+        bundle: () => logging.bundle(),
+        exportFile: () => logging.exportFile(),
+        reveal: (filePath: string) => logging.reveal(filePath),
+        info: () => logging.info(),
+        // 桌面端每条记录经单向 IPC 直接进主进程写盘队列，渲染层没有自己的队列可冲
+        flush: async () => {},
+      }
     },
   }
 }

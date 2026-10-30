@@ -14,6 +14,7 @@ const en: LocalizedOf<typeof settings> = {
     storage: 'Downloads & Cache',
     sources: 'Online Sources',
     about: 'About',
+    diagnostics: 'Diagnostic Logs',
   },
   general: {
     theme: {
@@ -102,6 +103,35 @@ const en: LocalizedOf<typeof settings> = {
     latest: 'You are on the latest version',
     checkFailed: 'Update check failed: {reason}',
     checkFailedFallback: 'Update check failed. Check your network and try again.',
+  },
+  diagnostics: {
+    export: {
+      label: 'Export logs',
+      hint: 'Hit a problem? Export a log file here so it can be traced',
+      button: 'Export logs',
+      exporting: 'Exporting…',
+      done: 'Exported to {path}',
+      copyPath: 'Copy path',
+      copied: 'Path copied',
+      failed: 'Export failed. Try again in a moment.',
+      unsupported: 'This platform cannot export logs',
+    },
+    reveal: {
+      label: 'Open log folder',
+      hint: 'Show the log files in your file manager',
+      button: 'Open folder',
+      failed: 'Could not open the log folder',
+    },
+    storage: {
+      label: 'Log size',
+      hint: '{files} file(s), {size} total',
+      hintEmpty: 'No log files yet (the app may not have produced any output since it started)',
+      maxHint: 'Up to {size} per file, {files} file(s) kept',
+    },
+    privacy: {
+      title: 'Privacy notice',
+      body: 'Logs are redacted automatically (passwords, API keys, cookies and auth headers are replaced with ***), but they can still contain song titles, file paths and similar personal data. Please skim the file before sending it anywhere.',
+    },
   },
 }
 
