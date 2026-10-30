@@ -123,6 +123,22 @@ if [[ $CHECK -eq 1 ]]; then
     fail "packages/app/public/favicon.svg 与 icon.svg 不一致（重新生成即可）"
   fi
 
+  # 3b) 渲染层不得用**根相对**路径引用 public/ 资源。
+  #     生产端 Electron 是 loadFile() + file://，`/favicon.svg` 会被解析成
+  #     file:///favicon.svg（文件系统根）→ 静默裂图。0.7.4 打包版侧边栏品牌图
+  #     就是这么坏的，而 dev（http://localhost:5173）永远看不出来。
+  #     一律走 lib/assetUrl.ts 按 vite base 拼地址。
+  #     只扫 src 下的源码，不扫产物（产物里的地址已由 vite 处理成相对路径）。
+  bad_abs=$(grep -rnE \
+    "(src|href)=\"/[^\"]*\.(svg|png|jpe?g|webp|gif|ico)|url\(['\"]?/[^)]*\.(svg|png|jpe?g|webp|gif|ico)" \
+    "$ROOT/packages/app/src" 2>/dev/null || true)
+  if [[ -z "$bad_abs" ]]; then
+    pass "packages/app/src 无根相对 public 资源引用（file:// 下不会裂图）"
+  else
+    fail "packages/app/src 存在根相对 public 资源引用（file:// 打包后必然裂图，改用 lib/assetUrl.ts）："
+    printf '%s\n' "$bad_abs" | sed 's/^/        /'
+  fi
+
   # 4) 启动链路三处底色同值：不同色就是肉眼可见的跳变
   win_bg=$(sed -n 's/.*<color name="aurora_window_bg">\(#[0-9A-Fa-f]\{6\}\)<.*/\1/p' "$ANDROID_RES/values/colors.xml")
   # 锚定 SplashScreen 块：capacitor.config.ts 里 StatusBar 也有一个 backgroundColor
