@@ -19,6 +19,25 @@ if (typeof (window as any).Buffer === 'undefined') (window as any).Buffer = Buff
 // 接管 console），一个字节都没写盘，所以不会拖慢首屏 —— 真正的 I/O 在有记录要发时才发生。
 initRendererLogging()
 
+// 移动端：把已安装插件挂载进本进程的注册表。
+//
+// 为什么必须在 render 之前发起而不是等某个页面 useEffect：渲染层首帧就会问
+// "有哪些插件"（设置页 / 插件面板 / 音乐库的候选源），晚一步会让用户看到
+// "刚装的插件不存在"、过一会儿又自己冒出来。
+//
+// 桌面端的挂载在主进程启动流程里做（main.ts 的 mountInstalledPlugins），
+// 移动端没有独立主进程，只能在这里做。**不 await**：挂载是异步 I/O
+// （Capacitor Filesystem），等它会拖慢首屏；而未挂载完成的窗口里，
+// 插件列表只是少几条已安装项，内置插件与本地播放都不受影响。
+if (platform.platform === 'mobile' && platform.plugins) {
+  void import('@/services/platform/mobile/pluginInstall')
+    .then((mod) => mod.mountInstalledPlugins())
+    .catch((err) => {
+      // 挂载失败不该阻止应用启动：内置插件仍可用，本地播放完全不受影响
+      console.error('[plugin] 移动端插件挂载失败:', err)
+    })
+}
+
 console.log('Aurora Music platform:', platform.platform)
 
 // 全局抑制原生拖拽（HTML5 drag-and-drop）。

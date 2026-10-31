@@ -47,6 +47,7 @@ import {
 import { checkLxScriptLink, lxFormSupported, renderError } from '@/components/common/lxSourceForm'
 import { pluginFormRows, formKindOf, type PluginFormRow } from '@/components/common/pluginForm'
 import { PluginAuthPanel } from '@/components/common/PluginAuthPanel'
+import { PluginManagerPanel } from '@/components/common/PluginManagerPanel'
 import { builtinPlugins } from '@aurora/shared'
 import {
   buildAuroraEndpoints,
@@ -2493,6 +2494,17 @@ export function SettingsPage() {
                   hint={t('sources.auth.desc')}
                 >
                   <PluginAuthPanel />
+                </SettingRow>
+              )}
+              {/* 插件管理：安装 / 卸载第三方插件。
+                  只在**具备安装能力**的端出现（桌面端有插件文件系统，移动端与 Web 没有）：
+                  入口在别处整块隐藏，而不是让用户点了才看到"当前环境不支持"。
+                  判定用 installFromUrl/installFromFile 的存在性，不是某个 flag —— 老 preload
+                  有执行通道没有安装通道，那种组合必须表现为"能看列表、不能装"。 */}
+              {(typeof platform.plugins?.installFromUrl === 'function' ||
+                typeof platform.plugins?.installFromFile === 'function') && (
+                <SettingRow label={t('sources.plugins.title')} hint={t('sources.plugins.desc')}>
+                  <PluginManagerPanel />
                 </SettingRow>
               )}
             </SettingsSection>

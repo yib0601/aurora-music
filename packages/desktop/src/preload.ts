@@ -206,6 +206,22 @@ const electronAPI = {
       ipcRenderer.invoke('plugin:authState', pluginId),
     logout: (pluginId: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke('plugin:logout', pluginId),
+
+    // ─── 插件的安装 / 卸载 / 目录（声明式插件） ───
+    // 与上面的「执行」通道分开：这一组会改动磁盘，入参含文件路径与 URL。
+    // 校验（清单结构、id 冲突、权限、主机白名单）全部在主进程完成，
+    // 渲染层只负责展示与确认（见 ipc/pluginInstall.ts）。
+    catalog: (locale?: string): Promise<unknown> => ipcRenderer.invoke('plugin:catalog', locale),
+    pickManifest: (): Promise<string | null> => ipcRenderer.invoke('plugin:pickManifest'),
+    installFromFile: (filePath: string, locale?: string): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:installFromFile', filePath, locale),
+    installFromUrl: (url: string, expectedSha256?: string, locale?: string): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:installFromUrl', url, expectedSha256, locale),
+    uninstall: (pluginId: string, locale?: string): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:uninstall', pluginId, locale),
+    openDir: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('plugin:openDir'),
+    removeBroken: (dirPath: string): Promise<{ ok: boolean; message?: string }> =>
+      ipcRenderer.invoke('plugin:removeBroken', dirPath),
   },
   // 自有服务协议的单曲取址（按源内 id 取直链）：与在线搜索同理在主进程执行
   // （渲染进程直连上游会被 CORS 拦），渲染层只拿结果；失败时返回带原因的结果，

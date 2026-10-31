@@ -175,6 +175,113 @@ const sources = {
     scriptUrlScheme: '脚本链接需以 http:// 或 https:// 开头',
     headersJson: 'JSON 格式无效：需为对象，如 {example}',
   },
+  /**
+   * 插件管理（安装 / 卸载 / 目录）。
+   *
+   * 命名轴是**安装来源**而不是技术形态：用户看到的是「我从网上装了一个」「我选了个文件」，
+   * 而不是「这是声明式清单」——后者是实现的说法，不是用户的说法。
+   * 权限与主机必须逐条展示（见 docs/plugins.md「权限：插件申请什么，就要让用户看见什么」）。
+   */
+  plugins: {
+    title: '插件',
+    desc: '插件为播放器补充能力（音源、歌词）。内置插件随应用发布，也可以从网址或本地文件安装第三方插件',
+    pickTitle: '选择插件清单',
+    allFiles: '所有文件',
+    /** 列表 */
+    installed: '已安装',
+    builtin: '内置',
+    listEmpty: '还没有安装任何第三方插件',
+    listBroken: '有 {count} 个插件文件读取失败',
+    brokenHint: '这些文件不符合插件清单格式，或内容与被安装时不一致（可能被修改过）',
+    removeBroken: '删除该文件',
+    openDir: '打开插件目录',
+    /** 安装 */
+    install: '安装插件',
+    installFromUrl: '从网址安装',
+    installFromFile: '从本地文件安装',
+    urlLabel: '插件清单地址',
+    urlPlaceholder: 'https://example.com/aurora-plugin.json',
+    installHint: '清单是一份 JSON 描述文件，安装时不会执行任何代码',
+    installing: '正在安装…',
+    installingWait: '上一个安装还没结束，请稍候',
+    installedOk: '已安装「{name}」',
+    installFailed: '安装失败：{reason}',
+    /** 权限确认（安装前逐条列出） */
+    permissionTitle: '该插件申请的权限',
+    permissionNetwork: '访问这些域名：{hosts}',
+    permissionCredential: '保存登录凭证（加密存放在本机）',
+    /** B 档：会运行第三方代码 —— 措辞必须与 A 档的「只发 HTTP 请求」明显不同 */
+    permissionScript: '在本机沙箱内运行插件作者提供的脚本代码（可发网络请求，读不到你的文件）',
+    permissionNone: '不需要额外权限',
+    /** 安装前尚未取到清单时的域名占位（列不出就是列不出，不假装列出） */
+    pendingHosts: '（安装后会在此显示具体域名）',
+    /** 卸载 */
+    uninstall: '卸载',
+    uninstallConfirmTitle: '卸载插件「{name}」？',
+    uninstallConfirmBody: '卸载后，使用该插件的音源会立即失效。已保存的登录凭证同时被删除。',
+    uninstalledOk: '已卸载「{name}」',
+    uninstallFailed: '卸载失败：{reason}',
+    /** 能力徽章（与 capability.* 分开：这里是插件管理页的短标签） */
+    capability: {
+      search: '搜索',
+      resolveTrack: '取址',
+      playlistParse: '歌单',
+      lyrics: '歌词',
+      storage: '存储',
+      script: '脚本源',
+      recommendPlaylists: '推荐',
+      toplists: '榜单',
+      none: '无',
+    },
+    /** 校验问题（清单结构不对时逐条展示，path 指到具体字段） */
+    /**
+     * 签名状态徽章。
+     *
+     * 三档（未签名 / 签名者未知 / 已验证）**都必须能被用户看到**：
+     * 把"未签名"藏起来等于让用户以为所有插件都验过。
+     * 签名存在但校验失败时安装会被拒绝，所以那一档在列表里不会出现，
+     * 但仍留文案供错误提示复用。
+     */
+    signature: {
+      unsigned: '未签名',
+      verified: '已签名 · 已验证',
+      unknownKey: '已签名 · 签名者未知',
+      invalid: '签名无效',
+      unsignedHint: '未签名的插件无法证明来源，请确认你信任它的发布者',
+      unknownKeyHint: '签名者「{keyId}」不在本机的可信列表里，无法证明来源',
+      verifiedHint: '内容由可信发布者「{keyId}」签名，且未被改动',
+    },
+    issue: {
+      title: '清单内容有问题',
+      field: '字段：{path}',
+      notObject: '清单必须是一个 JSON 对象',
+      missing: '缺少必填项',
+      invalidFormat: '不是本应用支持的插件格式',
+      invalidId: '插件标识格式不对（小写字母开头，只能用字母、数字、点、下划线、短横）',
+      invalidVersion: '版本号格式不对（如 1.0.0）',
+      invalidType: '字段类型不对',
+      invalidUrl: '地址无效（需以 http:// 或 https:// 开头）',
+      empty: '不能为空',
+      wildcardHost: '域名不能使用通配符，必须写具体域名',
+      unsupportedPermission: '本应用不支持该权限',
+      unsupportedDomain: '本应用不支持该能力类型',
+      noCapability: '至少要声明一种能力（音源或歌词）',
+      duplicate: '重复或冲突',
+    },
+    /** 安装失败的结构化原因（键路径即错误码） */
+    error: {
+      busy: '正在安装上一个插件，请稍候再试',
+      builtinId: '「{id}」是内置插件，不能用同名清单覆盖',
+      duplicateId: '已经安装过同标识的插件：{id}（请先卸载）',
+      hashMismatch: '插件内容与预期不一致，已拒绝安装',
+      notInstalled: '该插件不在已安装列表里',
+      notUtf8: '文件不是 UTF-8 编码的文本',
+      badJson: '文件不是合法的 JSON：{reason}',
+      pathOutsideRoot: '只能删除插件目录内的文件',
+      scriptHashMismatch: '脚本内容与插件声明的不一致，已拒绝安装',
+      scriptFetchFailed: '下载插件脚本失败：{reason}',
+    },
+  },
 }
 
 export default sources

@@ -13,10 +13,14 @@
 
 import type {
   DownloadQuality,
+  MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
+  RecommendPlaylist,
   SourceProbeResult,
   SourceTrackRef,
+  ToplistDetail,
+  ToplistGroup,
 } from '../types'
 import type { PluginContext, PreflightResult, ResolvedAudio, SourcePlugin } from './types'
 import { getPlugin } from './registry'
@@ -205,4 +209,72 @@ export async function preflightViaPlugin(
   const plugin = pluginForSource(source)
   if (!plugin || typeof plugin.preflight !== 'function') return { ok: true }
   return plugin.preflight(source, ctx)
+}
+
+// ─── 在线发现（推荐歌单 / 榜单） ───────────────────────────────
+//
+// 改造前这三个能力**不在任何插件契约里**：它们由 `musicHall.ts` 直接读 aurora 协议
+// 派生的端点（`hallEndpointOf`），判定方式是「端点模板非空」。于是「哪些源能提供推荐/榜单」
+// 被绑死在一种协议形态上——加第二种协议要改聚合逻辑，而装来的声明式插件根本没有这条路径。
+//
+// 现在它们与搜索 / 取址同属 `SourcePlugin` 的可选方法，调用方一律经过本门面。
+
+/**
+ * 这条源是否能提供**在线发现**（推荐歌单或榜单之一）。
+ *
+ * 判定按方法存在性，不看协议形态：声明式插件只要在清单里写了 `recommend` / `toplists`
+ * 端点就自动可用，不需要在这里加分支。
+ */
+export function canBrowseHall(source: OnlineSourceConfig | null | undefined): boolean {
+  ensureBuiltinsRegistered()
+  const plugin = pluginForSource(source)
+  if (!plugin) return false
+  return typeof plugin.recommendPlaylists === 'function' || typeof plugin.toplists === 'function'
+}
+
+/**
+ * 推荐歌单。
+ *
+ * 能力缺失返回**空数组**而不是抛错（与 `searchViaPlugin` 同一约定）：
+ * 调用方把它当「这条源没有推荐」，这正是改造前 `hallEndpointOf() === ''` 跳过逻辑想表达的语义。
+ */
+export async function recommendViaPlugin(
+  source: OnlineSourceConfig,
+  options: MusicHallOptions,
+  ctx: PluginContext
+): Promise<RecommendPlaylist[]> {
+  ensureBuiltinsRegistered()
+  const plugin = pluginForSource(source)
+  if (!plugin || typeof plugin.recommendPlaylists !== 'function') return []
+  return plugin.recommendPlaylists(source, options, ctx)
+}
+
+/** 榜单分组列表。能力缺失返回空数组 */
+export async function toplistsViaPlugin(
+  source: OnlineSourceConfig,
+  options: MusicHallOptions,
+  ctx: PluginContext
+): Promise<ToplistGroup[]> {
+  ensureBuiltinsRegistered()
+  const plugin = pluginForSource(source)
+  if (!plugin || typeof plugin.toplists !== 'function') return []
+  return plugin.toplists(source, options, ctx)
+}
+
+/**
+ * 榜单详情。能力缺失返回**空详情**而不是 null 或抛错：
+ * 调用方（store）的状态形状是 `Resource<ToplistDetail | null>`，而"空详情"
+ * 能让它走「正常但没内容」的分支，与"加载失败"区分开。
+ */
+export async function toplistDetailViaPlugin(
+  source: OnlineSourceConfig,
+  options: MusicHallOptions,
+  ctx: PluginContext
+): Promise<ToplistDetail> {
+  ensureBuiltinsRegistered()
+  const plugin = pluginForSource(source)
+  if (!plugin || typeof plugin.toplistDetail !== 'function') {
+    return { id: options?.id ?? '', name: '', total: 0, songs: [] }
+  }
+  return plugin.toplistDetail(source, options, ctx)
 }

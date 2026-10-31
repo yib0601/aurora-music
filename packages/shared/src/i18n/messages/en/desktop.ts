@@ -76,6 +76,18 @@ const en: LocalizedOf<typeof desktop> = {
       encryptionUnavailable:
         'Secure storage is unavailable on this system, so the login credential cannot be saved (check your system keyring service)',
       timeout: 'The plugin operation timed out ({ms}ms)',
+      // ─── install / uninstall (declarative plugins) ───
+      manifestNotFile: 'That is not a file: {path}',
+      manifestTooLarge: 'The plugin manifest is too large ({size} bytes, limit {limit} bytes)',
+      badUrl: 'Invalid plugin URL; only http(s) is supported: {url}',
+      downloadHttpStatus: 'Plugin download failed: HTTP {status}',
+      downloadTimeout: 'Plugin download timed out ({ms}ms)',
+      manifestNotFound: 'The plugin manifest file was not found',
+      builtinIdTaken: '"{id}" is a built-in plugin; a manifest cannot override it',
+      duplicateId: 'A plugin with the same id is already installed: {id} (uninstall it first)',
+      hashMismatch: 'The plugin content no longer matches what was installed, so it was not loaded (reinstall it)',
+      installFailed: 'Failed to install the plugin: {detail}',
+      uninstallFailed: 'Failed to uninstall the plugin: {detail}',
     },
     updater: {
       kindInvalid: 'Invalid installer type',

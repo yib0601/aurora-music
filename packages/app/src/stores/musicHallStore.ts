@@ -1,10 +1,9 @@
 import { create } from 'zustand'
 import {
-  musicHallSourceOf,
+  canBrowseHall,
   searchEndpointOf,
   translateError,
   type AppTranslator,
-  type TFunction,
 } from '@aurora/shared'
 import type { MusicHallSource, ParsedSong, RecommendPlaylist, ToplistGroup, ToplistDetail } from '@/types'
 import { hallRecommend, hallToplists, hallToplistSongs, supportsMusicHall } from '@/services/platform'
@@ -84,12 +83,22 @@ interface MusicHallState {
 
 /**
  * 取当前可用的在线音乐音源。
- * 条件是「已启用 + 服务地址形态（在线音乐端点由协议派生）」——
- * 接口模板形态的音源没有这三个端点，选它只会得到空结果。
+ *
+ * 判据是**插件能力**（`canBrowseHall`），不是「服务地址形态」——
+ * 改造前这里调 `musicHallSourceOf()`，它只看 aurora 协议能否派生出推荐/榜单端点，
+ * 于是「哪些源能提供在线发现」被绑死在一种协议形态上：装来的声明式插件即使在清单里
+ * 声明了推荐端点，也永远不会被选中。
+ *
+ * 现在任何实现了 `recommendPlaylists` 或 `toplists` 的插件都自动候选，
+ * 顺序按用户的音源配置顺序（第一个能用的胜出，与既有行为一致）。
  */
 export function pickHallSource(): MusicHallSource | null {
   const sources = useLibraryStore.getState().onlineSources
-  return musicHallSourceOf(sources as unknown as MusicHallSource[]) as MusicHallSource | null
+  for (const source of sources) {
+    if (!source || source.enabled === false) continue
+    if (canBrowseHall(source)) return source as unknown as MusicHallSource
+  }
+  return null
 }
 
 /**

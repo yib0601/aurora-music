@@ -204,6 +204,32 @@ export interface ToplistGroup {
   toplists: ToplistBrief[]
 }
 
+/**
+ * 榜单详情（服务端 `songs[]`）。
+ *
+ * 形状定义在这里（而不是执行器 `musicHall.ts`）的原因：`plugin/types.ts` 的
+ * `SourcePlugin` 契约要引用它，而契约层不能反向依赖具体执行器模块。
+ * `musicHall.ts` 保留一份 `export type { ToplistDetail }` 供既有调用方继续引用。
+ *
+ * 服务端响应：`{ id,name,updateTime,total,songs:[{rank,title,artist,album,duration,coverUrl,songmid}] }`
+ * 兼容：`data.songs` / `songlist`（QQ 原始形状：`songlist[].data`）。
+ */
+export interface ToplistDetail {
+  id: number | string
+  name: string
+  updateTime?: string
+  total: number
+  songs: Array<{
+    rank: number
+    title: string
+    artist: string
+    album: string
+    duration: number
+    coverUrl?: string
+    songmid?: string
+  }>
+}
+
 /** 榜单详情曲目（服务端 `songs[]`；带 songmid，供将来精确取址） */
 export interface ToplistSong {
   rank: number

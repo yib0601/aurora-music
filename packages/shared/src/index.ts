@@ -244,6 +244,7 @@ export * from './logging'
 // 上层按「能力是否存在」调用插件，不做 kind 判断。见 docs/plugins.md
 export {
   registerPlugin,
+  unregisterPlugin,
   getPlugin,
   listPlugins,
   hasCapability,
@@ -257,6 +258,7 @@ export {
   LX_PLUGIN_CAPABILITIES,
   builtinPlugins,
   ensureBuiltinsRegistered,
+  resetBuiltinsRegistrationForTest,
   pluginIdOf,
   pluginFieldsOf,
   // 能力判定（取代各处 `kind === 'xxx'` 分支）
@@ -267,6 +269,12 @@ export {
   sourceHasLyrics,
   needsAuth,
   sourceCacheKeyOf,
+  // 在线发现（推荐歌单 / 榜单）：与搜索 / 取址同属插件能力
+  canBrowseHall,
+  recommendViaPlugin,
+  toplistsViaPlugin,
+  toplistDetailViaPlugin,
+  hostContextOf,
 } from './plugin'
 export type {
   SourcePlugin,
@@ -308,3 +316,89 @@ export type {
   StoragePluginMeta,
   StorageProbeResult,
 } from './plugin/storage'
+
+// ─── 声明式插件层（A 档：从 URL / 本地文件安装，不执行任何第三方代码） ───
+// 清单格式、校验、清单→实现的构造、跨域目录投影、主机白名单 fetch。
+// 设计边界见 docs/plugins.md「从 URL / GitHub 导入插件」。
+export {
+  PLUGIN_ID_PATTERN,
+  PLUGIN_MANIFEST_FORMAT,
+  SUPPORTED_MANIFEST_FORMATS,
+  buildLyricsRunner,
+  buildPluginCatalog,
+  buildSourcePlugin,
+  catalogByDomain,
+  createGuardedFetch,
+  declaredLocalesOf,
+  entryHasCapability,
+  entryUsableAsSource,
+  fillLyricsUrl,
+  hostAllowed,
+  hostNotAllowedError,
+  hostOf,
+  isHostNotAllowedError,
+  lyricsConfigOf,
+  manifestDescription,
+  manifestDisplayName,
+  parsePath,
+  readAtPath,
+  readBoolean,
+  readNumber,
+  readString,
+  resolveLocalized,
+  supportedFormatsLabel,
+  validatePluginManifest,
+  valueAtPath,
+  // 清单签名（Ed25519）
+  PLUGIN_SIGNATURE_ALGORITHM,
+  TRUSTED_PLUGIN_KEYS,
+  bytesToHex,
+  canonicalizeManifest,
+  checkSignatureShape,
+  hexToBytes,
+  readSignature,
+  signableBytes,
+  signatureBadgeKey,
+  verifyManifestSignature,
+} from './plugin/manifest'
+export type {
+  DeclarativeLyricsHit,
+  DeclarativeLyricsSpec,
+  DeclarativeResolveEndpoint,
+  DeclarativeResolveFieldMap,
+  DeclarativeSearchEndpoint,
+  DeclarativeSourceSpec,
+  DeclarativeTrackFieldMap,
+  InstalledPlugin,
+  InstalledPluginScan,
+  LocalizedText,
+  ManifestIssue,
+  ManifestValidation,
+  PathSegment,
+  PluginCatalogEntry,
+  PluginDomain,
+  PluginInstallRecord,
+  PluginInstallRequest,
+  PluginInstallResult,
+  PluginManifest,
+  PluginPermission,
+  PluginProvenance,
+  PluginSignature,
+  SignatureVerdict,
+} from './plugin/manifest'
+
+// 已安装插件的运行期登记（注册 / 撤销 / 启动时挂载）
+export {
+  canInstall,
+  clearInstalledForTest,
+  guardedFetchOf,
+  installManifestIntoRuntime,
+  installedManifests,
+  isInstalledPlugin,
+  mountInstalled,
+  pluginRegistered,
+  registerInstalledPlugin,
+  removeManifestFromRuntime,
+  scriptBodyFor,
+  unregisterInstalledPlugin,
+} from './plugin/installed'

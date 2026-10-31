@@ -114,6 +114,18 @@ const desktop = {
       credentialRejected: '插件「{id}」拒绝了这个凭证（请确认后重试）',
       encryptionUnavailable: '当前系统不支持安全存储，无法保存登录凭证（请检查系统的密钥环服务）',
       timeout: '插件操作超时（{ms}ms）',
+      // ─── 安装 / 卸载（声明式插件） ───
+      manifestNotFile: '这不是一个文件：{path}',
+      manifestTooLarge: '插件清单太大（{size} 字节，上限 {limit} 字节）',
+      badUrl: '插件地址无效，只支持 http(s)：{url}',
+      downloadHttpStatus: '下载插件失败：服务器返回 HTTP {status}',
+      downloadTimeout: '下载插件超时（{ms}ms）',
+      manifestNotFound: '找不到插件清单文件',
+      builtinIdTaken: '「{id}」是内置插件，不能用同名清单覆盖',
+      duplicateId: '已经安装过同标识的插件：{id}（请先卸载）',
+      hashMismatch: '插件内容与安装时不一致，已拒绝加载（请重新安装）',
+      installFailed: '安装插件失败：{detail}',
+      uninstallFailed: '卸载插件失败：{detail}',
     },
     /** 内置更新（下载 / 校验 / 安装） */
     updater: {

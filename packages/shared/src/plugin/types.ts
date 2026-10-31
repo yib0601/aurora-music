@@ -32,10 +32,14 @@
 import type { MessageKey } from '../i18n'
 import type {
   DownloadQuality,
+  MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
+  RecommendPlaylist,
   SourceProbeResult,
   SourceTrackRef,
+  ToplistDetail,
+  ToplistGroup,
 } from '../types'
 
 /**
@@ -54,6 +58,12 @@ export type PluginCapability =
   | 'userPlaylists'
   | 'playlistTracks'
   | 'auth'
+  /** 在线发现：推荐歌单列表 */
+  | 'recommendPlaylists'
+  /** 在线发现：榜单列表 */
+  | 'toplists'
+  /** 在线发现：榜单详情 */
+  | 'toplistDetail'
 
 /**
  * 插件凭证（登录态）。
@@ -210,6 +220,48 @@ export interface SourcePlugin {
     playlistId: string,
     ctx: PluginContext
   ): Promise<OnlineTrackSearchResult[]>
+
+  // ─── 在线发现（可选，只读浏览） ──────────────────────────────
+  //
+  // 三个方法都是「浏览型」能力：返回的都是**临时集合**（不落库、不下载），
+  // 点开某一条之后才进入搜索 / 取址路径。这一组取代了改造前硬编码在
+  // `musicHall.ts` 里的 aurora 协议三端点——那时候「哪些源能提供推荐/榜单」
+  // 由 `hallEndpointOf()` 返回非空串决定，等于把能力绑死在一种协议形态上。
+  //
+  // 三条纪律：
+  // 1. **能力缺失 = 方法不存在**（与其它能力同一范式），UI 据此隐藏「音乐库」入口，
+  //    而不是显示一个点了永远空白的页面。
+  // 2. **返回空数组是合法结果**（该源没有榜单 / 分类下没有内容），不是错误；
+  //    只有网络失败 / 非 2xx / 非 JSON 才抛错，由聚合层逐源捕获。
+  // 3. **不在本层做多源聚合**：聚合策略（取第一个可用源 / 合并多源）属于调用方，
+  //    插件只回答「我这一条能给什么」。
+
+  /**
+   * 推荐歌单列表。
+   *
+   * `options` 里的分类 / 排序 / 分页参数是**建议**：插件实现不了就忽略，
+   * 不要为了尊重参数而返回空（用户看到的是「这条源没有推荐」，而他其实只是
+   * 选了一个该源不支持的分类）。
+   */
+  recommendPlaylists?(
+    config: OnlineSourceConfig,
+    options: MusicHallOptions,
+    ctx: PluginContext
+  ): Promise<RecommendPlaylist[]>
+
+  /** 榜单分组与榜单列表（每个榜单可带若干预览曲目，见 `options.preview`） */
+  toplists?(
+    config: OnlineSourceConfig,
+    options: MusicHallOptions,
+    ctx: PluginContext
+  ): Promise<ToplistGroup[]>
+
+  /** 单个榜单详情（`options.id` 为榜单 id） */
+  toplistDetail?(
+    config: OnlineSourceConfig,
+    options: MusicHallOptions,
+    ctx: PluginContext
+  ): Promise<ToplistDetail>
 
   // ─── 登录（可选） ───────────────────────────────────────────
 

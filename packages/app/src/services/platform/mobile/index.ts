@@ -27,13 +27,15 @@ import {
   readLyricsFile,
   saveLyricsFile,
 } from './scanner'
+import { searchOnlineTracks, searchLyrics } from './online'
 import {
-  searchOnlineTracks,
-  searchLyrics,
-  fetchRecommendPlaylists,
-  fetchToplistGroups,
-  fetchToplistSongs,
-} from './online'
+  hostContextOf,
+  recommendViaPlugin,
+  toplistsViaPlugin,
+  toplistDetailViaPlugin,
+} from '@aurora/shared'
+import type { PluginGateway } from '../index'
+import type { OnlineSourceConfig } from '@aurora/shared'
 import {
   clearMobileMediaCache,
   configureMobileMediaCache,
@@ -359,6 +361,13 @@ export function createMobilePlatform(): PlatformInterface & {
    * 多出的 flush 供导出前显式冲刷攒批队列。
    */
   logging: MobileLoggingApi
+  /**
+   * 插件网关（移动端）。
+   *
+   * 与桌面端形状一致，但**没有 IPC**：注册表在本进程，凭证不支持（无安全存储）。
+   * 安装 / 卸载走 Capacitor Filesystem + CapacitorHttp（见 ./pluginInstall.ts）。
+   */
+  plugins: PluginGateway
 } {
   return {
     platform: 'mobile',
@@ -625,15 +634,153 @@ export function createMobilePlatform(): PlatformInterface & {
      * 移动端 fetch 已被换成 CapacitorHttp（原生 HTTP），不受 WebView CORS 限制，
      * 因此无需像桌面端那样绕主进程
      */
+    /**
+     * 插件网关（移动端）。
+     *
+     * 与桌面端的差别：**没有 IPC**。移动端的插件注册表就在本进程（WebView），
+     * 所以这里的"网关"其实是直接转发到插件门面与移动端安装器，
+     * 而不是跨进程调用。形状与桌面端一致，上层 UI 不需要知道这个差别。
+     *
+     * 凭证类方法在移动端是空实现：移动端没有 `safeStorage` 等价物，
+     * 因此声明了 auth 能力的插件在手机端不可用（`list` 里会如实反映能力，
+     * UI 据此隐藏登录面板而不是点了才失败）。
+     */
+    plugins: {
+      async list() {
+        const { listCatalogEntries } = await import('./pluginInstall')
+        const { entries } = await listCatalogEntries(currentLocale())
+        // 只回「音源域且有实际能力」的插件：与桌面端 listPluginMeta 的口径一致
+        return entries
+          .filter((entry) => entry.domain === 'source' && entry.removable !== undefined)
+          .map((entry) => ({
+            id: entry.id,
+            displayNameKey: entry.displayNameKey || entry.id,
+            ...(entry.descriptionKey ? { descriptionKey: entry.descriptionKey } : {}),
+            version: entry.version,
+            capabilities: entry.capabilities,
+            hasCredential: false,
+          }))
+      },
+      // 能力调用：移动端没有 IPC，直接走插件门面（注册表在本进程）
+      async probe(pluginId: string, config: unknown) {
+        const { getPlugin } = await import('@aurora/shared')
+        const plugin = getPlugin(pluginId)
+        if (!plugin || typeof plugin.probe !== 'function') {
+          return { ok: false, kind: 'aurora', capabilities: [], error: 'AURORA_ERR:{"code":"desktop.error.plugin.capabilityMissing"}' }
+        }
+        return plugin.probe(config as never, hostContextOf(config as never))
+      },
+      async search(pluginId: string, config: unknown, query: string, quality?: string) {
+        const { getPlugin } = await import('@aurora/shared')
+        const plugin = getPlugin(pluginId)
+        if (!plugin || typeof plugin.search !== 'function') return []
+        return plugin.search(
+          config as never,
+          query,
+          quality as never,
+          hostContextOf(config as never)
+        )
+      },
+      async resolveTrack(pluginId: string, config: unknown, ref: unknown, quality?: string) {
+        const { getPlugin } = await import('@aurora/shared')
+        const plugin = getPlugin(pluginId)
+        if (!plugin || typeof plugin.resolveTrack !== 'function') return null
+        return plugin.resolveTrack(
+          config as never,
+          ref as never,
+          quality as never,
+          hostContextOf(config as never)
+        )
+      },
+      async userPlaylists(pluginId: string, config: unknown) {
+        const { getPlugin } = await import('@aurora/shared')
+        const plugin = getPlugin(pluginId)
+        if (!plugin || typeof plugin.listUserPlaylists !== 'function') return []
+        return plugin.listUserPlaylists(config as never, hostContextOf(config as never))
+      },
+      async playlistTracks(pluginId: string, config: unknown, playlistId: string) {
+        const { getPlugin } = await import('@aurora/shared')
+        const plugin = getPlugin(pluginId)
+        if (!plugin || typeof plugin.getPlaylistTracks !== 'function') return []
+        return plugin.getPlaylistTracks(
+          config as never,
+          playlistId,
+          hostContextOf(config as never)
+        )
+      },
+      // 登录类：移动端无安全存储，明确不支持（UI 据 authState.encryptionAvailable 隐藏）
+      async login() {
+        throw new Error('AURORA_ERR:{"code":"desktop.error.plugin.encryptionUnavailable"}')
+      },
+      async authState() {
+        return { loggedIn: false, encryptionAvailable: false }
+      },
+      async logout() {
+        return { ok: true }
+      },
+      // ─── 安装 / 卸载 / 目录（移动端：Capacitor Filesystem + 原生 HTTP） ───
+      async catalog(locale?: string) {
+        const { listCatalogEntries } = await import('./pluginInstall')
+        return listCatalogEntries(locale || currentLocale())
+      },
+      // 移动端没有"选本地文件"（需要额外原生插件）：明确不给这个方法，
+      // UI 据 `pickManifest === undefined` 隐藏对应按钮
+      async installFromUrl(url: string, expectedSha256?: string, locale?: string) {
+        void expectedSha256
+        const { installFromUrl: install } = await import('./pluginInstall')
+        return install(url, locale || currentLocale())
+      },
+      async uninstall(pluginId: string, locale?: string) {
+        const { performUninstall } = await import('./pluginInstall')
+        return performUninstall(pluginId, locale || currentLocale())
+      },
+      // 移动端没有"打开所在目录"的文件管理器体验
+      async openDir() {
+        return { ok: false }
+      },
+      async removeBroken(dirPath: string) {
+        const { removeInstalledPlugin } = await import('./pluginStore')
+        // dirPath 形如 `plugins/<id>/manifest.json`：取目录名当插件 id
+        const id = dirPath.split('/').filter(Boolean).slice(-2)[0] || ''
+        if (!id) return { ok: false, message: 'AURORA_PLUGIN_INVALID_PATH' }
+        try {
+          await removeInstalledPlugin(id)
+          return { ok: true }
+        } catch {
+          return { ok: false, message: 'AURORA_PLUGIN_REMOVE_FAILED' }
+        }
+      },
+    },
+
+    /**
+     * 在线发现（推荐 / 榜单）：同样走**插件门面**。
+     *
+     * 移动端没有独立主进程，插件就在本进程注册（内置插件 + 启动时挂载的已安装插件），
+     * 因此这里可以直接调门面 —— 与桌面端主进程走的是同一段代码，
+     * 差别只是「谁持有注册表」。改造前这里直连 aurora 协议执行器，
+     * 结果是装来的声明式插件在手机端永远不提供在线发现。
+     */
     musicHall: {
       async recommendPlaylists(source, options) {
-        return fetchRecommendPlaylists(source, options)
+        return recommendViaPlugin(
+          source as unknown as OnlineSourceConfig,
+          options ?? {},
+          hostContextOf(source as unknown as OnlineSourceConfig)
+        )
       },
       async toplistGroups(source, options) {
-        return fetchToplistGroups(source, options)
+        return toplistsViaPlugin(
+          source as unknown as OnlineSourceConfig,
+          options ?? {},
+          hostContextOf(source as unknown as OnlineSourceConfig)
+        )
       },
       async toplistSongs(source, options) {
-        return fetchToplistSongs(source, options)
+        return toplistDetailViaPlugin(
+          source as unknown as OnlineSourceConfig,
+          options ?? {},
+          hostContextOf(source as unknown as OnlineSourceConfig)
+        )
       },
     },
 

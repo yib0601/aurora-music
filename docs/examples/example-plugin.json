@@ -1,0 +1,55 @@
+{
+  "format": "aurora-plugin/1",
+  "id": "example-source",
+  "name": {
+    "zh-CN": "示例音源",
+    "en": "Example Source"
+  },
+  "description": {
+    "zh-CN": "演示用的声明式音源插件，只连一个假的接口地址",
+    "en": "A demo declarative source plugin pointing at a fake endpoint"
+  },
+  "version": "1.0.0",
+  "author": "aurora-music",
+  "homepage": "https://github.com/yib0601/aurora-music",
+  "permissions": ["network"],
+  "hosts": ["api.example.com"],
+  "source": {
+    "search": {
+      "url": "https://api.example.com/search?q={query}&quality={quality}",
+      "items": "data.songs",
+      "map": {
+        "id": "song.id",
+        "title": "song.name|song.title",
+        "artist": "song.artists[0].name|song.singer",
+        "album": "song.album.name",
+        "durationMs": "song.duration",
+        "coverUrl": "song.pic",
+        "audioUrl": "song.playUrl"
+      }
+    },
+    "resolveTrack": {
+      "url": "https://api.example.com/track?id={id}&quality={quality}",
+      "map": {
+        "audioUrl": "data.playUrl",
+        "quality": "data.level",
+        "coverUrl": "data.pic",
+        "expireAt": "data.expire_at",
+        "isPreview": "data.is_trial"
+      }
+    },
+    "playlistTracks": {
+      "url": "https://api.example.com/playlist?id={playlistId}",
+      "map": {
+        "id": "songmid",
+        "title": "title",
+        "artist": "singer",
+        "duration": "duration"
+      }
+    }
+  },
+  "lyrics": {
+    "url": "https://api.example.com/lyric?t={track}&a={artist}&d={duration}",
+    "format": "json"
+  }
+}

@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, globalShortcut, protocol, Tray, Menu, native
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
+import { mountInstalledPlugins } from './ipc/pluginInstall'
 import { mainTranslate, onMainLocaleChange } from './i18n'
 import { attachEdgeSnap } from './edgeSnap'
 import { closeDatabase } from './ipc/database'
@@ -513,6 +514,10 @@ if (!gotTheLock) {
     // 顺序有讲究：缓存索引要落在曲库之上——启动收敛（超限驱逐）会把被清掉的
     // 封面路径回填进曲库，所以先起 IPC（内部初始化数据库并注册缓存回调）再初始化缓存
     registerIpcHandlers()
+    // 已安装插件挂载：必须早于 createWindow —— 渲染层首帧就会问插件目录，
+    // 迟了用户会看到"刚装的插件不存在"、过一会儿又自己冒出来。
+    // 内部逐条容错：一个坏文件不会让其余插件一起消失（见 ipc/pluginInstall.ts）。
+    mountInstalledPlugins()
     registerMediaCacheIpc()
     initMediaCache()
     const win = createWindow()

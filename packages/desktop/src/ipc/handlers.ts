@@ -31,6 +31,7 @@ import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
 import { registerLxSourceIpc } from './lxSource'
 import { registerPluginIpc } from './pluginHost'
+import { registerPluginInstallIpc } from './pluginInstall'
 import { mainErrorText, mainTranslate, registerI18nIpc } from '../i18n'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, OnlineSourceConfig, Track, LibrarySourceConfig } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource, DownloadQuality } from '@aurora/shared'
@@ -44,10 +45,12 @@ import {
   embedCoverIntoAudio,
   detectImageMime,
   fetchWithTimeout,
-  fetchRecommendPlaylists,
-  fetchToplistGroups,
-  fetchToplistSongs,
   listStoragePluginMeta,
+  // 在线发现走插件门面：与 search / resolveTrack 同一条路，装来的插件自动可用
+  hostContextOf,
+  recommendViaPlugin,
+  toplistsViaPlugin,
+  toplistDetailViaPlugin,
 } from '@aurora/shared'
 
 let mainWindow: BrowserWindow | null = null
@@ -275,6 +278,10 @@ export function registerIpcHandlers() {
   // 直接返回 403（实测）；凭证也只在主进程经 safeStorage 加密落盘，
   // 渲染层永远拿不到凭证原文（见 ipc/pluginHost.ts 与 ipc/pluginCredentials.ts）
   registerPluginIpc()
+  // 插件的安装 / 卸载 / 目录：与上面的**执行**通道分开（管理 vs 执行，信任边界不同 ——
+  // 这条通道的入参里含文件路径与 URL，且会改动磁盘，见 ipc/pluginInstall.ts 顶部说明）。
+  // 磁盘扫描与挂载发生在 main.ts 的启动流程里，这里只注册通道。
+  registerPluginInstallIpc()
 
   // 媒体缓存清出封面时回填曲库：被删掉的封面文件不能留在 cover_path 里，
   // 否则渲染层认为「已有封面」而不再提取，封面对用户就永久消失了。
@@ -603,15 +610,23 @@ export function registerIpcHandlers() {
 
   // 在线音乐（推荐歌单 / 榜单列表 / 榜单详情）：与在线搜索同理走主进程执行，
   // 渲染进程直连会被上游 CORS 拦截。音源由渲染层传入（应用不内置源），
-  // 主进程只做协议执行与容错解析，不缓存任何榜单数据
-  ipcMain.handle('hall:recommend', async (_event, source: MusicHallSource, options?: MusicHallOptions) => {
-    return fetchRecommendPlaylists(source, options)
+  // 主进程只做协议执行与容错解析，不缓存任何榜单数据。
+  //
+  // 改造后这三个通道走**插件门面**（与 search / resolveTrack 同一条路），
+  // 不再直接调 aurora 协议执行器：装来的声明式插件只要在清单里声明了
+  // recommend / toplists / toplistDetail 端点，就与内置协议源走同一段代码。
+  // 能力缺失时门面返回空结果（不是抛错）—— UI 据此展示空态，
+  // 这与改造前 `hallEndpointOf() === ''` 时的行为一致。
+  const hallCtx = (source: OnlineSourceConfig) => hostContextOf(source)
+
+  ipcMain.handle('hall:recommend', async (_event, source: OnlineSourceConfig, options?: MusicHallOptions) => {
+    return recommendViaPlugin(source, options ?? {}, hallCtx(source))
   })
-  ipcMain.handle('hall:toplists', async (_event, source: MusicHallSource, options?: MusicHallOptions) => {
-    return fetchToplistGroups(source, options)
+  ipcMain.handle('hall:toplists', async (_event, source: OnlineSourceConfig, options?: MusicHallOptions) => {
+    return toplistsViaPlugin(source, options ?? {}, hallCtx(source))
   })
-  ipcMain.handle('hall:toplistSongs', async (_event, source: MusicHallSource, options?: MusicHallOptions) => {
-    return fetchToplistSongs(source, options)
+  ipcMain.handle('hall:toplistSongs', async (_event, source: OnlineSourceConfig, options?: MusicHallOptions) => {
+    return toplistDetailViaPlugin(source, options ?? {}, hallCtx(source))
   })
 
   // 下载在线歌曲：主进程直接拉流（渲染进程 fetch 会被歌源服务器 CORS 拦截）

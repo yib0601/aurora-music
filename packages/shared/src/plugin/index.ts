@@ -17,7 +17,14 @@ export type {
   ResolvedAudio,
   SourcePlugin,
 } from './types'
-export { registerPlugin, getPlugin, listPlugins, hasCapability, clearPluginsForTest } from './registry'
+export {
+  registerPlugin,
+  unregisterPlugin,
+  getPlugin,
+  listPlugins,
+  hasCapability,
+  clearPluginsForTest,
+} from './registry'
 export {
   ensureBuiltinsRegistered,
   builtinPlugins,
@@ -39,6 +46,10 @@ export {
   playlistTracksViaPlugin,
   preflightViaPlugin,
   hostContextOf,
+  canBrowseHall,
+  recommendViaPlugin,
+  toplistsViaPlugin,
+  toplistDetailViaPlugin,
 } from './executor'
 export { auroraPlugin, AURORA_PLUGIN_CAPABILITIES } from './auroraPlugin'
 export { lxPlugin, LX_PLUGIN_CAPABILITIES } from './lxPlugin'

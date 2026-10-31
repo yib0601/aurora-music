@@ -2,6 +2,7 @@ import type {
   MusicHallOptions,
   MusicHallSource,
   RecommendPlaylist,
+  ToplistDetail,
   ToplistGroup,
 } from './types'
 import { fillEndpointTemplate, hallEndpointOf } from './auroraPreset'
@@ -202,22 +203,15 @@ export async function fetchToplistGroups(
   return out
 }
 
-/** 榜单详情曲目（服务端 `songs[]`） */
-export interface ToplistDetail {
-  id: number | string
-  name: string
-  updateTime?: string
-  total: number
-  songs: Array<{
-    rank: number
-    title: string
-    artist: string
-    album: string
-    duration: number
-    coverUrl?: string
-    songmid?: string
-  }>
-}
+/**
+ * 榜单详情形状的**定义已移到 `types.ts`**（这里只重新导出）。
+ *
+ * 原因：`plugin/types.ts` 的 `SourcePlugin` 要引用它，而 plugin 层不能反向依赖
+ * 执行器模块 `musicHall.ts` —— 那会形成 `plugin/types → musicHall → auroraPreset → ...`
+ * 的环，且 plugin 是「契约层」不该知道哪个执行器实现它。
+ * 移到 `types.ts`（纯形状模块，无运行期依赖）后两边都可引用。
+ */
+export type { ToplistDetail }
 
 /**
  * 榜单详情（含曲目与排名序号）。

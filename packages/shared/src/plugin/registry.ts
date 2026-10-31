@@ -57,3 +57,21 @@ export function hasCapability(plugin: SourcePlugin, capability: PluginCapability
 export function clearPluginsForTest(): void {
   PLUGINS.clear()
 }
+
+/**
+ * 撤销单个插件的注册。
+ *
+ * ## 与上一句注释为什么不再冲突
+ *
+ * 那句说的是**全部**：没有任何生产路径会一次清空注册表。v14 起用户可以在设置里卸载
+ * 自己装的插件，而卸载必须同时做两件事 —— 删磁盘文件 + 从注册表移除实现。
+ * 只删文件而留着注册，会出现最糟的观感：「插件已卸载，但音源还在工作，重启后才消失」。
+ *
+ * 调用方是 `plugin/installed.ts` 的 `unregisterInstalledPlugin`，它**只允许**撤销
+ * 已安装插件：内置插件的实现编译在应用里，不存在"撤销"的语义。
+ * 未注册的 id 静默返回 `false` —— 卸载流程不该因为"它本来就不在了"而失败。
+ */
+export function unregisterPlugin(id: string): boolean {
+  if (typeof id !== 'string' || !id) return false
+  return PLUGINS.delete(id)
+}

@@ -8,10 +8,14 @@
 
 import type {
   DownloadQuality,
+  MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
+  RecommendPlaylist,
   SourceProbeResult,
   SourceTrackRef,
+  ToplistDetail,
+  ToplistGroup,
 } from '../types'
 import type { PluginCapability, PluginContext, ResolvedAudio, SourcePlugin } from './types'
 import { searchMusicSource } from '../musicSource'
@@ -23,6 +27,11 @@ import {
   sourceSongIdOf,
 } from '../trackResolver'
 import { resolvePlaylistUrl } from '../playlistResolver'
+import {
+  fetchRecommendPlaylists,
+  fetchToplistGroups,
+  fetchToplistSongs,
+} from '../musicHall'
 
 /**
  * 从定位令牌里取「源内 id」。
@@ -40,9 +49,19 @@ export const auroraPlugin: SourcePlugin = {
   displayNameKey: 'core.platform.aurora',
   descriptionKey: 'sources.form.kindAuroraHint',
   version: '1.0.0',
-  // playlistParse 由 getPlaylistTracks 承载；lyrics / auth 能力不在此插件内（歌词源是另一条线）
+  // playlistParse 由 getPlaylistTracks 承载；auth 能力不在此插件内（协议源没有登录概念）
   // lyrics：歌词端点由协议派生（见 auroraPreset.lyricEndpointOf），属于本插件能力
-  capabilities: ['probe', 'search', 'resolveTrack', 'playlistParse', 'lyrics'] as const,
+  // recommendPlaylists / toplists / toplistDetail：在线发现三端点，同样由协议派生
+  capabilities: [
+    'probe',
+    'search',
+    'resolveTrack',
+    'playlistParse',
+    'lyrics',
+    'recommendPlaylists',
+    'toplists',
+    'toplistDetail',
+  ] as const,
 
   async probe(config: OnlineSourceConfig): Promise<SourceProbeResult> {
     // 探测直连：只取服务端自描述端点并验密钥，不写配置
@@ -80,6 +99,40 @@ export const auroraPlugin: SourcePlugin = {
       qualityUrls: resolved.qualityUrls,
       coverUrl: resolved.coverUrl,
     }
+  },
+
+  // ─── 在线发现（推荐歌单 / 榜单） ─────────────────────────────
+  //
+  // 三个方法都是**纯转发**：端点派生（`hallEndpointOf`）、响应容错解析、字段别名
+  // 全都在 `musicHall.ts` 里，本轮改造只把它们包成插件契约的形状。
+  //
+  // 为什么必须转发而不是把解析搬进来：`musicHall.ts` 的解析规则是从真实第三方实现
+  // 反推出来的（`pickArray` 的多层包裹、`dissid` / `songlist[].data` 这些 QQ 原始形状），
+  // 搬迁等于重写一遍并丢掉那些兼容性。适配器的职责只是"形状翻译"。
+
+  /** 推荐歌单。端点未派生时返回空数组（不抛错：该源没有这个能力） */
+  async recommendPlaylists(
+    config: OnlineSourceConfig,
+    options: MusicHallOptions
+  ): Promise<RecommendPlaylist[]> {
+    // `musicHall.ts` 的入参是 MusicHallSource（含 id/name），而配置形状与之结构兼容
+    return fetchRecommendPlaylists(config as never, options)
+  },
+
+  /** 榜单分组列表 */
+  async toplists(
+    config: OnlineSourceConfig,
+    options: MusicHallOptions
+  ): Promise<ToplistGroup[]> {
+    return fetchToplistGroups(config as never, options)
+  },
+
+  /** 榜单详情 */
+  async toplistDetail(
+    config: OnlineSourceConfig,
+    options: MusicHallOptions
+  ): Promise<ToplistDetail> {
+    return fetchToplistSongs(config as never, options)
   },
 
   /**

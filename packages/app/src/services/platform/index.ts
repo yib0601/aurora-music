@@ -44,6 +44,8 @@ import {
 } from '@aurora/shared'
 import type {
   PluginAuthState as PluginAuthStateInfo,
+  PluginCatalogEntry,
+  PluginInstallResult as PluginInstallResultInfo,
   PluginPlaylist as PluginPlaylistInfo,
   ResolvedAudio,
   SourceTrackRef,
@@ -264,6 +266,36 @@ export interface PluginGateway {
   /** 登录态（**不含凭证原文**） */
   authState(pluginId: string): Promise<PluginAuthStateInfo>
   logout(pluginId: string): Promise<{ ok: boolean }>
+
+  // ─── 安装 / 卸载 / 目录（全部可选：老 preload 没有这组通道） ───
+  // 每个方法都是**可选**而不是整块可选：缺了安装通道不该让搜索/登录一起失效。
+  // UI 据方法是否存在决定是否显示对应入口（与全仓「能力缺失用方法不存在表达」一致）。
+
+  /** 插件目录（内置 + 已安装 + 读不出来的文件），纯数据可安全展示 */
+  catalog?(locale?: string): Promise<PluginCatalogSnapshot>
+  /** 打开系统文件选择框选清单，返回路径（取消为 null） */
+  pickManifest?(): Promise<string | null>
+  /** 从本地文件安装 */
+  installFromFile?(filePath: string, locale?: string): Promise<PluginInstallResultInfo>
+  /** 从网址安装（`expectedSha256` 给了就必须匹配） */
+  installFromUrl?(
+    url: string,
+    expectedSha256?: string,
+    locale?: string
+  ): Promise<PluginInstallResultInfo>
+  /** 卸载 */
+  uninstall?(pluginId: string, locale?: string): Promise<PluginInstallResultInfo>
+  /** 在文件管理器里打开插件目录 */
+  openDir?(): Promise<{ ok: boolean }>
+  /** 删除一个读不出来的插件目录 */
+  removeBroken?(dirPath: string): Promise<{ ok: boolean; message?: string }>
+}
+
+/** 插件目录快照（`plugin:catalog` 的返回形状） */
+export interface PluginCatalogSnapshot {
+  entries: PluginCatalogEntry[]
+  /** 读不出来的插件文件（清单非法 / 哈希不符 / 记录损坏），供设置页逐条展示与删除 */
+  broken: Array<{ path: string; message?: string }>
 }
 
 /**
@@ -713,6 +745,29 @@ export function createDesktopPlatform(): Platform {
         login: (pluginId, rawInput) => plugins.login(pluginId, rawInput),
         authState: (pluginId) => plugins.authState(pluginId),
         logout: (pluginId) => plugins.logout(pluginId),
+        // 安装 / 卸载 / 目录：老 preload 可能没有这组通道。
+        // **逐个判存在性**而不是整块判：缺了安装通道不该让搜索/登录一起失效，
+        // 插件管理入口据 `installFromUrl === undefined` 自行隐藏。
+        catalog: typeof plugins.catalog === 'function' ? (locale) => plugins.catalog(locale) : undefined,
+        pickManifest:
+          typeof plugins.pickManifest === 'function' ? () => plugins.pickManifest() : undefined,
+        installFromFile:
+          typeof plugins.installFromFile === 'function'
+            ? (filePath, locale) => plugins.installFromFile(filePath, locale)
+            : undefined,
+        installFromUrl:
+          typeof plugins.installFromUrl === 'function'
+            ? (url, sha, locale) => plugins.installFromUrl(url, sha, locale)
+            : undefined,
+        uninstall:
+          typeof plugins.uninstall === 'function'
+            ? (pluginId, locale) => plugins.uninstall(pluginId, locale)
+            : undefined,
+        openDir: typeof plugins.openDir === 'function' ? () => plugins.openDir() : undefined,
+        removeBroken:
+          typeof plugins.removeBroken === 'function'
+            ? (dirPath) => plugins.removeBroken(dirPath)
+            : undefined,
       }
     },
   }
