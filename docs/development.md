@@ -184,10 +184,15 @@ scope 定位是哪条链路，最后看 `crash` scope 有无 `uncaughtException`
 
 ## 打包与发布
 
+- **打包入口别绕过**：桌面打包走 `pnpm --filter @aurora/desktop build:dir` 或 `build-deb.sh`。直接跑
+  `electron-builder` 会**跳过 `app-dist` 的复制步骤**，可能打出数天前的旧 bundle（曾因此浪费一轮排查）。
 - **桌面**：`pnpm build:desktop`，产物在 `packages/desktop/release/`（Linux AppImage / deb、
   Windows NSIS）；RPM 用自带的 `./build-rpm.sh`（绕开 electron-builder 内置 fpm 在 Ubuntu 上的 rpmdb 问题）。
 - **发布**：推送 `v*` tag 触发 GitHub Actions 自动构建全平台产物（Windows / Linux / macOS 双架构 /
   Android）并发布 Release，发布前自动校验 APK 签名、macOS 产物与 Linux glibc 基线。
+- **发布链路的两个事实**：`ci.yml` 带 `tags-ignore: ['**']`——推 tag **不会**触发 CI，只有
+  `release.yml` 会跑，想让 CI 覆盖某次改动得先推分支；`release.yml` 不跑单测，只做打包与发布，
+  已存在的 Release 与产物在 tag 被强推后仍会保留。
 - **签名密钥**：APK 统一由仓库内固定的 `packages/mobile/android/app/aurora-music.keystore` 签名
   （SHA-256 `eb4e48a95587ed954789b81b20fc23689cc702e602ebac08050d308eabdb435b`），CI 每次校验指纹。
   该文件绝不可更换，否则存量用户无法覆盖升级；v0.1.4 及更早版本使用随机调试签名，升级到新版
