@@ -1,6 +1,6 @@
 # Aurora Music 设计系统
 
-> 本项目的界面设计规范。风格参考自 [外部设计语言（来源留本机，不入库）](https://www.外部设计语言（来源留本机，不入库）/en/) 的设计语言（仅作视觉参考，本项目与其无任何代码依赖）。
+> 本项目的界面设计规范。风格参考自一套外部设计语言（代号 DS，仅作视觉参考，本项目与其无任何代码依赖）。
 >
 > 数值权威来源：[ds-tokens.css](../packages/app/src/styles/ds-tokens.css)、[globals.css](../packages/app/src/styles/globals.css)。
 > 可视化对照：[ds-showcase.html](../packages/app/public/ds-showcase.html)。

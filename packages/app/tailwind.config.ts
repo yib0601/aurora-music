@@ -36,7 +36,7 @@ const config: Config = {
         sans: ['"Noto Sans SC"', '"PingFang SC"', '"HarmonyOS Sans SC"', '"Inter"', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
         display: ['"Noto Sans SC"', '"PingFang SC"', '"Inter"', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', '"Geist Mono"', '"SF Mono"', 'ui-monospace', 'monospace'],
-        // 说明：不引入 DS 参考设计语言 原站的品牌字体（Host Grotesk / DM Sans /
+        // 说明：不引入参考设计语言的品牌字体（Host Grotesk / DM Sans /
         // Fragment Mono），它们均为商业授权字体，存在版权风险。设计语言中的
         // 「字体」一项本项目沿用上面的既有中文栈，不参与换肤。
       },
@@ -79,7 +79,7 @@ const config: Config = {
         // mint 按钮/徽章上的前景色：深色主题深墨字、浅色主题白字（随 --tw-mint-fg 翻转）
         'mint-fg': 'rgb(var(--tw-mint-fg) / <alpha-value>)',
         coral: 'rgb(var(--tw-coral) / <alpha-value>)',
-        // ===== DS 参考设计语言 色板（新增命名空间，不与上面任何 token 冲突）=====
+        // ===== DS 参考设计语言的色板（新增命名空间，不与上面任何 token 冲突）=====
         // 全部指向 --ds-color-* CSS 变量（由 src/styles/ds-tokens.css 定义 light/dark 双套值）。
         //
         // ⚠️ 嵌套结构由 Tailwind 生成 class 的规则决定，已用真实 tailwind CLI 逐项验证：
@@ -168,7 +168,7 @@ const config: Config = {
         '3xl': '34px',
         pill: '50px',
         full: '9999px',
-        // ===== DS 参考设计语言 圆角（新增）=====
+        // ===== DS 参考设计语言的圆角（新增）=====
         // ⚠️ 必须用「平铺」key 而非 `ds: {...}` 嵌套对象：
         //    borderRadius / spacing 在 Tailwind 3 中是扁平静态刻度，不参与嵌套命名空间展开，
         //    写成 `ds: { pill: ... }` 不会生成任何 class（已用真实 CLI 验证）。
@@ -191,7 +191,7 @@ const config: Config = {
         xl: '32px',
         xxl: '48px',
         section: '80px',
-        // ===== DS 参考设计语言 间距刻度（新增）=====
+        // ===== DS 参考设计语言的间距刻度（新增）=====
         // 同样必须平铺：生成 gap-ds-4 / px-ds-4 / p-ds-6 / py-ds-10 / mt-ds-4 等。
         'ds-1': '4px',
         'ds-2': '8px',
@@ -207,7 +207,7 @@ const config: Config = {
         'ds-12': '200px',
         'ds-13': '240px',
       },
-      // ===== DS 参考设计语言 字号阶梯（新增；本任务的空白项）=====
+      // ===== DS 参考设计语言的字号阶梯（新增；本任务的空白项）=====
       // 取值逐项对齐 src/styles/ds-components.css 里的 .ds-text-* 实现（唯一权威来源），
       // 不臆造数值。用「元组」形态 [fontSize, { lineHeight, letterSpacing }] 一次性带上行高/字距。
       // ⚠️ fontSize 与 colors 一样是**支持对象/元组形态**的刻度，可以带 options；
@@ -260,7 +260,7 @@ const config: Config = {
         'panel-glass': 'inset 0 0 2px 1px rgba(255,255,255,.35), inset 0 0 10px 4px rgba(255,255,255,.15), 0 4px 16px rgba(17,17,26,.05), 0 8px 24px rgba(17,17,26,.05), 0 16px 56px rgba(17,17,26,.05), inset 0 4px 16px rgba(17,17,26,.05), inset 0 8px 24px rgba(17,17,26,.05), inset 0 16px 56px rgba(17,17,26,.05)',
         'button-glass': 'inset 0 0 2px 1px rgba(255,255,255,.34), inset 0 0 10px 4px rgba(255,255,255,.13), 0 10px 30px rgba(0,0,0,.18)',
         'button-glass-hover': 'inset 0 0 2px 1px rgba(255,255,255,.42), inset 0 0 12px 5px rgba(255,255,255,.17), 0 12px 34px rgba(0,0,0,.22), 0 0 18px rgba(255,255,255,.06)',
-        // ===== DS 参考设计语言 阴影（新增）=====
+        // ===== DS 参考设计语言的阴影（新增）=====
         // 原站 light 下卡片：1px 发丝外描边 + 两级柔和投影；dark 下退化为顶部 1px 内高光
         'ds-card': 'var(--ds-shadow-card)',
         'ds-lift': '0 24px 64px rgba(0,0,0,.4), 0 0 80px hsla(0,0%,100%,.07), 0 0 0 1px hsla(0,0%,100%,.06)',
@@ -273,7 +273,7 @@ const config: Config = {
         'glass-lg': '34px',
         'glass-sm': '20px',
         'panel-glass': '12px',
-        // ===== DS 参考设计语言 玻璃模糊（12px）=====
+        // ===== DS 参考设计语言的玻璃模糊（12px）=====
         // ⚠️ 必须带 12px 兜底，不能只写 var(--ds-blur-glass)：
         //    --ds-blur-glass 由 ds-tokens.css 定义在 `[data-ds-theme], .ds-scope` 下
         //    （该文件刻意不用 :root，以隔离 --ds-* 命名空间），而本应用从未挂载这两个

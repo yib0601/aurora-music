@@ -4,7 +4,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 /**
- * Mineradio × DS 参考设计语言 按钮系统
+ * Mineradio × DS 参考设计语言的按钮系统
  *
  * 材质/排版取 DS 语言（见 docs/design-system.md §3.1）：
  * - 统一 pill 圆角（DS `--ds-radius-pill` = 100px，等价 rounded-ds-pill）

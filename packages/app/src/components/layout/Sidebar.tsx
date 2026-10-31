@@ -70,7 +70,7 @@ const navLinkClass = (isActive: boolean, spaced = false) =>
   )
 
 /**
- * 侧边栏：Mineradio 品牌色 × DS 参考设计语言 结构语言
+ * 侧边栏：Mineradio 品牌色 × DS 参考设计语言的结构语言
  * - 品牌主色仍是 mint #00F5D4（项目识别），DS 负责结构/材质/排版
  * - active 态用「品牌低透底色 + 主色字/图标」标识选中：导航是全局方位锚点，
  *   仅靠 surface 层级差（白 7% 底 + 发丝边）在浅色主题与暖色封面色场下
