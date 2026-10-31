@@ -435,7 +435,13 @@ describe('B. 聚合搜索行为', () => {
       })
       expect(out.filter((r) => r.source === 'au').length).toBe(1)
       expect(out.filter((r) => r.source === 'lx-verifier-1').length).toBe(0)
-      expect(warns.some((w) => String(w[0]).includes('跳过洛雪音源'))).toBe(true)
+      // 改为插件 preflight 的通用格式：`[歌源] 跳过音源「X」：<结构化错误码>`
+      expect(
+        warns.some((w) => {
+          const line = String(w[0])
+          return line.includes('跳过音源') && line.includes('lxHostNotReady')
+        })
+      ).toBe(true)
     } finally {
       console.warn = orig
       await fixture.close()
@@ -457,7 +463,12 @@ describe('B. 聚合搜索行为', () => {
       })
       expect(out.filter((r) => r.source === 'au').length).toBe(1)
       expect(out.filter((r) => r.source === 'lx-noscript').length).toBe(0)
-      expect(warns.some((w) => String(w[0]).includes('脚本源码不可得'))).toBe(true)
+      expect(
+        warns.some((w) => {
+          const line = String(w[0])
+          return line.includes('跳过音源') && line.includes('lxSourceNoScript')
+        })
+      ).toBe(true)
       // 单源入口直接抛结构化错误（由聚合层按单源失败处理）
       const err = await rejectionOf(searchLxSourceForAggregate(source, '起风了'))
       expectCode(err, 'core.error.lxScriptUnavailable', { name: '无脚本源' })

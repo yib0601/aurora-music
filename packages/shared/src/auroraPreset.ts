@@ -288,10 +288,13 @@ export interface SourceEndpointInput {
   /** 用户填的那条链接 */
   sourceUrl?: string
   /**
-   * 源形态。脚本源（kind='lx'）的地址是脚本链接、没有 aurora 端点，
+   * 源形态（历史字段）。脚本源的地址是脚本链接、没有 aurora 端点，
    * 派生函数一律返回空串 —— 否则会把脚本地址当成服务地址，拼出一个不存在的路径。
+   * @deprecated 新代码用 `pluginId`；本字段只用于读老配置。
    */
   kind?: 'aurora' | 'lx'
+  /** 插件 id（优先于 kind）：只有协议源插件能派生端点 */
+  pluginId?: string
   /** 接口模板形态下手填的歌单解析地址 */
   playlistUrl?: string
   /** 服务端自描述的端点模板缓存 */
@@ -326,8 +329,9 @@ export function searchEndpointOf(source: SourceEndpointInput | null | undefined)
  * （见 trackResolver 的 isTrackEndpointKnownMissing），不会每次取址都白打一次。
  */
 export function trackEndpointOf(source: SourceEndpointInput | null | undefined): string {
-  // 脚本源没有 aurora 端点（调用方通常已按 kind 分流，这里再兜一道）
-  if (source?.kind === 'lx') return ''
+  // 端点只属于「协议源」这个插件：非协议插件（脚本 / 歌单）没有端点可派生。
+  // 这里按插件判定而不是 kind——加新插件时无需再回来补一条分支。
+  if (!isProtocolSource(source)) return ''
   const parsed = parseSourceInput(source?.sourceUrl || '')
   if (parsed?.kind !== 'service') return ''
   return buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, source?.endpoints)?.track || ''
@@ -356,8 +360,8 @@ export function playlistEndpointOf(source: SourceEndpointInput | null | undefine
  * 非服务地址形态（第三方接口模板、洛雪脚本源）没有歌词能力，返回空串。
  */
 export function lyricEndpointOf(source: SourceEndpointInput | null | undefined): string {
-  // 脚本源没有端点可派生（调用方通常已按 kind 分流，这里再兜一道）
-  if (source?.kind === 'lx') return ''
+  // 同 trackEndpointOf：端点只会由协议源插件派生
+  if (!isProtocolSource(source)) return ''
   const parsed = parseSourceInput(source?.sourceUrl || '')
   if (parsed?.kind !== 'service') return ''
   return buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey, source?.endpoints)?.lyric || ''
@@ -568,4 +572,21 @@ export async function probeAuroraService(
     capabilities: caps || undefined,
     selfDescribed: Boolean(endpoints),
   }
+}
+
+/**
+ * 这条源是否属于「协议源」插件（即能否从服务地址派生端点）。
+ *
+ * 放在本文件而不是插件层：`SourceEndpointInput` 是本模块的入参形状，
+ * 它比 `OnlineSourceConfig` 更窄（可能只有 sourceUrl + kind），
+ * 不适合反过来依赖插件层的完整配置类型。
+ */
+function isProtocolSource(source: SourceEndpointInput | null | undefined): boolean {
+  if (!source) return true // 没给源时按协议默认处理，交由后续解析判定
+  const pluginId = typeof (source as { pluginId?: string }).pluginId === 'string'
+    ? String((source as { pluginId?: string }).pluginId)
+    : ''
+  if (pluginId) return pluginId === 'aurora'
+  // 兼容：老配置只有 kind
+  return source.kind !== 'lx'
 }

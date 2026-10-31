@@ -1,4 +1,4 @@
-import { lyricEndpointOf } from '@aurora/shared'
+import { lyricEndpointOf, sourceHasLyrics } from '@aurora/shared'
 import type { LyricLine, LyricsSourceConfig } from '@/types'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -106,8 +106,9 @@ function lyricsSourcesFromLibrary(): LyricsSourceConfig[] {
   const out: LyricsSourceConfig[] = []
   for (const source of onlineSources) {
     if (!source.enabled) continue
-    // 脚本源（kind='lx'）只提供取址，不经 aurora 端点协议，没有歌词能力
-    if (source.kind === 'lx') continue
+    // 歌词能力按插件声明判定：没有 lyric 端点派生能力的插件自然被跳过
+    // （旧实现按 kind==='lx' 硬编码跳过，加第三种形态时这里会被漏掉）
+    if (!sourceHasLyrics(source)) continue
     const sourceUrl = lyricEndpointOf(source)
     if (!sourceUrl) continue
     out.push({

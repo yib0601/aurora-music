@@ -177,11 +177,15 @@ describe('缓存键分源', () => {
     expect(auroraCalls).toHaveLength(1)
   })
 
-  it('sourceCacheKeyOf：lx 源用 id + kind 兜底，aurora 源仍用解析出的端点', () => {
+  it('sourceCacheKeyOf：键里统一带插件 id（各形态不再各拼各的）', () => {
+    // 改造后键的统一形状：`<pluginId>\u0001<源id>\u0001<地址>`
+    // 好处是不同插件即使共用同一地址也不会串味（改造前 aurora 只用端点、lx 用专属前缀）
     expect(sourceCacheKeyOf(lxSource())).toBe('lx\u0001lx-a\u0001http://stub.test/script-a.js')
-    // 同�� lx 但 id 不同 → 键必须不同（旧实现会双双退化成空端点）
+    // 同形态但 id 不同 → 键必须不同
     expect(sourceCacheKeyOf(lxSource({ id: 'lx-b' }))).not.toBe(sourceCacheKeyOf(lxSource()))
-    expect(sourceCacheKeyOf(AURORA)).toBe('http://stub.test/aurora?query={query}&quality={quality}')
+    expect(sourceCacheKeyOf(AURORA)).toBe(
+      'aurora\u0001src-1\u0001http://stub.test/aurora?query={query}&quality={quality}'
+    )
   })
 
   it('isSearchableSource：lx 源不看端点，只看 kind + enabled + sourceUrl', () => {
@@ -203,7 +207,14 @@ describe('lx 源的跳过与告警', () => {
 
     expect(auroraCalls).toHaveLength(1)
     expect(out).toHaveLength(1)
-    expect(warn.mock.calls.some((c) => String(c[0]).includes('未初始化洛雪脚本宿主'))).toBe(true)
+    // 改为插件 preflight 给出的通用格式：`[歌源] 跳过音源「X」：<原因>`。
+    // 原因值是结构化错误码（lx 不再把中文烧进 shared），这里断言「确实因宿主缺失被跳过」
+    expect(
+      warn.mock.calls.some((c) => {
+        const line = String(c[0])
+        return line.includes('跳过音源') && line.includes('lxHostNotReady')
+      })
+    ).toBe(true)
   })
 
   it('只有 lx 源且宿主未注册时返回空结果（不抛错冒充网络故障）', async () => {
@@ -220,7 +231,12 @@ describe('lx 源的跳过与告警', () => {
     const out = await searchOnlineTracks('缺脚本词', { sources: [noScript], quality: '128' })
 
     expect(out).toEqual([])
-    expect(warn.mock.calls.some((c) => String(c[0]).includes('脚本源码不可得'))).toBe(true)
+    expect(
+      warn.mock.calls.some((c) => {
+        const line = String(c[0])
+        return line.includes('跳过音源') && line.includes('lxSourceNoScript')
+      })
+    ).toBe(true)
   })
 
   it('脚本执行失败算单源失败，其它源照常返回', async () => {

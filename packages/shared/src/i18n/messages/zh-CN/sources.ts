@@ -24,6 +24,33 @@ const sources = {
     lyrics: '歌词',
     playlist: '歌单',
     lxScript: '洛雪脚本',
+    // 插件能力的通用徽章（插件自己声明 capabilities，这里只给展示名）
+    pluginProbe: '可测试',
+    pluginSearch: '搜索',
+    pluginResolve: '取址',
+    pluginUserPlaylists: '我的歌单',
+    pluginPlaylistTracks: '歌单曲目',
+    pluginAuth: '登录',
+  },
+  /** 插件登录面板 */
+  auth: {
+    unsupportedEnv: '当前环境不支持插件（请使用桌面端或手机端）',
+    emptyInput: '请先粘贴凭证',
+    saved: '已保存，登录成功',
+    loggedOut: '已退出登录',
+    failed: '操作失败',
+    notLoggedIn: '未登录',
+    expired: '登录已失效，请重新登录',
+    loggedIn: '已登录',
+    loggedInAs: '已登录：{name}',
+    title: '插件登录',
+    desc: '登录后可使用该插件的账号能力（如拉取我的歌单）',
+    inputLabel: '凭证',
+    inputHint: '从官方客户端复制 Cookie 或凭证值粘贴到这里',
+    submit: '保存登录',
+    logout: '退出登录',
+    refresh: '刷新状态',
+    noPlugins: '没有需要登录的插件',
   },
   /** 探测（「测试」/「测试连接」按钮与结论） */
   probe: {
@@ -53,6 +80,14 @@ const sources = {
     kindLx: '洛雪音源脚本',
     kindLxHint: '脚本链接（取址）',
     kindLxHintUnsupported: '仅桌面端 / 手机端支持',
+    kindQishui: '汽水音乐',
+    defaultNameQishui: '我的汽水歌单',
+    namePlaceholderQishui: '如：我的汽水歌单',
+    playlistUrlLabel: '歌单链接或 ID',
+    playlistUrlPlaceholder: 'https://music.douyin.com/qishui/share/playlist?playlist_id=…',
+    playlistUrlHint: '粘贴汽水歌单的分享链接或歌单 ID 即可导入；不需要登录',
+    kindQishuiHint: '歌单链接（免登录）；登录后可拉取我的歌单',
+    kindQishuiDisabledTitle: '浏览器环境不支持汽水音乐插件，请使用桌面端或手机端',
     kindLxDisabledTitle: '浏览器环境不支持洛雪音源脚本，请使用桌面端或手机端',
     nameLabel: '名称（可选）',
     namePlaceholder: '如：我的音源',
@@ -86,7 +121,11 @@ const sources = {
   /** 网络存储（WebDAV）来源：会入库的持久曲库来源，与在线音源不是一层 */
   webdav: {
     title: '添加网络存储',
-    desc: '支持标准 WebDAV：群晖 / 威联通 / Nextcloud / rclone serve webdav 等。添加后可先「测试连接」，再扫描入库。',
+    /**
+     * 弹窗通用说明：**不提具体协议**。曲库来源已插件化，WebDAV 只是当前唯一的内置协议；
+     * 协议特有的地址格式说明归各字段自己的 hint（如 baseUrlHint），不写在这一层。
+     */
+    desc: '添加网络存储后可先「测试连接」，再扫描入库。',
     nameLabel: '名称（可选）',
     namePlaceholder: '如：家里的群晖',
     nameDraftPlaceholder: '名称',

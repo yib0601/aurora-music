@@ -49,8 +49,20 @@ export interface SourceTrackRef {
 export interface OnlineSourceConfig {
   id: string
   name: string
-  /** 源形态，缺省视为 aurora（老配置不写该字段） */
+  /**
+   * 源形态（**历史字段，仅用于读老配置**）。
+   *
+   * 新代码一律用 `pluginId`；两者的映射只允许存在于 `plugin/pluginIdOf.ts` 一处，
+   * 上层**不得**再判断 `kind`。保留该字段只为让 v13 之前的持久化数据与既有测试继续可用。
+   */
   kind?: OnlineSourceKind
+  /**
+   * 插件 id：决定这条源由哪个插件执行（见 `plugin/registry.ts`）。
+   *
+   * 缺省时由 `pluginIdOf()` 按 `kind` 推导（`lx` → `'lx'`，其余 → `'aurora'`），
+   * 所以老配置不迁移也能用。新配置写这个字段，`kind` 不再写入。
+   */
+  pluginId?: string
   /**
    * 音源地址：用户填的那条链接，也是本配置唯一的事实源。
    * 端点地址在执行时才解析组装（见 auroraPreset.ts 的 searchEndpointOf / playlistEndpointOf）：
@@ -347,7 +359,9 @@ export interface SourceCapability {
 
 /** 源探测入参：设置页在保存前也能探（草稿地址 + 可选密钥 / 已拉到的脚本） */
 export interface SourceProbeInput {
-  /** 源形态，缺省视为 aurora */
+  /** 插件 id（优先于 kind）：决定用哪个插件探测 */
+  pluginId?: string
+  /** 源形态，缺省视为 aurora（历史字段，仅在没有 pluginId 时用于推导） */
   kind?: OnlineSourceKind
   /** 源地址：aurora = 服务地址或接口模板；lx = 脚本链接 */
   sourceUrl: string

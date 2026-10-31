@@ -36,9 +36,26 @@ import {
   lxInspectionToProbe,
   parseSourceInput,
   probeAuroraService,
+  pluginIdOf,
   sourceSongIdOf,
   unavailableProbe,
 } from '@aurora/shared'
+import type {
+  PluginAuthState as PluginAuthStateInfo,
+  PluginPlaylist as PluginPlaylistInfo,
+  ResolvedAudio,
+  SourceTrackRef,
+} from '@aurora/shared'
+
+/** 插件元信息（渲染层只消费这些字段，拿不到插件实现） */
+export interface PluginMetaInfo {
+  id: string
+  displayNameKey: string
+  descriptionKey?: string
+  version: string
+  capabilities: readonly string[]
+  hasCredential: boolean
+}
 import { appTranslate } from '@/i18n'
 import { renderErrorMessage } from '@/lib/utils'
 
@@ -182,6 +199,51 @@ export interface PlatformExtension {
    * 而不是让用户点下去再看到失败。
    */
   logging?: LoggingGateway
+  /**
+   * 插件层：音源插件的能力调用与登录。
+   *
+   * 形态差异（协议源 / 洛雪脚本 / 汽水音乐）全部收在插件实现里，UI 只按**能力是否存在**
+   * 调用（`plugin.search` 有就调、没有就跳过），不再出现 `kind === 'xxx'` 判断。
+   *
+   * 未定义即代表该端没有插件执行能力（Web / 未知环境）——插件需要主进程网络栈
+   * 与 safEStorage 凭证存储，浏览器端两者都没有。
+   */
+  plugins?: PluginGateway
+}
+
+/**
+ * 插件网关。
+ *
+ * 凭证类方法**只回状态、不回内容**：凭证的读写全部留在主进程
+ * （`safeStorage` 加密落盘），渲染层拿不到 `sessionid` 这类秘密。
+ */
+export interface PluginGateway {
+  /** 已注册插件的可展示元信息（不含实现，也不含凭证） */
+  list(): Promise<PluginMetaInfo[]>
+  probe(pluginId: string, config: OnlineSourceConfig): Promise<SourceProbeResult>
+  search(
+    pluginId: string,
+    config: OnlineSourceConfig,
+    query: string,
+    quality?: DownloadQuality
+  ): Promise<OnlineTrackSearchResult[]>
+  resolveTrack(
+    pluginId: string,
+    config: OnlineSourceConfig,
+    ref: SourceTrackRef,
+    quality?: DownloadQuality
+  ): Promise<ResolvedAudio | null>
+  userPlaylists(pluginId: string, config: OnlineSourceConfig): Promise<PluginPlaylistInfo[]>
+  playlistTracks(
+    pluginId: string,
+    config: OnlineSourceConfig,
+    playlistId: string
+  ): Promise<OnlineTrackSearchResult[]>
+  /** 保存凭证（入参是用户粘贴的文本，解析与校验都在主进程完成） */
+  login(pluginId: string, rawInput: string): Promise<{ ok: boolean }>
+  /** 登录态（**不含凭证原文**） */
+  authState(pluginId: string): Promise<PluginAuthStateInfo>
+  logout(pluginId: string): Promise<{ ok: boolean }>
 }
 
 /**
@@ -333,13 +395,42 @@ export function createDesktopPlatform(): Platform {
     // 脚本形态的宿主实现里含函数（request / utils），无法经 IPC 序列化，因此宿主只在
     // 主进程装配；渲染层只传「源地址 + 查询词 + 定位令牌」这类纯数据。
     async probeSource(input: SourceProbeInput): Promise<SourceProbeResult> {
-      if ((input.kind || 'aurora') === 'lx') {
+      // 形态判定统一走插件层：调用方给 pluginId（缺省按 kind 推导），这里只查表。
+      // 探测实现全部在主进程插件执行器里（src/ipc/pluginHost.ts），
+      // 渲染层不再持有任何形态私有逻辑。
+      if (api?.plugins?.probe) {
+        const config = {
+          id: input.id || 'probe-draft',
+          name: input.name || '',
+          sourceUrl: input.sourceUrl,
+          headers: input.headers,
+          enabled: true,
+          ...(input.pluginId ? { pluginId: input.pluginId } : {}),
+          ...(input.kind ? { kind: input.kind } : {}),
+        }
+        try {
+          const result = (await api.plugins.probe(
+            pluginIdOf(config),
+            config
+          )) as SourceProbeResult
+          if (result && typeof result === 'object' && 'ok' in result) return result
+        } catch (err) {
+          // 探测失败不抛给 UI：结论直接上屏，文案按当前语言渲染
+          return unavailableProbe(
+            (input.kind || 'aurora') as SourceProbeResult['kind'],
+            renderErrorMessage(err)
+          )
+        }
+      }
+      // 老版本 preload 没有插件通道时的降级：
+      // - 脚本形态仍可走既有的 lxSource 通道（它就是这个形态的专用实现，
+      //   在插件层存在之前一直是唯一路径，保留它等于保留对旧 preload 的兼容）
+      // - 协议形态走下面的直连探测（它在任何端都能跑）
+      if (pluginIdOf(input) === 'lx' && !api?.plugins) {
         if (!api?.lxSource?.fetchScript || !api?.lxSource?.inspect) {
-          // 探测结论直接上屏（不是抛错）：文案在调用时取，跟随当前界面语言
           return unavailableProbe('lx', appTranslate()('runtime.platform.scriptUnsupportedDesktop'))
         }
         try {
-          // 脚本源码只存在于本次探测过程，绝不写进配置（配置里只留脚本链接）
           const script = input.script?.trim() || (await api.lxSource.fetchScript(input.sourceUrl))
           const inspection = await api.lxSource.inspect({
             id: input.id || 'probe-draft',
@@ -352,12 +443,9 @@ export function createDesktopPlatform(): Platform {
           })
           return lxInspectionToProbe(inspection)
         } catch (err) {
-          // 底层错误可能是 AuroraError（码 + 参数），交给 renderErrorMessage 按当前语言渲染；
-          // 直接读 message 会把编码载荷（AURORA_ERR:{...}）当结论上屏
           return unavailableProbe('lx', renderErrorMessage(err))
         }
       }
-      // 服务形态：直连取端点自描述并验密钥（只读，不写配置）
       const parsed = parseSourceInput(input.sourceUrl)
       const result = await probeAuroraService(
         parsed?.baseUrl || input.sourceUrl,
@@ -553,6 +641,33 @@ export function createDesktopPlatform(): Platform {
         info: () => logging.info(),
         // 桌面端每条记录经单向 IPC 直接进主进程写盘队列，渲染层没有自己的队列可冲
         flush: async () => {},
+      }
+    },
+
+    /**
+     * 插件网关：所有能力转发到主进程。
+     *
+     * 为什么必须在主进程：插件要 Node 网络栈（渲染进程直连上游会被 CORS 拦；
+     * 汽水上游对带 Origin 的请求直接 403），凭据也只能在主进程经 safeStorage 加密。
+     * 渲染层只传配置与定位数据，拿不到凭证原文。
+     */
+    get plugins(): PluginGateway | undefined {
+      const plugins = api?.plugins
+      // 老版本 preload 没有这一组通道：整块降级，UI 隐藏插件入口而不是点了才失败
+      if (!plugins || typeof plugins.list !== 'function') return undefined
+      return {
+        list: () => plugins.list(),
+        probe: (pluginId, config) => plugins.probe(pluginId, config),
+        search: (pluginId, config, query, quality) =>
+          plugins.search(pluginId, config, query, quality),
+        resolveTrack: (pluginId, config, ref, quality) =>
+          plugins.resolveTrack(pluginId, config, ref, quality),
+        userPlaylists: (pluginId, config) => plugins.userPlaylists(pluginId, config),
+        playlistTracks: (pluginId, config, playlistId) =>
+          plugins.playlistTracks(pluginId, config, playlistId),
+        login: (pluginId, rawInput) => plugins.login(pluginId, rawInput),
+        authState: (pluginId) => plugins.authState(pluginId),
+        logout: (pluginId) => plugins.logout(pluginId),
       }
     },
   }

@@ -24,6 +24,7 @@ import { watchFolder, unwatchFolder } from './watcher'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
 import { registerLxSourceIpc } from './lxSource'
+import { registerPluginIpc } from './pluginHost'
 import { mainErrorText, mainTranslate, registerI18nIpc } from '../i18n'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, OnlineSourceConfig, Track, LibrarySourceConfig } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource, DownloadQuality } from '@aurora/shared'
@@ -262,6 +263,11 @@ export function registerIpcHandlers() {
   // 必须在主进程执行：宿主依赖含函数（无法经 IPC 传递）、渲染进程直连上游会被 CORS 拦，
   // 且脚本可能需要 node:vm 才能被超时打断（见 ipc/lxSource.ts 顶部说明）
   registerLxSourceIpc()
+  // 插件执行器：音源插件（协议源 / 洛雪脚本 / 汽水音乐…）的能力调用与登录凭证。
+  // 必须在主进程执行：渲染进程 fetch 必带 Origin，而汽水上游对带 Origin 的请求
+  // 直接返回 403（实测）；凭证也只在主进程经 safeStorage 加密落盘，
+  // 渲染层永远拿不到凭证原文（见 ipc/pluginHost.ts 与 ipc/pluginCredentials.ts）
+  registerPluginIpc()
 
   // 媒体缓存清出封面时回填曲库：被删掉的封面文件不能留在 cover_path 里，
   // 否则渲染层认为「已有封面」而不再提取，封面对用户就永久消失了。

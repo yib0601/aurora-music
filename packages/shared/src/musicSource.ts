@@ -2,8 +2,14 @@ import type { DownloadQuality, OnlineSourceConfig, OnlineSearchOptions, OnlineTr
 import { searchEndpointOf } from './auroraPreset'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { auroraError, toErrorInfo } from './i18n/errors'
-import { getLxHostDeps } from './lxHost'
-import { resolveLxScript, searchLxSourceForAggregate } from './lxResolver'
+import {
+  canSearchSource,
+  hostContextOf,
+  pluginIdOf,
+  preflightViaPlugin,
+  searchViaPlugin,
+  sourceCacheKeyOf as pluginSourceCacheKeyOf,
+} from './plugin/executor'
 
 // 统一默认请求头（部分接口对 UA 敏感），可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -232,40 +238,32 @@ export function clearSearchCache(): void {
 }
 
 /**
- * ─── 形态分派（翻译层入口）─────────────────────────────────────
+ * ─── 形态分派（**已收口到插件层**）──────────────────────────────
  *
- * 本文件其余部分是**原生协议**的执行：端点组装、响应解析、聚合。源形态差异
- * （服务协议 / 脚本宿主）只允许出现在下面这三个函数里，上层（UI / 播放 / 下载 /
- * 歌单导入）永远只拿到同一份 OnlineTrackSearchResult 与同一套语义。
- * 新增源形态时改这里 + sourceProbe（探测）+ 平台层的 resolveTrackAudio（取址）。
+ * 本文件其余部分是**原生协议**的执行：端点组装、响应解析、聚合。
+ * 源形态差异（协议 / 脚本 / 具体平台实现）不再出现在这里——全部交给
+ * `plugin/` 层：判定用 `canSearchSource`，执行用 `searchViaPlugin`。
+ *
+ * 历史说明：这里曾有 `isLxUsable` / `kind === 'lx'` 两处分支，加第三种形态时
+ * 必须同时改本文件。现在新增形态只需注册一个插件，本文件零改动。
  */
 
-/** 脚本形态是否具备检索所需的最小条件（它没有 aurora 端点，不能沿用端点判空） */
-function isLxUsable(source: OnlineSourceConfig): boolean {
-  return source.kind === 'lx' && !!source.enabled && !!String(source.sourceUrl || '').trim()
-}
-
-/** 源是否应参与聚合搜索：脚本形态走宿主，其余走端点判定 */
+/** 源是否应参与聚合搜索（能力判定统一在插件层） */
 export function isSearchableSource(source: OnlineSourceConfig | null | undefined): boolean {
   if (!source) return false
-  if (source.kind === 'lx') return isLxUsable(source)
-  return !!source.enabled && !!searchEndpointOf(source)
+  // 协议形态仍要求端点可解析：URL 留空的源按约定只做歌单解析，不参与搜索
+  const pluginId = pluginIdOf(source)
+  if (pluginId === 'aurora' && !searchEndpointOf(source)) return false
+  return canSearchSource(source)
 }
 
-/**
- * 单源搜索的缓存键前缀（纯函数，便于单测）。
- *
- * 脚本形态必须用「id + kind + 脚本地址」兜底：它没有 aurora 端点，若继续拿
- * searchEndpointOf 拼键，多个脚本源会一起退化成同一个空端点前缀 → 缓存串味。
- * 其余形态键形不变（仍是解析出的端点地址），保证既有缓存语义与测试口径不漂移。
- */
+/** 单源搜索的缓存键（含插件 id，不同插件共用地址也不串味） */
 export function sourceCacheKeyOf(source: OnlineSourceConfig): string {
-  if (source.kind === 'lx') return `lx\u0001${source.id}\u0001${String(source.sourceUrl || '').trim()}`
-  return searchEndpointOf(source)
+  return pluginSourceCacheKeyOf(source)
 }
 
 /**
- * 单源检索分派：脚本形态交给宿主（结果同样被包成原生结构后返回），其余走协议端点。
+ * 单源检索分派：交给插件执行器。
  * 脚本形态的条目可能只有元信息（`audioUrl` 为空串 + `trackRef` 令牌），
  * 地址由取址门面按需向源索取 —— 这一点对上层是透明的。
  */
@@ -274,9 +272,7 @@ function searchOneSource(
   query: string,
   quality?: DownloadQuality
 ): Promise<OnlineTrackSearchResult[]> {
-  return source.kind === 'lx'
-    ? searchLxSourceForAggregate(source, query, getLxHostDeps())
-    : searchMusicSource(source, query, quality)
+  return searchViaPlugin(source, query, quality, hostContextOf(source))
 }
 
 /** 单源搜索 + 缓存。命中内存直接返回；同刻同键并发共享同一次网络执行（后到的等前一个）。
@@ -342,20 +338,14 @@ export async function searchOnlineTracks(
   const requested = (options?.sources || []).filter((s) => isSearchableSource(s))
   if (!trimmed || requested.length === 0) return []
 
-  // lx 源需要宿主与脚本源码才能真正发起搜索；缺任一条件先摘掉并说明原因，
-  // 否则「脚本源码不可得」会伪装成网络失败，把统一的中文报错推给用户。
+  // 执行前置检查：由插件自己判断「这条源此刻能不能跑」。
+  // 历史实现里这里是 `kind === 'lx'` 的专属分支（宿主是否装配、脚本能否下载）；
+  // 收进插件层后，新增形态无需再改本文件。
   const sources: OnlineSourceConfig[] = []
   for (const s of requested) {
-    if (s.kind !== 'lx') {
-      sources.push(s)
-      continue
-    }
-    if (!getLxHostDeps()) {
-      console.warn(`[歌源] 跳过洛雪音源「${s.name}」：未初始化洛雪脚本宿主（缺少 lx.request 实现）`)
-      continue
-    }
-    if (!(await resolveLxScript(s))) {
-      console.warn(`[歌源] 跳过洛雪音源「${s.name}」：脚本源码不可得（配置未内联脚本且未注册脚本供应器）`)
+    const check = await preflightViaPlugin(s, hostContextOf(s))
+    if (!check.ok) {
+      console.warn(`[歌源] 跳过音源「${s.name}」：${check.reason || '前置检查未通过'}`)
       continue
     }
     sources.push(s)

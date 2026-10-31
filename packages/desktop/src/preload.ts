@@ -158,6 +158,37 @@ const electronAPI = {
       ipcRenderer.invoke('lx:resolveUrl', ref, source, quality),
     clearCache: (): Promise<void> => ipcRenderer.invoke('lx:clearCache'),
   },
+  // 插件层：音源插件（协议源 / 洛雪脚本 / 汽水音乐…）的能力调用与登录凭证。
+  // 凭证类通道只回状态、不回内容 —— 凭证的读写全部留在主进程（safeStorage 加密）。
+  // 主进程执行的理由与 lxSource 一致，另加一条：汽水上游对带 Origin 的请求返回 403，
+  // 而渲染进程的 fetch 必带 Origin。
+  plugins: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke('plugin:list'),
+    probe: (pluginId: string, config: unknown): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:probe', pluginId, config),
+    search: (
+      pluginId: string,
+      config: unknown,
+      query: string,
+      quality?: string
+    ): Promise<unknown[]> => ipcRenderer.invoke('plugin:search', pluginId, config, query, quality),
+    resolveTrack: (
+      pluginId: string,
+      config: unknown,
+      ref: unknown,
+      quality?: string
+    ): Promise<unknown> => ipcRenderer.invoke('plugin:resolveTrack', pluginId, config, ref, quality),
+    userPlaylists: (pluginId: string, config: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke('plugin:userPlaylists', pluginId, config),
+    playlistTracks: (pluginId: string, config: unknown, playlistId: string): Promise<unknown[]> =>
+      ipcRenderer.invoke('plugin:playlistTracks', pluginId, config, playlistId),
+    login: (pluginId: string, rawInput: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('plugin:login', pluginId, rawInput),
+    authState: (pluginId: string): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:authState', pluginId),
+    logout: (pluginId: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('plugin:logout', pluginId),
+  },
   // 自有服务协议的单曲取址（按源内 id 取直链）：与在线搜索同理在主进程执行
   // （渲染进程直连上游会被 CORS 拦），渲染层只拿结果；失败时返回带原因的结果，
   // 由调用方回落按名搜索，不抛错。

@@ -319,6 +319,11 @@ export const useLibraryStore = create<LibraryState>()(
           name: s.name,
           sourceUrl: s.sourceUrl,
           enabled: s.enabled,
+          // 插件 id 是「这条源由谁执行」的唯一标识（v13 起写入）。
+          // 白名单必须放行它，否则插件配置写进 store 就等于丢：
+          // 表现为「设置页加了源，重启后消失」或「源回落到默认插件执行」。
+          ...(s.pluginId ? { pluginId: s.pluginId } : {}),
+          // kind 是只读兼容层：老数据仍有该字段，原样带出以免降级
           ...(s.kind ? { kind: s.kind } : {}),
           ...(s.headers ? { headers: s.headers } : {}),
           ...(s.playlistUrl ? { playlistUrl: s.playlistUrl } : {}),
@@ -347,6 +352,8 @@ export const useLibraryStore = create<LibraryState>()(
       //     v11 之后 0 不再被迁移改写，作为「不限制」档使用（只影响 version < 11 的历史数据）
       // v12 歌词并入音源：删除独立「歌词源」配置（lyricsSources），
       //     歌词能力改由音源服务的端点自描述提供（endpoints.lyric）
+      // v13 插件化：音源由插件执行，`pluginId` 成为唯一标识；老配置按 kind 补写等价的
+      //     pluginId（lx → lx，其余 → aurora）。kind 保留为只读兼容层
       migrate: (persisted: any, version: number) => {
         if (persisted) {
           if (version < 9) {
@@ -365,6 +372,19 @@ export const useLibraryStore = create<LibraryState>()(
             // （见 shared/src/auroraPreset.ts 的 lyricEndpointOf）。歌词是「用完即弃」的
             // 在线查询，没有需要保留的用户数据，老字段直接丢弃即可。
             delete persisted.lyricsSources
+          }
+          if (version < 13) {
+            // 插件化：音源由「插件」执行，`pluginId` 取代 `kind` 成为唯一标识。
+            // 老配置只有 kind，这里**补写等价的 pluginId**，避免老数据依赖运行期回落：
+            // 补写后 store 里的源与新建的源形状一致，减少一处「有时有、有时没有」的分叉。
+            // kind 保留不动（只读兼容层），等确认无老配置后再单独清理。
+            if (Array.isArray(persisted.onlineSources)) {
+              persisted.onlineSources = persisted.onlineSources.map((s: any) => {
+                if (!s || typeof s !== 'object') return s
+                if (typeof s.pluginId === 'string' && s.pluginId) return s
+                return { ...s, pluginId: s.kind === 'lx' ? 'lx' : 'aurora' }
+              })
+            }
           }
           if (version < 11) {
             persisted.audioCacheLimitCustomMB = false
@@ -399,7 +419,7 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
-      version: 12,
+      version: 13,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)

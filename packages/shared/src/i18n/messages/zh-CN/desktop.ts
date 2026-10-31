@@ -98,6 +98,17 @@ const desktop = {
       mappedAttempt: '映射取址：{reason}',
       resolveFailed: '取址失败：{reasons}',
     },
+    /** 插件执行器与凭证的安全存储（主进程） */
+    plugin: {
+      invalidId: '插件标识无效：{id}',
+      notFound: '未找到插件：{id}',
+      configInvalid: '插件配置无效',
+      capabilityMissing: '插件「{id}」不支持该能力：{capability}',
+      credentialInvalid: '凭证格式无效',
+      credentialRejected: '插件「{id}」拒绝了这个凭证（请确认后重试）',
+      encryptionUnavailable: '当前系统不支持安全存储，无法保存登录凭证（请检查系统的密钥环服务）',
+      timeout: '插件操作超时（{ms}ms）',
+    },
     /** 内置更新（下载 / 校验 / 安装） */
     updater: {
       kindInvalid: '安装包类型无效',

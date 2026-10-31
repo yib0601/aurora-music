@@ -40,11 +40,15 @@ import {
   type LxProbeState,
 } from '@/components/common/LxSourceProbe'
 import { checkLxScriptLink, lxFormSupported, renderError } from '@/components/common/lxSourceForm'
+import { pluginFormRows, formKindOf, type PluginFormRow } from '@/components/common/pluginForm'
+import { PluginAuthPanel } from '@/components/common/PluginAuthPanel'
+import { builtinPlugins } from '@aurora/shared'
 import {
   buildAuroraEndpoints,
   checkSourceForm,
   formatBytes,
   formatNumber,
+  storagePathPrefix,
   LANGUAGE_PREFERENCES,
   LOCALE_LABELS,
   SYSTEM_LANGUAGE_LABELS,
@@ -798,7 +802,8 @@ function SourceAddDialog({
   onSave: (source: {
     name: string
     sourceUrl: string
-    kind?: OnlineSourceKind
+    /** 由哪个插件执行（v13 起的唯一标识；不再写 kind） */
+    pluginId?: string
     playlistUrl?: string
     endpoints?: { search?: string; playlist?: string }
     headers?: Record<string, string>
@@ -807,8 +812,8 @@ function SourceAddDialog({
   }) => void
 }) {
   const [name, setName] = useState('')
-  // 源形态：缺省 Aurora，保持既有用户路径零变化
-  const [sourceKind, setSourceKind] = useState<OnlineSourceKind>('aurora')
+  // 源形态 = 插件 id（不再是封闭联合）：缺省 Aurora，保持既有用户路径零变化
+  const [pluginId, setPluginId] = useState('aurora')
   // 一条链接：服务地址由软件组装两个端点，接口模板原样使用——形态由链接自身判定；
   // 洛雪形态下这条链接是脚本地址
   const [linkDraft, setLinkDraft] = useState('')
@@ -825,7 +830,7 @@ function SourceAddDialog({
   useEffect(() => {
     if (open) {
       setName('')
-      setSourceKind('aurora')
+      setPluginId('aurora')
       setLinkDraft('')
       setPlaylistUrl('')
       setHeadersDraft('')
@@ -840,8 +845,16 @@ function SourceAddDialog({
   // 洛雪脚本要在平台侧拉取与执行：桌面端经主进程、移动端走原生 HTTP，纯浏览器（web）没有该能力。
   // 入口就挡掉——不让用户填完链接、点完测试才拿到「不支持」；平台在运行期不会变，取一次即可
   const lxSupported = lxFormSupported({ desktop: isDesktop(), mobile: isMobile() })
+  // 形态列表由注册表推导：新增插件不需要改本文件（见 components/common/pluginForm.ts）
+  const pluginRows: PluginFormRow[] = pluginFormRows(
+    builtinPlugins(),
+    { desktop: isDesktop(), mobile: isMobile() }
+  )
+  const formKind = formKindOf(pluginId)
   // 洛雪脚本形态：提供的是取址能力，与 aurora 端点的占位符协议并列
-  const isLx = sourceKind === 'lx'
+  const isLx = formKind === 'script'
+  // 歌单形态（如汽水音乐）：填歌单链接或 id，登录是可选的增强项
+  const isPlaylist = formKind === 'playlist'
   const linkText = linkDraft.trim()
   // 形态与校验都收在 checkSourceForm：链接自身决定形态，不需要用户选
   const aurora = checkSourceForm({
@@ -853,17 +866,21 @@ function SourceAddDialog({
   const { parsed, isService, showPlaylist, linkError, playlistError } = aurora
   // 洛雪形态另走一条校验：脚本链接既不是服务地址也不是接口模板
   const lxLinkError = isLx ? checkLxScriptLink(linkDraft) : null
-  const canSave = isLx
-    ? Boolean(linkText) && !lxLinkError && !headersInvalid
-    : aurora.canSave
+  const canSave = isPlaylist
+    ? // 歌单形态只要求「有一条歌单链接或 id」，不做端点占位符校验
+      Boolean(linkText) && !headersInvalid
+    : isLx
+      ? Boolean(linkText) && !lxLinkError && !headersInvalid
+      : aurora.canSave
   const preview = !isLx && isService && parsed ? buildAuroraEndpoints(parsed.baseUrl, parsed.apiKey) : null
 
-  // 换形态等于换协议：上一种形态的链接与探测结果都不再适用，一律清空
-  const handleKindChange = (next: OnlineSourceKind) => {
-    if (next === sourceKind) return
+  // 换形态等于换插件：上一种形态的链接与探测结果都不再适用，一律清空
+  const handleKindChange = (next: string) => {
+    if (next === pluginId) return
     // 不支持的形态直接忽略：卡片本身已按 disabled 处理，这里是双保险
-    if (next === 'lx' && !lxSupported) return
-    setSourceKind(next)
+    const row = pluginRows.find((r) => r.value === next)
+    if (!row || !row.enabled) return
+    setPluginId(next)
     setLinkDraft('')
     setPlaylistUrl('')
     setProbe({ loading: false })
@@ -911,7 +928,26 @@ function SourceAddDialog({
 
   const handleSave = () => {
     if (!canSave) return
-    const displayName = name.trim() || (isLx ? t('sources.form.defaultNameLx') : t('sources.form.defaultName'))
+    const displayName =
+      name.trim() ||
+      (isLx
+        ? t('sources.form.defaultNameLx')
+        : isPlaylist
+          ? t('sources.form.defaultNameQishui')
+          : t('sources.form.defaultName'))
+    if (isPlaylist) {
+      // 歌单形态（如汽水音乐）：只存歌单链接或 id。
+      // 这类源没有「搜索」能力，registeredPlugin 决定它能做什么；
+      // 登录是可选的增强项（登录后才能列自己的歌单），未登录也能导入公开歌单。
+      onSave({
+        name: displayName,
+        sourceUrl: linkText,
+        pluginId,
+        headers,
+      })
+      onOpenChange(false)
+      return
+    }
     if (isLx) {
       // 洛雪形态：只写脚本链接，脚本源码不落库（运行时按链接现拉）。
       // 测试未通过也允许先存，但落 enabled=false——源不可用就不该默认参与搜索，
@@ -919,7 +955,7 @@ function SourceAddDialog({
       onSave({
         name: displayName,
         sourceUrl: linkText,
-        kind: 'lx',
+        pluginId,
         headers,
         enabled: lxProbe.ok === true,
       })
@@ -931,7 +967,7 @@ function SourceAddDialog({
     }
     if (isService) {
       // 服务地址形态：只存那条链接（+ 探测到的端点自描述），两个端点由执行时派生
-      onSave({ name: displayName, sourceUrl: linkText, endpoints: probeEndpoints })
+      onSave({ name: displayName, sourceUrl: linkText, pluginId, endpoints: probeEndpoints })
       onOpenChange(false)
       return
     }
@@ -939,6 +975,7 @@ function SourceAddDialog({
     onSave({
       name: displayName,
       sourceUrl: linkText,
+      pluginId,
       ...(trimmedPlaylist ? { playlistUrl: trimmedPlaylist } : {}),
       headers,
     })
@@ -960,65 +997,73 @@ function SourceAddDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          {/* 形态选择：服务地址（端点自动派生）或洛雪脚本 */}
-          {(
+          {/* 形态选择：由插件注册表推导（新增插件不改这里） */}
+          {
             <div>
               <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.kindLabel')}</p>
               <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    { value: 'aurora' as const, labelKey: 'sources.form.kindAurora', hintKey: 'sources.form.kindAuroraHint' },
-                    {
-                      value: 'lx' as const,
-                      labelKey: 'sources.form.kindLx',
-                      // 纯浏览器没有脚本执行能力：卡片直接说明原因并禁用，不让用户白填一遍
-                      hintKey: lxSupported ? 'sources.form.kindLxHint' : 'sources.form.kindLxHintUnsupported',
-                    },
-                  ] satisfies ReadonlyArray<{
-                    value: OnlineSourceKind
-                    labelKey: MessageKey
-                    hintKey: MessageKey
-                  }>
-                ).map((option) => {
-                  const disabled = option.value === 'lx' && !lxSupported
+                {pluginRows.map((row) => {
+                  const disabled = !row.enabled
                   return (
                     <button
-                      key={option.value}
+                      key={row.value}
                       type="button"
                       disabled={disabled}
-                      title={disabled ? t('sources.form.kindLxDisabledTitle') : undefined}
-                      onClick={() => handleKindChange(option.value)}
+                      title={disabled && row.disabledTitleKey ? t(row.disabledTitleKey) : undefined}
+                      onClick={() => handleKindChange(row.value)}
                       className={`text-left px-3 py-2 rounded-[10px] border transition-colors duration-200 ease-mineradio ${
-                        sourceKind === option.value
+                        pluginId === row.value
                           ? 'border-mint/50 bg-mint/[0.08]'
                           : 'border-white/[0.08] hover:border-white/20'
                       } ${disabled ? 'opacity-45 cursor-not-allowed hover:border-white/[0.08]' : ''}`}
                     >
                       <span
                         className={`block font-text text-caption-strong ${
-                          sourceKind === option.value ? 'text-mint' : 'text-white/80'
+                          pluginId === row.value ? 'text-mint' : 'text-white/80'
                         }`}
                       >
-                        {t(option.labelKey)}
+                        {t(row.labelKey)}
                       </span>
-                      <span className="block font-text text-caption text-white/50 mt-0.5">{t(option.hintKey)}</span>
+                      <span className="block font-text text-caption text-white/50 mt-0.5">{t(row.hintKey)}</span>
                     </button>
                   )
                 })}
               </div>
             </div>
-          )}
+          }
           <div>
             <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.nameLabel')}</p>
             <input
               type="text"
               value={name}
-              placeholder={isLx ? t('sources.form.namePlaceholderLx') : t('sources.form.namePlaceholder')}
+              placeholder={
+                isLx
+                  ? t('sources.form.namePlaceholderLx')
+                  : isPlaylist
+                    ? t('sources.form.namePlaceholderQishui')
+                    : t('sources.form.namePlaceholder')
+              }
               onChange={(e) => setName(e.target.value)}
               className={inputCls}
             />
           </div>
-          {isLx ? (
+          {isPlaylist ? (
+            <div>
+              <p className="font-text text-caption text-white/60 mb-1.5">
+                {t('sources.form.playlistUrlLabel')}
+              </p>
+              <input
+                type="text"
+                value={linkDraft}
+                placeholder={t('sources.form.playlistUrlPlaceholder')}
+                onChange={(e) => setLinkDraft(e.target.value)}
+                className={inputCls}
+              />
+              <p className="font-text text-caption text-white/35 mt-1">
+                {t('sources.form.playlistUrlHint')}
+              </p>
+            </div>
+          ) : isLx ? (
             <div>
               <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.scriptLabel')}</p>
               <LxScriptProbe
@@ -1854,7 +1899,7 @@ export function SettingsPage() {
 
   /** 移除网络存储来源：连同该来源的曲目一起从曲库删除（远端文件不受影响） */
   const handleRemoveLibrarySource = async (source: LibrarySourceConfig) => {
-    const prefix = `webdav:${source.id}/`
+    const prefix = storagePathPrefix(source.id)
     const affected = useLibraryStore.getState().tracks.filter((t) => t.path.startsWith(prefix)).length
     const ok = window.confirm(
       affected > 0
@@ -2255,6 +2300,15 @@ export function SettingsPage() {
                   </div>
                 )}
               </SettingRow>
+              {/* 插件登录：只列出「声明了登录能力」的插件（按能力判定，不按 id） */}
+              {typeof platform.plugins?.list === 'function' && (
+                <SettingRow
+                  label={t('sources.auth.title')}
+                  hint={t('sources.auth.desc')}
+                >
+                  <PluginAuthPanel />
+                </SettingRow>
+              )}
             </SettingsSection>
 
             {/* 关于：版本、更新与许可同属"这套软件本身"，合并后不再平铺两张只读卡片 */}

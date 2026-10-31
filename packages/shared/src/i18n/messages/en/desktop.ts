@@ -65,6 +65,17 @@ const en: LocalizedOf<typeof desktop> = {
       mappedAttempt: 'Mapped resolve: {reason}',
       resolveFailed: 'Failed to resolve the URL: {reasons}',
     },
+    plugin: {
+      invalidId: 'Invalid plugin id: {id}',
+      notFound: 'Plugin not found: {id}',
+      configInvalid: 'Invalid plugin configuration',
+      capabilityMissing: 'The plugin "{id}" does not support this capability: {capability}',
+      credentialInvalid: 'Invalid credential format',
+      credentialRejected: 'The plugin "{id}" rejected this credential (check it and try again)',
+      encryptionUnavailable:
+        'Secure storage is unavailable on this system, so the login credential cannot be saved (check your system keyring service)',
+      timeout: 'The plugin operation timed out ({ms}ms)',
+    },
     updater: {
       kindInvalid: 'Invalid installer type',
       busy: 'An update download is already in progress',

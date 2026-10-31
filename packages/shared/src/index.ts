@@ -237,3 +237,41 @@ export { firstSuccess, mapWithConcurrency } from './concurrency'
 export type { FirstSuccessOptions, FirstSuccessHit } from './concurrency'
 export * from './i18n'
 export * from './logging'
+
+// ─── 插件层（音源形态的注册表与契约） ─────────────────────────────
+// 上层按「能力是否存在」调用插件，不做 kind 判断。见 docs/plugins.md
+export {
+  registerPlugin,
+  getPlugin,
+  listPlugins,
+  hasCapability,
+  clearPluginsForTest,
+  auroraPlugin,
+  lxPlugin,
+  qishuiPlugin,
+  qishuiCoverUrl,
+  extractSessionId,
+  AURORA_PLUGIN_CAPABILITIES,
+  LX_PLUGIN_CAPABILITIES,
+  builtinPlugins,
+  ensureBuiltinsRegistered,
+  pluginIdOf,
+  pluginFieldsOf,
+  // 能力判定（取代各处 `kind === 'xxx'` 分支）
+  pluginForSource,
+  canSearchSource,
+  canParsePlaylist,
+  canResolveTrack,
+  sourceHasLyrics,
+  needsAuth,
+  sourceCacheKeyOf,
+} from './plugin'
+export type {
+  SourcePlugin,
+  PluginCapability,
+  PluginContext,
+  PluginCredential,
+  PluginAuthState,
+  PluginPlaylist,
+  ResolvedAudio,
+} from './plugin'

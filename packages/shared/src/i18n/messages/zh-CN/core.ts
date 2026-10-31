@@ -19,6 +19,10 @@
 const core = {
   /** 平台展示名（协议标识 → 界面文案）；标识串本身见 LX_KNOWN_PLATFORMS，不翻译 */
   platform: {
+    /** 插件展示名（插件契约的 displayNameKey 指向这里） */
+    aurora: 'Aurora 协议源',
+    lx: '洛雪音源脚本',
+    qishui: '汽水音乐',
     kw: '酷我',
     kg: '酷狗',
     tx: 'QQ',
@@ -92,6 +96,12 @@ const core = {
     lxSourceDisabled: '洛雪音源「{name}」已停用',
     lxScriptUnavailable: '洛雪音源「{name}」的脚本源码不可得',
     lxMetaMissing: '平台 {platform} 取址缺少必要字段：{fields}',
+
+    // ── 汽水音乐插件（qishuiPlugin） ─────────────────────────────────
+    qishuiLoginRequired: '汽水音乐：该操作需要登录（请在本插件的设置里粘贴 sessionid）',
+    qishuiSessionIdInvalid: '汽水音乐：没有识别到 sessionid，请粘贴完整的 Cookie 或 sessionid 值',
+    qishuiPlaylistIdMissing: '汽水音乐：没有给出歌单 id',
+    qishuiPreviewOnly: '汽水音乐：这首歌是 VIP 曲目，只能试听 {seconds} 秒',
 
     // ── 在线搜索执行器（musicSource） ────────────────────────────────
     sourceUrlNoQuery: '源「{name}」的接口地址无效，必须包含 {query} 占位符',

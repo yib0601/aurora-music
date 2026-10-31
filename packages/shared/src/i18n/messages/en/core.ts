@@ -11,6 +11,9 @@ import type { LocalizedOf } from '../schema'
  */
 const en: LocalizedOf<typeof core> = {
   platform: {
+    aurora: 'Aurora protocol source',
+    lx: 'LX music script',
+    qishui: 'Soda Music',
     kw: 'Kuwo',
     kg: 'Kugou',
     tx: 'QQ',
@@ -67,6 +70,13 @@ const en: LocalizedOf<typeof core> = {
     lxSourceDisabled: 'LX source "{name}" is disabled',
     lxScriptUnavailable: 'The script of LX source "{name}" is unavailable',
     lxMetaMissing: 'Resolving on platform {platform} is missing required fields: {fields}',
+
+    // ── Soda Music plugin ────────────────────────────────────────────
+    qishuiLoginRequired: 'Soda Music: this needs a login (paste your sessionid in the plugin settings)',
+    qishuiSessionIdInvalid: 'Soda Music: no sessionid found — paste the full cookie or the sessionid value',
+    qishuiPlaylistIdMissing: 'Soda Music: no playlist id given',
+    qishuiPreviewOnly: 'Soda Music: this is a VIP track, so only a {seconds}s preview is available',
+
 
     // ── 在线搜索执行器 ──────────────────────────────────────────────
     sourceUrlNoQuery: 'Source "{name}" has an invalid endpoint: it must contain the {query} placeholder',
