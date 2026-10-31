@@ -1,11 +1,14 @@
 /**
- * 媒体库来源（本机目录 / WebDAV 网络存储）在主进程侧的注册表与扫描实现。
+ * 媒体库来源（本机目录 / 网络存储）在主进程侧的注册表与扫描实现。
  *
  * 为什么扫描放在主进程：
  * - 远端曲目的元数据要按字节区间读取（Range GET），渲染层的 fetch 受 CORS 约束，
- *   而 NAS 的 WebDAV 几乎不会返回 Access-Control-Allow-Origin；
- * - 来源配置（含口令）留在主进程，渲染层只持有 sourceId，播放走 aurora-remote://
- *   协议代理，口令既不进数据库也不进渲染层持久化。
+ *   而多数网络存储实现不会返回 Access-Control-Allow-Origin；
+ * - 播放走 aurora-remote:// 协议代理，渲染层只持有 sourceId。
+ *
+ * 口令**不在**这些配置里：它由 `storageCredentials` 经 `safeStorage` 加密单独落盘，
+ * 只在调用插件前的一瞬间并进配置副本（见 `withStorageSecrets`）。
+ * 因此本文件的 `registry` 里存的是可公开的非敏感配置，落盘、日志、IPC 都安全。
  */
 
 import fs from 'fs'
@@ -14,17 +17,19 @@ import { v4 as uuidv4 } from 'uuid'
 import { parseBuffer } from 'music-metadata'
 import {
   auroraError,
-  getMediaProvider,
+  storagePluginOf,
+  librarySourcePluginId,
+  isStorageTransportError,
+  markTransportError,
   storagePathFor,
   storagePathPrefix,
   buildRemoteAudioUrl,
   guessAudioMime,
   normalizeHeadParsedDuration,
   METADATA_HEAD_BYTES,
-  WebdavError,
   type LibrarySourceConfig,
-  type MediaProvider,
   type RemoteEntry,
+  type StoragePlugin,
 } from '@aurora/shared'
 import type { Track } from '../types'
 import {
@@ -35,6 +40,7 @@ import {
   updateTrack,
 } from './database'
 import { registerCoverFile } from './mediaCache'
+import { withStorageSecrets } from './storageCredentials'
 import { mainTranslate } from '../i18n'
 // 与本地按需提取共用同一份「悬空路径」判定，避免两处各写一份阈值
 import { isUsableCoverFile } from './coverFile'
@@ -45,7 +51,7 @@ const registry = new Map<string, LibrarySourceConfig>()
 export function syncLibrarySources(sources: LibrarySourceConfig[]): void {
   registry.clear()
   for (const s of sources) {
-    // 口令只留在主进程内存里，其余字段本就可公开
+    // 这里存的全是可公开字段：口令单独走 storageCredentials，不在配置里
     if (s?.id) registry.set(s.id, s)
   }
   console.log('[LibrarySource] 已同步来源配置:', registry.size, '个')
@@ -56,13 +62,106 @@ export function getLibrarySource(id: string): LibrarySourceConfig | undefined {
 }
 
 /**
- * 取来源对应的 provider。未注册的 kind（例如将来新增但尚未实现的 smb）
- * 会给出可读错误而不是静默失败。
+ * 取来源对应的存储插件（**唯一查法**）。
+ *
+ * 历史上有两套并存：`providerFor()` 走 `getMediaProvider(cfg.kind)`，
+ * 而 `probeLibrarySource()` 又裸查了一次同样的表 —— 判定口径分叉的典型形态。
+ * 现在统一走 `storagePluginOf(cfg)`（内部 = `librarySourcePluginId` + 注册表）。
+ *
+ * 未注册的插件（例如配置里写了一个本版本尚未实现的协议）给出可读错误，
+ * 而不是静默失败或回落到别的协议执行。
  */
-function providerFor(cfg: LibrarySourceConfig): MediaProvider {
-  const provider = getMediaProvider(cfg.kind)
-  if (!provider) throw auroraError('desktop.error.source.kindUnsupported', { kind: cfg.kind })
-  return provider
+function pluginFor(cfg: LibrarySourceConfig): StoragePlugin {
+  const plugin = storagePluginOf(cfg)
+  if (!plugin) {
+    throw auroraError('desktop.error.source.kindUnsupported', {
+      pluginId: librarySourcePluginId(cfg),
+    })
+  }
+  return plugin
+}
+
+/**
+ * 插件能力的接线校验：列举与按区间读是扫描管线的两件必需品。
+ *
+ * 能力用「方法是否存在」表达（`docs/plugins.md` 的范式），缺失即该插件
+ * 无法支持本功能——给出明确错误，而不是等运行时 `undefined is not a function`。
+ */
+function requireListAudio(plugin: StoragePlugin) {
+  const fn = plugin.listAudio
+  if (typeof fn !== 'function') {
+    throw auroraError('desktop.error.source.capabilityMissing', {
+      pluginId: plugin.id,
+      capability: 'listAudio',
+    })
+  }
+  return fn.bind(plugin)
+}
+
+function requireOpenRange(plugin: StoragePlugin) {
+  const fn = plugin.openRange
+  if (typeof fn !== 'function') {
+    throw auroraError('desktop.error.source.capabilityMissing', {
+      pluginId: plugin.id,
+      capability: 'openRange',
+    })
+  }
+  return fn.bind(plugin)
+}
+
+/**
+ * 取远端字节流，供 `aurora-remote://` 协议处理器使用。
+ *
+ * 优先 `openStream`：`Range` 头**原样透传**，播放器的 `bytes=-N`（尾段）这类
+ * 非 `start-end` 形态才能工作，206 与 `Content-Range` 也原样回给调用方。
+ *
+ * 插件只实现 `openRange` 时回落：把 `bytes=<start>-<end>` 解析成数值区间。
+ * 这条路径表达不了 `bytes=-N` / 开区间——属**正常降级**，不是错误：
+ * 返回空 416，让播放器按「不支持该 Range 形态」处理（它会改用无 Range 请求）。
+ *
+ * 口令在这里注入（`withStorageSecrets`）：插件按声明式字段 `password` 取值，
+ * 而口令不在配置里、只在主进程的加密存储里。
+ */
+export async function proxyRemoteAudio(
+  cfg: LibrarySourceConfig,
+  plugin: StoragePlugin,
+  relPath: string,
+  range?: string
+): Promise<Response> {
+  const sealed = withStorageSecrets(cfg)
+  if (typeof plugin.openStream === 'function') {
+    return plugin.openStream(sealed, relPath, { range })
+  }
+
+  const openRange = requireOpenRange(plugin)
+  const parsedRange = parseByteRange(range)
+  if (!parsedRange) {
+    // 无 Range 头 = 请求整个文件，可完整走 openRange；
+    // 有 Range 但形态表达不了（尾段 / 开区间）= 明确告知不支持该形态
+    if (range) return new Response('', { status: 416 })
+    const head = await openRange(sealed, relPath, 0, Number.MAX_SAFE_INTEGER)
+    return head
+  }
+  return openRange(sealed, relPath, parsedRange.start, parsedRange.end)
+}
+
+/**
+ * 解析 `bytes=<start>-<end>` 形态。
+ *
+ * 只接受两端都给全的闭区间：
+ * - `bytes=0-1023` → `{start: 0, end: 1023}`
+ * - `bytes=-1024`（尾段）、`bytes=1024-`（开区间）→ null
+ *   （`openRange` 是数值区间 API，表达不了「从末尾数」或「到文件末」，
+ *    后者还需要先知道文件大小；交给上层按 416 降级处理）
+ */
+function parseByteRange(range: string | undefined): { start: number; end: number } | null {
+  if (!range) return null
+  const m = /^bytes=(\d+)-(\d+)$/i.exec(range.trim())
+  if (!m) return null
+  const start = Number(m[1])
+  const end = Number(m[2])
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null
+  return { start, end }
 }
 
 /**
@@ -84,20 +183,21 @@ function fallbackMetaFromName(name: string): { title: string; artist: string } {
  * 时长修正见 @aurora/shared 的 normalizeHeadParsedDuration（截断缓冲区下的 MPEG 时长陷阱）。
  */
 async function parseRemoteMetadata(
-  provider: MediaProvider,
+  plugin: StoragePlugin,
   cfg: LibrarySourceConfig,
   entry: RemoteEntry
 ): Promise<Partial<Track>> {
   const headLength = Math.max(1, Math.min(entry.size || METADATA_HEAD_BYTES, METADATA_HEAD_BYTES))
-  const resp = await provider.openRange(cfg, entry.path, 0, headLength - 1)
-  // 非 2xx 一律按传输层失败处理（抛 WebdavError）：远端拒绝/文件已消失时，
+  const openRange = requireOpenRange(plugin)
+  const resp = await openRange(withStorageSecrets(cfg), entry.path, 0, headLength - 1)
+  // 非 2xx 一律按传输层失败处理（抛带 status 与传输层标记的错误）：远端拒绝/文件已消失时，
   // 不该用文件名兜底把一条读不到音源的记录写进曲库
   if (!resp.ok && resp.status !== 206) {
-    // 必须保持 WebdavError 类型：调用方据此区分「传输层失败（可重试、不得写库）」。
+    // 必须保持「传输层错误」语义：调用方据此区分「传输层失败（可重试、不得写库）」。
+    // 用 markTransportError 打标记（结构化判据），不引入具体错误类。
     // message 走字典渲染成当前语言的成品句（该错误最终经 events 或 reject 上屏）。
-    throw new WebdavError(
-      mainTranslate()('desktop.error.source.remoteReadFailed', { status: resp.status }),
-      resp.status
+    throw markTransportError(
+      auroraError('desktop.error.source.remoteReadFailed', { status: resp.status })
     )
   }
   const buf = new Uint8Array(await resp.arrayBuffer())
@@ -135,7 +235,7 @@ async function parseRemoteMetadata(
  *   解析成功后自然补齐（代价只是这类少数文件的重复 Range 请求）。
  */
 async function buildRemoteTrack(
-  provider: MediaProvider,
+  plugin: StoragePlugin,
   cfg: LibrarySourceConfig,
   entry: RemoteEntry,
   existing?: Track
@@ -143,9 +243,11 @@ async function buildRemoteTrack(
   let meta: Partial<Track>
   let parsedSize: number | undefined = entry.size || undefined
   try {
-    meta = await parseRemoteMetadata(provider, cfg, entry)
+    meta = await parseRemoteMetadata(plugin, cfg, entry)
   } catch (err) {
-    if (err instanceof WebdavError) throw err
+    // 结构判定，不依赖具体错误类：传输层失败（断网 / 超时 / 401）向上抛，
+    // 由调用方保留旧记录、不写入新记录
+    if (isStorageTransportError(err)) throw err
     const fallback = fallbackMetaFromName(entry.name)
     console.warn('[LibrarySource] 元数据解析失败，按文件名兜底入库:', entry.path, (err as Error).message)
     meta = { title: fallback.title, artist: fallback.artist, album: '未知专辑', duration: 0 } // i18n-exempt: 落库哨兵值
@@ -198,10 +300,11 @@ export async function scanLibrarySource(
 ): Promise<LibraryScanResult> {
   const cfg = registry.get(sourceId)
   if (!cfg) throw auroraError('desktop.error.source.unknown', { id: sourceId })
-  const provider = providerFor(cfg)
+  const plugin = pluginFor(cfg)
+  const listAudio = requireListAudio(plugin)
 
   const failedDirs: string[] = []
-  const entries = await provider.listAudio(cfg, {
+  const entries = await listAudio(withStorageSecrets(cfg), {
     concurrency: REMOTE_CONCURRENCY,
     onError: (dir, err) => {
       failedDirs.push(dir)
@@ -224,7 +327,7 @@ export async function scanLibrarySource(
         // 大小未变则直接复用，保留播放统计/收藏，也避免重复的 Range 请求
         if (existing && existing.fileSize && existing.fileSize === entry.size) return existing
         try {
-          return await buildRemoteTrack(provider, cfg, entry, existing)
+          return await buildRemoteTrack(plugin, cfg, entry, existing)
         } catch (err) {
           // 走到这里只可能是传输层失败（格式问题已在 buildRemoteTrack 内兜底）：
           // 保留已有记录的旧元数据，新文件本次跳过、留待下次扫描
@@ -283,8 +386,9 @@ export async function ensureRemoteCover(track: Track, userData: string): Promise
   if (!parsed) return null
 
   try {
-    const provider = providerFor(cfg)
-    const head = await provider.openRange(cfg, parsed, 0, METADATA_HEAD_BYTES - 1)
+    const plugin = pluginFor(cfg)
+    const openRange = requireOpenRange(plugin)
+    const head = await openRange(withStorageSecrets(cfg), parsed, 0, METADATA_HEAD_BYTES - 1)
     // 网络/服务端错误必须抛错，不能返回 null：渲染层只对「确认无内嵌封面」缓存结果，
     // 返回 null 会被当成"这首没有封面"缓存一整个会话，NAS 短暂不可达后封面就再也不补了
     if (!head.ok && head.status !== 206) {
@@ -334,12 +438,28 @@ function coverExtensionFor(data: Uint8Array, declaredFormat?: string): string {
 export async function probeLibrarySource(sourceId: string): Promise<{ ok: boolean; message: string; sample?: string[] }> {
   const cfg = registry.get(sourceId)
   if (!cfg) return { ok: false, message: mainTranslate()('desktop.error.source.notFound') }
-  const provider = getMediaProvider(cfg.kind)
-  if (!provider) {
-    return { ok: false, message: mainTranslate()('desktop.error.source.kindUnsupported', { kind: cfg.kind }) }
+  const plugin = storagePluginOf(cfg)
+  if (!plugin) {
+    return {
+      ok: false,
+      message: mainTranslate()('desktop.error.source.kindUnsupported', {
+        pluginId: librarySourcePluginId(cfg),
+      }),
+    }
+  }
+  // 探测能力同样按「方法是否存在」判定：没有 probe 的插件不该显示「测试连接」入口，
+  // 这里给出明确结论而不是抛错
+  if (typeof plugin.probe !== 'function') {
+    return {
+      ok: false,
+      message: mainTranslate()('desktop.error.source.capabilityMissing', {
+        pluginId: plugin.id,
+        capability: 'probe',
+      }),
+    }
   }
   try {
-    return await provider.probe(cfg)
+    return await plugin.probe(withStorageSecrets(cfg))
   } catch (err) {
     return { ok: false, message: (err as Error).message }
   }

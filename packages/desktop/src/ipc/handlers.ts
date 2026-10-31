@@ -14,6 +14,12 @@ import {
   ensureRemoteCover,
 } from './librarySource'
 import {
+  saveStorageCredential,
+  clearStorageCredential,
+  storageCredentialState,
+  isStorageCredentialEncryptionAvailable,
+} from './storageCredentials'
+import {
   readCachedLyrics,
   writeCachedLyrics,
   resolveCachedCover,
@@ -41,6 +47,7 @@ import {
   fetchRecommendPlaylists,
   fetchToplistGroups,
   fetchToplistSongs,
+  listStoragePluginMeta,
 } from '@aurora/shared'
 
 let mainWindow: BrowserWindow | null = null
@@ -421,6 +428,36 @@ export function registerIpcHandlers() {
     removeLibrarySourceTracks(sourceId)
     return getAllTracks()
   })
+
+  // ─── 存储来源口令（safeStorage 加密落盘，渲染层永不拿原文） ──────
+  // 三条通道都以 sourceId 为键（不是 pluginId）：用户可能加多台 NAS，
+  // 它们的 pluginId 都是 'webdav'，按插件 id 存会互相覆盖。
+  ipcMain.handle('library-source:credential:save', (_event, sourceId: string, payload: unknown) => {
+    if (typeof sourceId !== 'string' || !sourceId) {
+      throw auroraError('desktop.error.source.invalid')
+    }
+    saveStorageCredential(sourceId, payload)
+    return { ok: true, ...storageCredentialState(sourceId) }
+  })
+
+  ipcMain.handle('library-source:credential:state', (_event, sourceId: string) => {
+    if (typeof sourceId !== 'string' || !sourceId) {
+      return { saved: false, encryptionAvailable: isStorageCredentialEncryptionAvailable() }
+    }
+    // 只能回「有没有」，口令原文永不出主进程
+    return storageCredentialState(sourceId)
+  })
+
+  ipcMain.handle('library-source:credential:clear', (_event, sourceId: string) => {
+    if (typeof sourceId !== 'string' || !sourceId) return { ok: true, saved: false }
+    clearStorageCredential(sourceId)
+    return { ok: true, ...storageCredentialState(sourceId) }
+  })
+
+  // ─── 可添加的存储协议（供设置页通用渲染表单） ────────────────────
+  // 只回 meta（纯数据 + 声明式 fields），不带插件实现：
+  // StoragePlugin 上挂函数，structuredClone 会直接抛 DataCloneError。
+  ipcMain.handle('storage-plugin:list', () => listStoragePluginMeta())
 
   // 从曲库移除某个扫描目录：删除该目录下的全部曲目记录（含封面缓存），
   // 返回移除后的全库列表，渲染进程直接用它刷新曲库

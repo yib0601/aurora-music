@@ -187,6 +187,7 @@ export {
   getMediaProvider,
   registerMediaProvider,
   registeredMediaProviderKinds,
+  mediaProviderOf,
 } from './mediaProvider'
 export {
   CACHE_POOLS,
@@ -232,6 +233,7 @@ export {
   walkWebdavAudio,
   testWebdavConnection,
   openWebdavRange,
+  openWebdavStream,
 } from './webdav'
 export { firstSuccess, mapWithConcurrency } from './concurrency'
 export type { FirstSuccessOptions, FirstSuccessHit } from './concurrency'
@@ -275,3 +277,34 @@ export type {
   PluginPlaylist,
   ResolvedAudio,
 } from './plugin'
+
+// ─── 存储插件层（曲库来源形态的注册表与契约） ─────────────────────
+// 上层按「能力是否存在」调用存储插件，不做 kind 判断；配置里用 pluginId。
+export {
+  BUILTIN_STORAGE_PLUGINS,
+  DEFAULT_STORAGE_PLUGIN_ID,
+  WEBDAV_STORAGE_FIELDS,
+  clearStoragePluginsForTest,
+  getStoragePlugin,
+  isStorageTransportError,
+  librarySourcePluginId,
+  listStoragePluginMeta,
+  listStoragePlugins,
+  markTransportError,
+  registerStoragePlugin,
+  registeredStoragePluginIds,
+  storageCapabilitiesOf,
+  storageErrorStatus,
+  storageFieldValue,
+  storagePluginOf,
+  storageStringField,
+  webdavStoragePlugin,
+} from './plugin/storage'
+export type {
+  StorageFieldDef,
+  StorageFieldKind,
+  StoragePlugin,
+  StoragePluginCapability,
+  StoragePluginMeta,
+  StorageProbeResult,
+} from './plugin/storage'

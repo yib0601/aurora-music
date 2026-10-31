@@ -9,7 +9,13 @@ import { Button } from '@/components/ui/button'
 import { LyricsView } from '@/components/lyrics/LyricsView'
 import { cn, formatTime } from '@/lib/utils'
 import { useLocale, useT } from '@/i18n'
-import { formatBytes, formatDate, type AppTranslator, type MessageKey } from '@aurora/shared'
+import {
+  formatBytes,
+  formatDate,
+  storagePathPrefix,
+  type AppTranslator,
+  type MessageKey,
+} from '@aurora/shared'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { LibrarySourceConfig } from '@/types'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -59,7 +65,7 @@ function sourceName(track: Track, librarySources: LibrarySourceConfig[], t: AppT
   // 落到最后的兜底分支会被显示成「本地」，与事实完全相反
   if (track.sourceId) {
     const named = librarySources.find((s) => s.id === track.sourceId)?.name
-    return named || t('nav.source.webdav')
+    return named || t('nav.source.storage')
   }
   // 存量数据兼容：旧版本内置源的 onlineSource 值仍可识别展示
   if (track.onlineSourceName) return track.onlineSourceName
@@ -71,13 +77,16 @@ function sourceName(track: Track, librarySources: LibrarySourceConfig[], t: AppT
 
 /**
  * 曲目位置的可读展示。
- * 网络存储曲目的 track.path 是内部存储坐标（webdav:<sourceId>/<相对路径>），
+ * 网络存储曲目的 track.path 是内部存储坐标（`<协议前缀>:<sourceId>/<相对路径>`），
  * 直接显示会让用户看到一个毫无意义的内部串；这里剥掉来源前缀只留相对路径，
  * 来源名已经在标题上方展示过。本机曲目照旧显示完整路径。
+ *
+ * 前缀形状由 shared 的 `storagePathPrefix` 唯一决定，不在本层复写字面量：
+ * 前缀一旦调整，这里自动跟上。
  */
 function displayLocation(track: Track): string {
   if (!track.sourceId) return track.path
-  const prefix = `webdav:${track.sourceId}/`
+  const prefix = storagePathPrefix(track.sourceId)
   return track.path.startsWith(prefix) ? track.path.slice(prefix.length) : track.path
 }
 

@@ -47,8 +47,8 @@ const en: LocalizedOf<typeof settings> = {
     },
     storage: {
       label: 'Network storage',
-      hint: 'Music on a NAS or WebDAV server is scanned into your library and kept',
-      empty: 'Nothing added yet. Standard WebDAV such as Synology, QNAP or Nextcloud is supported.',
+      hint: 'Music on network storage is scanned into your library and kept',
+      empty: 'Nothing added yet. Fill in the server address and credentials to connect.',
     },
   },
   storage: {

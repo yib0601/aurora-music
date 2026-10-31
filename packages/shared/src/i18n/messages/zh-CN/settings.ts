@@ -63,8 +63,12 @@ const settings = {
     },
     storage: {
       label: '网络存储',
-      hint: 'NAS / WebDAV 上的音乐会被扫描入库并长期保留',
-      empty: '尚未添加，支持群晖 / 威联通 / Nextcloud 等标准 WebDAV',
+      /**
+       * 措辞与具体协议解耦：曲库来源已插件化，WebDAV 只是当前唯一的内置协议。
+       * 这里写死协议名会让将来新增 SMB / SFTP 时文案立刻变成谎言。
+       */
+      hint: '网络存储上的音乐会被扫描入库并长期保留',
+      empty: '尚未添加。按提示填写服务地址与凭据即可接入网络存储',
     },
   },
   storage: {

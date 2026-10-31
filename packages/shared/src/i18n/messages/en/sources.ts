@@ -140,6 +140,15 @@ const en: LocalizedOf<typeof sources> = {
     scanComplete_one: 'Scan complete, {count} song in your library',
     scanIncomplete: 'Scan complete, but {count} folders were unreachable; existing records were kept',
     scanIncomplete_one: 'Scan complete, but {count} folder was unreachable; existing records were kept',
+    chooseProvider: 'Storage protocol',
+    credentialSaved: 'Password saved securely',
+    credentialMissing: 'No password saved',
+    credentialUnavailable:
+      'This machine cannot store passwords securely; you will need to re-enter it each time',
+    credentialHint:
+      'The password is encrypted with your system keyring and saved locally. It never enters the config file and never appears in playback URLs.',
+    clearCredential: 'Clear password',
+    fieldRequired: '{field} is required',
   },
   error: {
     scriptUrlRequired: 'Enter a script link',

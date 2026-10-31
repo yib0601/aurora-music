@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
 import { app } from 'electron'
-import { auroraError, buildRemoteAudioUrl } from '@aurora/shared'
+import { auroraError, buildRemoteAudioUrl, storagePathPrefix } from '@aurora/shared'
 import { forgetCachedFile, forgetCachedFiles } from './mediaCache'
 import type { Track, Album } from '../types'
 
@@ -413,10 +413,12 @@ export function getMostPlayed(limit = 50): Track[] {
 function rowToTrack(row: any): Track {
   const sourceId: string | undefined = row.source_id || undefined
   // 远端曲目的播放地址不落库：它由 (sourceId, 相对路径) 推导，口令与主机变更后
-  // 依然有效；若存下来，用户改配置后库里就全是失效地址
+  // 依然有效；若存下来，用户改配置后库里就全是失效地址。
+  // 前缀形状由 shared 的 storagePathPrefix 唯一决定，本层不复写字面量。
+  const remotePrefix = sourceId ? storagePathPrefix(sourceId) : ''
   const remoteUrl =
-    sourceId && row.path.startsWith(`webdav:${sourceId}/`)
-      ? buildRemoteAudioUrl(sourceId, row.path.slice(`webdav:${sourceId}/`.length))
+    remotePrefix && row.path.startsWith(remotePrefix)
+      ? buildRemoteAudioUrl(sourceId as string, row.path.slice(remotePrefix.length))
       : undefined
   return {
     id: row.id,

@@ -26,6 +26,11 @@ import type {
   SourceProbeResult,
   LxSourceInspection,
   LxScriptSource,
+  // 存储插件：可添加的协议元信息（纯数据，可经 IPC）+ 声明式字段
+  StoragePluginMeta,
+  StorageFieldDef,
+  StorageFieldKind,
+  StoragePluginCapability,
   // 诊断日志契约：形状由 shared 的 logging/ipcContract 定义，preload 与渲染层共用同一份，
   // app 内（平台层 / 服务层 / 设置页）从这里取即可，不必各自 import @aurora/shared
   LoggingRendererApi,
@@ -68,6 +73,11 @@ export type {
   LogBundleResult,
   LogExportResult,
   LogFileInfo,
+  // 存储插件：可添加的协议元信息（纯数据，可经 IPC）+ 声明式字段
+  StoragePluginMeta,
+  StorageFieldDef,
+  StorageFieldKind,
+  StoragePluginCapability,
 }
 
 export interface Track {
@@ -266,4 +276,24 @@ export interface MusicHallPlatform {
   recommendPlaylists(options?: MusicHallOptions): Promise<RecommendPlaylist[]>
   toplistGroups(options?: MusicHallOptions): Promise<ToplistGroup[]>
   toplistSongs(options?: MusicHallOptions): Promise<ToplistDetail>
+}
+
+/**
+ * 存储来源的口令状态。
+ *
+ * **只描述状态、不含内容**：口令原文永远留在主进程（`safeStorage` 加密落盘），
+ * 渲染层只能知道「有没有存」以及「这台机器能不能安全地存」。
+ *
+ * 形状定义在这里而不是从 `@aurora/shared` 取：主进程与渲染层是两个编译单元，
+ * 主进程的自有类型（`desktop/src/ipc/storageCredentials.ts`）不该被渲染层直接 import
+ * （会拖进 `electron` 依赖）。两边靠 IPC 契约对齐，由本接口描述渲染层看到的那一半。
+ */
+export interface StorageCredentialState {
+  /** 是否已保存口令 */
+  saved: boolean
+  /**
+   * 本机是否具备加密能力。为 false 时（少数无 keyring 的 Linux 桌面）
+   * 主进程会**拒绝**写明文，UI 应提示「本机无法安全保存口令」而不是让用户反复重试。
+   */
+  encryptionAvailable: boolean
 }

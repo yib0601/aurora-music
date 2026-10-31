@@ -11,28 +11,80 @@
  */
 
 import { fetchWithTimeout } from './fetchWithTimeout'
+import { storageStringField } from './plugin/storage/fields'
 import { encodeErrorInfo, parseErrorInfo, toErrorInfo } from './i18n/errors'
 import type { MessageKey } from './i18n'
 import type { TranslateParams } from './i18n/core'
 
-/** 媒体库来源配置（区别于在线歌源的 OnlineSourceConfig） */
+/**
+ * 媒体库来源配置（区别于在线歌源的 OnlineSourceConfig）。
+ *
+ * ## 形态字段：`pluginId` 是新的真源，`kind` 是兼容层
+ *
+ * 改造前 `kind` 是硬编码联合 `'local' | 'webdav'`，加第二种网络存储协议要同时改
+ * 设置页、主进程协议处理器、扫描 IPC。现在来源由**存储插件**实现
+ * （见 `plugin/storage/`），配置里写 `pluginId`；`kind` 保留为兼容字段，
+ * 老配置只有 `kind` 时由 `librarySourcePluginId()` 推导，**零迁移可读**。
+ *
+ * 判定「这条来源用哪个插件」请一律调 `librarySourcePluginId(cfg)` /
+ * `storagePluginOf(cfg)`，**不要再写 `cfg.kind === 'webdav'`**。
+ *
+ * ## 字段形态：`settings` 是新的真源，以下扁平字段是兼容层
+ *
+ * 插件通过声明式 `fields` 描述自己需要哪些键（webdav 的是
+ * baseUrl / rootPath / username / password），用户输入写进 `settings`。
+ * 旧配置把这几个字段摊在顶层，`storageFieldValue()` 会按「settings 优先、
+ * 顶层同名字段兜底」取值，因此本轮不需要任何数据迁移。
+ */
 export interface LibrarySourceConfig {
   id: string
-  /** 来源类型：本机目录 / WebDAV 网络存储 */
-  kind: 'local' | 'webdav'
+  /**
+   * 来源类型（流程内标识：`'local'` 表示本机目录）。
+   *
+   * 已放宽为 `string`：网络来源的类型由插件决定，这里不再有穷举联合。
+   * 网络来源请读 `pluginId`（或调 `librarySourcePluginId`）。
+   */
+  kind: string
   /** 展示名（如「家里的群晖」） */
   name: string
-  /** webdav：服务地址（含协议与端口），如 https://nas.example.com:5006/dav */
+  /**
+   * 实现该来源的存储插件 id（如 `'webdav'`）。
+   * 缺失时回落 `kind`（老配置），两者都空则视为默认协议。
+   */
+  pluginId?: string
+  /**
+   * 插件私有配置（键由插件声明式 `fields` 定义）。
+   *
+   * **敏感值不落这里**：`kind: 'password'` 的字段（如 webdav 的 `password`）在渲染层
+   * 持久化前就被 `toPersistedLibrarySource()` 剥掉，改由主进程 `safeStorage` 加密保存
+   * （`desktop/src/ipc/storageCredentials.ts`，**按 sourceId** 存——用户可能加多台 NAS，
+   * 按 pluginId 会互相覆盖），调用插件前再注入回 `settings` 的浅拷贝。
+   * `settings` 里的值只用于构造请求，绝不进入 Track / URL。
+   */
+  settings?: Record<string, unknown>
+  /**
+   * 服务地址（含协议与端口），如 https://nas.example.com:5006/dav
+   * @deprecated 改用 `settings.baseUrl`；读取请走 `storageFieldValue(cfg, 'baseUrl')`
+   */
   baseUrl?: string
-  /** webdav：用户名（Basic 鉴权；留空表示匿名访问） */
+  /**
+   * 用户名（Basic 鉴权；留空表示匿名访问）
+   * @deprecated 改用 `settings.username`
+   */
   username?: string
   /**
-   * webdav：口令。
-   * ⚠️ 目前与在线歌源的请求头一样由渲染层持久化，后续应迁移到主进程
-   * safeStorage 加密存储；本字段只用于构造请求头，绝不进入 Track / URL。
+   * 口令（兼容字段，**不再落盘**）。
+   *
+   * 老版本把它明文写进 localStorage，迁移时由 v13 从持久化里摘出、转交主进程
+   * `safeStorage`。现在的读法是 `storageFieldValue` 的兜底路径，写入方只可能是
+   * 迁移前的内存对象；新代码请走 `settings.password` 或存储插件字段。
+   * @deprecated 改用 `settings.password`（且该值不持久化，见 `settings` 注释）
    */
   password?: string
-  /** webdav：媒体库根目录（相对 baseUrl），留空表示 baseUrl 本身 */
+  /**
+   * 媒体库根目录（相对 baseUrl），留空表示 baseUrl 本身
+   * @deprecated 改用 `settings.rootPath`
+   */
   rootPath?: string
   enabled: boolean
 }
@@ -176,14 +228,20 @@ export function webdavHeaders(cfg: LibrarySourceConfig, extra?: Record<string, s
     'User-Agent': 'AuroraMusic/1.0 (WebDAV)',
     ...(extra || {}),
   }
-  const auth = buildAuthHeader(cfg.username, cfg.password)
+  const auth = buildAuthHeader(storageStringField(cfg, 'username'), storageStringField(cfg, 'password'))
   if (auth) headers.Authorization = auth
   return headers
 }
 
 /** 远端相对路径 → 完整请求地址（rootPath 与 relPath 逐段编码后拼接） */
 export function resolveRemoteUrl(cfg: LibrarySourceConfig, relPath: string): string {
-  return joinUrl(normalizeBaseUrl(cfg.baseUrl || ''), cfg.rootPath || '', relPath)
+  // 取值统一走 storageFieldValue / storageStringField：settings 优先、旧配置顶层字段兜底
+  // （插件化后配置写在 settings 里；存量配置仍是扁平形态，两者都要能读）
+  return joinUrl(
+    normalizeBaseUrl(storageStringField(cfg, 'baseUrl')),
+    storageStringField(cfg, 'rootPath'),
+    relPath
+  )
 }
 
 // ─── aurora-remote:// 播放地址 ────────────────────────────────
@@ -381,6 +439,15 @@ const PROPFIND_BODY = `<?xml version="1.0" encoding="utf-8"?>
  * 两种形态都被 errors.ts 的归一链接受，`status` 与 `instanceof WebdavError` 语义不变。
  */
 export class WebdavError extends Error {
+  /**
+   * 传输层失败标记（恒为 true）。
+   *
+   * 上层过去靠 `instanceof WebdavError` 判定「可重试的网络失败」——插件化之后
+   * 那等于又一处形态判断（别的协议抛自己的错误类就漏判）。改为读取这个**结构化标记**，
+   * 判据收口在 `plugin/storage/errors.ts` 的 `isStorageTransportError()`。
+   */
+  readonly transport = true
+
   constructor(message: string, readonly status?: number) {
     super(message)
     this.name = 'WebdavError'
@@ -434,7 +501,7 @@ export async function listWebdavDir(
   if (resp.status === 404) {
     throw webdavErrorOf(
       'core.error.webdavPathMissing',
-      { name: cfg.name, path: cfg.rootPath || '/' },
+      { name: cfg.name, path: storageStringField(cfg, 'rootPath') || '/' },
       404
     )
   }
@@ -454,7 +521,7 @@ export async function listWebdavDir(
       String(err)
     )
   }
-  return parseMultiStatus(xml, cfg.baseUrl || '', cfg.rootPath || '', relPath)
+  return parseMultiStatus(xml, storageStringField(cfg, 'baseUrl'), storageStringField(cfg, 'rootPath'), relPath)
 }
 
 /**
@@ -518,6 +585,36 @@ export async function openWebdavRange(
     throw webdavErrorOf('core.error.webdavAuth', { name: cfg.name, status: resp.status }, resp.status)
   }
   return resp
+}
+
+/**
+ * 原始字节流代理：`Range` 头**原样透传**，响应原样返回。
+ *
+ * 与 `openWebdavRange` 的区别只有一个：那个把区间拼成 `bytes=start-end`，
+ * 这个把调用方给的 `Range` 字符串直接塞进请求头。播放链路（`aurora-remote://`）
+ * 需要后者——`<audio>` 的 seek 会发 `bytes=-N`（尾段）这类形态，数值区间表达不了。
+ *
+ * 口令仍只在这里使用；URL 与响应头原样交给调用方（主进程负责挑要透出的头）。
+ */
+export async function openWebdavStream(
+  cfg: LibrarySourceConfig,
+  relPath: string,
+  init: { range?: string } = {},
+  timeoutMs = 30000
+): Promise<Response> {
+  const url = resolveRemoteUrl(cfg, relPath)
+  const extra: Record<string, string> = {}
+  if (init.range) extra.Range = init.range
+  try {
+    return await fetchWithTimeout(url, { method: 'GET', headers: webdavHeaders(cfg, extra) }, timeoutMs)
+  } catch (err) {
+    throw webdavErrorOf(
+      'core.error.webdavRead',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
+  }
 }
 
 export interface WalkOptions {

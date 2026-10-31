@@ -28,6 +28,83 @@ export function defaultAudioCacheLimitMB(): number {
   return platform.platform === 'mobile' ? 512 : 1024
 }
 
+// ─── 存储来源的持久化形态（口令不进 localStorage） ──────────────────
+//
+// 为什么要有这一层：`librarySources` 里曾有 `password`（webdav 明文口径）。
+// zustand persist 写的是 localStorage，等于把 NAS 口令明文落在磁盘上。
+// 现在口令只经主进程 `safeStorage` 加密保存（见 desktop/ipc/storageCredentials），
+// 持久化只写**非敏感**字段，`password` 在写盘前就被剥掉。
+//
+// 为什么列白名单而不是「删掉 copy.password 就完事」：白名单能兜住「将来某个插件
+// 在 settings 里塞了新的敏感键」——只有显式允许的键才会落盘。
+
+/**
+ * 单条来源的持久化投影。
+ *
+ * 保留 `id` / `kind` / `pluginId` / `name` / `settings` / `enabled`；
+ * `kind` 作为只读兼容层一并带出（老代码与老数据仍可能在读它）。
+ * **`settings` 内的 `password` 会被剥除**——它属于口令，归主进程保管。
+ */
+function toPersistedLibrarySource(source: LibrarySourceConfig): LibrarySourceConfig {
+  const settings = source.settings ? { ...source.settings } : undefined
+  if (settings) delete settings.password
+  return {
+    id: source.id,
+    kind: source.kind,
+    name: source.name,
+    ...(typeof source.pluginId === 'string' ? { pluginId: source.pluginId } : {}),
+    ...(settings && Object.keys(settings).length > 0 ? { settings } : {}),
+    enabled: source.enabled,
+  }
+}
+
+/**
+ * 迁移期间暂存的口令（**只在内存**，刻意不落 localStorage）。
+ *
+ * 老版本把 webdav 口令明文存在 localStorage 里；迁移必须把它**摘出去**，
+ * 但摘掉的同时不能凭空吞掉用户的口令（那样用户升级后必须重填，且不知道自己
+ * 为什么连不上）。因此迁移时把口令搬到这里，等 store 建好后再写进主进程的
+ * 加密存储。
+ *
+ * 三条纪律：
+ * 1. 只在内存：不写 localStorage、不进日志、不进任何上报；
+ * 2. **写成功才删**：`flushPendingStorageSecrets` 只在 IPC 返回成功时清条目，
+ *    失败则保留（下次启动重试），避免「静默丢口令」；
+ * 3. 用户重新填写口令时覆盖同名条目（同一 sourceId 只留最新一份）。
+ */
+const pendingStorageSecrets = new Map<string, Record<string, string>>()
+
+/** 迁移时登记待写入的口令 */
+function queuePendingStorageSecret(sourceId: string, secrets: Record<string, string>): void {
+  if (!sourceId || Object.keys(secrets).length === 0) return
+  pendingStorageSecrets.set(sourceId, { ...pendingStorageSecrets.get(sourceId), ...secrets })
+}
+
+/**
+ * 把暂存口令写进主进程的加密存储。
+ *
+ * 时机：store hydrate 完成之后（persist 是异步 hydrate，早于它的调用会漏）。
+ * 平台没有该能力（Web / 移动端 / 旧版 preload）时**保留 pending 不删**：
+ * 这类端本来就没有主进程凭证存储，清了才是真丢。
+ */
+export async function flushPendingStorageSecrets(): Promise<void> {
+  if (pendingStorageSecrets.size === 0) return
+  if (typeof platform.saveStorageCredential !== 'function') return
+  for (const [sourceId, secrets] of [...pendingStorageSecrets]) {
+    try {
+      const result = await platform.saveStorageCredential(sourceId, secrets)
+      if (result?.ok) {
+        pendingStorageSecrets.delete(sourceId)
+      } else {
+        // 未成功（如本机加密不可用）：保留 pending，并让 UI 显示「需重新输入」
+        console.warn('[libraryStore] 存储来源口令暂存失败，保留待重试:', sourceId)
+      }
+    } catch (err) {
+      console.warn('[libraryStore] 存储来源口令写入失败，保留待重试:', sourceId, (err as Error).message)
+    }
+  }
+}
+
 /**
  * 钳制用户手填的缓存容量：非有限值（NaN / Infinity，含输入框空串转出的 NaN）退回
  * 该平台默认值，区间外取最近边界，并统一向下取整为整数 MB。
@@ -329,7 +406,7 @@ export const useLibraryStore = create<LibraryState>()(
           ...(s.playlistUrl ? { playlistUrl: s.playlistUrl } : {}),
           ...(s.endpoints ? { endpoints: s.endpoints } : {}),
         })),
-        librarySources: state.librarySources,
+        librarySources: state.librarySources.map(toPersistedLibrarySource),
         downloadDir: state.downloadDir,
         downloadQuality: state.downloadQuality,
         audioCacheLimitMB: state.audioCacheLimitMB,
@@ -352,8 +429,11 @@ export const useLibraryStore = create<LibraryState>()(
       //     v11 之后 0 不再被迁移改写，作为「不限制」档使用（只影响 version < 11 的历史数据）
       // v12 歌词并入音源：删除独立「歌词源」配置（lyricsSources），
       //     歌词能力改由音源服务的端点自描述提供（endpoints.lyric）
-      // v13 插件化：音源由插件执行，`pluginId` 成为唯一标识；老配置按 kind 补写等价的
-      //     pluginId（lx → lx，其余 → aurora）。kind 保留为只读兼容层
+      // v13 插件化（同一个版本号下两条迁移，都是「插件化」这一批改造）：
+      //   a) 音源：`pluginId` 成为唯一标识，老配置按 kind 补写等价的 pluginId
+      //      （lx → lx，其余 → aurora）；kind 保留为只读兼容层
+      //   b) 存储来源：`pluginId` 取代 kind、顶层扁平字段搬进 `settings`，
+      //      **口令从持久化摘出**转主进程 safeStorage 加密保存
       migrate: (persisted: any, version: number) => {
         if (persisted) {
           if (version < 9) {
@@ -366,6 +446,50 @@ export const useLibraryStore = create<LibraryState>()(
           }
           if (version < 10) {
             persisted.onlineSources = migrateOnlineSources(persisted.onlineSources)
+          }
+          if (version < 13) {
+            // 存储插件化：曲库来源由「存储插件」实现（见 shared/plugin/storage）。
+            // 两件事同时完成——
+            // 1. 形状归一：老配置只有 `kind: 'webdav'` + 顶层扁平字段，
+            //    补写等价的 `pluginId`，并把字段搬进 `settings`（键同名，零转换）。
+            // 2. **把口令摘出持久化**：明文 password 不能继续留在 localStorage。
+            //    摘出去的同时不能凭空吞掉（用户会不知道为什么连不上），
+            //    所以搬进内存的 pendingStorageSecrets，等 store 建好后写进主进程
+            //    的 safeStorage 加密存储（见 flushPendingStorageSecrets）。
+            //
+            // 顶层旧字段（baseUrl / rootPath / username）**保留不删**：
+            // shared 的 storageFieldValue() 以「settings 优先、顶层同名兜底」取值，
+            // 删了兜底就失效，老配置反而读不出来。
+            if (Array.isArray(persisted.librarySources)) {
+              persisted.librarySources = persisted.librarySources.map((s: any) => {
+                if (!s || typeof s !== 'object') return s
+                const next: any = { ...s }
+                // 老配置只有 kind；新版以 pluginId 为准（kind 保留为只读兼容层）
+                if (typeof next.pluginId !== 'string' || !next.pluginId) {
+                  if (typeof next.kind === 'string' && next.kind) next.pluginId = next.kind
+                }
+                // 顶层扁平字段搬进 settings（与插件 fields 的 key 同名）
+                const settings: Record<string, unknown> = { ...(next.settings || {}) }
+                for (const key of ['baseUrl', 'rootPath', 'username'] as const) {
+                  if (typeof next[key] === 'string' && next[key] && settings[key] === undefined) {
+                    settings[key] = next[key]
+                  }
+                }
+                // 口令：从 settings 与顶层两处摘出，转存内存
+                const secret =
+                  (typeof settings.password === 'string' && settings.password) ||
+                  (typeof next.password === 'string' && next.password) ||
+                  ''
+                delete settings.password
+                delete next.password
+                if (secret && typeof next.id === 'string' && next.id) {
+                  queuePendingStorageSecret(next.id, { password: secret })
+                }
+                if (Object.keys(settings).length > 0) next.settings = settings
+                else delete next.settings
+                return next
+              })
+            }
           }
           if (version < 12) {
             // 歌词并入音源：独立「歌词源」配置退场，歌词能力改为读音源服务的端点自描述
@@ -419,6 +543,9 @@ export const useLibraryStore = create<LibraryState>()(
         }
         return persisted
       },
+      // v13 存储插件化：曲库来源由存储插件执行，`pluginId` 取代 `kind` 成为标识；
+      //     老配置的顶层扁平字段搬进 `settings`，**口令从持久化里摘出**改由主进程
+      //     safeStorage 加密保存（见上方 toPersistedLibrarySource / pendingStorageSecrets）
       version: 13,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
@@ -442,8 +569,8 @@ audioEvents.on('playStatsUpdate', ({ trackId, lastPlayedAt, playCount, track }) 
 })
 
 // ─── 媒体库来源配置 → 主进程 ──────────────────────────────────
-// 远端的扫描与播放都在主进程执行（鉴权口令不出主进程），因此配置变更后必须
-// 同步过去，否则 aurora-remote:// 找不到 sourceId 会直接 404。
+// 远端的扫描与播放都在主进程执行（口令经 safeStorage 单独保存，**不在这些配置里**），
+// 因此配置变更后必须同步过去，否则 aurora-remote:// 找不到 sourceId 会直接 404。
 // 注意 persist 是异步 hydrate 的：这里先推一次当前快照，再靠订阅捕获
 // hydrate 完成后的那次 set，两种情况都能覆盖。
 function pushLibrarySources(sources: LibrarySourceConfig[]): void {
@@ -454,6 +581,17 @@ function pushLibrarySources(sources: LibrarySourceConfig[]): void {
 pushLibrarySources(useLibraryStore.getState().librarySources)
 useLibraryStore.subscribe((state, prev) => {
   if (state.librarySources !== prev.librarySources) pushLibrarySources(state.librarySources)
+})
+
+// ─── 迁移期暂存口令 → 主进程加密存储 ──────────────────────────
+// 与上面同一套时序：persist 异步 hydrate 完成时，migrate 里登记到
+// pendingStorageSecrets 的旧明文口令才有归属，必须在这之后 flush。
+// 先尝试一次（覆盖「hydrate 比本模块求值更快」的情况），再靠订阅兜住后半程。
+void flushPendingStorageSecrets()
+useLibraryStore.subscribe(() => {
+  // 任何一次 set 之后都试一次；函数内部在 pending 为空时立即返回，代价可忽略。
+  // 不清空 pending 就不重复写盘——只有 IPC 明确成功才删除条目。
+  void flushPendingStorageSecrets()
 })
 
 // ─── 在线播放缓存容量 → 主进程 ──────────────────────────────────

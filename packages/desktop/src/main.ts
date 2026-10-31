@@ -5,7 +5,7 @@ import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
 import { mainTranslate, onMainLocaleChange } from './i18n'
 import { attachEdgeSnap } from './edgeSnap'
 import { closeDatabase } from './ipc/database'
-import { getLibrarySource } from './ipc/librarySource'
+import { getLibrarySource, proxyRemoteAudio } from './ipc/librarySource'
 import { installMainLogging, attachMainLogFile, closeMainLogging } from './logging'
 import { registerLoggingIpc } from './ipc/logging'
 import {
@@ -17,10 +17,9 @@ import {
 import {
   REMOTE_SCHEME,
   parseRemoteAudioUrl,
-  resolveRemoteUrl,
-  webdavHeaders,
+  storagePluginOf,
+  storageErrorStatus,
   guessAudioMime,
-  WebdavError,
   decodeFileUrlToPath,
 } from '@aurora/shared'
 
@@ -127,10 +126,11 @@ installMainLogging()
 // 注册安全的本地文件协议：替代 file://，避免 webSecurity 阻止渲染进程加载本地封面图
 // 用法：cover-local://localhost/absolute/path/to/file.jpg
 //
-// aurora-remote 是 WebDAV 媒体库的音频代理协议：
+// aurora-remote 是网络存储媒体库的音频代理协议：
 // 用法 aurora-remote://<sourceId>/<URL 编码的相对路径>
-// 远端地址需要 Basic 鉴权，而 <audio src> 无法携带自定义请求头，且把口令拼进
-// URL 会随 Track 落库；因此由主进程持有来源配置并代为请求，顺带支持 Range。
+// 远端地址通常需要鉴权，而 <audio src> 无法携带自定义请求头，且把凭据拼进
+// URL 会随 Track 落库；因此由主进程持有来源配置与口令并代为请求，顺带支持 Range。
+// 具体协议由存储插件决定（开头的 storage/plugin 注册表），本文件不做形态判断。
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'cover-local',
@@ -458,25 +458,29 @@ if (!gotTheLock) {
       }
     })
 
-    // WebDAV 音频代理：按 sourceId 找到来源配置，带鉴权转发到远端，
+    // 网络存储音频代理：按 sourceId 找到来源配置，交给对应的存储插件转发到远端，
     // 并把 Range 请求与 206 响应原样透传（html5 <audio> 的 seek 依赖它）。
-    // 口令只在这里使用，渲染层拿到的永远是 aurora-remote://<sourceId>/...
+    // 口令只在主进程内注入，渲染层拿到的永远是 aurora-remote://<sourceId>/...
+    //
+    // 形态判断为零：这里只查「这条来源由哪个插件执行」，没有 `kind === 'xxx'`。
     protocol.handle(REMOTE_SCHEME, async (request) => {
       const parsed = parseRemoteAudioUrl(request.url)
       if (!parsed) return new Response('', { status: 400 })
 
       const cfg = getLibrarySource(parsed.sourceId)
-      if (!cfg || cfg.kind !== 'webdav' || !cfg.baseUrl) {
-        // 来源配置尚未同步（例如刚启动、渲染层还在 rehydrate）或已被删除
+      const plugin = cfg ? storagePluginOf(cfg) : undefined
+      if (!cfg || !plugin) {
+        // 来源配置尚未同步（例如刚启动、渲染层还在 rehydrate）、已被删除，
+        // 或该来源声明的插件未注册 —— 都是「没有可用实现」，对外统一 404
         return new Response('', { status: 404 })
       }
 
-      const headers = webdavHeaders(cfg)
-      const range = request.headers.get('range')
-      if (range) headers.Range = range
+      const range = request.headers.get('range') || undefined
 
       try {
-        const upstream = await fetch(resolveRemoteUrl(cfg, parsed.path), { headers })
+        // 「取 upstream」这一步整体交给 librarySource：插件选择、口令注入、
+        // openStream 优先 / openRange 回落都在那一处，本文件不出现协议细节。
+        const upstream = await proxyRemoteAudio(cfg, plugin, parsed.path, range)
         const out = new Headers()
         const passthrough: Array<[string, string | null]> = [
           ['Content-Type', upstream.headers.get('content-type')],
@@ -496,7 +500,8 @@ if (!gotTheLock) {
 
         return new Response(upstream.body, { status: upstream.status, headers: out })
       } catch (err) {
-        const status = err instanceof WebdavError && err.status ? err.status : 502
+        // 结构判定，不依赖具体错误类（插件化后 `instanceof WebdavError` 等于又一处形态判断）
+        const status = storageErrorStatus(err) ?? 502
         console.error('[aurora-remote] 代理请求失败:', parsed.path, (err as Error).message)
         return new Response('', { status })
       }

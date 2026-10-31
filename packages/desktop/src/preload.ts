@@ -6,7 +6,11 @@ import type {
   LyricsSearchResult,
   LibrarySourceConfig,
   LoggingRendererApi,
+  StoragePluginMeta,
 } from '@aurora/shared'
+// 纯类型位置：`import type` 在编译后完全擦除，不产生 require。
+// 沙箱 preload 不能 require 相对路径模块，但类型导入是安全的（同下方 LOG_CHANNELS 的用法）。
+import type { StorageCredentialState } from './ipc/storageCredentials'
 
 /**
  * 日志通道名的本地副本 —— 只在这里存在，原因是**沙箱 preload 不能 require 共享包**。
@@ -110,6 +114,20 @@ const electronAPI = {
     ipcRenderer.invoke('library-source:scan', sourceId),
   removeLibrarySource: (sourceId: string): Promise<any[]> =>
     ipcRenderer.invoke('library-source:remove', sourceId),
+  // ─── 存储来源口令（主进程 safeStorage 加密落盘，渲染层永不拿原文）───
+  // 只回「有没有」与「本机能否加密」这类状态；口令文本框的值单向往主进程送。
+  saveStorageCredential: (
+    sourceId: string,
+    payload: Record<string, string>
+  ): Promise<{ ok: boolean } & StorageCredentialState> =>
+    ipcRenderer.invoke('library-source:credential:save', sourceId, payload),
+  storageCredentialState: (sourceId: string): Promise<StorageCredentialState> =>
+    ipcRenderer.invoke('library-source:credential:state', sourceId),
+  clearStorageCredential: (sourceId: string): Promise<{ ok: boolean } & StorageCredentialState> =>
+    ipcRenderer.invoke('library-source:credential:clear', sourceId),
+  // 可添加的存储协议（纯数据 meta + 声明式 fields），供设置页通用渲染表单
+  listStoragePlugins: (): Promise<StoragePluginMeta[]> =>
+    ipcRenderer.invoke('storage-plugin:list'),
   // 从曲库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
   removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),

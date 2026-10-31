@@ -76,7 +76,13 @@ const desktop = {
       invalid: '来源无效',
       notFound: '来源配置不存在',
       unknown: '未知的媒体库来源：{id}',
-      kindUnsupported: '暂不支持的媒体库来源类型：{kind}',
+      /**
+       * 参数从 `{kind}` 改为 `{pluginId}`：来源由插件实现后，「类型」就是插件 id，
+       * 文案里不该再出现协议名（`kind` 已降级为只读兼容层）。
+       */
+      kindUnsupported: '暂不支持的媒体库来源插件：{pluginId}',
+      /** 插件存在但缺少某项能力（如未实现 probe）：能力用「方法是否存在」表达 */
+      capabilityMissing: '该存储插件不支持此操作：{capability}',
       remoteReadFailed: '读取远端文件失败：HTTP {status}',
       coverHttpStatus: '封面下载失败：HTTP {status}',
       coverTimeout: '封面下载超时（{ms}ms）',

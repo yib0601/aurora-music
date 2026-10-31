@@ -20,6 +20,8 @@ import type {
   MusicHallOptions,
   MusicHallSource,
   LoggingRendererApi,
+  StoragePluginMeta,
+  StorageCredentialState,
 } from '@/types'
 import {
   createMobilePlatform as createMobilePlatformImpl,
@@ -162,6 +164,24 @@ export interface PlatformExtension {
   ) => Promise<{ ok: boolean; message: string; sample?: string[] }>
   /** 移除来源及其全部曲目，返回移除后的全库 */
   removeLibrarySource?: (sourceId: string) => Promise<Track[]>
+
+  // ─── 存储协议与口令（能力缺失 = 该端不支持，调用方降级） ──────────
+  // 口令的读写全部留在主进程（safeStorage 加密落盘），渲染层只拿「有没有」这类状态。
+  // 与 syncLibrarySources 的分工：那个传的是**不含口令**的来源配置，
+  // 口令单向往 saveStorageCredential 送，且永不回读。
+  /** 可添加的存储协议（纯数据 meta + 声明式 fields）；缺失表示该端不支持插件化表单 */
+  listStoragePlugins?: () => Promise<StoragePluginMeta[]>
+  /** 保存某个来源的口令（按 sourceId 存，同一插件的多台设备互不覆盖） */
+  saveStorageCredential?: (
+    sourceId: string,
+    payload: Record<string, string>
+  ) => Promise<{ ok: boolean } & StorageCredentialState>
+  /** 口令状态（**不含原文**）：是否已保存、本机能否加密 */
+  storageCredentialState?: (sourceId: string) => Promise<StorageCredentialState>
+  /** 清除口令 */
+  clearStorageCredential?: (
+    sourceId: string
+  ) => Promise<{ ok: boolean } & StorageCredentialState>
 
   // ─── 媒体缓存：音频 / 封面 / 歌词（桌面端主进程、移动端 Filesystem）──
   // 三类内容共用一份容量配置，内部按比例分配。命中返回本地地址（桌面端
@@ -600,6 +620,31 @@ export function createDesktopPlatform(): Platform {
     async removeLibrarySource(sourceId: string) {
       if (!api?.removeLibrarySource) return []
       return api.removeLibrarySource(sourceId)
+    },
+
+    // ─── 存储协议与口令：转发到主进程 ───
+    // 能力缺失（旧版 preload / 非桌面端）时返回空列表与「不可用」状态，
+    // 设置页据此隐藏插件选择与口令入口，而不是让用户点了再失败。
+    async listStoragePlugins(): Promise<StoragePluginMeta[]> {
+      if (!api?.listStoragePlugins) return []
+      return api.listStoragePlugins()
+    },
+    async saveStorageCredential(sourceId: string, payload: Record<string, string>) {
+      if (!api?.saveStorageCredential) {
+        // 没有主进程凭证存储 = 本端无法安全保存口令，如实回报而不是假装成功
+        return { ok: false, saved: false, encryptionAvailable: false }
+      }
+      return api.saveStorageCredential(sourceId, payload)
+    },
+    async storageCredentialState(sourceId: string): Promise<StorageCredentialState> {
+      if (!api?.storageCredentialState) return { saved: false, encryptionAvailable: false }
+      return api.storageCredentialState(sourceId)
+    },
+    async clearStorageCredential(sourceId: string) {
+      if (!api?.clearStorageCredential) {
+        return { ok: false, saved: false, encryptionAvailable: false }
+      }
+      return api.clearStorageCredential(sourceId)
     },
 
     // ─── 媒体缓存：转发到主进程 ───

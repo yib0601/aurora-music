@@ -8,6 +8,11 @@ export type {
   LyricsSearchResult,
   LibrarySourceConfig,
   RemoteEntry,
+  // 存储插件：可添加的协议元信息（纯数据，可经 IPC 传给渲染层）+ 声明式字段
+  StoragePluginMeta,
+  StorageFieldDef,
+  StorageFieldKind,
+  StoragePluginCapability,
 } from '@aurora/shared'
 
 export interface Track {

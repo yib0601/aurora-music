@@ -39,6 +39,15 @@ const nav = {
   source: {
     local: '本地',
     online: '在线',
+    /**
+     * 协议无关的「网络存储」泛称：曲目来自某个存储来源、但该来源已从配置里删除
+     * （或配置尚未 hydrate）时用它兜底展示。
+     *
+     * 与 `webdav` 的区别：`webdav` 是**旧键**，供存量引用继续取值；
+     * 新代码一律用 `storage`——曲库来源已插件化，「网络存储」不该只指 WebDAV 一种协议。
+     */
+    storage: '网络存储',
+    /** @deprecated 改用 `source.storage`（协议无关）。保留仅为存量引用，不新增使用点 */
     webdav: '网络存储',
   },
 }

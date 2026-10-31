@@ -150,6 +150,19 @@ const sources = {
     scan: '扫描入库',
     scanComplete: '扫描完成，曲库共 {count} 首',
     scanIncomplete: '扫描完成，但有 {count} 个目录无法访问，已保留原记录',
+    /**
+     * 声明式表单的通用文案（字段标签/占位/说明由插件的 `fields` 声明提供，
+     * 这里只放「表单骨架」自己的字，协议特有的说明一律归各字段的 hint）。
+     */
+    chooseProvider: '存储协议',
+    /** 口令状态的三种形态：已保存 / 未保存 / 本机无法加密保存 */
+    credentialSaved: '口令已安全保存',
+    credentialMissing: '未保存口令',
+    credentialUnavailable: '本机无法安全保存口令，每次启动都需要重新输入',
+    credentialHint: '口令经系统密钥加密后保存在本机，不会写入配置文件，也不会出现在播放地址里',
+    clearCredential: '清除口令',
+    /** 必填字段缺失时的提交校验提示 */
+    fieldRequired: '{field}不能为空',
   },
   /**
    * 结构化错误的显示端文案（键路径即错误码）。

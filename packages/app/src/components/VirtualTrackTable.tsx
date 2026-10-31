@@ -254,7 +254,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
   // （库内数组不重建就不触发重渲染），逐行订阅的代价可以忽略
   const librarySources = useLibraryStore((s) => s.librarySources)
   const sourceName = track.sourceId
-    ? librarySources.find((s) => s.id === track.sourceId)?.name || t('nav.source.webdav')
+    ? librarySources.find((s) => s.id === track.sourceId)?.name || t('nav.source.storage')
     : undefined
 
   return (

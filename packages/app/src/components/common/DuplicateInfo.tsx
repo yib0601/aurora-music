@@ -27,7 +27,7 @@ function useSourceLabel() {
   return (track: Track) =>
     track.sourceId
       ? translate('library.source.quoted', {
-          name: librarySources.find((s) => s.id === track.sourceId)?.name || translate('nav.source.webdav'),
+          name: librarySources.find((s) => s.id === track.sourceId)?.name || translate('nav.source.storage'),
         })
       : translate('library.source.localFile')
 }

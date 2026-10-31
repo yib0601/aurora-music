@@ -6,7 +6,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { PageLayout } from '@/components/PageLayout'
 import { PageTitle } from '@/components/PageHeading'
 import { useLibraryStore, defaultAudioCacheLimitMB } from '@/stores/libraryStore'
-import type { LibrarySourceConfig } from '@/types'
+import type {
+  LibrarySourceConfig,
+  StoragePluginMeta,
+  StorageFieldDef,
+  StorageCredentialState,
+} from '@/types'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform, DEFAULT_MOBILE_DOWNLOAD_DIR } from '@/services/platform'
@@ -1202,7 +1207,13 @@ function SourceAddDialog({
 /** 网络存储来源的探测/扫描状态（每个来源一条，互不干扰） */
 type LibrarySourceStatus = { loading?: boolean; ok?: boolean; message?: string }
 
-/** 添加网络存储（WebDAV）来源弹窗 */
+/**
+ * 添加网络存储来源弹窗：按插件声明式 `fields` 通用渲染，本函数不含任何协议专有代码。
+ *
+ * 两条与改造前保持一致的体验：
+ * 1. 只有一个插件时**跳过协议选择器**，打开即填表单；
+ * 2. 名称留空时用插件展示名兜底。
+ */
 function LibrarySourceAddDialog({
   open,
   onOpenChange,
@@ -1210,38 +1221,91 @@ function LibrarySourceAddDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (source: Omit<LibrarySourceConfig, 'id' | 'enabled'>) => void
+  /** secrets 只喂凭证 IPC，**不进 settings 持久化** */
+  onSave: (
+    source: Omit<LibrarySourceConfig, 'id' | 'enabled'>,
+    secrets: Record<string, string>
+  ) => void
 }) {
+  const [plugins, setPlugins] = useState<StoragePluginMeta[]>([])
+  const [pluginId, setPluginId] = useState('')
   const [name, setName] = useState('')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [rootPath, setRootPath] = useState('')
+  /** 字段值：键与插件 `fields[].key` 一致（口令也先放这里，提交时再分流） */
+  const [values, setValues] = useState<Record<string, string>>({})
   const t = useT()
+
+  // 插件清单从主进程取：能力缺失（Web / 移动端 / 旧版 preload）时返回空，
+  // 此时「添加」入口本就不可达（分区由 supportsLibrarySources 隐藏），静默即可
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void (async () => {
+      const list = (await platform.listStoragePlugins?.()) || []
+      if (cancelled) return
+      setPlugins(list)
+      // 单插件直接选中：本轮（仅 webdav）的体验必须与插件化之前一致，
+      // 不能让用户为一个没有可选项的「选择」多点一步
+      setPluginId((prev) => prev || list[0]?.id || '')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   useEffect(() => {
     if (open) {
       setName('')
-      setBaseUrl('')
-      setUsername('')
-      setPassword('')
-      setRootPath('')
+      setValues({})
     }
   }, [open])
 
-  const urlOk = /^https?:\/\/.+/i.test(baseUrl.trim())
-  const canSave = urlOk
+  const selected = plugins.find((p) => p.id === pluginId)
+  const fields = selected?.fields || []
+
+  /** 必填与格式校验统一在此：UI 不写任何协议专有规则 */
+  const fieldError = (field: StorageFieldDef, raw: string): string | null => {
+    const value = raw.trim()
+    if (field.required && !value) {
+      return t('sources.webdav.fieldRequired', { field: t(field.labelKey) })
+    }
+    // 地址类字段只做「看起来是绝对地址」这一层，协议细节交给插件探测
+    if (field.kind === 'url' && value && !/^https?:\/\/.+/i.test(value)) {
+      return t('sources.webdav.fieldRequired', { field: t(field.labelKey) })
+    }
+    return null
+  }
+
+  const canSave = Boolean(selected) && fields.every((f) => !fieldError(f, values[f.key] ?? ''))
 
   const handleSave = () => {
-    if (!canSave) return
-    onSave({
-      kind: 'webdav',
-      name: name.trim() || t('sources.webdav.defaultName'),
-      baseUrl: baseUrl.trim().replace(/\/+$/, ''),
-      username: username.trim() || undefined,
-      password: password || undefined,
-      rootPath: rootPath.trim().replace(/^\/+|\/+$/g, ''),
-    })
+    if (!canSave || !selected) return
+    // 源头分流：口令类字段只进 secrets，其余进 settings。
+    // partialize 的白名单是第二道闸，但从这里就该分开——敏感值不该先进一个
+    // 「将要被持久化」的对象再被剥掉。
+    const settings: Record<string, unknown> = {}
+    const secrets: Record<string, string> = {}
+    for (const field of fields) {
+      const raw = (values[field.key] ?? '').trim()
+      if (!raw) continue
+      if (field.kind === 'password') {
+        secrets[field.key] = raw
+      } else if (field.kind === 'url') {
+        settings[field.key] = raw.replace(/\/+$/, '')
+      } else if (field.kind === 'path') {
+        settings[field.key] = raw.replace(/^\/+|\/+$/g, '')
+      } else {
+        settings[field.key] = raw
+      }
+    }
+    onSave(
+      {
+        kind: selected.id,
+        pluginId: selected.id,
+        name: name.trim() || t(selected.displayNameKey),
+        settings,
+      },
+      secrets
+    )
     onOpenChange(false)
   }
 
@@ -1252,14 +1316,41 @@ function LibrarySourceAddDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-white text-tagline">{t('sources.webdav.title')}</DialogTitle>
+          <DialogTitle className="text-white text-tagline">
+            {selected ? t(selected.displayNameKey) : t('sources.webdav.title')}
+          </DialogTitle>
           <DialogDescription className="font-text text-caption text-white/60">
-            {t('sources.webdav.desc')}
+            {selected?.descriptionKey ? t(selected.descriptionKey) : t('sources.webdav.desc')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {/* 协议选择器：只有插件数量 > 1 时才渲染 */}
+          {plugins.length > 1 && (
+            <div>
+              <p className="font-text text-caption text-white/60 mb-1.5">
+                {t('sources.webdav.chooseProvider')}
+              </p>
+              <select
+                value={pluginId}
+                onChange={(e) => {
+                  setPluginId(e.target.value)
+                  // 换协议等于换字段集合：旧值不再适用，一律清空
+                  setValues({})
+                }}
+                className={inputCls}
+              >
+                {plugins.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {t(p.displayNameKey)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.nameLabel')}</p>
+            <p className="font-text text-caption text-white/60 mb-1.5">
+              {t('sources.webdav.nameLabel')}
+            </p>
             <input
               type="text"
               value={name}
@@ -1268,50 +1359,34 @@ function LibrarySourceAddDialog({
               className={inputCls}
             />
           </div>
-          <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.baseUrlLabel')}</p>
-            <input
-              type="text"
-              value={baseUrl}
-              placeholder={t('sources.webdav.baseUrlPlaceholder')}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              className={`${inputCls} ${baseUrl.trim() && !urlOk ? 'is-invalid' : ''}`}
-            />
-            <p className="font-text text-caption text-white/40 mt-1">{t('sources.webdav.baseUrlHint')}</p>
-          </div>
-          <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.rootLabel')}</p>
-            <input
-              type="text"
-              value={rootPath}
-              placeholder={t('sources.webdav.rootPlaceholder')}
-              onChange={(e) => setRootPath(e.target.value)}
-              className={inputCls}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.usernameLabel')}</p>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className={inputCls}
-                autoComplete="off"
-              />
-            </div>
-            <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.passwordLabel')}</p>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={inputCls}
-                autoComplete="new-password"
-              />
-            </div>
-          </div>
-          <p className="font-text text-caption text-white/40">{t('sources.webdav.passwordHint')}</p>
+          {fields.map((field) => {
+            const raw = values[field.key] ?? ''
+            const error = fieldError(field, raw)
+            return (
+              <div key={field.key}>
+                <p className="font-text text-caption text-white/60 mb-1.5">
+                  {t(field.labelKey)}
+                </p>
+                <input
+                  type={field.kind === 'password' ? 'password' : 'text'}
+                  value={raw}
+                  placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                  className={`${inputCls} ${error ? 'is-invalid' : ''}`}
+                  autoComplete={field.kind === 'password' ? 'new-password' : 'off'}
+                />
+                {field.hintKey && (
+                  <p className="font-text text-caption text-white/40 mt-1">{t(field.hintKey)}</p>
+                )}
+              </div>
+            )
+          })}
+          {/* 口令去向的说明：与协议无关，由表单统一给出（不是某个字段的 hint） */}
+          {fields.some((f) => f.kind === 'password') && (
+            <p className="font-text text-caption text-white/40">
+              {t('sources.webdav.credentialHint')}
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" className="h-9 px-4 text-white/60 hover:text-white/90" onClick={() => onOpenChange(false)}>
@@ -1331,9 +1406,15 @@ function LibrarySourceAddDialog({
   )
 }
 
-/** 网络存储来源卡片：测试连接 / 扫描入库 / 编辑 / 移除 */
+/**
+ * 网络存储来源卡片：测试连接 / 扫描入库 / 编辑 / 移除。
+ *
+ * 与添加弹窗同一套声明式渲染：字段来自插件的 `fields`，本函数不知道
+ * 任何协议细节。口令**不回读**——只知道「有没有存」，编辑时留空表示不改。
+ */
 function LibrarySourceCard({
   source,
+  plugin,
   status,
   onUpdate,
   onProbe,
@@ -1341,6 +1422,8 @@ function LibrarySourceCard({
   onRemove,
 }: {
   source: LibrarySourceConfig
+  /** 该来源对应的插件声明（决定渲染哪些字段）；查不到时只显示名称，不假装能编辑 */
+  plugin?: StoragePluginMeta
   status: LibrarySourceStatus
   onUpdate: (updates: Partial<LibrarySourceConfig>) => void
   onProbe: () => void
@@ -1349,38 +1432,109 @@ function LibrarySourceCard({
 }) {
   const [editing, setEditing] = useState(false)
   const [nameDraft, setNameDraft] = useState(source.name)
-  const [baseUrlDraft, setBaseUrlDraft] = useState(source.baseUrl || '')
-  const [usernameDraft, setUsernameDraft] = useState(source.username || '')
-  const [passwordDraft, setPasswordDraft] = useState(source.password || '')
-  const [rootPathDraft, setRootPathDraft] = useState(source.rootPath || '')
+  /** 非敏感字段草稿（键与 fields[].key 一致） */
+  const [values, setValues] = useState<Record<string, string>>({})
+  /** 口令草稿：只写不读，留空 = 保持原口令不变 */
+  const [secretDraft, setSecretDraft] = useState<Record<string, string>>({})
+  const [credential, setCredential] = useState<StorageCredentialState>({
+    saved: false,
+    encryptionAvailable: true,
+  })
   const t = useT()
+
+  const fields = plugin?.fields || []
+
+  /** 从来源配置读出字段当前值（settings 优先，老配置顶层兜底——与 shared 同一口径） */
+  const readField = (key: string): string => {
+    const fromSettings = source.settings?.[key]
+    if (typeof fromSettings === 'string') return fromSettings
+    const flat = (source as unknown as Record<string, unknown>)[key]
+    return typeof flat === 'string' ? flat : ''
+  }
+
+  const refreshCredential = () => {
+    void (async () => {
+      const state = await platform.storageCredentialState?.(source.id)
+      if (state) setCredential(state)
+    })()
+  }
+
+  useEffect(() => {
+    refreshCredential()
+    // 来源 id 变化时重新查（删除后重加同一 id 的情况）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source.id])
 
   const startEditing = () => {
     setNameDraft(source.name)
-    setBaseUrlDraft(source.baseUrl || '')
-    setUsernameDraft(source.username || '')
-    setPasswordDraft(source.password || '')
-    setRootPathDraft(source.rootPath || '')
+    const next: Record<string, string> = {}
+    for (const field of fields) {
+      if (field.kind !== 'password') next[field.key] = readField(field.key)
+    }
+    setValues(next)
+    // 口令永远是空：渲染层拿不到原文，留空表示不改
+    setSecretDraft({})
+    refreshCredential()
     setEditing(true)
   }
 
-  const urlOk = /^https?:\/\/.+/i.test(baseUrlDraft.trim())
-  const canSave = urlOk && nameDraft.trim().length > 0
+  const canSave = nameDraft.trim().length > 0
 
   const handleSave = () => {
     if (!canSave) return
-    onUpdate({
-      name: nameDraft.trim(),
-      baseUrl: baseUrlDraft.trim().replace(/\/+$/, ''),
-      username: usernameDraft.trim() || undefined,
-      password: passwordDraft || undefined,
-      rootPath: rootPathDraft.trim().replace(/^\/+|\/+$/g, ''),
-    })
+    // 与添加弹窗同一分工：敏感字段单独走凭证 IPC，不进 settings
+    const settings: Record<string, unknown> = {}
+    for (const field of fields) {
+      if (field.kind === 'password') continue
+      const raw = (values[field.key] ?? '').trim()
+      if (field.kind === 'url') settings[field.key] = raw.replace(/\/+$/, '')
+      else if (field.kind === 'path') settings[field.key] = raw.replace(/^\/+|\/+$/g, '')
+      else settings[field.key] = raw
+    }
+    onUpdate({ name: nameDraft.trim(), settings })
+
+    // 只有用户真的填了口令才写：留空 = 不改（避免「编辑名称」把口令清掉）
+    const secrets = Object.fromEntries(
+      Object.entries(secretDraft).filter(([, v]) => v.trim().length > 0)
+    )
+    if (Object.keys(secrets).length > 0) {
+      void (async () => {
+        const result = await platform.saveStorageCredential?.(source.id, secrets)
+        setCredential((prev) => ({
+          saved: result?.saved ?? prev.saved,
+          encryptionAvailable: result?.encryptionAvailable ?? prev.encryptionAvailable,
+        }))
+      })()
+    }
     setEditing(false)
+  }
+
+  const handleClearCredential = () => {
+    void (async () => {
+      const result = await platform.clearStorageCredential?.(source.id)
+      setCredential((prev) => ({
+        saved: result?.saved ?? false,
+        encryptionAvailable: result?.encryptionAvailable ?? prev.encryptionAvailable,
+      }))
+    })()
   }
 
   const inputCls =
     'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
+
+  /** 卡片副标题：插件展示名 + 各字段摘要（不含口令），用户一眼能分辨是哪台设备 */
+  const subtitle = plugin
+    ? [t(plugin.displayNameKey), ...fields
+        .filter((f) => f.kind !== 'password')
+        .map((f) => readField(f.key))
+        .filter(Boolean)].join(' · ')
+    : source.name
+
+  const credentialLabel = !credential.encryptionAvailable
+    ? t('sources.webdav.credentialUnavailable')
+    : credential.saved
+      ? t('sources.webdav.credentialSaved')
+      : t('sources.webdav.credentialMissing')
 
   return (
     <div className="inset-row px-3.5 py-3">
@@ -1388,10 +1542,7 @@ function LibrarySourceCard({
         <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
         <div className="min-w-0 flex-1">
           <p className="font-text text-caption-strong text-white/85 truncate">{source.name}</p>
-          <p className="font-text text-caption text-white/50 truncate">
-            WebDAV · {source.baseUrl}
-            {source.rootPath ? `/${source.rootPath}` : ''}
-          </p>
+          <p className="font-text text-caption text-white/50 truncate">{subtitle}</p>
         </div>
         <button
           type="button"
@@ -1440,38 +1591,54 @@ function LibrarySourceCard({
             onChange={(e) => setNameDraft(e.target.value)}
             className={inputCls}
           />
-          <input
-            type="text"
-            value={baseUrlDraft}
-            placeholder={t('sources.webdav.baseUrlPlaceholderDraft')}
-            onChange={(e) => setBaseUrlDraft(e.target.value)}
-            className={`${inputCls} ${baseUrlDraft.trim() && !urlOk ? 'is-invalid' : ''}`}
-          />
-          <input
-            type="text"
-            value={rootPathDraft}
-            placeholder={t('sources.webdav.rootPlaceholderDraft')}
-            onChange={(e) => setRootPathDraft(e.target.value)}
-            className={inputCls}
-          />
-          <div className="grid grid-cols-2 gap-2.5">
-            <input
-              type="text"
-              value={usernameDraft}
-              placeholder={t('sources.webdav.usernameLabel')}
-              onChange={(e) => setUsernameDraft(e.target.value)}
-              className={inputCls}
-              autoComplete="off"
-            />
-            <input
-              type="password"
-              value={passwordDraft}
-              placeholder={t('sources.webdav.passwordLabel')}
-              onChange={(e) => setPasswordDraft(e.target.value)}
-              className={inputCls}
-              autoComplete="new-password"
-            />
-          </div>
+          {fields.map((field) =>
+            field.kind === 'password' ? (
+              <div key={field.key}>
+                <input
+                  type="password"
+                  value={secretDraft[field.key] ?? ''}
+                  placeholder={t(field.labelKey)}
+                  onChange={(e) =>
+                    setSecretDraft((prev) => ({ ...prev, [field.key]: e.target.value }))
+                  }
+                  className={inputCls}
+                  autoComplete="new-password"
+                />
+                <div className="flex items-center gap-2 mt-1">
+                  <p
+                    className={`font-text text-caption ${
+                      credential.encryptionAvailable ? 'text-white/40' : 'text-coral/70'
+                    }`}
+                  >
+                    {credentialLabel}
+                  </p>
+                  {credential.saved && (
+                    <button
+                      type="button"
+                      onClick={handleClearCredential}
+                      className="font-text text-caption text-white/40 hover:text-coral/80 underline underline-offset-2"
+                    >
+                      {t('sources.webdav.clearCredential')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <input
+                key={field.key}
+                type="text"
+                value={values[field.key] ?? ''}
+                placeholder={
+                  field.placeholderKey
+                    ? t(field.placeholderKey)
+                    : t(field.labelKey)
+                }
+                onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                className={inputCls}
+                autoComplete="off"
+              />
+            )
+          )}
           <div className="flex items-center justify-end gap-2">
             <Button variant="ghost" size="sm" className="h-8 px-3 text-white/60 hover:text-white/90" onClick={() => setEditing(false)}>
               {t('common.action.cancel')}
@@ -1663,8 +1830,23 @@ export function SettingsPage() {
   const removeLibrarySource = useLibraryStore((s) => s.removeLibrarySource)
   const [libraryStatus, setLibraryStatus] = useState<Record<string, LibrarySourceStatus>>({})
   const [addLibraryOpen, setAddLibraryOpen] = useState(false)
-  // 仅桌面端实现了主进程侧的 WebDAV 代理与扫描；Web/移动端不展示该分区
+  /** 可用的存储协议（插件的纯数据 meta）：卡片据它渲染字段与副标题 */
+  const [storagePlugins, setStoragePlugins] = useState<StoragePluginMeta[]>([])
+  // 仅桌面端实现了主进程侧的存储插件代理与扫描；Web/移动端不展示该分区
   const supportsLibrarySources = typeof platform.scanLibrarySource === 'function'
+
+  // 分区可见时拉一次插件清单（能力缺失时返回空数组，卡片退化为只显示名称）
+  useEffect(() => {
+    if (!supportsLibrarySources) return
+    let cancelled = false
+    void (async () => {
+      const list = (await platform.listStoragePlugins?.()) || []
+      if (!cancelled) setStoragePlugins(list)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [supportsLibrarySources])
 
   const { devices, selectedDeviceId, setSelectedDeviceId } = useAudioDevices()
 
@@ -1899,6 +2081,7 @@ export function SettingsPage() {
 
   /** 移除网络存储来源：连同该来源的曲目一起从曲库删除（远端文件不受影响） */
   const handleRemoveLibrarySource = async (source: LibrarySourceConfig) => {
+    // 前缀形状由 shared 的 storagePathPrefix 唯一决定，本层不复写字面量
     const prefix = storagePathPrefix(source.id)
     const affected = useLibraryStore.getState().tracks.filter((t) => t.path.startsWith(prefix)).length
     const ok = window.confirm(
@@ -2090,6 +2273,9 @@ export function SettingsPage() {
                           <LibrarySourceCard
                             key={source.id}
                             source={source}
+                            plugin={storagePlugins.find(
+                              (p) => p.id === (source.pluginId || source.kind)
+                            )}
                             status={libraryStatus[source.id] || {}}
                             onUpdate={(updates) => updateLibrarySource(source.id, updates)}
                             onProbe={() => handleProbeLibrarySource(source)}
@@ -2519,7 +2705,28 @@ export function SettingsPage() {
       <LibrarySourceAddDialog
         open={addLibraryOpen}
         onOpenChange={setAddLibraryOpen}
-        onSave={(source) => addLibrarySource({ ...source, enabled: true })}
+        onSave={(source, secrets) => {
+          const id = addLibrarySource({ ...source, enabled: true })
+          // 口令不进 store / localStorage：直接送主进程加密落盘。
+          // 写入失败（如本机无 keyring）不静默——卡片会显示「需重新输入」。
+          if (Object.keys(secrets).length > 0) {
+            void (async () => {
+              const result = await platform.saveStorageCredential?.(id, secrets)
+              if (!result?.ok) {
+                setLibraryStatus((s) => ({
+                  ...s,
+                  [id]: {
+                    loading: false,
+                    ok: false,
+                    message: result?.encryptionAvailable
+                      ? t('sources.webdav.credentialMissing')
+                      : t('sources.webdav.credentialUnavailable'),
+                  },
+                }))
+              }
+            })()
+          }
+        }}
       />
     </PageLayout>
   )

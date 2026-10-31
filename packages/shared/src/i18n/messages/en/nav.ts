@@ -23,6 +23,8 @@ const en: LocalizedOf<typeof nav> = {
   source: {
     local: 'Local',
     online: 'Online',
+    storage: 'Network storage',
+    /** @deprecated Use `source.storage` instead */
     webdav: 'Network',
   },
 }
