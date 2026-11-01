@@ -137,6 +137,27 @@ larger runner，不要混用）。
 用户拿到的是错架构的包。渲染层的更新逻辑（`packages/app/src/services/update-asset.ts`）
 也依赖 `-arm64` / `-x64` 后缀挑本机那份。
 
+### 5.2.1 必须排除 `cpu-features`（`ssh2` 的可选原生依赖）
+
+`package.json` 的 `pnpm.ignoredOptionalDependencies` 里排除了 `cpu-features`。
+这是**必需**配置，不是优化：
+
+- 它是 `ssh2` 的 optional dependency，只为在 x86 上挑 AES 硬件加速路径。`ssh2`
+  把 `require('cpu-features')` 包在 `try/catch` 里，装不上就回落到纯 JS/WASM
+  实现（`bindingAvailable: false`），协议与算法集不受影响
+- 但它给 `electron-builder` 的 `npmRebuild` 添了一个 node-gyp 目标：macOS runner 上
+  报 `gyp: Call to 'node -e "require('nan')"' returned exit status 1`。pnpm 的符号
+  链接布局下 gyp 从 `cpu-features/binding.gyp` 找不到 `nan`，于是**整个 macOS 打包
+  失败，`create-release` 被 skip，整个 Release 不产出任何产物**
+
+排除后必须同步 `pnpm-lock.yaml`：改这个字段会让 `--frozen-lockfile` 报
+`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`，需用 `pnpm install --no-frozen-lockfile` 更新
+一次（diff 只删掉 `cpu-features` 与它的 `buildcheck` 两条，依赖树其余部分不变）。
+
+验证方式：`ssh2` 能 `new Client()` 并完成握手。实测连本机 sshd 会在
+`client-authentication` 阶段失败（凭据是假的）——握手指的是协议协商与密钥交换
+已经跑完，这正是本项要保证的。
+
 ### 5.3 图标用单独的 `icon-mac.png`（1024x1024、8-bit）
 
 `icon.png` 是 512x512 的 **16-bit** PNG，转 icns 会被 electron-builder 的 icon-tool

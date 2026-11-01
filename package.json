@@ -32,6 +32,11 @@
     "@electron/rebuild": "^4.2.0",
     "typescript": "^5.6.3"
   },
+  "pnpm": {
+    "ignoredOptionalDependencies": [
+      "cpu-features"
+    ]
+  },
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=20.0.0"
