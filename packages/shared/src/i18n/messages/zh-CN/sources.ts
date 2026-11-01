@@ -21,7 +21,6 @@ const sources = {
   /** 能力标签：一条源能做什么，卡片上一眼可见 */
   capability: {
     search: '搜索',
-    lyrics: '歌词',
     playlist: '歌单',
     lxScript: '洛雪脚本',
     // 插件能力的通用徽章（插件自己声明 capabilities，这里只给展示名）
@@ -43,8 +42,6 @@ const sources = {
     expired: '登录已失效，请重新登录',
     loggedIn: '已登录',
     loggedInAs: '已登录：{name}',
-    title: '插件登录',
-    desc: '登录后可使用该插件的账号能力（如拉取我的歌单）',
     inputLabel: '凭证',
     inputHint: '从官方客户端复制 Cookie 或凭证值粘贴到这里',
     submit: '保存登录',
@@ -74,28 +71,25 @@ const sources = {
     titleLx: '添加洛雪音源',
     desc: '服务地址自动生成接口，接口模板原样使用',
     descLx: '粘贴脚本链接，脚本提供取址能力',
-    kindLabel: '音源形态',
-    kindAurora: 'Aurora 协议源',
+    /*
+       这几个 `kind*` 键**不是**「形态选择器」的残留，而是插件自己的展示名与说明：
+       `auroraPlugin` / `lxPlugin` / `qishuiPlugin` 的 `displayNameKey` / `descriptionKey`
+       指向它们（插件契约要求文案键，不在实现里烧中文）。
+
+       下线的是同一批里的另一组：`kindLabel`（选择器标题）、`kindLxHintUnsupported`、
+       `kind*DisabledTitle`、`kindDisabledByUser`。那个选择器随「配置按插件归属」
+       一起消失之后，「这个端支不支持」改由插件设置入口的**可见性**表达；
+       「是不是被停用」由目录条目上的开关表达，都不再需要一句事后解释。
+    */
     kindAuroraHint: '服务地址 / 接口模板',
     kindLx: '洛雪音源脚本',
     kindLxHint: '脚本链接（取址）',
-    kindLxHintUnsupported: '仅桌面端 / 手机端支持',
-    kindQishui: '汽水音乐',
     defaultNameQishui: '我的汽水歌单',
     namePlaceholderQishui: '如：我的汽水歌单',
     playlistUrlLabel: '歌单链接或 ID',
     playlistUrlPlaceholder: 'https://music.douyin.com/qishui/share/playlist?playlist_id=…',
     playlistUrlHint: '粘贴汽水歌单的分享链接或歌单 ID 即可导入；不需要登录',
     kindQishuiHint: '歌单链接（免登录）；登录后可拉取我的歌单',
-    kindQishuiDisabledTitle: '浏览器环境不支持汽水音乐插件，请使用桌面端或手机端',
-    /**
-     * 「这个插件被你停用了」。
-     *
-     * 与上面两条（本端没有该能力）必须分开说：那两条是无解的，
-     * 这条只需去插件列表把开关打开。合成一句会让用户去换设备而不是点开关。
-     */
-    kindDisabledByUser: '该插件已停用，请在「插件」里重新启用',
-    kindLxDisabledTitle: '浏览器环境不支持洛雪音源脚本，请使用桌面端或手机端',
     nameLabel: '名称（可选）',
     namePlaceholder: '如：我的音源',
     namePlaceholderLx: '如：我的洛雪源',
@@ -106,7 +100,6 @@ const sources = {
     scriptLabel: '脚本链接',
     scriptHint: '脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索',
     sourceLabel: '音源地址',
-    apiLabel: '接口地址',
     sourceDetectedWithKey: '已识别为服务地址，密钥已提取；搜索与歌单接口自动生成',
     sourceDetected: '已识别为服务地址；搜索与歌单接口自动生成，密钥可写在链接里',
     templateDetected: '按接口模板使用，占位符由软件替换',
@@ -116,10 +109,6 @@ const sources = {
     playlistHint: '留空表示该音源不参与歌单导入',
     playlistHintDialog: '填入后，导入歌单时可直接解析 QQ / 网易云等平台的歌单分享链接',
     headersLabel: '请求头（可选，JSON 对象）',
-    /** 设置页「在线源」分区的行标签与空态（表单之外的入口文案） */
-    sourceRowLabel: '音源',
-    sourceRowHint: '在线搜索与歌单导入共用这一条源',
-    sourceRowEmpty: '尚未配置，在线搜索与歌单导入暂不可用',
     previewService: '服务 {url}',
     previewSearch: '搜索 {url}',
     previewPlaylist: '歌单 {url}',
@@ -161,7 +150,6 @@ const sources = {
      * 声明式表单的通用文案（字段标签/占位/说明由插件的 `fields` 声明提供，
      * 这里只放「表单骨架」自己的字，协议特有的说明一律归各字段的 hint）。
      */
-    chooseProvider: '存储协议',
     /** 口令状态的三种形态：已保存 / 未保存 / 本机无法加密保存 */
     credentialSaved: '口令已安全保存',
     credentialMissing: '未保存口令',
@@ -343,6 +331,33 @@ const sources = {
       scriptHashMismatch: '脚本内容与插件声明的不一致，已拒绝安装',
       scriptFetchFailed: '下载插件脚本失败：{reason}',
     },
+  },
+  /**
+   * 插件设置面板（「设置 → 插件」里每个插件自己的配置入口）。
+   *
+   * 配置全部按插件归属搬进来之后，面板本身就是「这个插件的全部设置」，
+   * 所以这里按**面板骨架**分组（音源 / 存储 / 登录，各自的空态与计数），
+   * 而不是按表单字段：字段名由插件自己的声明式 `fields` 提供，
+   * 骨架上的字才是各插件共用、放这里才不会每加一个插件就复写一遍的部分。
+   *
+   * 三个分区的 hint 各写一句「配置完能干什么」，因为用户在这一层才第一次
+   * 同时看到它们 —— 只说「音源」「存储」而不说用途，等于让用户自己猜。
+   */
+  config: {
+    open: '配置',
+    title: '「{name}」的设置',
+    desc: '这个插件的全部配置都在这里，改完立即生效',
+    sectionSources: '音源',
+    sectionSourcesHint: '这些音源负责在线搜索与歌单导入',
+    sectionStorage: '网络存储',
+    sectionStorageHint: '配好后可测试连接并扫描入库',
+    sectionAuth: '登录',
+    sectionAuthHint: '登录后可用该插件的账号能力',
+    sourceEmpty: '还没有音源',
+    storageEmpty: '还没有网络存储',
+    noConfig: '这个插件没有可配置项',
+    countSources: '{count} 条音源',
+    countStorage: '{count} 条存储',
   },
 }
 

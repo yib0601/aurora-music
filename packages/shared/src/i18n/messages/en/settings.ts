@@ -12,7 +12,7 @@ const en: LocalizedOf<typeof settings> = {
   nav: {
     general: 'General',
     storage: 'Downloads & Cache',
-    sources: 'Online Sources',
+    plugins: 'Plugins',
     about: 'About',
     diagnostics: 'Diagnostic Logs',
   },
@@ -44,11 +44,6 @@ const en: LocalizedOf<typeof settings> = {
       removeConfirmWithCount_one:
         'Remove scan folder "{folder}"?\nIts {count} song will also be removed from {library} (files on disk are kept).',
       pickFailed: 'Failed to scan folder "{folder}". Check that it exists and is accessible.',
-    },
-    storage: {
-      label: 'Network storage',
-      hint: 'Music on network storage is scanned into your library and kept',
-      empty: 'Nothing added yet. Fill in the server address and credentials to connect.',
     },
   },
   storage: {

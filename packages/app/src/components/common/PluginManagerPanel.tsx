@@ -6,6 +6,7 @@ import {
   Loader2,
   Package,
   RefreshCw,
+  Settings2,
   Trash2,
   Upload,
   X,
@@ -27,12 +28,17 @@ import {
   loadPluginStartupReport,
   openPluginDir,
   permissionLinesOf,
+  pluginInstallAvailable,
   pluginToggleAvailable,
   removeBrokenPlugin,
   togglePluginEnabled,
   uninstallPlugin,
   type InstallOutcome,
 } from './pluginManage'
+import { configSummaryOf, configsOfPlugin, hasPluginConfig } from './pluginConfig'
+import { PluginSettingsDialog } from '@/components/plugin/PluginSettingsDialog'
+import { useLibraryStore } from '@/stores/libraryStore'
+import { platform } from '@/services/platform'
 
 /**
  * 插件管理面板（安装 / 卸载 / 目录）。
@@ -70,6 +76,15 @@ export function PluginManagerPanel() {
    * 禁用态会让人以为"操作一下就开了"，实际是这一端永远做不到）。
    */
   const [toggleAvailable, setToggleAvailable] = useState(false)
+  /**
+   * 本端是否具备**安装**能力（与 `manageable` 是同一判据，但那个值来自目录快照，
+   * 在"有执行通道、没有安装通道"的老 preload 上也会是 false）。
+   *
+   * 需要单独一个 state 的理由：面板的入场条件已经放宽为「有插件层」，
+   * 于是「能看列表、不能装」这种组合真的会渲染出来 —— 这时安装那一段必须整块
+   * 不渲染，而不是给两个点了必然失败的按钮。
+   */
+  const [installAvailable, setInstallAvailable] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ ok: boolean; text: string; issues?: InstallOutcome['issues'] } | null>(
     null
@@ -80,6 +95,31 @@ export function PluginManagerPanel() {
   const [pending, setPending] = useState<{ url: string } | null>(null)
   /** 待确认卸载的插件 */
   const [confirmUninstall, setConfirmUninstall] = useState<PluginCatalogEntry | null>(null)
+  /** 正在打开设置面板的插件：配置按插件归属，入口就在卡片上 */
+  const [configuring, setConfiguring] = useState<PluginCatalogEntry | null>(null)
+  // 卡片上的「已配 N 条」摘要需要这两份配置。订阅写在这里而不是渲染处：
+  // 组件中段有几个提前 return（没有插件能力时整块隐藏），hook 排在它们之后会违反
+  // hooks 顺序规则 —— 那一类报错只在"某些端"出现，最难复现。
+  const onlineSources = useLibraryStore((s) => s.onlineSources)
+  const librarySources = useLibraryStore((s) => s.librarySources)
+  /**
+   * 本端的配置能力（卡片齿轮与面板分区必须用同一份判据）。
+   *
+   * `storage` 看 `scanLibrarySource`：只有桌面端实现了主进程侧的存储代理与扫描。
+   * 移动端目录里同样有 WebDAV / SFTP / SMB 条目，但那一端配不了、也扫不了。
+   */
+  const configCapability = { storage: typeof platform.scanLibrarySource === 'function' }
+  /**
+   * 某插件当前持有的配置条数。
+   *
+   * 走 `configSummaryOf` 而不是自己数 `.length`：归属判定与"哪些字段算一条配置"
+   * 都收在 `pluginConfig` 一处，在这里重写一遍等于给同一件事留两个定义。
+   */
+  const summaryOf = (entry: PluginCatalogEntry) => {
+    const bundle = configsOfPlugin(entry, onlineSources, librarySources, configCapability)
+    const { sources, librarySources: storageCount } = configSummaryOf(bundle)
+    return { sources, librarySources: storageCount }
+  }
 
   // 语言从 i18n hooks 取，不从字典里"探测"：目录里的展示名要按当前语言解析，
   // 而 t() 的返回值是译文，不能反推语言。
@@ -92,6 +132,7 @@ export function PluginManagerPanel() {
     setManageable(state.manageable)
     // 启停能力单独探一次：它不随目录内容变，但与"能不能装"是两件事
     setToggleAvailable(pluginToggleAvailable())
+    setInstallAvailable(pluginInstallAvailable())
     // 启动加载失败清单：一次性读，不随刷新变（那是"本次启动"的事实，重读也不会变）
     const report = await loadPluginStartupReport()
     setFailures(report?.failures ?? [])
@@ -184,8 +225,12 @@ export function PluginManagerPanel() {
     setMessage({ ok: false, text: outcome.message || t('sources.plugins.toggleUnsupported') })
   }
 
-  // 本端没有安装能力：整块隐藏（不是显示"不支持"打扰用户）
-  if (!manageable && (entries === null || entries.length === 0)) return null
+  // 既没有可管理的插件，也没有安装能力：整块隐藏（不是显示"不支持"打扰用户）。
+  //
+  // 这个条件比改造前宽松一格：原先只看 `!manageable`，于是"有插件列表但不能装"的端
+  // 连列表都看不到 —— 而现在列表里带着每个插件的**配置入口**，藏掉它等于藏掉
+  // 改音源 / 改网络存储的唯一路径。所以只要有条目就渲染。
+  if (!manageable && !installAvailable && (entries === null || entries.length === 0)) return null
   if (entries === null) {
     return (
       <div className="flex items-center gap-2 text-white/45 font-text text-caption py-2">
@@ -238,7 +283,11 @@ export function PluginManagerPanel() {
               <PluginEntryCard
                 key={`${entry.domain}:${entry.id}`}
                 entry={entry}
+                summary={summaryOf(entry)}
                 onUninstall={() => setConfirmUninstall(entry)}
+                onConfigure={
+                  hasPluginConfig(entry, configCapability) ? () => setConfiguring(entry) : undefined
+                }
                 onToggle={toggleAvailable ? (enabled) => void handleToggle(entry, enabled) : undefined}
                 busy={busy}
               />
@@ -248,92 +297,95 @@ export function PluginManagerPanel() {
       </section>
 
       {/* ─── 安装入口 ─── */}
-      <section className="space-y-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-9 px-3.5"
-            onClick={() => setShowUrlForm((value) => !value)}
-            disabled={busy}
-          >
-            <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
-            {t('sources.plugins.installFromUrl')}
-            <ChevronDown
-              className={`h-3.5 w-3.5 ml-1.5 transition-transform ${showUrlForm ? 'rotate-180' : ''}`}
-              strokeWidth={1.6}
-            />
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-9 px-3.5"
-            onClick={() => void handleInstallFromFile()}
-            disabled={busy}
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" strokeWidth={1.6} />
-            ) : (
-              <Upload className="h-4 w-4 mr-2" strokeWidth={1.6} />
-            )}
-            {t('sources.plugins.installFromFile')}
-          </Button>
-        </div>
-
-        {showUrlForm && (
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-[10px] px-3.5 py-3 space-y-2">
-            <p className="font-text text-caption text-white/60">{t('sources.plugins.urlLabel')}</p>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="url"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder={t('sources.plugins.urlPlaceholder')}
-                className="inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/70"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <Button
-                variant="primary"
-                size="sm"
-                className="h-8 px-3 shrink-0"
-                disabled={busy || !url.trim()}
-                onClick={() => setPending({ url: url.trim() })}
-              >
-                {t('sources.plugins.install')}
-              </Button>
-            </div>
-            <p className="font-text text-caption text-white/35">{t('sources.plugins.installHint')}</p>
-          </div>
-        )}
-
-        {/* 安装结果：清单结构问题逐条展示（只说"安装失败"用户无法补救） */}
-        {message && (
-          <div
-            className={`rounded-[10px] px-3.5 py-2.5 border ${
-              message.ok
-                ? 'bg-mint/[0.06] border-mint/20'
-                : 'bg-coral/[0.06] border-coral/20'
-            }`}
-          >
-            <p
-              className={`font-text text-caption ${message.ok ? 'text-mint/90' : 'text-coral/90'}`}
+      {/* 没有安装通道（老 preload）时整段不渲染：两个按钮都只会弹"当前环境不支持" */}
+      {installAvailable && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-9 px-3.5"
+              onClick={() => setShowUrlForm((value) => !value)}
+              disabled={busy}
             >
-              {message.text}
-            </p>
-            {message.issues && message.issues.length > 0 && (
-              <ul className="mt-1.5 space-y-1">
-                {message.issues.map((issue, index) => (
-                  <li key={index} className="font-text text-caption text-white/55">
-                    {issue.field && <span className="text-white/40 mr-1">{issue.field}</span>}
-                    {issue.message}
-                  </li>
-                ))}
-              </ul>
-            )}
+              <Download className="h-4 w-4 mr-2" strokeWidth={1.6} />
+              {t('sources.plugins.installFromUrl')}
+              <ChevronDown
+                className={`h-3.5 w-3.5 ml-1.5 transition-transform ${showUrlForm ? 'rotate-180' : ''}`}
+                strokeWidth={1.6}
+              />
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-9 px-3.5"
+              onClick={() => void handleInstallFromFile()}
+              disabled={busy}
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" strokeWidth={1.6} />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" strokeWidth={1.6} />
+              )}
+              {t('sources.plugins.installFromFile')}
+            </Button>
           </div>
-        )}
+
+          {showUrlForm && (
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-[10px] px-3.5 py-3 space-y-2">
+              <p className="font-text text-caption text-white/60">{t('sources.plugins.urlLabel')}</p>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder={t('sources.plugins.urlPlaceholder')}
+                  className="inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/70"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="h-8 px-3 shrink-0"
+                  disabled={busy || !url.trim()}
+                  onClick={() => setPending({ url: url.trim() })}
+                >
+                  {t('sources.plugins.install')}
+                </Button>
+              </div>
+              <p className="font-text text-caption text-white/35">{t('sources.plugins.installHint')}</p>
+            </div>
+          )}
+
+          {/* 安装结果：清单结构问题逐条展示（只说"安装失败"用户无法补救） */}
+          {message && (
+            <div
+              className={`rounded-[10px] px-3.5 py-2.5 border ${
+                message.ok
+                  ? 'bg-mint/[0.06] border-mint/20'
+                  : 'bg-coral/[0.06] border-coral/20'
+              }`}
+            >
+              <p
+                className={`font-text text-caption ${message.ok ? 'text-mint/90' : 'text-coral/90'}`}
+              >
+                {message.text}
+              </p>
+              {message.issues && message.issues.length > 0 && (
+                <ul className="mt-1.5 space-y-1">
+                  {message.issues.map((issue, index) => (
+                    <li key={index} className="font-text text-caption text-white/55">
+                      {issue.field && <span className="text-white/40 mr-1">{issue.field}</span>}
+                      {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
       </section>
+      )}
 
       {/* ─── 内置插件（不可卸载，但**可以停用**） ─── */}
       {/* 内置插件的实现编译在应用里，卸载无从谈起；没有这里的开关，"我不想用它"这件事
@@ -350,6 +402,10 @@ export function PluginManagerPanel() {
               <PluginEntryCard
                 key={`${entry.domain}:${entry.id}`}
                 entry={entry}
+                summary={summaryOf(entry)}
+                onConfigure={
+                  hasPluginConfig(entry, configCapability) ? () => setConfiguring(entry) : undefined
+                }
                 onToggle={toggleAvailable ? (enabled) => void handleToggle(entry, enabled) : undefined}
                 busy={busy}
               />
@@ -456,6 +512,18 @@ export function PluginManagerPanel() {
         />
       )}
 
+      {/* ─── 该插件自己的设置 ─── */}
+      {/* 配置按插件归属的落点：卡片的齿轮按钮打开这个弹窗，它就是这个插件的全部设置 */}
+      {configuring && (
+        <PluginSettingsDialog
+          entry={configuring}
+          open
+          onOpenChange={(next) => {
+            if (!next) setConfiguring(null)
+          }}
+        />
+      )}
+
       {/* ─── 卸载确认 ─── */}
       {confirmUninstall && (
         <ConfirmDialog
@@ -486,12 +554,28 @@ export function PluginManagerPanel() {
  */
 function PluginEntryCard({
   entry,
+  summary,
   onUninstall,
+  onConfigure,
   onToggle,
   busy,
 }: {
   entry: PluginCatalogEntry
+  /**
+   * 「已配几条」的摘要（音源数 / 存储数）。
+   *
+   * 存在的理由只有一个：配置搬进面板之后，卡片若不显示任何配置痕迹，用户会觉得
+   * 之前配的东西没了（真实情况是它们在面板里）。数字是最短的反证。
+   */
+  summary?: { sources: number; librarySources: number }
   onUninstall?: () => void
+  /**
+   * 打开该插件自己的设置面板。
+   *
+   * 缺席 = 这个插件没有可配置项（`hasPluginConfig` 为假）。此时**不渲染**齿轮按钮，
+   * 而不是渲染一个打开后只有「没有可配置项」的按钮 —— 后者让用户白点一次。
+   */
+  onConfigure?: () => void
   onToggle?: (enabled: boolean) => void
   busy?: boolean
 }) {
@@ -527,6 +611,20 @@ function PluginEntryCard({
           {description && (
             <p className="font-text text-caption text-white/50 mt-0.5">{description}</p>
           )}
+          {/* 「已配 N 条」：配置搬进面板之后，卡片上若一点痕迹都没有，用户会以为
+              之前配的东西丢了。数字是最短的反证，且不泄露任何配置内容 */}
+          {summary && (summary.sources > 0 || summary.librarySources > 0) && (
+            <p className="font-text text-[10px] text-white/40 mt-1">
+              {[
+                summary.sources > 0 ? t('sources.config.countSources', { count: summary.sources }) : '',
+                summary.librarySources > 0
+                  ? t('sources.config.countStorage', { count: summary.librarySources })
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
           {capabilities.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap mt-1.5">
               {capabilities.map((label) => (
@@ -554,6 +652,19 @@ function PluginEntryCard({
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {onConfigure && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-white/45 hover:text-mint shrink-0"
+              title={t('sources.config.open')}
+              aria-label={t('sources.config.open')}
+              disabled={busy}
+              onClick={onConfigure}
+            >
+              <Settings2 className="h-3.5 w-3.5" strokeWidth={1.6} />
+            </Button>
+          )}
           {onToggle && (
             // 样式照抄 SettingsPage 里源开关的那一套（role/aria-checked/尺寸/缓动一致），
             // 同一个应用里同一个动作长得不一样会让人怀疑它们不是同一件事

@@ -8,7 +8,6 @@ import type { LocalizedOf } from '../schema'
 const en: LocalizedOf<typeof sources> = {
   capability: {
     search: 'Search',
-    lyrics: 'Lyrics',
     playlist: 'Playlists',
     lxScript: 'LX script',
     pluginProbe: 'Testable',
@@ -28,8 +27,6 @@ const en: LocalizedOf<typeof sources> = {
     expired: 'Your login has expired — please sign in again',
     loggedIn: 'Logged in',
     loggedInAs: 'Logged in as {name}',
-    title: 'Plugin login',
-    desc: 'Log in to use this plugin’s account features (such as listing your playlists)',
     inputLabel: 'Credential',
     inputHint: 'Copy the cookie or credential value from the official client and paste it here',
     submit: 'Save login',
@@ -58,24 +55,15 @@ const en: LocalizedOf<typeof sources> = {
     titleLx: 'Add LX script source',
     desc: 'A service address generates both endpoints automatically; an endpoint template is used as-is',
     descLx: 'Paste the script link. The script resolves track URLs.',
-    kindLabel: 'Source type',
-    kindAurora: 'Aurora protocol source',
     kindAuroraHint: 'Service address / endpoint template',
     kindLx: 'LX script source',
     kindLxHint: 'Script link (URL resolution)',
-    kindLxHintUnsupported: 'Desktop and mobile only',
-    kindQishui: 'Soda Music',
     defaultNameQishui: 'My Soda playlist',
     namePlaceholderQishui: 'e.g. My Soda playlist',
     playlistUrlLabel: 'Playlist link or ID',
     playlistUrlPlaceholder: 'https://music.douyin.com/qishui/share/playlist?playlist_id=...',
     playlistUrlHint: 'Paste a Soda playlist share link or ID to import it; no login needed',
     kindQishuiHint: 'Playlist link (no login needed); log in to list your own playlists',
-    kindQishuiDisabledTitle:
-      'Soda Music needs native networking, which the browser build does not provide. Use the desktop or mobile app.',
-    kindDisabledByUser: 'This plugin is disabled; re-enable it under "Plugins"',
-    kindLxDisabledTitle:
-      'LX script sources need script execution, which the browser build does not provide. Use the desktop or mobile app.',
     nameLabel: 'Name (optional)',
     namePlaceholder: 'e.g. My source',
     namePlaceholderLx: 'e.g. My LX source',
@@ -87,7 +75,6 @@ const en: LocalizedOf<typeof sources> = {
     scriptHint:
       'The script resolves track URLs. A script without a search API needs a separate Aurora source for searching.',
     sourceLabel: 'Source address',
-    apiLabel: 'Endpoint address',
     sourceDetectedWithKey:
       'Recognized as a service address; the key was extracted and the search and playlist endpoints are generated automatically',
     sourceDetected:
@@ -100,9 +87,6 @@ const en: LocalizedOf<typeof sources> = {
     playlistHintDialog:
       'Once set, playlist share links from QQ Music, NetEase Cloud Music and others can be resolved directly on import',
     headersLabel: 'Request headers (optional, JSON object)',
-    sourceRowLabel: 'Sources',
-    sourceRowHint: 'Online search and playlist imports share this source',
-    sourceRowEmpty: 'Nothing configured yet. Online search and playlist imports are unavailable.',
     previewService: 'Service {url}',
     previewSearch: 'Search {url}',
     previewPlaylist: 'Playlist {url}',
@@ -141,7 +125,6 @@ const en: LocalizedOf<typeof sources> = {
     scanComplete_one: 'Scan complete, {count} song in your library',
     scanIncomplete: 'Scan complete, but {count} folders were unreachable; existing records were kept',
     scanIncomplete_one: 'Scan complete, but {count} folder was unreachable; existing records were kept',
-    chooseProvider: 'Storage protocol',
     credentialSaved: 'Password saved securely',
     credentialMissing: 'No password saved',
     credentialUnavailable:
@@ -277,6 +260,26 @@ const en: LocalizedOf<typeof sources> = {
       scriptHashMismatch: 'The script content does not match what the plugin declares, so the install was refused',
       scriptFetchFailed: 'Failed to download the plugin script: {reason}',
     },
+  },
+  config: {
+    open: 'Configure',
+    title: 'Settings for "{name}"',
+    desc: 'Everything this plugin needs is configured here',
+    sectionSources: 'Sources',
+    sectionSourcesHint: 'These sources provide online search and playlist import',
+    sectionStorage: 'Network storage',
+    sectionStorageHint: 'Test the connection and scan it into your library',
+    sectionAuth: 'Sign-in',
+    sectionAuthHint: "Sign in to use this plugin's account features",
+    sourceEmpty: 'No source yet',
+    storageEmpty: 'No network storage yet',
+    noConfig: 'This plugin has nothing to configure',
+    countSources: '{count} sources',
+    countSources_one: '{count} source',
+    countSources_other: '{count} sources',
+    countStorage: '{count} storage entries',
+    countStorage_one: '{count} storage entry',
+    countStorage_other: '{count} storage entries',
   },
 }
 

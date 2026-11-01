@@ -26,8 +26,15 @@ import {
  * （跨进程接口只回登录态，见 desktop 的 pluginHost）。
  */
 
-/** 单个插件的登录行 */
-function PluginAuthRow({ plugin }: { plugin: PluginMetaInfo }) {
+/**
+ * 单个插件的登录行。
+ *
+ * 入参刻意只要求**它真正用到的两项**（id 与展示名键），而不是完整的 `PluginMetaInfo`：
+ * 插件设置面板（`components/plugin/PluginSettingsDialog`）手里只有目录条目，
+ * 没有执行侧的元信息，硬凑一个 `PluginMetaInfo` 会让字段全是编的。
+ * 在 `PluginAuthPanel` 里传完整 meta 仍然合法（结构类型），调用点无需改动。
+ */
+export function PluginAuthRow({ plugin }: { plugin: { id: string; displayNameKey: string } }) {
   const t = useT()
   const [input, setInput] = useState('')
   const [auth, setAuth] = useState<PluginAuthState | null>(null)
