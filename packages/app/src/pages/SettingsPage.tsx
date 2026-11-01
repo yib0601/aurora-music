@@ -596,7 +596,7 @@ function SourceEditorCard({
             value={nameDraft}
             placeholder={t('sources.form.nameDraftPlaceholder')}
             onChange={(e) => setNameDraft(e.target.value)}
-            className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-mint/50 transition-colors duration-200 py-1"
+            className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-white/[0.24] transition-colors duration-200 py-1"
           />
         ) : (
           <>

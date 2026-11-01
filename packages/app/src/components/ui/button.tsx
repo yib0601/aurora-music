@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
  * 共用 active 状态: scale(0.95)
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap font-text transition-[transform,background,box-shadow,border-color] duration-200 ease-mineradio focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/30 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 active:scale-95 select-none',
+  'inline-flex items-center justify-center whitespace-nowrap font-text transition-[transform,background,box-shadow,border-color] duration-200 ease-mineradio focus-visible:outline-none focus:outline-none disabled:pointer-events-none disabled:opacity-50 active:scale-95 select-none',
   {
     variants: {
       variant: {

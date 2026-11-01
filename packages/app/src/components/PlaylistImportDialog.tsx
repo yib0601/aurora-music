@@ -106,7 +106,7 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
               disabled={busy}
               rows={7}
               placeholder={t('library.import.textPlaceholder')}
-              className="w-full resize-none bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3 py-2.5 font-text text-[13px] text-white/85 outline-none focus:border-mint/50 transition-colors duration-200 placeholder:text-white/25"
+              className="w-full resize-none bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3 py-2.5 font-text text-[13px] text-white/85 outline-none focus:bg-white/[0.06] focus:border-white/[0.18] transition-colors duration-200 placeholder:text-white/25"
             />
             <Input
               value={playlistName}

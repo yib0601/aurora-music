@@ -424,7 +424,7 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | | `.card-solid`（655） | **无 blur**，长列表卡片（背景已近不透明，省下逐帧重采样） |
 | | `.card-list`（664） | 同材质但 **hover 不上浮**，包裹多行列表 |
 | **表面** | `.surface-canvas/paper/card/tile-1/tile-2`（631–635） | 平铺叠色，无浮起关系 |
-| **卡内元素** | `.inset-field`（664）/ `.inset-row`（699）/ `.inset-note`（708） | 卡片内部不再给每个元素画描边（否则是「卡里再套一张卡」）。控件：`white/.05` 填充 + **透明边**，hover 显 `.10` 弱边、focus / `[data-state=open]` 染 mint、校验失败用 `.is-invalid`；行：静止完全透明、hover 浮出 `white/.04`；信息块：只留 `.04` 填充、不带交互态（不可点就不该有 hover 反馈）。浮层（`.glass-liquid` 内）填充提至 `.07`，浅色下 focus 描边 alpha 提至 `.70` |
+| **卡内元素** | `.inset-field`（664）/ `.inset-row`（699）/ `.inset-note`（708） | 卡片内部不再给每个元素画描边（否则是「卡里再套一张卡」）。控件：`white/.05` 填充 + **透明边**，hover 显 `.10` 弱边、focus / focus-visible 提亮到 `.08` 并显一层**中性白边**（`white/.18`，浅色 `.26`，**不染 mint**）、`[data-state=open]` 才染 mint（展开属选中语义）、校验失败用 `.is-invalid`；行：静止完全透明、hover 浮出 `white/.04`；信息块：只留 `.04` 填充、不带交互态（不可点就不该有 hover 反馈）。浮层（`.glass-liquid` 内）填充提至 `.07` |
 | **胶囊** | `.pill`（815）+ `.pill-sm/md/lg`（826–828） | `9999px` 全圆角；高度 28 / 36 / 44px |
 | | `.pill-mint`（829）/ `.pill-soft`（836） | mint 实心 + 上浮；浅灰描边款 |
 | **分段控件** | `.segmented`（786）/ `.segmented-item`（798）/ `.is-on`（812） | 28px 高，`--r-ds-input` 外圆角 + `--r-ds-sm` 内圆角；选中项 mint 填充 |

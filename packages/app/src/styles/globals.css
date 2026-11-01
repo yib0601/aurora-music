@@ -543,10 +543,18 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   .font-text { font-family: var(--font-sans); }
   .font-mono { font-family: var(--font-mono); }
 
-  /* 桌面软件不是网页：操作热区用清晰的双层焦点环，不用浏览器默认蓝框。 */
-  :where(button, a, input, [role='button']):focus-visible {
-    outline: 2px solid rgb(var(--tw-mint) / .75);
-    outline-offset: 3px;
+  /* 桌面软件不是网页：聚焦态**不画焦点环**。
+   * 曾经的 mint 双层环（2px + 3px offset）已按设计决定取消——点击任何按钮 / 图标 /
+   * 链接都会浮出一个绿色方框，与整体玻璃材质冲突，视觉上像调试高亮。
+   * 注意这里必须显式 `outline: none` 而不是删掉整条规则：直接删除会让 Chromium 的
+   * 默认焦点框（蓝/白细线）重新出现，比原来的自定义环更突兀。
+   * 同时兜 :focus 与 :focus-visible 两态：Electron 里鼠标点击按钮同样可能命中
+   * :focus-visible（没有原生 chrome 的「只在键盘操作时」判定），只写后者会漏。
+   * 可访问性反馈改由控件自身的 hover / active / 展开态承担。 */
+  :where(button, a, input, textarea, select, [role='button'], [tabindex]):focus,
+  :where(button, a, input, textarea, select, [role='button'], [tabindex]):focus-visible {
+    outline: none;
+    outline-offset: 0;
   }
   ::selection { background: rgb(var(--tw-mint) / .24); color: var(--fc-ink); }
 
@@ -843,9 +851,17 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     background: rgb(var(--tw-white) / .07);
     border-color: rgb(var(--tw-white) / .10);
   }
-  /* 聚焦 / 展开态：边框显形并染 mint，是这一层唯一的焦点信号 */
+  /* 聚焦态：只提亮表面 + 一层极弱中性描边，**不染 mint**。
+   * 焦点不用品牌色是设计决定：mint 只表示「选中 / 正在播放 / 主行动」，
+   * 聚焦只是短暂的操作位置提示，染成主色会与选中态混淆，也是对 mint 的过度消费。
+   * 展开态（[data-state=open]）另算——它表达「这个下拉现在是开着的」，属于选中语义，
+   * 保留 mint 描边。 */
   .inset-field:focus,
-  .inset-field:focus-visible,
+  .inset-field:focus-visible {
+    background: rgb(var(--tw-white) / .08);
+    border-color: rgb(var(--tw-white) / .18);
+    outline: none;
+  }
   .inset-field[data-state='open'] {
     background: rgb(var(--tw-white) / .07);
     border-color: rgb(var(--tw-mint) / .45);
@@ -854,9 +870,9 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   /* 校验失败：只在出错时显形 */
   .inset-field.is-invalid { border-color: rgb(var(--tw-coral) / .55); }
 
-  /* 浅色主题下 mint 本身已加深，但浅底上仍需更高 alpha 才显形（对比度红线见设计系统 §4.4） */
+  /* 浅色主题下白描边翻转为深墨，同一档 alpha 在浅底上偏淡，提一档 */
   html:not(.dark) .inset-field:focus,
-  html:not(.dark) .inset-field:focus-visible,
+  html:not(.dark) .inset-field:focus-visible { border-color: rgb(var(--tw-white) / .26); }
   html:not(.dark) .inset-field[data-state='open'] { border-color: rgb(var(--tw-mint) / .70); }
 
   /* 浮层（弹窗 / 下拉）里的控件再厚一档：卡片内可以极轻，
