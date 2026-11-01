@@ -199,15 +199,52 @@ lyricsSource?(config: OnlineSourceConfig): LyricsSourceConfig | null
 
 ## 4. 落地顺序
 
-| 阶段 | 内容 | 触及文件 | 风险 |
-|---|---|---|---|
-| **P0** | 接线现有死代码：`guardedFetchOf` 进 ctx 工厂；`ctx.log` 接上 | `executor.ts`、`pluginHost.ts` | 低，但会让已安装插件的白名单**突然真的生效**，需先回归现有插件 |
-| **P1** | 能力注册表 + `requires` + availability；三端各注册一次 | 新增 `plugin/host/capabilities.ts`；desktop / mobile / web 装配点 | 中：`pluginAvailableOn` 的 3 条测试要重写 |
-| **P2** | lx / B 档脚本迁到 `ctx.scriptHost`，删 3 处 `getLxHostDeps()` 直读 | `lxPlugin.ts`、`manifest/script.ts`、`lxResolver.ts` | 中：`setLxHostDeps` 的 `boxCache.clear()` 语义要保留 |
-| **P3** | aurora 结构插件化 + 三条绕道收口 + `lyricsSource` 契约 | 4 个 core 模块 + 3 端平台层 + 插件 | **高**：动播放取址主链路 |
-| **P4** | service profile + `net.allowlist` + 占位符扩展 | `manifest/types|validate|source` + `auroraPreset` | 中，纯增量 |
+| 阶段 | 内容 | 触及文件 | 风险 | 状态 |
+|---|---|---|---|---|
+| **P0** | 接线现有死代码：`guardedFetchOf` 进 ctx 工厂；`ctx.log` 接上 | `executor.ts`、`pluginHost.ts` | 低，但会让已安装插件的白名单**突然真的生效** | 已完成 |
+| **P1** | 能力注册表 + `requires` + availability；三端各注册一次 | 新增 `plugin/hostCapabilities.ts`；desktop / mobile 装配点 | 中 | 已完成 |
+| **P2** | lx / B 档脚本迁到 `ctx.scriptHost`，删 4 处 `getLxHostDeps()` 直读 | `lxPlugin.ts`、`manifest/script.ts`、`lxResolver.ts`、`lxHost.ts` | 中 | 已完成 |
+| **P3** | 三条绕道收口（取址 / 歌单 / 歌词）+ `lyricsSource` 契约 | `plugin/trackAudio.ts`（新）、`lyrics.service.ts`、两端平台层、`auroraPlugin.ts` | **高**：动播放取址主链路 | 已完成 |
+| **P4** | service profile + `configured-origin` 白名单 + 占位符扩展 | `manifest/service.ts`（新）、`types.ts`、`validate.ts`、`source.ts`、`host.ts` | 中，纯增量 | 已完成 |
 
-P0 与 P1 无依赖关系，可并行；P2 依赖 P1；P3 独立于 P1/P2（但做完 P3 后环依赖自然消失）；P4 依赖 P3。
+## 4.1 落地时与设计不一致的地方（必读）
+
+实现过程中推翻了初稿的两处，记在这里免得以后被"优化"回去：
+
+### 4.1.1 缺必需能力时**不**把插件踢出注册表
+
+初稿写的是"缺 required → 插件不注册"。实测直接让 shared 挂了 12 个测试，原因有两条：
+
+1. **"宿主缺能力"与"插件不存在"是两件事。** `lxPlugin.preflight` 已经在回答"这条源此刻能不能跑"并给出 `core.error.lxHostNotReady`。在注册期删掉 lx，调用方看到的是"没有这个插件"，可诊断性更差。
+2. **既有降级路径依赖"注册但不可用"。** `musicSourceLx` / `lxVerifier` 有一批用例专门验证"宿主未注册时跳过 lx 源并告警"；摘掉插件后这些路径退化成"插件不存在"，跳过逻辑再也没被测到。
+
+现在的实现：注册照常，缺口只进 `degradedBuiltins()` 供 UI 与诊断消费。
+
+### 4.1.2 宿主必须由调用方注入，**不**回落全局单例
+
+`lxResolver` 的两处 `deps ?? getLxHostDeps()` 已删除。回落会让"调用方忘了传宿主"静默变成"用了全局单例"——而那条隐式依赖正是本次要拆掉的东西（它让单测无法按调用点注入替身）。
+
+配套改动：`setLxHostDeps()` 现在**同步登记 `script.host` 能力**。理由是两个入口（平台层、单测）本来就用它，不同步登记会让按新契约取宿主的插件全部拿到 `undefined`，表现为"配了源却不参与搜索"且无任何报错。
+
+### 4.1.3 `lyricsSource` 是"交出配置"而不是"自己取词"
+
+`SourcePlugin.lyricsSource()` 返回 `LyricsSourceConfig | null`，不是歌词文本。既有的 `searchLyrics` 做的是多源聚合（用户源优先 + 内置 LRCLIB 兜底 + 延迟对冲），让每个插件各写一份取词等于把那套策略复写 N 遍。
+
+同时把 `sourceHasLyrics()` 的判定从 `capabilities.includes('lyrics')` 改成 `typeof plugin.lyricsSource === 'function'`——改造前 aurora 声明了 `lyrics` 却**没有对应方法**，声明与实现分叉。
+
+### 4.1.4 `configured-origin` 比 `declared-hosts` 更严，不是更松
+
+两者都禁通配符。区别是 `configured-origin` 要求 **scheme + host + port 全一致**（标准 origin 语义），而 `declared-hosts` 是"同主机任意端口"。理由：前者的字段是**用户地址**，把端口差异一并放行会让"用户以为只授权了一个服务、实际授权了该主机上所有服务"。
+
+### 4.1.5 `hosts` 在 service 形态下允许为空
+
+常规清单 `hosts` 必填非空（固定上游的主机是作者**知道**的，写不出说明他自己也不清楚）。但 service 形态的主机由**用户**决定，硬要求非空只会逼作者写假数据——那正好让白名单变回装饰。
+
+## 4.2 环依赖的最终状态
+
+`musicSource → executor → builtins → auroraPlugin → musicSource` 这个环**仍然存在**（静态 import 图上），但已不是求值期风险：`builtinPlugins()` 是 getter、注册发生在方法调用时、`auroraPlugin` 对核心模块的引用全在方法体内。
+
+`auroraPlugin` 目前仍 import 6 个核心模块（P3 收口的是**调用链路**，不是它的实现位置）。彻底断开需要把 aurora 的执行实现搬进 `plugin/aurora/`，那是比本次更大的重构——P4 完成后它已可退化成一个内置清单，届时那把搬迁才有明确收益。
 
 ## 5. 明确不做
 

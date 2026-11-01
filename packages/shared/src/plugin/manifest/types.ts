@@ -122,6 +122,75 @@ export type LocalizedText = string | Record<string, string>
  * 不存在、类型不符、数组越界一律得到 `undefined`（**不抛错**）：第三方接口的字段
  * 缺失是常态，一次缺字段不该让整条源报错。
  */
+/**
+ * 服务地址形态（service profile）。
+ *
+ * ## 为什么需要它
+ *
+ * 其它声明式端点都要求**绝对 URL**。这对固定上游是对的，但对"用户填自己的
+ * 服务地址"这一形态根本不成立 —— 自建托管者填的是 `https://host?key=xxx`，
+ * 而全部端点都要从这条链接派生（主机、密钥、甚至服务端自描述的路径）。
+ *
+ * 本块只描述**如何派生**，不写任何具体地址：
+ *
+ * ```json
+ * "service": {
+ *   "selfDescribe": { "url": "{baseUrl}/", "endpoints": "endpoints" },
+ *   "endpoints": {
+ *     "search": "{baseUrl}/aurora?query={query}&quality={quality}&key={secret}",
+ *     "track":  "{baseUrl}/aurora/track?id={id}&quality={quality}&key={secret}"
+ *   }
+ * }
+ * ```
+ *
+ * ## 两个新增占位符
+ *
+ * - `{baseUrl}`：用户填的**服务地址**（去掉 query 后的 `scheme://host[:port][/path]`）
+ * - `{secret}`：从用户填的链接里取出的密钥（`?key=` 之类），没有则为空串
+ *   （空值时整段参数被 `dropUnfilledParams` 剔除 —— 与既有语义一致）
+ *
+ * ## 与 `source` / `lyrics` 的关系
+ *
+ * `endpoints` 里的键与 `source` 的子能力**同名**（`search` / `track` / `playlist` /
+ * `recommend` / `toplists` / `toplist` / `lyric`）。运行时优先用这里派生的地址，
+ * 派生不出才回落 `source.*.url` 的静态模板 —— 于是同一份清单既能服务
+ * 固定上游，也能服务自建托管。
+ */
+export interface DeclarativeServiceSpec {
+  /**
+   * 密钥在用户填的链接里的位置。
+   *
+   * - `'query:key'`：从 `?key=` 取（**默认**）
+   * - `'query:<name>'`：从任意 query 参数名取
+   * - 省略：不取密钥（派生出的模板里 `{secret}` 恒为空 → 相关参数被剔除）
+   */
+  secretFrom?: string
+  /**
+   * 服务端自描述（可选）。
+   *
+   * 有它时**先**请求该地址，把响应里的端点模板覆盖到 `endpoints` 之上
+   * （服务端改路径 / 换参数名时客户端不必改配置）；请求失败或无该字段则
+   * 静默用 `endpoints` 的静态模板 —— 老服务端没有自描述是正常情况。
+   */
+  selfDescribe?: {
+    /** 自描述地址，支持 `{baseUrl}` `{secret}` 占位符 */
+    url: string
+    /** 响应里装端点映射的字段路径（如 `endpoints`） */
+    endpoints: string
+  }
+  /**
+   * 端点模板（键与 `source` 的子能力同名，另加 `lyric`）。
+   *
+   * 每条的可用占位符是该能力的常规占位符 + `{baseUrl}` + `{secret}`。
+   */
+  endpoints?: Partial<
+    Record<'search' | 'track' | 'playlist' | 'lyric' | 'recommend' | 'toplists' | 'toplist', string>
+  >
+}
+
+/**
+ * 音源域声明：每条能力 = 一个端点模板 + 一份字段映射。
+ */
 export interface DeclarativeSourceSpec {
   /** 搜索：不声明 = 该插件不提供搜索（能力缺失用「不存在」表达，与内置插件同一范式） */
   search?: DeclarativeSearchEndpoint
@@ -382,8 +451,24 @@ export interface PluginManifest {
    *
    * 必填非空、**禁止通配符**（`*` / `*.example.com` 一律判非法）：运行期据此在
    * `PluginContext.fetch` 外层做域名白名单，越界请求直接失败。
+   *
+   * ## `service` 形态的例外
+   *
+   * 声明了 `service` 块（"用户填自己的服务地址"）的清单，`hosts` **可以为空**：
+   * 那时白名单改由 `allowlist: 'configured-origin'` 在运行期从用户填的
+   * `sourceUrl` 推导（见 `manifest/host.ts`）。作者不可能穷举自建托管者的主机名，
+   * 硬要求它就等于逼作者写假数据。
    */
   hosts: string[]
+  /**
+   * 出网白名单模式（可选，缺省 `declared-hosts`）。
+   *
+   * 写成 `configured-origin` 才需要配合 `service` 块；单独声明它而没有 `service`
+   * 是校验期错误（那样白名单在运行期恒为空 → 所有请求失败）。
+   */
+  allowlist?: 'declared-hosts' | 'configured-origin'
+  /** 服务地址形态（"用户填一个服务地址 + 密钥，端点由本块派生"） */
+  service?: DeclarativeServiceSpec
   /** 音源域能力 */
   source?: DeclarativeSourceSpec
   /** 歌词域能力 */

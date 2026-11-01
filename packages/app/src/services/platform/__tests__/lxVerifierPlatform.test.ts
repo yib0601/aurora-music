@@ -43,6 +43,22 @@ beforeEach(() => {
     removeEventListener: () => {},
     electronAPI: {
       platform: 'desktop',
+      // P3 起取址统一走插件门面；`lxSource.resolveUrl` 只剩历史 preload 兼容路径。
+      // 这里同时提供两者，断言只盯新通道（`h.ipcCalls` 由 `plugins.resolveTrack` 记录）。
+      plugins: {
+        list: async () => [],
+        probe: async () => ({}),
+        search: async () => [],
+        resolveTrack: async (pluginId: any, source: any, ref: any, quality?: string) => {
+          h.ipcCalls.push({ pluginId, ref, source, quality })
+          return await h.ipcResolve!(ref, source, quality)
+        },
+        userPlaylists: async () => [],
+        playlistTracks: async () => [],
+        login: async () => ({ ok: true }),
+        authState: async () => ({}),
+        logout: async () => ({ ok: true }),
+      },
       lxSource: {
         fetchScript: async () => '',
         inspect: async () => ({}),
@@ -88,7 +104,7 @@ describe('平台层取址门面转发', () => {
     expect(track.onlineUrl).toBe('') // 原对象不被就地修改
   })
 
-  it('3b 缺令牌 / 源不存在 / 源形态不符 / 直链非 http：一律 null，且不惊动主进程', async () => {
+  it('3b 缺令牌 / 源不存在 / 直链非 http：一律 null，且只在必要时触碰 IPC', async () => {
     const mod = await import('@/services/platform')
     expect(await mod.platform.resolveTrackAudio(trackOf({ id: 'x0', onlineUrl: '' }))).toBeNull()
     h.sources = []
@@ -97,7 +113,10 @@ describe('平台层取址门面转发', () => {
         trackOf({ id: 'x1', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } } })
       )
     ).toBeNull()
+    // 源存在，但它的形态与令牌不匹配（这里用无 kind 的 aurora 形态源，令牌却是脚本源形态）。
+    // 判定交给插件：真实 lx 插件会以「源不是脚本源」拒绝，故 null。
     h.sources = [{ id: 'lx-1', name: 'Aurora', sourceUrl: 'http://a', enabled: true }]
+    h.ipcResolve = async () => null
     expect(
       await mod.platform.resolveTrackAudio(
         trackOf({ id: 'x2', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } } })
@@ -110,8 +129,14 @@ describe('平台层取址门面转发', () => {
         trackOf({ id: 'x3', onlineUrl: '', trackRef: { sourceId: 'lx-1', platform: 'kw', meta: { songmid: '1' } } })
       )
     ).toBeNull()
-    // 只允许「源存在 + 形态匹配」这两条路径触碰 IPC
-    expect(h.ipcCalls.length).toBe(1)
+    // 只有「源存在 + 交给插件后取不到 http 地址」这一条会触碰 IPC。
+    //
+    // 语义变化（P3）：改造前平台层会用 `kind === 'lx'` 预先拦掉"形态不符"的源，
+    // 一次 IPC 都不发；现在形态判定交给插件自己（`ctx` + 令牌能力），平台层只
+    // 负责"有源、有令牌就交给插件"。所以「源形态不符」那段会多一次 IPC ——
+    // 这是刻意的：让插件回答"我能不能解析这个令牌"，而不是平台层猜。
+    // 那段用的是无 kind 的源，插件侧同样会拒绝，最终结果仍是 null（见上一条断言）。
+    expect(h.ipcCalls.length).toBe(2)
   })
 
   it('3c 主进程抛错（取址失败）时静默返回 null，并落一条 warn', async () => {

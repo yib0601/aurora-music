@@ -17,11 +17,13 @@ import vm from 'node:vm'
 import { createHash, createCipheriv, publicEncrypt, randomBytes as nodeRandomBytes, constants as nodeCryptoConstants } from 'crypto'
 import { deflate as zlibDeflate, inflate as zlibInflate } from 'zlib'
 import {
+  HOST_CAPABILITY_VERSION,
   auroraError,
   clearLxSourceCache,
   fetchLxScript,
   inspectLxSource,
   isUsableLxMeta,
+  registerHostCapability,
   resolveLxSourceUrl,
   searchLxSource,
   setLxHostDeps,
@@ -277,7 +279,7 @@ export function createNodeLxUtils(): LxHostDeps['utils'] {
 
 /** 组装主进程版宿主依赖（模块加载时注册一次；脚本执行不再穿参） */
 export function installLxHostDeps(): void {
-  setLxHostDeps({
+  const deps: LxHostDeps = {
     request: createNodeLxRequest(),
     env: 'desktop',
     version: '2.0.0',
@@ -288,7 +290,12 @@ export function installLxHostDeps(): void {
     // node:vm 执行器：同步死循环可被 timeout 打断（第三方脚本不可控）
     evaluate: createVmEvaluator(),
     utils: createNodeLxUtils(),
-  })
+  }
+  setLxHostDeps(deps)
+
+  // 同时登记成宿主能力：插件声明 `requires: [{ id: 'script.host' }]` 即可，
+  // 由宿主按声明注入到 `ctx.scriptHost`，而不是各插件内直读全局单例。
+  registerHostCapability('script.host', HOST_CAPABILITY_VERSION['script.host'], deps)
 
   // 脚本源码供应器：聚合搜索 / 取址编排（shared/lxResolver）在需要执行脚本时按源配置来要源码。
   // 不注册的话，渲染层下传的源配置（只有 sourceUrl、没有 script）会被当成「拿不到脚本」而跳过，

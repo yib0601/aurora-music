@@ -72,15 +72,22 @@ const LYRICS_PLACEHOLDER_ANY_OF = ['track', 'query'] as const
 /** 占位符语法：`{name}`，name 为小写字母开头的标识符 */
 const PLACEHOLDER_RE = /\{([a-zA-Z][a-zA-Z0-9_]*)\}/g
 
-/** 各能力实际可用的占位符（多写的占位符是作者的错，必须报出来） */
+/**
+ * 各能力实际可用的占位符（多写的占位符是作者的错，必须报出来）
+ *
+ * `baseUrl` / `secret` 是**服务地址形态**引入的两个新占位符（见 `service.ts`）：
+ * 它们由用户填的那条链接在运行期算出，所以任何能力的模板里都可以用。
+ */
+const SERVICE_PLACEHOLDERS = ['baseUrl', 'secret'] as const
+
 const KNOWN_PLACEHOLDERS = {
-  search: ['query', 'quality'],
-  resolveTrack: ['id', 'quality'],
-  playlistTracks: ['playlistId'],
-  lyrics: ['track', 'query', 'artist', 'album', 'duration'],
-  recommend: ['categoryId', 'sortId', 'page', 'limit'],
-  toplists: ['preview'],
-  toplistDetail: ['id', 'page', 'limit'],
+  search: [...SERVICE_PLACEHOLDERS, 'query', 'quality'],
+  resolveTrack: [...SERVICE_PLACEHOLDERS, 'id', 'quality'],
+  playlistTracks: [...SERVICE_PLACEHOLDERS, 'playlistId'],
+  lyrics: [...SERVICE_PLACEHOLDERS, 'track', 'query', 'artist', 'album', 'duration'],
+  recommend: [...SERVICE_PLACEHOLDERS, 'categoryId', 'sortId', 'page', 'limit'],
+  toplists: [...SERVICE_PLACEHOLDERS, 'preview'],
+  toplistDetail: [...SERVICE_PLACEHOLDERS, 'id', 'page', 'limit'],
 } as const
 
 /** 版本号形状：宽松的 semver（`1`、`1.0`、`1.0.0`、`1.0.0-beta.1` 都收） */
@@ -358,8 +365,21 @@ export function validatePluginManifest(input: unknown): ManifestValidation {
     })
   }
 
+  // ─── 白名单：service 形态允许 hosts 为空（改由用户地址决定）──────────
+  //
+  // 常规形态要求 `hosts` 必填非空：固定上游的主机是作者**知道**的，写不出来
+  // 说明他自己也不清楚插件会请求哪里。但服务地址形态（`service` + `allowlist:
+  // 'configured-origin'`）恰恰相反：主机由**用户**决定，作者不可能穷举，
+  // 硬要求非空只会逼他写假数据（那样白名单就变成装饰，正是要防的事）。
+  const isServiceAllowlist =
+    input.allowlist === 'configured-origin' && Boolean(input.service)
+
   if (!Array.isArray(input.hosts) || input.hosts.length === 0) {
-    log.add('hosts', 'missing')
+    if (isServiceAllowlist) {
+      // 允许为空：运行期由 `configured-origin` 从用户填的 sourceUrl 推导
+    } else {
+      log.add('hosts', 'missing')
+    }
   } else {
     const seen = new Set<string>()
     input.hosts.forEach((host, index) => {
@@ -378,6 +398,68 @@ export function validatePluginManifest(input: unknown): ManifestValidation {
       if (seen.has(normalized)) log.add(path, 'duplicate', host)
       seen.add(normalized)
     })
+  }
+
+  // ─── 白名单模式与 service 必须配套 ─────────────────────────────
+  //
+  // `configured-origin` 依赖 `service` 派生出的主机来放行；没有 `service` 时
+  // 运行期白名单恒为空 → 插件的**每一个**请求都会被拒。这种组合只会让人一头雾水，
+  // 所以在安装期就拦下，而不是等装好之后"插件什么都拉不到"。
+  if (input.allowlist === 'configured-origin' && !input.service) {
+    log.add('allowlist', 'missing', 'service')
+  }
+  if (input.service && input.allowlist !== 'configured-origin') {
+    // 反向提示：声明了 service 却忘了切白名单模式，会导致自建主机全部被拒
+    log.add('allowlist', 'missing', 'configured-origin')
+  }
+
+  // ─── service 块的形状 ────────────────────────────────────────
+
+  if (input.service !== undefined) {
+    const service = input.service
+    if (!service || typeof service !== 'object') {
+      log.add('service', 'not-object', service)
+    } else {
+      const spec = service as Record<string, unknown>
+      const endpoints = spec.endpoints
+      if (!endpoints || typeof endpoints !== 'object') {
+        log.add('service.endpoints', 'missing')
+      } else {
+        const known = ['search', 'track', 'playlist', 'lyric', 'recommend', 'toplists', 'toplist']
+        for (const [key, value] of Object.entries(endpoints as Record<string, unknown>)) {
+          const path = `service.endpoints.${key}`
+          if (!known.includes(key)) {
+            log.add(path, 'unsupported-domain', key)
+            continue
+          }
+          if (typeof value !== 'string' || !value.trim()) {
+            log.add(path, 'empty', value)
+            continue
+          }
+          // 端点模板必须是 http(s) 或含 {baseUrl}：否则是「相对路径当绝对地址用」，
+          // 运行期会拼出一个非法 URL，而作者看不出哪里错了
+          if (!/^https?:\/\//i.test(value) && !value.includes('{baseUrl}')) {
+            log.add(path, 'invalid-url', value)
+          }
+        }
+      }
+      const selfDescribe = spec.selfDescribe
+      if (selfDescribe !== undefined) {
+        if (!selfDescribe || typeof selfDescribe !== 'object') {
+          log.add('service.selfDescribe', 'not-object', selfDescribe)
+        } else {
+          const sd = selfDescribe as Record<string, unknown>
+          const url = typeof sd.url === 'string' ? sd.url : ''
+          if (!url.trim()) log.add('service.selfDescribe.url', 'missing')
+          else if (!/^https?:\/\//i.test(url) && !url.includes('{baseUrl}')) {
+            log.add('service.selfDescribe.url', 'invalid-url', url)
+          }
+          if (typeof sd.endpoints !== 'string' || !sd.endpoints.trim()) {
+            log.add('service.selfDescribe.endpoints', 'missing')
+          }
+        }
+      }
+    }
   }
 
   // ─── 能力域 ─────────────────────────────────────────────────

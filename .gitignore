@@ -22,9 +22,14 @@ release
 *.blockmap
 
 # TypeScript 编译产物（源码目录内）
+# 注意：源码目录里也有**手写**的 .js 与 .d.ts（移动端沙箱 Worker、
+# vite 的 `?raw` 类型声明），它们必须入库，所以这里排除 .ts 同源的产物：
+# tsc 的输出与被编译的 .ts 同名同目录，下面按名字取反（!）逐个放行。
 **/src/**/*.js
 **/src/**/*.js.map
 **/src/**/*.d.ts
+!/**/src/**/*.worker.js
+!/**/src/**/*.d.ts
 
 # 环境变量
 .env

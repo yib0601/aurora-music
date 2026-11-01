@@ -315,7 +315,12 @@ export async function resolveLxTrack(input: ResolveLxTrackInput): Promise<LxReso
     musicInfo = mapped.musicInfo
   }
 
-  const deps = input.deps ?? getLxHostDeps()
+  // 宿主**只能**由调用方注入（插件从 `ctx.scriptHost` 取）。
+  //
+  // 不再回落 `getLxHostDeps()`：那条回落会让「调用方忘了传宿主」静默变成
+  // 「用了全局单例」，而后者正是这次改造要拆掉的隐式依赖 —— 它让单测无法按调用点
+  // 注入替身，也让"这个插件需要宿主"只能靠读代码发现。未注入就是要报错。
+  const deps = input.deps
   if (!deps || typeof deps.request !== 'function') {
     return { url: null, reason: auroraError('core.error.lxHostNotReady').message }
   }
@@ -352,7 +357,8 @@ export async function searchLxSourceForAggregate(
   query: string,
   deps?: LxHostDeps | null
 ): Promise<OnlineTrackSearchResult[]> {
-  const hostDeps = deps ?? getLxHostDeps()
+  // 同 `resolveLxTrack`：宿主必须由调用方注入，不回落全局单例
+  const hostDeps = deps
   if (!hostDeps || typeof hostDeps.request !== 'function') {
     throw auroraError('core.error.lxHostNotReady')
   }

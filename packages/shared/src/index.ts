@@ -273,6 +273,7 @@ export {
   canParsePlaylist,
   canResolveTrack,
   sourceHasLyrics,
+  lyricsSourceViaPlugin,
   needsAuth,
   sourceCacheKeyOf,
   // 在线发现（推荐歌单 / 榜单）：与搜索 / 取址同属插件能力
@@ -281,6 +282,9 @@ export {
   toplistsViaPlugin,
   toplistDetailViaPlugin,
   hostContextOf,
+  // 单曲取址的统一编排（跨端共用）
+  resolveTrackAudioViaPlugin,
+  trackRefFor,
   // 宿主能力注册表：插件「需要宿主给什么」的登记与判定（与 health 的「坏没坏」是两件事）
   HOST_CAPABILITY_VERSION,
   clearHostCapabilitiesForTest,

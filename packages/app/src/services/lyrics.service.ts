@@ -1,4 +1,4 @@
-import { lyricEndpointOf, sourceHasLyrics } from '@aurora/shared'
+import { hostContextOf, lyricsSourceViaPlugin } from '@aurora/shared'
 import type { LyricLine, LyricsSourceConfig } from '@/types'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -96,28 +96,24 @@ export interface OnlineLyricsResult {
 /**
  * 把「音源」翻成歌词执行器认识的源列表 —— 歌词能力随音源走，不再有独立的歌词源配置。
  *
- * 服务地址形态的音源由协议派生出歌词端点（服务端自描述里的 endpoints.lyric 优先，
- * 没有自描述时回落默认路径，见 shared/src/auroraPreset.ts 的 lyricEndpointOf），
- * 于是用户只填一条音源，搜索 / 歌单解析 / 歌词三种能力一起到位。
- * 派生出端点（含 {track}/{artist}/{duration} 占位符）的源才参与；顺序即音源的配置顺序。
+ * ## 收口到插件门面（P3）
+ *
+ * 改造前这里直接调 `lyricEndpointOf(source)` —— 那是 **aurora 协议私有**的端点派生，
+ * 于是歌词能力被绑死在一种形态上：装来的声明式插件即便在清单里声明了 `lyrics`，
+ * 也永远进不了这个列表。表现为"插件明明有歌词端点却搜不到歌词"，而且没有任何报错。
+ *
+ * 现在统一走 `lyricsSourceViaPlugin`：插件自己回答"把哪条源交给聚合器"，
+ * aurora 派生端点、声明式插件用清单里的绝对地址，上层一视同仁。
  */
 function lyricsSourcesFromLibrary(): LyricsSourceConfig[] {
   const { onlineSources } = useLibraryStore.getState()
   const out: LyricsSourceConfig[] = []
   for (const source of onlineSources) {
     if (!source.enabled) continue
-    // 歌词能力按插件声明判定：没有 lyric 端点派生能力的插件自然被跳过
-    // （旧实现按 kind==='lx' 硬编码跳过，加第三种形态时这里会被漏掉）
-    if (!sourceHasLyrics(source)) continue
-    const sourceUrl = lyricEndpointOf(source)
-    if (!sourceUrl) continue
-    out.push({
-      id: source.id,
-      name: source.name,
-      sourceUrl,
-      ...(source.headers ? { headers: source.headers } : {}),
-      enabled: true,
-    })
+    // 派生不出歌词源的源直接跳过（"这个源不提供歌词"是正常情况，不是失败）
+    const cfg = lyricsSourceViaPlugin(source, hostContextOf(source))
+    if (!cfg) continue
+    out.push(cfg)
   }
   return out
 }

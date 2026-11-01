@@ -470,7 +470,14 @@ describe('B. 聚合搜索行为', () => {
         })
       ).toBe(true)
       // 单源入口直接抛结构化错误（由聚合层按单源失败处理）
-      const err = await rejectionOf(searchLxSourceForAggregate(source, '起风了'))
+      //
+      // 宿主**显式传入**：P2 起 `searchLxSourceForAggregate` 不再回落
+      // `getLxHostDeps()` 的全局单例（那条隐式依赖正是本次改造要拆掉的东西）。
+      // 本用例的意图是"有宿主、但脚本源码不可得"，所以必须把宿主交进去，
+      // 才能走到 lxScriptUnavailable 而不是 lxHostNotReady。
+      const err = await rejectionOf(
+        searchLxSourceForAggregate(source, '起风了', { request: countingRequest().request })
+      )
       expectCode(err, 'core.error.lxScriptUnavailable', { name: '无脚本源' })
     } finally {
       console.warn = orig

@@ -26,6 +26,13 @@ import LZString from 'lz-string'
 import { mapWithConcurrency } from './concurrency'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { auroraError, describeError, toErrorInfo } from './i18n/errors'
+// 能力登记：`setLxHostDeps` 要与能力表**同一时刻**更新（见该函数注释）。
+// `hostCapabilities` 零依赖，不会引入环。
+import {
+  HOST_CAPABILITY_VERSION,
+  registerHostCapability,
+  unregisterHostCapability,
+} from './plugin/hostCapabilities'
 import type { MessageKey } from './i18n'
 import type { DownloadQuality, OnlineSourceConfig, OnlineTrackSearchResult, SourceTrackRef } from './types'
 
@@ -267,10 +274,32 @@ export interface LxHostDeps {
  */
 let globalDeps: LxHostDeps | null = null
 
-/** 注册宿主依赖（平台启动时调用一次） */
+/**
+ * 注册宿主依赖（平台启动时调用一次）。
+ *
+ * ## 同时登记成 `script.host` 能力
+ *
+ * 这是**过渡期的桥接**，有两个必须在这儿做的理由：
+ *
+ * 1. 平台层（桌面 `installLxHostDeps` / 移动 `installMobileLxHost`）与单测都是
+ *    「调 `setLxHostDeps` 就算装好了宿主」。若这里不同步登记能力，那么按新契约
+ *    从 `ctx.scriptHost` 取宿主的插件会全部拿到 `undefined` —— 表现为"配了源却
+ *    不参与搜索"，而且没有任何报错。这条桥接让两种注入方式等价。
+ * 2. `lxHost` 是宿主依赖的**唯一真源持有者**：能力登记必须与它同一时刻发生，
+ *    否则会出现"单例有、能力表没有"的不一致窗口。
+ *
+ * 等 P2 的调用点全部迁移完、`getLxHostDeps()` 可以删除时，本函数只剩登记能力
+ * 这一个职责（届时 `globalDeps` 也随之退役）。
+ */
 export function setLxHostDeps(deps: LxHostDeps | null): void {
   globalDeps = deps
   boxCache.clear()
+  // 同步能力表：注销与登记都要做，否则 `setLxHostDeps(null)` 之后能力表里还留着旧实现
+  if (deps && typeof deps.request === 'function') {
+    registerHostCapability('script.host', HOST_CAPABILITY_VERSION['script.host'], deps)
+  } else {
+    unregisterHostCapability('script.host')
+  }
 }
 
 /** 取当前注册的宿主依赖；未注册返回 null（调用方据此给出可读错误） */

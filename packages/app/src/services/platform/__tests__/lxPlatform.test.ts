@@ -18,7 +18,27 @@ const state = vi.hoisted(() => ({
     url: 'http://bd-lw.kuwo.cn/x/6ac51e74/resource/30106/trackmedia/M800.mp3',
     quality: '320k',
   })),
+  // P3：取址统一走插件门面（与搜索同一条路）
+  pluginResolveTrack: vi.fn(async (..._args: unknown[]) => ({
+    url: 'http://bd-lw.kuwo.cn/x/6ac51e74/resource/30106/trackmedia/M800.mp3',
+    quality: '320k',
+  })),
 }))
+
+/** 桌面端取址所需的完整插件通道桩（缺一个就会被 preload 门面判定为不可用） */
+const pluginChannels = (resolveTrack: unknown) => ({
+  plugins: {
+    list: async () => [],
+    probe: async () => ({}),
+    search: async () => [],
+    resolveTrack,
+    userPlaylists: async () => [],
+    playlistTracks: async () => [],
+    login: async () => ({ ok: true }),
+    authState: async () => ({}),
+    logout: async () => ({ ok: true }),
+  },
+})
 
 // ─── 浏览器环境（web 平台）：脚本宿主无该能力 ───
 vi.mock('@capacitor/core', () => ({
@@ -97,7 +117,7 @@ describe('web 平台：脚本形态不可用', () => {
 describe('桌面端：惰性取址语义', () => {
   it('回填 onlineUrl 并返回副本，不改写原 track', async () => {
     ;(globalThis as unknown as { window: unknown }).window = {
-      electronAPI: { lxSource: { resolveUrl: state.resolveUrl } },
+      electronAPI: pluginChannels(state.pluginResolveTrack),
     }
     state.onlineSources = [
       { id: 'src-lx', name: 'Huibq 音源', kind: 'lx', sourceUrl: 'https://example.com/huibq.js', enabled: true },
@@ -110,8 +130,14 @@ describe('桌面端：惰性取址语义', () => {
     expect(out?.onlineUrl).toBe('http://bd-lw.kuwo.cn/x/6ac51e74/resource/30106/trackmedia/M800.mp3')
     expect(origin.onlineUrl).toBeUndefined()
     expect(out).not.toBe(origin)
-    // 质量档位取用户设置的下载音质（App 默认 flac）
-    expect(state.resolveUrl).toHaveBeenCalledWith(origin.trackRef, state.onlineSources[0], 'flac')
+    // 质量档位取用户设置的下载音质（App 默认 flac）。
+    // 参数顺序随新通道变化：插件 id 在最前（由配置的 pluginId 推导）
+    expect(state.pluginResolveTrack).toHaveBeenCalledWith(
+      'lx',
+      state.onlineSources[0],
+      origin.trackRef,
+      'flac'
+    )
   })
 
   it('无定位令牌 / 源形态不匹配 / 源已删除时返回 null（不请求源）', async () => {

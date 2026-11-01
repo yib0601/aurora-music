@@ -8,6 +8,7 @@
 
 import type {
   DownloadQuality,
+  LyricsSourceConfig,
   MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
@@ -19,7 +20,7 @@ import type {
 } from '../types'
 import type { PluginCapability, PluginContext, ResolvedAudio, SourcePlugin } from './types'
 import { searchMusicSource } from '../musicSource'
-import { parseSourceInput, probeAuroraService } from '../auroraPreset'
+import { lyricEndpointOf, parseSourceInput, probeAuroraService } from '../auroraPreset'
 import { auroraProbeToResult } from '../sourceProbe'
 import {
   isTrackEndpointKnownMissing,
@@ -144,6 +145,28 @@ export const auroraPlugin: SourcePlugin = {
     options: MusicHallOptions
   ): Promise<ToplistDetail> {
     return fetchToplistSongs(config as never, options)
+  },
+
+  /**
+   * 歌词：本插件**交出**一条歌词源（端点由协议派生），而不是自己取词。
+   *
+   * 改造前这件事由 `lyrics.service.ts` 直接调 `lyricEndpointOf(source)` 完成，
+   * 插件声明了 `capabilities: ['lyrics']` 却没有对应方法可调用 —— 声明与实现分叉，
+   * 而声明式插件的 `lyrics` 声明因此接不进任何链路。
+   *
+   * 派生不出端点时返回 `null`（例如用户填的是接口模板形态、或老服务端没有 lyric 端点），
+   * 上层据此跳过该源，不作失败处理。
+   */
+  lyricsSource(config: OnlineSourceConfig): LyricsSourceConfig | null {
+    const sourceUrl = lyricEndpointOf(config)
+    if (!sourceUrl) return null
+    return {
+      id: config.id,
+      name: config.name,
+      sourceUrl,
+      ...(config.headers ? { headers: config.headers } : {}),
+      enabled: true,
+    }
   },
 
   /**

@@ -34,6 +34,7 @@ import type { MessageKey } from '../i18n'
 import type { CapabilityRequirement } from './hostCapabilities'
 import type {
   DownloadQuality,
+  LyricsSourceConfig,
   MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
@@ -160,6 +161,41 @@ export interface PluginContext {
   credential?: PluginCredential | null
   /** 诊断日志出口（可选） */
   log?: (message: string, detail?: unknown) => void
+  /**
+   * **脚本宿主**（`script.host` 能力解析出的实现）。
+   *
+   * 只有声明了 `requires: [{ id: 'script.host' }]` 的插件才会拿到它；没声明的插件
+   * 这里恒为 `undefined`。缺脚本能力的端（浏览器）永远是 `undefined`。
+   *
+   * ## 为什么要有这个字段
+   *
+   * 改造前插件内部直接 `getLxHostDeps()` 读**模块级单例**，于是：
+   * - 「这个插件需要宿主提供什么」只能靠读实现代码才知道；
+   * - 单测与桌面/移动两端共用同一份隐式全局，无法按调用点注入替身。
+   *
+   * 现在依赖走声明（`requires`）、实现走注入（本字段），插件实现里不再 import
+   * `lxHost` 的单例读取函数。
+   *
+   * ## 类型为什么不在本文件定义
+   *
+   * `LxHostDeps` 属于 `lxHost`（脚本宿主域）。在契约层重复声明一遍会形成第二份真源，
+   * 所以这里用结构化最小形状：插件能看到的只有它真正会用的那几个成员。
+   * 需要完整类型的地方（`lxHost` 内部）继续用 `LxHostDeps`。
+   */
+  scriptHost?: ScriptHostLike
+}
+
+/**
+ * 脚本宿主的最小结构形状（`PluginContext.scriptHost` 用）。
+ *
+ * 刻意只列**判定与执行必需**的成员，不照抄 `LxHostDeps` 全部字段：
+ * 契约层暴露得越窄，将来换实现时的兼容面越小。`LxHostDeps` 结构上满足本接口。
+ */
+export interface ScriptHostLike {
+  /** 脚本的网络请求通道（宿主代发，绕开 CORS） */
+  request: (...args: never[]) => unknown
+  env?: 'desktop' | 'mobile'
+  version?: string
 }
 
 /**
@@ -277,6 +313,33 @@ export interface SourcePlugin {
     options: MusicHallOptions,
     ctx: PluginContext
   ): Promise<ToplistDetail>
+
+  // ─── 歌词（可选） ───────────────────────────────────────────
+
+  /**
+   * 把「本插件提供的歌词源」交给上层聚合器。
+   *
+   * ## 为什么是「交出配置」而不是「自己取歌词」
+   *
+   * 歌词不是一个源说了算的：既有 `searchLyrics` 做的是**多源聚合**
+   * （用户源优先 + 内置 LRCLIB 兜底 + 延迟对冲并发 + 首个非空胜出）。
+   * 若让每个插件自己实现"取歌词"，那套聚合要被复写 N 遍，且各插件行为会漂移。
+   *
+   * 所以插件只回答一个问题：**「把哪一条源交给聚合器」**。返回 `null` =
+   * 本插件此刻不提供歌词（例如端点未配置 / 该源形态不支持）。
+   *
+   * ## 与 `capabilities` 里 `'lyrics'` 的关系
+   *
+   * `capabilities` 只是给 UI 渲染徽章的**声明**，调用前的判定一律用
+   * `typeof plugin.lyricsSource === 'function'`（本仓一贯口径：能力 = 方法存在性）。
+   * 改造前 aurora 声明了 `lyrics` 但**没有对应方法**，能力只能靠
+   * `lyricEndpointOf()` 这个协议私有派生函数间接体现 —— 声明式插件因此永远
+   * 接不进歌词链路。本方法就是补上那个缺失的契约位。
+   */
+  lyricsSource?(
+    config: OnlineSourceConfig,
+    ctx: PluginContext
+  ): LyricsSourceConfig | null
 
   // ─── 登录（可选） ───────────────────────────────────────────
 

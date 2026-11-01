@@ -30,6 +30,7 @@ import {
 import { searchOnlineTracks, searchLyrics } from './online'
 import {
   hostContextOf,
+  resolveTrackAudioViaPlugin,
   recommendViaPlugin,
   toplistsViaPlugin,
   toplistDetailViaPlugin,
@@ -589,49 +590,43 @@ export function createMobilePlatform(): PlatformInterface & {
     },
 
     async resolveTrackAudio(track: Track): Promise<Track | null> {
-      // 两条定位凭据：脚本源的令牌（trackRef）与自有服务协议的源内 id（onlineId）
+      // 定位凭据：曲目自带的脚本令牌（trackRef）或源内 id（onlineId）。
+      // 都没有时这条路不适用：调用方回落按名搜索。
       const ref = track?.trackRef
       const songId = sourceSongIdOf(track?.onlineSource, track?.onlineId)
-      // 都没有时这条路不适用：调用方回落既有搜索取址路径
       if (!ref && !songId) return null
+
       try {
         const { useLibraryStore } = await import('@/stores/libraryStore')
         const state = useLibraryStore.getState()
         // 脚本多数按音质档位取址，档位唯一意图来源是用户的下载音质设置（默认 flac）
         const quality = state.downloadQuality || 'flac'
+        const source = state.onlineSources.find(
+          (s) => s.id === (ref?.sourceId || track?.onlineSource)
+        )
+        if (!source) return null
 
-        if (ref) {
-          const source = state.onlineSources.find((s) => s.id === ref.sourceId)
-          // 找不到音源配置或形态对不上：返回 null 由调用方回落既有取址路径
-          if (!source || source.kind !== 'lx') return null
-          // 优先走 Worker 沙箱（同步死循环可被 terminate 打断）；
-          // 不支持时回落 lxHost 的 new Function 路径（语义一致、但无中断能力）
-          const sandboxed = await resolveLxSourceUrlInSandbox(source, ref, quality)
-          const resolved = sandboxed ?? (await resolveLxSourceUrl(source, ref, quality))
-          if (!resolved.url || !/^https?:\/\//i.test(resolved.url)) return null
-          return { ...track, onlineUrl: resolved.url }
-        }
-
-        // 自有服务协议：按源内 id 取址（服务端 /aurora/track）。移动端 fetch 已被换成
-        // CapacitorHttp（原生 HTTP），不受 WebView CORS 限制，直接调共享执行器即可。
-        const source = state.onlineSources.find((s) => s.id === track.onlineSource)
-        if (!source || source.kind === 'lx') return null
-        if (isTrackEndpointKnownMissing(source)) return null
-        const resolved = await resolveAuroraTrack({ source, songId, quality })
-        if (resolved.audioUrl === null) {
-          // 失败原因（无权益 / id 不存在 / 老服务端）在共享层已编码成可渲染文案，
-          // 这里只落日志：取址失败要静默回落按名搜索，不打断播放
-          console.warn('[音源] 移动端按 id 取址未成功:', songId, resolved.reason)
-          return null
-        }
-        if (!/^https?:\/\//i.test(resolved.audioUrl)) return null
+        // 走**插件门面**（与桌面端同一条路）：不再按 `kind === 'lx'` 分派两套通道。
+        // 移动端与插件同进程，直接调共享编排即可（fetch 已被换成 CapacitorHttp，
+        // 不受 WebView CORS 限制）。
+        //
+        // 脚本沙箱的择优（Worker 可打断 vs new Function 回退）仍在 `lxHost` 内部，
+        // 对这里透明 —— 那是实现细节，不是调用方的形态判断。
+        const resolved = await resolveTrackAudioViaPlugin(
+          source,
+          track,
+          hostContextOf(source),
+          quality
+        )
+        if (!resolved) return null
         return {
           ...track,
-          onlineUrl: resolved.audioUrl,
+          onlineUrl: resolved.url,
           ...(resolved.qualityUrls ? { onlineQualityUrls: resolved.qualityUrls } : {}),
           ...(resolved.coverUrl ? { coverUrl: resolved.coverUrl } : {}),
         }
       } catch (err) {
+        // 取址失败要静默回落按名搜索，不打断播放
         console.warn('[音源] 移动端取址失败:', ref?.sourceId || track?.onlineId, err)
         return null
       }

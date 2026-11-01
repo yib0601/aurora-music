@@ -29,6 +29,16 @@ const state = vi.hoisted(() => {
   return {
     onlineSources: [] as Array<Record<string, unknown>>,
     downloadQuality: 'flac' as string,
+    // 新契约：桌面端取址走插件门面 `plugins.resolveTrack`（与搜索同一条路）。
+    // 旧通道 `onlineTrack.resolveById` 只剩历史 preload 兼容，不再是主路径。
+    pluginsResolveTrack: vi.fn(
+      async (..._args: unknown[]): Promise<Record<string, unknown> | null> => ({
+        url: 'http://cdn.example.com/M500002RXlW80X7JS7.mp3?vkey=x',
+        quality: '128',
+        qualityUrls: { '128': 'http://cdn.example.com/M500002RXlW80X7JS7.mp3?vkey=x' },
+        coverUrl: 'https://y.qq.com/music/photo_new/T002R300x300M000001rvLZC39uADA.jpg',
+      })
+    ),
     resolveById: vi.fn(
       async (..._args: unknown[]): Promise<ResolveResult> => ({
         audioUrl: 'http://cdn.example.com/M500002RXlW80X7JS7.mp3?vkey=x',
@@ -93,12 +103,26 @@ afterEach(() => {
   // 全局 fetch 则与实例无关，任何一层调用都吃得到
   vi.unstubAllGlobals()
   state.resolveById.mockClear()
+  state.pluginsResolveTrack.mockClear()
 })
 
 describe('桌面端：按源内 id 取址（IPC 走主进程）', () => {
   it('回填直链 / 多音质地址 / 封面，并返回副本（不改写原 track）', async () => {
     ;(globalThis as unknown as { window: unknown }).window = {
-      electronAPI: { onlineTrack: { resolveById: state.resolveById } },
+      electronAPI: {
+        onlineTrack: { resolveById: state.resolveById },
+        plugins: {
+          list: async () => [],
+          probe: async () => ({}),
+          search: async () => [],
+          resolveTrack: state.pluginsResolveTrack,
+          userPlaylists: async () => [],
+          playlistTracks: async () => [],
+          login: async () => ({ ok: true }),
+          authState: async () => ({}),
+          logout: async () => ({ ok: true }),
+        },
+      },
     }
     state.onlineSources = [AURORA_SOURCE]
     const { createDesktopPlatform } = await import('../index')
@@ -117,13 +141,36 @@ describe('桌面端：按源内 id 取址（IPC 走主进程）', () => {
     // 副本语义：直链会过期，写回原 track 就是写进死地址
     expect(origin.onlineUrl).toBeUndefined()
     expect(out).not.toBe(origin)
-    // 交给主进程的是「源配置 + 源内 id + 用户下载音质」
-    expect(state.resolveById).toHaveBeenCalledWith(AURORA_SOURCE, '002A97IJ2D6KYA', 'flac')
+    // 交给主进程的是「插件 id + 源配置 + 定位令牌 + 用户下载音质」。
+    // P3 起桌面端取址统一走插件门面（`plugins.resolveTrack`），不再有
+    // `onlineTrack.resolveById` 这条 aurora 专用通道 —— 后者正是让装来的
+    // 声明式插件取不到址的原因（它被形态分支排除在外）。
+    expect(state.resolveById).not.toHaveBeenCalled()
+    expect(state.pluginsResolveTrack).toHaveBeenCalled()
+    const [pluginId, cfgArg, tokenArg, qualityArg] = state.pluginsResolveTrack.mock.calls[0]
+    expect(pluginId).toBe('aurora')
+    expect((cfgArg as { id: string }).id).toBe('src-hall')
+    // 令牌是不透明定位信息：aurora 读 meta.songmid，历史前缀已剥掉
+    expect((tokenArg as { meta: { songmid: string } }).meta.songmid).toBe('002A97IJ2D6KYA')
+    expect(qualityArg).toBe('flac')
   })
 
   it('历史形态的 onlineId（带 <sourceId>- 前缀）先剥前缀再接源', async () => {
     ;(globalThis as unknown as { window: unknown }).window = {
-      electronAPI: { onlineTrack: { resolveById: state.resolveById } },
+      electronAPI: {
+        onlineTrack: { resolveById: state.resolveById },
+        plugins: {
+          list: async () => [],
+          probe: async () => ({}),
+          search: async () => [],
+          resolveTrack: state.pluginsResolveTrack,
+          userPlaylists: async () => [],
+          playlistTracks: async () => [],
+          login: async () => ({ ok: true }),
+          authState: async () => ({}),
+          logout: async () => ({ ok: true }),
+        },
+      },
     }
     state.onlineSources = [AURORA_SOURCE]
     const { createDesktopPlatform } = await import('../index')
@@ -133,16 +180,31 @@ describe('桌面端：按源内 id 取址（IPC 走主进程）', () => {
 
     await platform.resolveTrackAudio(hallTrack({ onlineId: 'src-hall-002A97IJ2D6KYA' }))
 
-    expect(state.resolveById).toHaveBeenCalledWith(AURORA_SOURCE, '002A97IJ2D6KYA', 'flac')
+    // 历史形态 `<sourceId>-<songmid>` 的剥前缀逻辑保留在 `trackRefFor` 里，
+    // 断言落到令牌上（而不是某条通道的参数顺序）
+    expect(state.pluginsResolveTrack).toHaveBeenCalled()
+    const token = state.pluginsResolveTrack.mock.calls[0][2] as { meta: { songmid: string } }
+    expect(token.meta.songmid).toBe('002A97IJ2D6KYA')
   })
 
   it('取址失败（无权益 / id 不存在 / 老服务端）返回 null，由调用方回落按名搜索', async () => {
-    state.resolveById.mockResolvedValueOnce({
-      audioUrl: null,
-      reason: 'AURORA_ERR:{"code":"core.error.trackNoAudio"}',
-    })
+    // 取址失败：插件返回 null（无权益 / id 不存在 / 老服务端都归一成这一种）
+    state.pluginsResolveTrack.mockResolvedValueOnce(null)
     ;(globalThis as unknown as { window: unknown }).window = {
-      electronAPI: { onlineTrack: { resolveById: state.resolveById } },
+      electronAPI: {
+        onlineTrack: { resolveById: state.resolveById },
+        plugins: {
+          list: async () => [],
+          probe: async () => ({}),
+          search: async () => [],
+          resolveTrack: state.pluginsResolveTrack,
+          userPlaylists: async () => [],
+          playlistTracks: async () => [],
+          login: async () => ({ ok: true }),
+          authState: async () => ({}),
+          logout: async () => ({ ok: true }),
+        },
+      },
     }
     state.onlineSources = [AURORA_SOURCE]
     const { createDesktopPlatform } = await import('../index')
@@ -154,12 +216,24 @@ describe('桌面端：按源内 id 取址（IPC 走主进程）', () => {
   })
 
   it('主进程抛错或直链非法时同样返回 null，不把异常穿透到 UI', async () => {
-    const resolveById = vi
+    const resolveTrack = vi
       .fn()
       .mockRejectedValueOnce(new Error('IPC 挂了'))
-      .mockResolvedValueOnce({ audioUrl: 'not-a-url', quality: '128' })
+      .mockResolvedValueOnce({ url: 'not-a-url', quality: '128' })
     ;(globalThis as unknown as { window: unknown }).window = {
-      electronAPI: { onlineTrack: { resolveById } },
+      electronAPI: {
+        plugins: {
+          list: async () => [],
+          probe: async () => ({}),
+          search: async () => [],
+          resolveTrack,
+          userPlaylists: async () => [],
+          playlistTracks: async () => [],
+          login: async () => ({ ok: true }),
+          authState: async () => ({}),
+          logout: async () => ({ ok: true }),
+        },
+      },
     }
     state.onlineSources = [AURORA_SOURCE]
     const { createDesktopPlatform } = await import('../index')
@@ -172,8 +246,33 @@ describe('桌面端：按源内 id 取址（IPC 走主进程）', () => {
   })
 
   it('脚本源的 onlineId 不是源内 id：不按 id 取址（没令牌就返回 null）', async () => {
+    // 这条不变量的**判定位置**在 P3 从平台层移到了插件内：
+    // 平台层不再按 `kind === 'lx'` 拦，而是把「无 platform 的令牌」交给 lx 插件，
+    // 由 `lxResolver` 以 `core.error.lxTrackRefMissing` 拒绝（空 platform 无法定位平台）。
+    // 所以这里让 mock 如实模拟插件契约：platform 为空 → 取不到址。
+    const strictResolve = vi.fn(
+      async (
+        _id: unknown,
+        _cfg: unknown,
+        token?: { platform?: string }
+      ): Promise<Record<string, unknown> | null> =>
+        token?.platform ? { url: 'http://cdn.example.com/x.mp3' } : null
+    )
     ;(globalThis as unknown as { window: unknown }).window = {
-      electronAPI: { onlineTrack: { resolveById: state.resolveById } },
+      electronAPI: {
+        onlineTrack: { resolveById: state.resolveById },
+        plugins: {
+          list: async () => [],
+          probe: async () => ({}),
+          search: async () => [],
+          resolveTrack: strictResolve,
+          userPlaylists: async () => [],
+          playlistTracks: async () => [],
+          login: async () => ({ ok: true }),
+          authState: async () => ({}),
+          logout: async () => ({ ok: true }),
+        },
+      },
     }
     state.onlineSources = [
       { id: 'src-hall', name: 'Huibq 音源', kind: 'lx', sourceUrl: 'https://e.com/x.js', enabled: true },
@@ -189,7 +288,20 @@ describe('桌面端：按源内 id 取址（IPC 走主进程）', () => {
 
   it('源已删除时返回 null（不猜、不拿别的源硬取）', async () => {
     ;(globalThis as unknown as { window: unknown }).window = {
-      electronAPI: { onlineTrack: { resolveById: state.resolveById } },
+      electronAPI: {
+        onlineTrack: { resolveById: state.resolveById },
+        plugins: {
+          list: async () => [],
+          probe: async () => ({}),
+          search: async () => [],
+          resolveTrack: state.pluginsResolveTrack,
+          userPlaylists: async () => [],
+          playlistTracks: async () => [],
+          login: async () => ({ ok: true }),
+          authState: async () => ({}),
+          logout: async () => ({ ok: true }),
+        },
+      },
     }
     state.onlineSources = []
     const { createDesktopPlatform } = await import('../index')

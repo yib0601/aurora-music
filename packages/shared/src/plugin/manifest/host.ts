@@ -63,6 +63,77 @@ export function hostAllowed(hosts: readonly string[], url: string): boolean {
 /** 越界时的错误信息形状（结构化：显示端据此渲染本地化文案，不在本层烧中文） */
 export const HOST_NOT_ALLOWED = 'AURORA_PLUGIN_HOST_NOT_ALLOWED'
 
+/**
+ * 出网白名单的两种模式。
+ *
+ * ## 为什么需要第二种
+ *
+ * 清单里写死 `hosts: ["api.example.com"]` 对**固定上游**的插件是对的。
+ * 但有一种形态与之根本冲突：**「用户填自己的服务地址」** —— 自建托管者填
+ * `https://music.myserver.com?key=…`，上游主机由用户决定，作者**不可能**
+ * 在清单里穷举。若不支持它，这类插件只能放弃白名单强制（那等于把白名单变成
+ * 装饰），或者要求用户改清单重新打包（那等于宣告"自建托管者用不了签名"）。
+ *
+ * ## `configured-origin` 不比 `declared-hosts` 松
+ *
+ * - **仍然禁止通配符**：放行的是**用户自己填的那一个 origin**，不是域后缀。
+ * - **由用户输入产生，不由插件自述**：插件无法在黑盒里扩大范围，除非用户
+ *   自己填了那个域 —— 那等于用户授权。
+ * - 地址取自 `config.sourceUrl`（用户可见可改），不是插件能伪造的字段。
+ */
+export type AllowlistMode =
+  /** 只在清单声明的 `hosts` 里放行（默认；固定上游的插件） */
+  | 'declared-hosts'
+  /** 只在**用户配置的服务地址**的 origin 里放行（自建托管型插件） */
+  | 'configured-origin'
+
+/** 白名单策略 */
+export interface AllowlistPolicy {
+  mode?: AllowlistMode
+  /** `declared-hosts` 模式下的主机清单 */
+  hosts?: readonly string[]
+  /** `configured-origin` 模式下用户填的服务地址（运行期由调用方传入） */
+  configuredUrl?: string
+}
+
+/**
+ * 从一条用户填写的地址里取 origin（`scheme://host[:port]`，小写）。
+ *
+ * 只接受 http(s)：其它协议（`file:` / `ftp:`）不该出现在插件源配置里。
+ * 取不到就返回空串 —— 调用方据此拒绝全部请求（fail-closed）。
+ */
+export function originOf(url: string | null | undefined): string {
+  const text = String(url || '').trim()
+  if (!text) return ''
+  try {
+    const parsed = new URL(text)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
+    return `${parsed.protocol}//${parsed.host}`.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 按策略判定一条 URL 是否放行。
+ *
+ * `configured-origin` 要求**协议 + 主机 + 端口全一致**（标准 origin 语义）：
+ * 比 `declared-hosts` 的"同主机任意端口"更严 —— 后者字段是作者声明，
+ * 前者是用户地址；把端口差异一并放行会让"用户以为只授权了一个服务、
+ * 实际授权了该主机上所有服务"。
+ */
+export function allowlistAllows(policy: AllowlistPolicy, url: string): boolean {
+  const mode = policy.mode || 'declared-hosts'
+  if (mode === 'configured-origin') {
+    const targetOrigin = originOf(url)
+    const allowedOrigin = originOf(policy.configuredUrl)
+    // fail-closed：任一侧取不到 origin（用户没填、地址非法）就拒绝
+    if (!targetOrigin || !allowedOrigin) return false
+    return targetOrigin === allowedOrigin
+  }
+  return hostAllowed(policy.hosts || [], url)
+}
+
 /** 构造一条越界错误（带目标主机，便于诊断"是哪个域名没声明"） */
 export function hostNotAllowedError(pluginId: string, url: string): Error {
   const host = hostOf(url) || '(invalid url)'
@@ -77,20 +148,26 @@ export function isHostNotAllowedError(err: unknown): boolean {
 }
 
 /**
- * 给插件包的 fetch：只放行清单里声明过的主机。
+ * 给插件包的 fetch：按策略放行。
  *
- * 返回的函数**签名与 `globalThis.fetch` 完全一致**，所以它可以直接塞进
- * `PluginContext.fetch`，插件实现里不需要任何分支（"我是不是外部插件"这个判断在运行期
- * 不存在）。
+ * 返回的函数**签名与 `globalThis.fetch` 完全一致**，可以直接塞进
+ * `PluginContext.fetch`，插件实现里不需要任何分支（"我是不是外部插件"这个判断
+ * 在运行期不存在）。
  */
 export function createGuardedFetch(
   manifest: Pick<PluginManifest, 'id' | 'hosts'>,
-  base: typeof globalThis.fetch
+  base: typeof globalThis.fetch,
+  /** `configured-origin` 模式下用户填的服务地址（调用方现传，因为配置会变） */
+  options?: { mode?: AllowlistMode; configuredUrl?: string }
 ): typeof globalThis.fetch {
-  const hosts = Array.isArray(manifest.hosts) ? manifest.hosts : []
+  const policy: AllowlistPolicy = {
+    mode: options?.mode ?? 'declared-hosts',
+    hosts: Array.isArray(manifest.hosts) ? manifest.hosts : [],
+    configuredUrl: options?.configuredUrl,
+  }
   const guarded = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    if (!hostAllowed(hosts, url)) throw hostNotAllowedError(manifest.id, url)
+    if (!allowlistAllows(policy, url)) throw hostNotAllowedError(manifest.id, url)
     return base(input, init)
   }
   // 只补 `preconnect`（fetch 的类型上它是可选的静态方法），其余静态成员不属于契约

@@ -27,7 +27,8 @@ import type { OnlineSourceConfig, OnlineTrackSearchResult, SourceTrackRef } from
 import type { PluginContext, ResolvedAudio, SourcePlugin } from '../types'
 import type { DeclarativeScriptSpec, PluginManifest } from './types'
 import { resolveLocalized } from './localize'
-import { getLxHostDeps, inspectLxSource } from '../../lxHost'
+import { inspectLxSource } from '../../lxHost'
+import type { LxHostDeps } from '../../lxHost'
 import { resolveLxTrack, searchLxSourceForAggregate } from '../../lxResolver'
 import { lxInspectionToProbe } from '../../sourceProbe'
 
@@ -57,16 +58,24 @@ export function scriptBodyOf(config: OnlineSourceConfig | null | undefined): str
 /**
  * 声明该插件会执行第三方代码时，`PluginContext` 里**必须**有脚本宿主。
  *
- * 为什么要有这条检查：宿主依赖（`setLxHostDeps`）是平台层在启动时注入的。
+ * 为什么要有这条检查：宿主能力（`script.host`）由平台层在启动时注册。
  * 桌面端有（Node 网络栈 + `node:vm`），Web 端没有（浏览器里既没有 vm 也没有
  * 不受 CORS 约束的请求通道）。缺宿主时脚本源必须**明确不可用**，
  * 而不是等到取址时才抛一个看不懂的错误。
+ *
+ * 判定来源是 `ctx.scriptHost`（宿主按 `requires` 声明注入），**不再**读
+ * `lxHost` 的模块级单例 —— 后者让"这个插件需要什么"只能靠读实现代码才知道。
  */
-function hostReady(): boolean {
-  // `getLxHostDeps()` 每次现读模块级单例：平台层可能在插件注册**之后**才装配宿主
-  // （桌面端在 app ready 后才 setLxHostDeps）。所以这里不能在模块顶层求值。
-  const deps = getLxHostDeps()
-  return Boolean(deps && typeof deps.request === 'function')
+function hostReady(ctx: PluginContext | undefined): boolean {
+  const host = ctx?.scriptHost
+  return Boolean(host && typeof host.request === 'function')
+}
+
+/** `ctx.scriptHost` → `LxHostDeps`（宿主注入的就是完整对象，这里只是类型窄化） */
+function depsOf(ctx: PluginContext | undefined): LxHostDeps | null {
+  const host = ctx?.scriptHost
+  if (!host || typeof host.request !== 'function') return null
+  return host as unknown as LxHostDeps
 }
 
 /**
@@ -108,8 +117,8 @@ export function buildScriptPlugin(manifest: PluginManifest, locale = 'zh-CN'): S
    * 「所有音源请求失败」，而真实原因（宿主没初始化 / 脚本没落盘）被掩盖。
    * 这条判断的语义与内置 `lxPlugin.preflight` 完全一致。
    */
-  plugin.preflight = async (config) => {
-    if (!hostReady()) return { ok: false, reason: 'core.error.lxHostNotReady' }
+  plugin.preflight = async (config, ctx) => {
+    if (!hostReady(ctx)) return { ok: false, reason: 'core.error.lxHostNotReady' }
     if (!scriptBodyOf(config)) return { ok: false, reason: 'core.error.lxSourceNoScript' }
     return { ok: true }
   }
@@ -149,7 +158,7 @@ export function buildScriptPlugin(manifest: PluginManifest, locale = 'zh-CN'): S
     config: OnlineSourceConfig,
     ref: SourceTrackRef,
     quality,
-    _ctx: PluginContext
+    ctx: PluginContext
   ): Promise<ResolvedAudio | null> => {
     const body = scriptBodyOf(config)
     if (!body) return null
@@ -162,6 +171,7 @@ export function buildScriptPlugin(manifest: PluginManifest, locale = 'zh-CN'): S
       meta: ref?.meta || null,
       onlineSource: asLxSource(config),
       quality,
+      deps: depsOf(ctx),
     })
     if (!outcome.url) return null
     return { url: outcome.url, quality: outcome.quality }
@@ -175,11 +185,13 @@ export function buildScriptPlugin(manifest: PluginManifest, locale = 'zh-CN'): S
    */
   plugin.search = async (
     config: OnlineSourceConfig,
-    query: string
+    query: string,
+    _quality,
+    ctx: PluginContext
   ): Promise<OnlineTrackSearchResult[]> => {
     const body = scriptBodyOf(config)
     if (!body) return []
-    return searchLxSourceForAggregate(asLxSource(config), query)
+    return searchLxSourceForAggregate(asLxSource(config), query, depsOf(ctx))
   }
 
   // 保留 displayName 到返回值里供诊断（SourcePlugin 契约里没有这个字段，

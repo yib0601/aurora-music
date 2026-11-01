@@ -13,6 +13,7 @@
 
 import type {
   DownloadQuality,
+  LyricsSourceConfig,
   MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
@@ -29,6 +30,9 @@ import { pluginIdOf } from './pluginIdOf'
 // 否则会撞上 musicSource → executor → builtins → auroraPlugin → musicSource 的环，
 // 拿到尚未初始化的插件对象（见 builtins.ts 顶部说明）
 import { ensureBuiltinsRegistered } from './builtins'
+// 宿主能力解析。`hostCapabilities` 零依赖（不 import 任何插件或核心模块），
+// 因此这条 import 不会引入新的环。
+import { getHostCapability } from './hostCapabilities'
 // 诊断日志出口。`logging/logger` 只依赖 `redact` 与 `types`，不反向依赖插件层，
 // 因此这条 import 不会引入新的环（与 `installed.ts` 那条被刻意避开的不一样）。
 import { createLogger } from '../logging/logger'
@@ -85,9 +89,37 @@ export function canParsePlaylist(source: OnlineSourceConfig | null | undefined):
  * 现在改为按插件能力询问，新增插件只需声明 `lyrics` 能力。
  */
 export function sourceHasLyrics(source: OnlineSourceConfig | null | undefined): boolean {
+  ensureBuiltinsRegistered()
   const plugin = pluginForSource(source)
   if (!plugin) return false
-  return plugin.capabilities.includes('lyrics')
+  // 判定按**方法存在性**（本仓一贯口径），而不是 `capabilities` 里的声明：
+  // 改造前 aurora 声明了 `lyrics` 却没有方法，声明与实现分叉；装来的声明式插件
+  // 也带着 `lyrics` 声明但无处可调。现在两边都实现 `lyricsSource`，判定才可信。
+  return typeof plugin.lyricsSource === 'function'
+}
+
+/**
+ * 取某个源提供的歌词源配置（交给 `searchLyrics` 聚合）。
+ *
+ * 返回 `null` 有三种情况，对调用方含义一致（跳过该源，不视为失败）：
+ * 1. 插件没实现 `lyricsSource`（该形态不提供歌词）；
+ * 2. 实现了但此刻派生不出端点（如用户填的是接口模板形态）；
+ * 3. 源未启用 / 插件未注册。
+ */
+export function lyricsSourceViaPlugin(
+  source: OnlineSourceConfig,
+  ctx: PluginContext
+): LyricsSourceConfig | null {
+  ensureBuiltinsRegistered()
+  const plugin = pluginForSource(source)
+  if (!plugin || typeof plugin.lyricsSource !== 'function') return null
+  try {
+    return plugin.lyricsSource(source, ctx) ?? null
+  } catch (err) {
+    // 单个源的歌词配置派生失败不该打断整个歌词搜索（其它源可能仍有歌词）
+    ctx?.log?.(`lyricsSource 派生失败: ${err instanceof Error ? err.message : String(err)}`)
+    return null
+  }
 }
 
 /** 这条源是否支持惰性取址 */
@@ -202,7 +234,27 @@ export function hostContextOf(source?: OnlineSourceConfig | null): PluginContext
     fetch: globalThis.fetch,
     headers: source?.headers,
     log: pluginLogger(source?.name),
+    // 脚本宿主：从能力注册表解析而不是读 `lxHost` 的模块级单例。
+    // 未注册的端（浏览器）这里就是 undefined —— 这是**如实反映**，不是降级失败：
+    // 声明了 `requires: script.host` 的插件会因此拿到 undefined，其 `preflight`
+    // 给出「本环境无脚本宿主」的可读结论。
+    scriptHost: scriptHostOf(),
   }
+}
+
+/**
+ * 取已注册的脚本宿主（`script.host` 能力的实现）。
+ *
+ * 惰性读注册表而不是模块顶层求值：桌面端在 `app.whenReady()` 之后才装配宿主，
+ * 而本模块在启动早期就被 import 了。顶层求值会永久拿到 undefined。
+ */
+function scriptHostOf(): PluginContext['scriptHost'] {
+  const capability = getHostCapability<PluginContext['scriptHost']>('script.host')
+  if (!capability?.impl) return undefined
+  const impl = capability.impl
+  // 结构性校验：能力注册了但形状不对（比如只塞了个空对象）等同于没有。
+  // 这类错误必须在这里被识别，否则会变成插件里一句难懂的 "x is not a function"。
+  return typeof impl.request === 'function' ? impl : undefined
 }
 
 /**

@@ -23,7 +23,8 @@ import type {
   ResolvedAudio,
   SourcePlugin,
 } from './types'
-import { getLxHostDeps, inspectLxSource, searchLxSource } from '../lxHost'
+import { inspectLxSource, searchLxSource } from '../lxHost'
+import type { LxHostDeps } from '../lxHost'
 import { resolveLxScript, resolveLxTrack, searchLxSourceForAggregate } from '../lxResolver'
 import { lxInspectionToProbe } from '../sourceProbe'
 
@@ -34,6 +35,22 @@ function asLxRef(config: OnlineSourceConfig, ref: SourceTrackRef) {
     platform: ref?.platform || '',
     meta: ref?.meta || {},
   }
+}
+
+/**
+ * `ctx.scriptHost` → `LxHostDeps` 的窄化。
+ *
+ * 契约层只暴露最小的 `ScriptHostLike`（见 `types.ts` 的说明），而 `lxResolver` /
+ * `lxHost` 内部需要完整的 `LxHostDeps`（`evaluate`、`utils`、超时……）。宿主注入的
+ * 实现本就是完整对象，所以这里是**运行时同一对象的类型窄化**，不是转换。
+ *
+ * 返回 `null` 表示「本环境没有脚本宿主」——调用方（`resolveLxTrack` /
+ * `searchLxSourceForAggregate`）把它当作"未装配"处理并给出可读错误。
+ */
+function asLxHostDeps(ctx: PluginContext): LxHostDeps | null {
+  const host = ctx?.scriptHost
+  if (!host || typeof host.request !== 'function') return null
+  return host as unknown as LxHostDeps
 }
 
 export const lxPlugin: SourcePlugin = {
@@ -65,9 +82,12 @@ export const lxPlugin: SourcePlugin = {
    * 这两件事缺任一，搜索必然失败；若不在这里摘掉，用户看到的是
    * 「所有音源请求失败」，而真正原因（宿主没初始化 / 脚本拉不下来）被掩盖。
    * 改造前这段判断写在 musicSource 的聚合循环里，还带 `kind === 'lx'` 分支。
+   *
+   * 宿主**从 ctx 取**（`ctx.scriptHost`）而不是 `getLxHostDeps()` 读全局单例：
+   * 依赖已由 `requires` 声明，实现由宿主按声明注入，插件不再 import 宿主的单例。
    */
-  async preflight(config: OnlineSourceConfig): Promise<PreflightResult> {
-    if (!getLxHostDeps()) {
+  async preflight(config: OnlineSourceConfig, ctx: PluginContext): Promise<PreflightResult> {
+    if (!ctx.scriptHost) {
       return { ok: false, reason: 'core.error.lxHostNotReady' }
     }
     const script = await resolveLxScript(config)
@@ -90,11 +110,12 @@ export const lxPlugin: SourcePlugin = {
   async search(
     config: OnlineSourceConfig,
     query: string,
-    _quality: DownloadQuality | undefined
+    _quality: DownloadQuality | undefined,
+    ctx: PluginContext
   ): Promise<OnlineTrackSearchResult[]> {
-    // 宿主依赖由全局注册（setLxHostDeps）提供；未装配时该函数抛结构化错误，
+    // 宿主从 ctx 取；未装配时 `searchLxSourceForAggregate` 抛结构化错误，
     // 由调用方按「本环境不具备该能力」处理
-    return searchLxSourceForAggregate(config, query)
+    return searchLxSourceForAggregate(config, query, asLxHostDeps(ctx))
   },
 
   /**
@@ -104,13 +125,15 @@ export const lxPlugin: SourcePlugin = {
   async resolveTrack(
     config: OnlineSourceConfig,
     ref: SourceTrackRef,
-    quality: DownloadQuality | undefined
+    quality: DownloadQuality | undefined,
+    ctx: PluginContext
   ): Promise<ResolvedAudio | null> {
     const outcome = await resolveLxTrack({
       lx: asLxRef(config, ref),
       meta: ref?.meta || null,
       onlineSource: config,
       quality,
+      deps: asLxHostDeps(ctx),
     })
     if (!outcome.url) return null
     return { url: outcome.url, quality: outcome.quality }

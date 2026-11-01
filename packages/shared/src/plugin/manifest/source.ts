@@ -49,6 +49,10 @@ import { auroraError, toErrorInfo } from '../../i18n/errors'
 import { readNumber, readString, valueAtPath } from './path'
 import { resolveLocalized } from './localize'
 import { buildScriptPlugin } from './script'
+// 歌词源配置的构造（与 `lyrics.ts` 的运行时共用同一份投影，避免两处拼装漂移）
+import { lyricsConfigOf } from './lyrics'
+// 服务地址形态：从用户填的地址派生端点（取代清单里写死绝对 URL）
+import { deriveService, type ServiceEndpointKey } from './service'
 
 /** 声明式插件的单次请求预算：与内置协议执行器同一量级（搜索/取址 10s，歌单 15s） */
 const SEARCH_TIMEOUT_MS = 10000
@@ -169,6 +173,35 @@ function buildUrl(template: string, values: Record<string, string | number>): st
 }
 
 /**
+ * 取某个能力实际要用的 URL 模板。
+ *
+ * 优先级：**service 派生** > 清单静态 `spec.url`。
+ *
+ * 为什么派生优先：服务地址形态的清单里 `source.search.url` 之类通常是**缺席**的
+ * （作者不可能写死自建主机的绝对地址），派生才是有值的那个。反过来，固定上游的
+ * 插件没有 `service` 块，派生返回 null，自然落回静态模板 —— 两种形态共用一段执行代码。
+ *
+ * 派生不成立（用户没填地址 / 地址非法）时返回**空串**，让调用方明确跳过：
+ * 发一个必然失败的请求只会把"没配置"伪装成"网络故障"。
+ */
+function endpointTemplateOf(
+  manifest: PluginManifest,
+  key: ServiceEndpointKey,
+  staticTemplate: string | undefined,
+  config: OnlineSourceConfig
+): string {
+  if (manifest.service) {
+    const derived = deriveService(manifest.service, config)
+    const fromService = derived?.endpoints?.[key]
+    if (fromService) return fromService
+    // 声明了 service 却没派生出来：说明用户地址缺失/非法，不该回落到静态模板
+    // （静态模板在这种清单里本就是空或占位符），直接给空串让上层跳过
+    if (!staticTemplate) return ''
+  }
+  return staticTemplate || ''
+}
+
+/**
  * 统一请求：注入头 + 超时（**含读体**） + 结构化错误。
  *
  * 错误码与既有执行器同一套（`core.error.source*`），用户看到的文案因此在
@@ -246,14 +279,18 @@ function listRunner(
   manifest: PluginManifest,
   spec: DeclarativeSearchEndpoint,
   timeoutMs: number,
-  requireAudioUrl: boolean
+  requireAudioUrl: boolean,
+  /** 该端点在 service 派生映射里的键（`search` / `playlist`） */
+  endpointKey: ServiceEndpointKey
 ) {
   return async (
     config: OnlineSourceConfig,
     values: Record<string, string | number>,
     ctx: PluginContext
   ): Promise<OnlineTrackSearchResult[]> => {
-    const url = buildUrl(spec.url, values)
+    const template = endpointTemplateOf(manifest, endpointKey, spec.url, config)
+    if (!template) return []
+    const url = buildUrl(template, values)
     const json = await requestJson(ctx, config.name || manifest.id, url, spec.headers, timeoutMs)
     const items = extractItems(json, spec.items)
     const results: OnlineTrackSearchResult[] = []
@@ -330,14 +367,14 @@ export function buildSourcePlugin(manifest: PluginManifest): SourcePlugin | null
 
   if (spec.search) {
     // requireAudioUrl = true：搜索结果是给用户点的，没有地址的条目在界面上点不动
-    const run = listRunner(manifest, spec.search, SEARCH_TIMEOUT_MS, true)
+    const run = listRunner(manifest, spec.search, SEARCH_TIMEOUT_MS, true, 'search')
     plugin.search = async (config, query, quality: DownloadQuality | undefined, ctx) =>
       run(config, { query, quality: quality || '128' }, ctx)
   }
 
   if (spec.playlistTracks) {
     // requireAudioUrl = false：歌单常只给元信息，地址在播放时按 id 现取
-    const run = listRunner(manifest, spec.playlistTracks, PLAYLIST_TIMEOUT_MS, false)
+    const run = listRunner(manifest, spec.playlistTracks, PLAYLIST_TIMEOUT_MS, false, 'playlist')
     plugin.getPlaylistTracks = async (config, playlistId, ctx) =>
       run(config, { playlistId }, ctx)
   }
@@ -424,6 +461,28 @@ export function buildSourcePlugin(manifest: PluginManifest): SourcePlugin | null
     }
   }
 
+  // ─── 歌词：把「本插件的歌词源」交给上层聚合器 ─────────────────
+  //
+  // 为什么不在这里取歌词：既有的 `searchLyrics` 做的是多源聚合（用户源优先 +
+  // 内置 LRCLIB 兜底 + 延迟对冲），让每个插件各写一份取词等于把那套策略复写 N 遍。
+  // 插件只回答"把哪条源交出去"，聚合仍归 `lyricsSource.ts`。
+  //
+  // 改造前 aurora 声明了 `lyrics` 能力却没有对应方法，能力只能靠协议私有的
+  // `lyricEndpointOf()` 派生体现 —— 声明式插件因此在歌词链路上完全接不进来。
+  if (manifest.lyrics) {
+    // 服务地址形态：歌词端点从用户填的地址派生（`service.endpoints.lyric`），
+    // 覆盖清单里那个通常是缺席的静态地址。
+    plugin.lyricsSource = (config) => {
+      const base = lyricsConfigOf(manifest)
+      if (!base) return null
+      if (!manifest.service) return base
+      const derived = deriveService(manifest.service, config)
+      const lyricUrl = derived?.endpoints?.lyric
+      // 派生不出来（用户没填地址）= 此刻没有歌词源，明确返回 null 让上层跳过
+      return lyricUrl ? { ...base, sourceUrl: lyricUrl } : null
+    }
+  }
+
   return plugin
 }
 
@@ -441,15 +500,22 @@ async function runResolve(
   quality: DownloadQuality | undefined,
   ctx: PluginContext
 ): Promise<ResolvedAudio | null> {
-  const songId = readString(ref?.meta?.id) || readString(ref?.meta?.songId)
+  // 源内 id：清单映射写 `id`；aurora 协议把同样的值放在 `songmid` 上。
+  // 两者都认，才能让「服务地址形态」的清单复用 `trackRefFor` 构造的令牌
+  // （那里同时填了 `songmid` 与 `id`，见 `plugin/trackAudio.ts`）。
+  const songId =
+    readString(ref?.meta?.id) || readString(ref?.meta?.songId) || readString(ref?.meta?.songmid)
   if (!songId) return null
+
+  const template = endpointTemplateOf(manifest, 'track', spec.url, config)
+  if (!template) return null
 
   let json: unknown
   try {
     json = await requestJson(
       ctx,
       config.name || manifest.id,
-      buildUrl(spec.url, { id: songId, quality: quality || '128' }),
+      buildUrl(template, { id: songId, quality: quality || '128' }),
       spec.headers,
       RESOLVE_TIMEOUT_MS
     )

@@ -1,8 +1,10 @@
 import {
+  HOST_CAPABILITY_VERSION,
   toLxMusicInfo,
   auroraError,
   fetchLxScript as sharedFetchLxScript,
   inspectLxSource as sharedInspectLxSource,
+  registerHostCapability,
   resolveLxSourceUrl as sharedResolveLxSourceUrl,
   searchLxSource as sharedSearchLxSource,
   setLxHostDeps,
@@ -147,7 +149,7 @@ async function ensureScript(source: LxScriptSource): Promise<string> {
 export function installMobileLxHost(): void {
   if (installed) return
   installed = true
-  setLxHostDeps({
+  const deps: LxHostDeps = {
     request: createMobileLxRequest(),
     env: 'mobile',
     version: '2.0.0',
@@ -155,7 +157,19 @@ export function installMobileLxHost(): void {
     // 移动端无 node:vm：不注入 evaluate，宿主回落到 new Function（无同步超时中断能力）
     // scriptTimeoutMs 也随之无效（它只在注入 evaluate 时生效），故不传
     utils: createWebUtils(),
-  })
+  }
+  setLxHostDeps(deps)
+
+  // 登记成宿主能力。移动端的 `script.host` 有**两个实现**：
+  //   - 这份 `deps`（`new Function` 回退，同步死循环打不断）
+  //   - `sandbox.ts` 的 Worker 沙箱（`terminate()` 能强制结束）
+  //
+  // 这里注册的是**基础档**：它保证「有脚本宿主可用」，而"能否打断死循环"属于
+  // 更强的运行时特性，由 `sandboxSupported()` 在需要时探测（见 `lxHost` 尾部的
+  // Worker 沙箱路径）。注册表表达"能力有无"，具体实现档位由实现自己回答 ——
+  // 把它们揉进同一份能力语义会让判定变成"有时可打断、有时不可"的隐式状态。
+  registerHostCapability('script.host', HOST_CAPABILITY_VERSION['script.host'], deps)
+
   setLxScriptProvider(async (source) => {
     try {
       return await ensureScript(source as LxScriptSource)

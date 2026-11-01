@@ -40,6 +40,7 @@ import {
   probeAuroraService,
   pluginIdOf,
   sourceSongIdOf,
+  trackRefFor,
   unavailableProbe,
 } from '@aurora/shared'
 import type {
@@ -547,56 +548,47 @@ export function createDesktopPlatform(): Platform {
     },
 
     async resolveTrackAudio(track: Track): Promise<Track | null> {
-      // 两条定位凭据：脚本源的令牌（trackRef）与自有服务协议的源内 id（onlineId）。
+      // 定位凭据：曲目自带的脚本令牌（trackRef）或源内 id（onlineId）。
       // 都没有时这条路不适用，调用方回落按名搜索 —— 状态也就不必读。
       const ref = track?.trackRef
       const songId = sourceSongIdOf(track?.onlineSource, track?.onlineId)
       if (!ref && !songId) return null
+
       // 音源配置只在调用时读：用户可能在设置页刚改过脚本地址或删过源
       const { sources, quality } = await loadLibraryState()
+      const source = sources.find((s) => s.id === (ref?.sourceId || track?.onlineSource))
+      if (!source) return null
 
-      if (ref) {
-        if (!api?.lxSource?.resolveUrl) return null
-        const source = sources.find((s) => s.id === ref.sourceId)
-        // 找不到音源配置或形态对不上时同样返回 null：不猜、不拿别的源硬取
-        if (!source || source.kind !== 'lx') return null
-        try {
-          const { url } = await api.lxSource.resolveUrl(ref, source, quality)
-          if (!url || !/^https?:\/\//i.test(url)) return null
-          // 只回填副本：直链会过期，不落盘、不写库（持久化时 onlineUrl 本就剥离）
-          return { ...track, onlineUrl: url }
-        } catch (err) {
-          console.warn('[音源] 取址失败:', ref.sourceId, err)
-          return null
-        }
-      }
-
-      // 自有服务协议：按源内 id 取址（服务端 /aurora/track）。比「按歌名 + 歌手重搜」
-      // 准得多 —— 同名不同版本（变速版 / 翻唱 / DJ 版）在按名匹配里与目标同分，
-      // 会串到别人的录音（见 @aurora/shared 的 trackResolver）。
-      const source = sources.find((s) => s.id === track.onlineSource)
-      if (!source || source.kind === 'lx') return null
-      // 老服务端没有这条端点：本进程已知就直接回落（移动端与执行器同进程时最有效）。
-      // 桌面端取址在主进程执行，两边的「已知缺失」记忆各存一份 —— 不知道也只是多一次
-      // IPC，主进程侧的执行器不会再打一次 404。
-      if (isTrackEndpointKnownMissing(source)) return null
-      if (!api?.onlineTrack?.resolveById) return null
+      // 走**插件门面**（与搜索同一条路），不再按 `kind === 'lx'` 分派两套通道。
+      //
+      // 改造前这里分两条分支：有 trackRef 只当脚本源、有 onlineId 只当 aurora。
+      // 于是装来的声明式插件被两条分支同时排除，永远取不到址 —— 而它在清单里
+      // 明明声明了 resolveTrack。现在凭据只是一个不透明令牌交给插件，
+      // 由插件自己决定从哪个字段取值。
+      //
+      // 桌面端必须在**主进程**发请求（渲染进程直连会被上游 CORS 拦），
+      // 所以走 `plugin:resolveTrack` 通道；插件实现与移动端完全同源。
+      if (!api?.plugins?.resolveTrack) return null
+      const token = trackRefFor(track)
+      if (!token) return null
       try {
-        const resolved = await api.onlineTrack.resolveById(source, songId, quality)
-        if (!resolved?.audioUrl || !/^https?:\/\//i.test(resolved.audioUrl)) {
-          // 失败原因（无权益 / id 不存在 / 老服务端）在共享层已编码成可渲染文案，
-          // 这里只落日志：取址失败要静默回落按名搜索，不打断播放
-          console.warn('[音源] 按 id 取址未成功:', songId, resolved?.reason || '')
-          return null
-        }
+        const resolved = (await api.plugins.resolveTrack(
+          pluginIdOf(source),
+          source,
+          token,
+          quality
+        )) as { url?: string; qualityUrls?: Record<string, string>; coverUrl?: string } | null
+        if (!resolved?.url || !/^https?:\/\//i.test(resolved.url)) return null
+        // 只回填副本：直链会过期，不落盘、不写库（持久化时 onlineUrl 本就剥离）
         return {
           ...track,
-          onlineUrl: resolved.audioUrl,
+          onlineUrl: resolved.url,
           ...(resolved.qualityUrls ? { onlineQualityUrls: resolved.qualityUrls } : {}),
           ...(resolved.coverUrl ? { coverUrl: resolved.coverUrl } : {}),
         }
       } catch (err) {
-        console.warn('[音源] 按 id 取址失败:', songId, err)
+        // 取址失败要静默回落按名搜索，不打断播放
+        console.warn('[音源] 取址失败:', source.id, err)
         return null
       }
     },

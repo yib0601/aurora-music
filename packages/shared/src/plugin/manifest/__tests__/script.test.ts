@@ -4,6 +4,7 @@ import { buildSourcePlugin } from '../source'
 import { validatePluginManifest } from '../validate'
 import { PLUGIN_MANIFEST_FORMAT, type PluginManifest } from '../types'
 import { setLxHostDeps, type LxHostDeps } from '../../../lxHost'
+import { hostContextOf } from '../../executor'
 import type { OnlineSourceConfig } from '../../../types'
 
 /**
@@ -105,7 +106,7 @@ describe('buildScriptPlugin：清单 → 插件接线', () => {
 describe('preflight：脚本不可用时给可读原因（而不是让上层看到网络错误）', () => {
   it('宿主未装配 → 不是 ok，原因是 lxHostNotReady', async () => {
     const plugin = buildScriptPlugin(manifestOf())!
-    const result = await plugin.preflight!(config('lx.on()'), { fetch: globalThis.fetch })
+    const result = await plugin.preflight!(config('lx.on()'), hostContextOf(null))
     expect(result.ok).toBe(false)
     expect(result.reason).toBe('core.error.lxHostNotReady')
   })
@@ -113,7 +114,7 @@ describe('preflight：脚本不可用时给可读原因（而不是让上层看�
   it('脚本没落盘 → 不是 ok，原因是 lxSourceNoScript', async () => {
     setLxHostDeps(fakeDeps())
     const plugin = buildScriptPlugin(manifestOf())!
-    const result = await plugin.preflight!(config(), { fetch: globalThis.fetch })
+    const result = await plugin.preflight!(config(), hostContextOf(null))
     expect(result.ok).toBe(false)
     expect(result.reason).toBe('core.error.lxSourceNoScript')
   })
@@ -121,9 +122,7 @@ describe('preflight：脚本不可用时给可读原因（而不是让上层看�
   it('宿主已装配 + 脚本已落盘 → ok', async () => {
     setLxHostDeps(fakeDeps())
     const plugin = buildScriptPlugin(manifestOf())!
-    const result = await plugin.preflight!(config('lx.on("request", () => {})'), {
-      fetch: globalThis.fetch,
-    })
+    const result = await plugin.preflight!(config('lx.on("request", () => {})'), hostContextOf(null))
     expect(result).toEqual({ ok: true })
   })
 })
@@ -136,7 +135,7 @@ describe('resolveTrack：失败返回 null（绝不打断播放）', () => {
       config(),
       { sourceId: 'src-1', platform: 'kw', meta: { hash: 'x' } },
       undefined,
-      { fetch: globalThis.fetch }
+      hostContextOf(null)
     )
     expect(out).toBeNull()
   })
@@ -148,7 +147,7 @@ describe('resolveTrack：失败返回 null（绝不打断播放）', () => {
       config('lx.on("request", () => {})'),
       { sourceId: 'src-1', platform: '', meta: {} },
       undefined,
-      { fetch: globalThis.fetch }
+      hostContextOf(null)
     )
     expect(out).toBeNull()
   })
@@ -158,7 +157,7 @@ describe('search：空结果是合法结果（多数脚本只做取址）', () =
   it('脚本没落盘 → 空数组（不是抛错）', async () => {
     setLxHostDeps(fakeDeps())
     const plugin = buildScriptPlugin(manifestOf())!
-    const out = await plugin.search!(config(), '七里香', undefined, { fetch: globalThis.fetch })
+    const out = await plugin.search!(config(), '七里香', undefined, hostContextOf(null))
     expect(out).toEqual([])
   })
 })
@@ -166,7 +165,7 @@ describe('search：空结果是合法结果（多数脚本只做取址）', () =
 describe('probe：脚本不可用时给结构化结论（不抛给 UI）', () => {
   it('脚本没落盘 → ok=false 且带结构化错误码', async () => {
     const plugin = buildScriptPlugin(manifestOf())!
-    const result = await plugin.probe!(config(), { fetch: globalThis.fetch })
+    const result = await plugin.probe!(config(), hostContextOf(null))
     expect(result.ok).toBe(false)
     expect(result.error).toContain('core.error.lxSourceNoScript')
   })
@@ -260,17 +259,17 @@ describe('宿主装配是运行期事实，不在注册期求值', () => {
   it('先注册插件、后装配宿主：preflight 仍能正确反映最新状态', async () => {
     const plugin = buildScriptPlugin(manifestOf())!
     // 注册时没有宿主：即便脚本在，也因宿主缺失而不可用
-    expect((await plugin.preflight!(config('lx.on()'), { fetch: globalThis.fetch })).ok).toBe(false)
+    expect((await plugin.preflight!(config('lx.on()'), hostContextOf(null))).ok).toBe(false)
     // 装配宿主之后：脚本在 → 可用
     setLxHostDeps(fakeDeps())
-    expect((await plugin.preflight!(config('lx.on()'), { fetch: globalThis.fetch })).ok).toBe(true)
+    expect((await plugin.preflight!(config('lx.on()'), hostContextOf(null))).ok).toBe(true)
     // 装配宿主但没有脚本 → 仍不可用，且原因是"脚本没落盘"（不是"宿主没装配"）
-    expect((await plugin.preflight!(config(), { fetch: globalThis.fetch })).reason).toBe(
+    expect((await plugin.preflight!(config(), hostContextOf(null))).reason).toBe(
       'core.error.lxSourceNoScript'
     )
     // 卸载宿主（模拟平台层失败）→ 回到"宿主未装配"
     setLxHostDeps(null)
-    expect((await plugin.preflight!(config('lx.on()'), { fetch: globalThis.fetch })).reason).toBe(
+    expect((await plugin.preflight!(config('lx.on()'), hostContextOf(null))).reason).toBe(
       'core.error.lxHostNotReady'
     )
   })

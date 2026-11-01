@@ -85,6 +85,17 @@ export {
 } from './signature'
 export type { PluginSignature, SignatureVerdict } from './signature'
 
+// 服务地址形态：从用户填的地址派生端点（自建托管型插件）
+export {
+  SERVICE_ENDPOINT_KEYS,
+  deriveService,
+  fillServicePlaceholders,
+  isConfiguredOriginService,
+  mergeSelfDescribed,
+  splitServiceUrl,
+} from './service'
+export type { DerivedService, ServiceEndpointKey } from './service'
+
 // 信任表的纯逻辑（校验 / 合并 / 增删 / 容错解析）。落盘由两端各自负责。
 export {
   mergeTrustedKeys,

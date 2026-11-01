@@ -67,6 +67,7 @@ export {
   canParsePlaylist,
   canResolveTrack,
   sourceHasLyrics,
+  lyricsSourceViaPlugin,
   needsAuth,
   sourceCacheKeyOf,
   searchViaPlugin,
@@ -81,6 +82,12 @@ export {
   toplistsViaPlugin,
   toplistDetailViaPlugin,
 } from './executor'
+// 单曲取址的统一编排（跨端共用；取代两端的 `kind === 'lx'` 形态分支）
+export {
+  resolveTrackAudioViaPlugin,
+  trackRefFor,
+} from './trackAudio'
+export type { TrackResolution, TrackResolutionInput } from './trackAudio'
 export { auroraPlugin, AURORA_PLUGIN_CAPABILITIES } from './auroraPlugin'
 export { lxPlugin, LX_PLUGIN_CAPABILITIES } from './lxPlugin'
 export { qishuiPlugin, qishuiCoverUrl, extractSessionId } from './qishuiPlugin'
