@@ -23,6 +23,16 @@ import { dropUnfilledParams, fillEndpointTemplate } from '../../auroraPreset'
 /** 单次歌词请求预算：与内置源同口径（歌词是播放附属信息，等太久不如先出无歌词界面） */
 const LYRICS_TIMEOUT_MS = 8000
 
+/**
+ * 已安装插件的歌词源 id 前缀。
+ *
+ * **必须与 `lyricsSource.ts` 的同名常量逐字一致**：那条链路要靠它从源配置的 id
+ * 反推出「这条源属于哪个插件」，进而查那份清单的 `hosts` 白名单。
+ * 两边不一致的后果是白名单静默失效（插件能打到任意主机，而安装确认框里列出的
+ * 域名成了纸面承诺），所以两处都带注释指向对方。
+ */
+export const INSTALLED_LYRICS_ID_PREFIX = 'plugin:'
+
 /** 默认请求头：与 `lyricsSource.ts` 同口径 */
 const DEFAULT_HEADERS: Record<string, string> = {
   'User-Agent': 'Aurora-Music (https://github.com/yib0601/aurora-music)',
@@ -208,11 +218,16 @@ function pickCandidate(
 export function lyricsConfigOf(manifest: PluginManifest): LyricsSourceConfig | null {
   if (!manifest.lyrics) return null
   return {
-    // 注意：这里的 id 是"配置项 id"，不是插件 id —— 插件 id 保留在 `plugin_id`
-    // 位置无法表达（LyricsSourceConfig 没有该字段），而访问限流/诊断都不需要它。
-    id: `plugin:${manifest.id}`,
+    // 注意：这里的 id 是"配置项 id"，不是插件 id —— 插件 id 保留在前缀之后，
+    // 而访问限流/诊断要靠这段后缀认回是哪个插件（见 `installedPluginHosts`）。
+    id: `${INSTALLED_LYRICS_ID_PREFIX}${manifest.id}`,
     name: manifest.id,
     sourceUrl: manifest.lyrics.url,
+    // 格式必须随配置一起交下去：聚合链实际执行的是 `lyricsSource.searchLyricsSource`，
+    // 不映射这一项的话，声明 `format: 'lrc'` 的清单会被按 JSON 解析 ——
+    // 每次都在 `resp.json()` 落空，而同一份清单在 `buildLyricsRunner` 里却能取到词。
+    // 两套执行器对同一份清单给出不同结论，是这类"装上了却没反应"的典型成因。
+    format: manifest.lyrics.format ?? 'json',
     ...(manifest.lyrics.headers ? { headers: manifest.lyrics.headers } : {}),
     enabled: true,
   }

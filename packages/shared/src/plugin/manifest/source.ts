@@ -21,6 +21,7 @@
 
 import type {
   DownloadQuality,
+  LyricsSourceConfig,
   MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
@@ -330,13 +331,41 @@ function listRunner(
   }
 }
 
-/** 把清单映射成 `SourcePlugin`（注册进同一个音源注册表，上层无需知道它是清单还是代码） */
+/**
+ * 把清单映射成 `SourcePlugin`（注册进同一个音源注册表，上层无需知道它是清单还是代码）。
+ *
+ * ## 纯歌词插件的修正（v15）
+ *
+ * 改造前 `if (!spec) return manifest.script ? buildScriptPlugin(manifest) : null`，
+ * 于是「只有 `lyrics` 块、没有 `source` 块」的清单**返回 null**：`registerInstalledPlugin`
+ * 返回 `false`、不进音源注册表，而目录投影（`catalog.ts`）却仍给它标 `domain: 'lyrics'` ——
+ * 结果是插件列表里躺着一个**永远取不到歌词**的条目。
+ *
+ * 根因是把「有没有音源端点」当成了「这个插件存不存在」。实际上 `SourcePlugin` 的能力
+ * 全是可选的，只提供 `lyricsSource` 是一等合法形态（与 `aurora` 只提供部分能力同理）。
+ *
+ * 现在：只要清单声明了任意一项能力（含 `lyrics`）就构造出插件对象。
+ * 只有「什么都没有」才返回 null —— 那才是真的什么也不做。
+ */
 export function buildSourcePlugin(manifest: PluginManifest): SourcePlugin | null {
   const spec = manifest.source
   // 纯脚本插件（B 档，没有声明式端点）由 `script.ts` 构造：它的能力是脚本运行期自报的，
-  // 与本函数的"清单声明什么就有什���"是两套来源，混在一处会让两边都读不清。
+  // 与本函数的"清单声明什么就有什"是两套来源，混在一处会让两边都读不清。
   if (!spec) {
-    return manifest.script ? buildScriptPlugin(manifest) : null
+    // 没有 source 块时，脚本块与歌词块都能独立成立：
+    // - 有 script：走脚本插件（可能再合并歌词，见下）
+    // - 只有 lyrics：构造一个空壳 base + lyricsSource（下面统一补）
+    if (manifest.script) {
+      const scriptPlugin = buildScriptPlugin(manifest)
+      // 脚本 + 歌词并存：歌词与脚本互不相干，脚本插件本身不含 lyricsSource
+      if (scriptPlugin && manifest.lyrics) {
+        scriptPlugin.lyricsSource = (config) => lyricsSourceOf(manifest, config)
+        ;(scriptPlugin.capabilities as string[]).push('lyrics')
+      }
+      return scriptPlugin
+    }
+    if (manifest.lyrics) return buildLyricsOnlyPlugin(manifest)
+    return null
   }
 
   const capabilities: string[] = []
@@ -470,20 +499,64 @@ export function buildSourcePlugin(manifest: PluginManifest): SourcePlugin | null
   // 改造前 aurora 声明了 `lyrics` 能力却没有对应方法，能力只能靠协议私有的
   // `lyricEndpointOf()` 派生体现 —— 声明式插件因此在歌词链路上完全接不进来。
   if (manifest.lyrics) {
-    // 服务地址形态：歌词端点从用户填的地址派生（`service.endpoints.lyric`），
-    // 覆盖清单里那个通常是缺席的静态地址。
-    plugin.lyricsSource = (config) => {
-      const base = lyricsConfigOf(manifest)
-      if (!base) return null
-      if (!manifest.service) return base
-      const derived = deriveService(manifest.service, config)
-      const lyricUrl = derived?.endpoints?.lyric
-      // 派生不出来（用户没填地址）= 此刻没有歌词源，明确返回 null 让上层跳过
-      return lyricUrl ? { ...base, sourceUrl: lyricUrl } : null
-    }
+    plugin.lyricsSource = (config) => lyricsSourceOf(manifest, config)
   }
 
   return plugin
+}
+
+/**
+ * 清单 → 一条交给聚合器的歌词源。
+ *
+ * `aurora` 与服务地址形态的插件都会走到这里：后者从用户填的地址派生歌词端点
+ * （`service.endpoints.lyric`），覆盖清单里那个通常是缺席的静态地址。
+ *
+ * 抽成独立函数而不是内联，是因为**纯歌词插件**（无 `source` 块）与
+ * **脚本+歌词插件**也要用同一份派生逻辑 —— 三处各写一遍必然漂移。
+ */
+function lyricsSourceOf(
+  manifest: PluginManifest,
+  config: OnlineSourceConfig
+): LyricsSourceConfig | null {
+  const base = lyricsConfigOf(manifest)
+  if (!base) return null
+  if (!manifest.service) return base
+  const derived = deriveService(manifest.service, config)
+  const lyricUrl = derived?.endpoints?.lyric
+  // 派生不出来（用户没填地址）= 此刻没有歌词源，明确返回 null 让上层跳过
+  return lyricUrl ? { ...base, sourceUrl: lyricUrl } : null
+}
+
+/**
+ * 纯歌词插件：清单里只有 `lyrics` 块，没有任何音源端点。
+ *
+ * ## 为什么它需要一个单独的构造器
+ *
+ * `SourcePlugin` 的能力方法全是可选的，所以「只实现 `lyricsSource`」本来就合法；
+ * 但 `buildSourcePlugin` 之前把「有 `source` 块」当成了构造前提，于是这类清单
+ * 返回 null、`registerInstalledPlugin` 返回 false、不进注册表 ——
+ * 目录里却仍有它的条目（`catalog.ts` 按 `manifest.lyrics` 判 `domain: 'lyrics'`），
+ * 用户在插件列表里点进去、歌曲却永远取不到歌词，且没有任何报错。
+ *
+ * 这个构造器的存在就是为了补上那个缺口：给它一个合法插件对象，
+ * 让 `lyricsSource` 真正进得了聚合链。
+ */
+function buildLyricsOnlyPlugin(manifest: PluginManifest): SourcePlugin {
+  return {
+    id: manifest.id,
+    // 与 buildSourcePlugin 同一口径：技术兜底用 id，真正的展示名由目录条目给出
+    displayNameKey: manifest.id as SourcePlugin['displayNameKey'],
+    version: manifest.version,
+    capabilities: ['lyrics'] as SourcePlugin['capabilities'],
+    // 歌词插件要出网取歌词，因此至少要 http.fetch。`log` 照例可选。
+    requires: [
+      { id: 'http.fetch', version: 1 },
+      { id: 'log', version: 1, optional: true },
+    ],
+    // 纯歌词插件不需要用户配置任何地址（清单里是绝对地址），因此 `config`
+    // 只作为形状占位传入 —— 但服务地址形态的清单仍可能在这里派生端点。
+    lyricsSource: (config) => lyricsSourceOf(manifest, config),
+  }
 }
 
 /**

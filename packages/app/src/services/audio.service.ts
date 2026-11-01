@@ -5,6 +5,7 @@ import { platform } from '@/services/platform'
 import { resolveCachedAudioSrc } from './audioCache.service'
 import { isRemoteAudioUrl } from '@aurora/shared'
 import { shouldTreatAsNoticeClip } from '@/lib/audioGuard'
+import { normalizePlaybackRate } from '@/lib/playbackRate'
 
 let tickInterval: ReturnType<typeof setInterval> | null = null
 let currentHowl: Howl | null = null
@@ -18,6 +19,59 @@ let currentMediaSource: MediaElementAudioSourceNode | null = null
 let playSession = 0
 
 const FADE_DURATION = 800 // ms
+
+/**
+ * 桌面端播放速率（模块级，随每个新建 Howl 重新应用）。
+ *
+ * 为什么存在这里而不是每次调用都从 store 取：`startHowl` 有异步分支
+ * （在线曲目先查缓存再建 Howl，见 playTrack 的 session 校验），store 是
+ * zustand 的全局单例、在音频服务里反向 import 会形成模块级循环依赖
+ * （playerStore → audio.service 已经是单向的）。这里保留一份镜像，
+ * 由 playerStore 的 setPlaybackRate / 持久化恢复两处写入。
+ *
+ * ⚠️ Howler 的 rate 是**每个 Howl 实例独立**的：新建 Howl 不会继承上一个
+ * 实例的速率，所以 startHowl 必须每次重新应用（见下方 applyRate）。
+ */
+let currentRate = 1
+
+/** 当前生效的桌面端速率（供测试与诊断读取，避免直接摸私有字段） */
+export function getPlaybackRate(): number {
+  return currentRate
+}
+
+/**
+ * 设置桌面端播放速率：镜像到模块级，并立即应用到当前 Howl。
+ *
+ * 移动端不走这里——原生 MediaPlayer 桥没有变速通道（见 mediaSession.ts 的
+ * setPlaybackRateAvailable），能力判据由播放器 UI 使用。
+ */
+export function setPlaybackRate(rate: number): void {
+  currentRate = normalizePlaybackRate(rate)
+  if (currentHowl) {
+    applyRate(currentHowl, currentRate)
+  }
+}
+
+/**
+ * 把速率应用到某个 Howl。
+ *
+ * 未加载完成时 Howler 会把这次调用推进它自己的 `_queue`，在 `load` 之后
+ * 自动补做（howler.js 的 rate()：`_state !== 'loaded'` 即入队）。
+ * 因此这里不需要等待 onload，调用顺序也是安全的。
+ *
+ * 仍然在 startHowl 的 onload 里再应用一次：那条路径**同步**（state 已是
+ * 'loaded'），不依赖 Howler 的队列时序，是「每个新 Howl 都吃到速率」的
+ * 确定性保证。两次设置同一个值，幂等。
+ */
+function applyRate(howl: Howl, rate: number): void {
+  try {
+    howl.rate(rate)
+  } catch (err) {
+    // 越界速率在部分内核上会让 HTMLMediaElement.playbackRate 抛
+    // InvalidStateError。变速是附加能力，不能因此中断播放
+    console.warn('[播放] 设置播放速率失败:', rate, err)
+  }
+}
 
 function getPlatformSrc(path: string): string {
   // 已带协议的地址（在线歌源直链 https://、远端媒体库代理 aurora-remote://）直接返回；
@@ -168,6 +222,9 @@ function startHowl(track: Track, src: string, isOnline: boolean, targetVolume: n
     },
     onload: () => {
       const dur = howl.duration()
+      // 新 Howl 的 rate 不会继承上一个实例（Howler 的速率是按 Howl 存的），
+      // 这里同步再落一次，保证「切歌后速率回到用户设定」而不是悄悄变回 1×
+      applyRate(howl, currentRate)
       // 上源提示音 / 试听片段闸门：实际时长远短于**元数据时长**时，这个地址指向的是
       // 版权提示音或试听片段，不是本曲音频。判据是比例（见 lib/audioGuard），
       // 不是「小于 10 秒」——实测片段是 48~221 秒，绝对阈值会整批漏过。

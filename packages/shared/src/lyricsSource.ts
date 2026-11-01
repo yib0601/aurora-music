@@ -3,6 +3,25 @@ import { firstSuccess } from './concurrency'
 import { dropUnfilledParams, fillEndpointTemplate } from './auroraPreset'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { auroraError, toErrorInfo } from './i18n/errors'
+// 插件启停门禁。`availability` 零依赖（纯内存表），这条 import 不引入任何环。
+import { isPluginEnabled } from './plugin/availability'
+// 已安装的纯歌词插件：它们没有源配置，只能由登记表把「它提供哪条歌词源」交出来。
+//
+// 环检查：`installed.ts` → `manifest/source.ts` → `manifest/script.ts` →
+// `lxResolver.ts` / `lxHost.ts` / `sourceProbe.ts`，这条链**不回到** `lyricsSource.ts`；
+// 且 `installed.ts` 对注册表的所有取用都在函数体内，模块求值期不解引用。
+// 已安装的纯歌词插件：它们没有源配置，只能由登记表把「它提供哪条歌词源」交出来。
+//
+// ⚠️ 这里 import 的是 `installedLyricsProvider` 而不是 `plugin/installed`：
+// 后者会成环（`installed` → `builtins` → `lrclibPlugin` → 本文件），且是**求值期**
+// 的环 —— `lrclibPlugin` 模块体里要用 `BUILTIN_LYRICS_PLUGIN_ID`，环未闭合时它是
+// `undefined`，内置插件会集体注册失败。登记表零依赖，方向反过来环就断了。
+import { installedLyricsSources, installedPluginHosts } from './plugin/installedLyricsProvider'
+// 歌词源 id 前缀：**唯一真源**在那份清单投影里，本层不复制字符串
+import { INSTALLED_LYRICS_ID_PREFIX as INSTALLED_LYRICS_PREFIX } from './plugin/manifest/lyrics'
+// 白名单判定与主机解析：**同一份实现**，不在本层重写一遍。
+// 重写的后果是「插件搜索」与「插件歌词」各有一套 host 匹配口径，迟早漂移。
+import { hostAllowed, hostOf } from './plugin/manifest/host'
 
 // 统一默认请求头，可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -50,6 +69,30 @@ export const BUILTIN_LYRICS_GET_SOURCE: LyricsSourceConfig = {
  * 打两遍（且顺序不受本模块控制，等于把优先级交给配置数据的偶然性）。
  */
 const BUILTIN_LYRICS_IDS = [BUILTIN_LYRICS_GET_SOURCE.id, BUILTIN_LYRICS_SOURCE.id]
+
+/**
+ * 内置 LRCLIB 作为**插件的 id**（启停门禁、目录条目、凭证/日志都用它）。
+ *
+ * 与两个歌词源 id（`builtin-lrclib` / `builtin-lrclib-get`）刻意不同：
+ * 那是「配置项 id」，这是「实现 id」。一个插件派生出两条源，两者粒度不同，
+ * 混用会让「停用」变成「停掉其中一条」，用户完全无法预期。
+ */
+export const BUILTIN_LYRICS_PLUGIN_ID = 'builtin-lyrics-lrclib'
+
+
+/**
+ * 当前**启用**的内置歌词源（顺序：精确取词 → 模糊检索）。
+ *
+ * 停用判定每次现算而不是缓存：用户可能在设置页里刚把它关掉，缓存会让开关
+ * 「看起来生效了但实际还在跑」——本仓一贯口径是门禁只读内存态、不做快照。
+ *
+ * 为什么门禁按**插件 id** 而非歌词源 id：一个插件可以派生多条歌词源
+ * （LRCLIB 就是两条），开关是插件粒度的（见 `plugin/availability.ts` 的说明）。
+ */
+function builtinLyricsSources(): LyricsSourceConfig[] {
+  if (!isPluginEnabled(BUILTIN_LYRICS_PLUGIN_ID)) return []
+  return [BUILTIN_LYRICS_GET_SOURCE, BUILTIN_LYRICS_SOURCE]
+}
 
 interface LyricsCandidate {
   /** 带时间标签的同步歌词（优先） */
@@ -108,6 +151,41 @@ function toCandidate(item: any, fallbackName: string, fallbackArtist: string): L
 const LYRICS_TIMEOUT_MS = 8000
 
 /**
+ * 已安装插件的歌词源 id 前缀（与 `manifest/lyrics.ts` 的 `lyricsConfigOf` 同源）。
+ *
+ * 两处必须是**同一个常量**而不是各写字面量：`LyricsSourceConfig` 是聚合层的最小形状，
+ * 它没有「这条源属于哪个插件」的字段；前缀就是那条链路上唯一的归属信息。
+ * 写错一位的后果是白名单静默失效（插件能打到任意主机，而安装确认框里列出的域名
+ * 成了纸面承诺），所以这里直接 import 而不是复制字符串。
+ */
+const INSTALLED_LYRICS_ID_PREFIX = INSTALLED_LYRICS_PREFIX
+
+/**
+ * 已安装歌词插件的请求是否落在这份清单声明的 hosts 内。
+ *
+ * 只对 `plugin:` 前缀的源生效：内置源（LRCLIB）与我们自己派生出的 aurora 源
+ * 都不是「第三方清单」，不该被清单规则约束。
+ *
+ * 越界时**抛错而不是静默跳过**：跳过会让聚合器以为"这个源没词"，继续推进下一档，
+ * 用户看到的是"歌词来自别处"而完全不知道自己的插件被拦了。抛错会经
+ * `searchLyrics` 的逐源 catch 打成一条带源名的 warn，日志里能查到。
+ */
+function assertLyricsHostAllowed(source: LyricsSourceConfig, url: string): void {
+  if (!source.id.startsWith(INSTALLED_LYRICS_ID_PREFIX)) return
+  const pluginId = source.id.slice(INSTALLED_LYRICS_ID_PREFIX.length)
+  if (!pluginId) return
+  // 清单没登记（插件已卸载 / 构造失败）时不拦：那种情况下它本就不该出现在候选里，
+  // 走到这里说明是配置残留，交给请求本身失败更有诊断价值
+  const hosts = installedPluginHosts(pluginId)
+  if (!hosts) return
+  if (hostAllowed(hosts, url)) return
+  throw auroraError('core.error.lyricsHostNotAllowed', {
+    name: source.name,
+    reason: hostOf(url) || url,
+  })
+}
+
+/**
  * 单个歌词源搜索（协议执行器核心）
  * - sourceUrl 占位符替换：{track}/{query} 歌曲名、{artist} 艺术家、{album} 专辑、{duration} 时长（秒）
  * - 取值为空的占位符**整段剔除**（不留 `artist_name=` 这种空参数），见 dropUnfilledParams
@@ -141,6 +219,22 @@ export async function searchLyricsSource(
     })
   )
 
+  // 已安装插件的歌词请求必须过**清单声明的 hosts 白名单**。
+  //
+  // 为什么这条检查落在聚合器：`searchLyricsSource` 用 `fetchWithTimeout` 直连，
+  // 那是「内置源 + 用户自己填的源」共用的路径，两者都不该受清单约束。
+  // 而纯歌词插件在 v15 之前**根本进不了执行链**，白名单从没被真正验证过；
+  // 一旦接线，安装确认框里列出的域名若不生效，那份列表就成了纸面承诺。
+  //
+  // 判定按源配置的 id 前缀（`lyricsConfigOf` 用 `plugin:<manifestId>` 造 id），
+  // 因为 `LyricsSourceConfig` 上没有「这条源属于哪个插件」的字段 —— 加字段会让
+  // 所有既有源配置与内置源都要补值，而前缀本来就是那条链路的既有约定。
+  //
+  // ⚠️ 这道检查必须放在 try **外面**：放里面会被下面的 catch 归成
+  // 「请求失败：<主机名>」，把「被白名单拦下」这条唯一有用的信息淹掉
+  // （用户看到的是"请求失败"，而真实原因是"你的插件打到了没声明的域名"）。
+  assertLyricsHostAllowed(source, url)
+
   let resp: Response
   try {
     resp = await fetchWithTimeout(
@@ -161,6 +255,28 @@ export async function searchLyricsSource(
     )
   }
   if (!resp.ok) throw auroraError('core.error.lyricsHttpStatus', { name: source.name, status: resp.status })
+
+  // ─── 裸 LRC 形态：响应体本身就是歌词文本 ────────────────────────
+  //
+  // 放在 JSON 解析之前：这类上游返回的是 text/plain（或甚至 application/json，
+  // 因为不少歌词站懒得设对 Content-Type），按 JSON 去解只会得到「不是 JSON」。
+  // 判定只听 `source.format`，**不听 Content-Type** —— 后者不可靠，而清单作者
+  // 声明的格式是他自己知道的确定事实（见 `DeclarativeLyricsSpec.format`）。
+  if (source.format === 'lrc') {
+    let text: string
+    try {
+      text = await resp.text()
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        throw auroraError('core.error.lyricsTimeout', { name: source.name, ms: LYRICS_TIMEOUT_MS })
+      }
+      // 读体失败与「不是 JSON」是两件事，这里同样要带源名与语境
+      throw auroraError('core.error.lyricsNotJson', { name: source.name })
+    }
+    // 空壳（只有空白）按落空处理：写成命中会让这份渲染不出东西的文本进本地缓存
+    if (!pickLyric(text)) return null
+    return { lrc: text, name: query, artist: artist || '' }
+  }
 
   // 读体同样纳入上面的错误映射：fetchWithTimeout 已给 body 读装了超时预算，
   // 但读体失败若在这里裸抛，用户看到的就是 TimeoutError 的编码串（无源名、无「歌词源」语境）
@@ -242,12 +358,25 @@ export async function searchLyrics(
   const userSources = (options?.sources || []).filter(
     (s) => s && s.enabled && s.sourceUrl && !BUILTIN_LYRICS_IDS.includes(s.id)
   )
-  // 用户源优先，末尾追加两个内置源。顺序即优先级：firstSuccess 按此顺序启动各档，
+  // 用户源优先，末尾追加内置源。顺序即优先级：firstSuccess 按此顺序启动各档，
   // 落空（null）或抛错才会推进——「首个非空结果胜出」的语义与旧串行版完全一致。
+  //
+  // ## v15：内置源受插件启停门禁控制
+  //
+  // 改造前这两档是**无条件**追加的常量：用户既看不到它们，也没法关掉。
+  // 一个老打不通的公共接口（LRCLIB 实测会回 503）会一直排在最后白等一轮超时，
+  // 而设置页里根本不存在这个开关 —— 这是「隐式原始能力」的典型问题。
+  //
+  // 现在它们对应内置插件 `builtin-lyrics-lrclib`（见 `plugin/lrclibPlugin.ts`），
+  // 出现在插件目录里、可被停用。停用后这里的追加也随之消失。
   const sources: LyricsSourceConfig[] = [
     ...userSources,
-    BUILTIN_LYRICS_GET_SOURCE,
-    BUILTIN_LYRICS_SOURCE,
+    // 已安装插件里自带歌词源的那些（纯歌词插件）。**必须在这里**而不是在渲染层的
+    // `lyricsSourcesFromLibrary`：桌面端的插件注册在主进程（`mountInstalledPlugins`），
+    // 而 `searchLyrics` 恰恰在主进程执行（`lyrics:search` → IPC → 这里）。
+    // 放到渲染层会让桌面端永远拿到空数组，而移动端又因为两端同进程而"看起来正常"。
+    ...installedLyricsSources(),
+    ...builtinLyricsSources(),
   ]
 
   const hit = await firstSuccess(

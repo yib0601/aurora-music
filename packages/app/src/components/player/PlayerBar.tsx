@@ -10,6 +10,7 @@ import { CoverImage } from '@/components/common/CoverImage'
 import { useContainerWidth } from '@/hooks/useContainerWidth'
 import { useViewportMatch } from '@/hooks/useViewportMatch'
 import { SQUAT_VIEWPORT_QUERY } from '@/lib/viewportTiers'
+import { PlaybackExtrasMenu, SleepActiveBadge } from './PlaybackExtrasMenu'
 
 interface PlayerBarProps {
   currentTrack?: Track | null
@@ -218,6 +219,9 @@ function CompactBar({
       >
         <ListMusic className="h-[19px] w-[19px]" strokeWidth={1.7} />
       </button>
+      {/* 紧凑档宽度放不下第三个功能入口（取舍见本函数注释第 1 条），
+          只保留「睡眠定时器在跑」的存在感标记；完整入口在全屏播放页 */}
+      <SleepActiveBadge />
     </div>
   )
 }
@@ -437,6 +441,9 @@ function FullBar({
           >
             <ListMusic className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
           </button>
+          {/* 播放系列操作（速度 / 睡眠定时器）：与队列并列的次级入口。
+              速度项在移动端由组件内部按能力隐藏（原生桥无变速通道） */}
+          <PlaybackExtrasMenu />
         </div>
 
         {/* 右列：音量控制 */}

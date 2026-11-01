@@ -19,14 +19,34 @@
  * 必须挡住。
  */
 
+/*
+ * ⚠️ 本文件**不得** import `../lyricsSource`，也不得被它反向 import。
+ *
+ * `lyricsSource` → `installed` → `builtins` → `lrclibPlugin` → `lyricsSource`
+ * 是一条**求值期**的环：`lrclibPlugin` 的模块体里要用 `BUILTIN_LYRICS_PLUGIN_ID`，
+ * 而环未闭合时它是 `undefined`，`registerPlugin` 随即抛
+ * 「invalid plugin id: undefined」——内置插件会集体注册失败。
+ *
+ * 所以歌词链路的两个查询（候选源、清单 hosts）走 `installedLyricsProvider`
+ * 这个零依赖的中转站：本文件在**模块求值期**把自己登记进去，`lyricsSource`
+ * 只读登记表。方向反过来，环就断了。
+ */
+
 import type { SourcePlugin } from './types'
+import type { LyricsSourceConfig, OnlineSourceConfig } from '../types'
 import { getPlugin, registerPlugin, unregisterPlugin } from './registry'
 import { ensureBuiltinsRegistered, builtinPlugins } from './builtins'
 import { isolatePluginStep } from './health'
+// 插件级启停门禁：纯歌词插件的候选必须与执行侧读同一份状态，
+// 否则会出现"停用了却还在取歌词"（`availability` 零依赖，这条 import 不进环）
+import { isPluginEnabled } from './availability'
 import type { InstalledPlugin, PluginManifest } from './manifest/types'
 import { buildSourcePlugin } from './manifest/source'
+import { lyricsConfigOf } from './manifest/lyrics'
 import { createGuardedFetch } from './manifest/host'
 import { PLUGIN_ID_PATTERN } from './manifest/types'
+// 歌词能力的对外登记口（零依赖：本文件 import 它，它不 import 本文件）
+import { setInstalledLyricsProvider } from './installedLyricsProvider'
 
 /** 已安装插件 id → 清单（注册表里的实现由清单构造，撤销时需要知道哪些是"装来的"） */
 const INSTALLED = new Map<string, PluginManifest>()
@@ -219,11 +239,85 @@ export function pluginRegistered(pluginId: string): boolean {
   return Boolean(getPlugin(pluginId))
 }
 
+/** 已安装插件的 `hosts` 白名单（供歌词链路这类**不经过 `ctx.fetch`** 的出网路径校验） */
+function hostsOfInstalled(pluginId: string): readonly string[] | undefined {
+  const manifest = INSTALLED.get(pluginId)
+  if (!manifest) return undefined
+  return Array.isArray(manifest.hosts) ? manifest.hosts : []
+}
+
+/**
+ * 已安装插件里**自己就带一份歌词源**的那些（纯歌词插件）。
+ *
+ * 挂在 `installedLyricsProvider` 上对外暴露，而不是直接 export 给 `lyricsSource`
+ * 调用 —— 理由见文件顶部那段环说明。过滤条件全在这里，因为只有这层拿得到清单。
+ *
+ * 三条过滤，每条都对应一种"看着有、实际用不了"：
+ *
+ * 1. **带 `source` / `script` 块的插件排除在外**：它们的歌词是通过源配置派生的
+ *    （那条路上用户填了地址、还能改），在这里再交一份会让同一个上游被打两遍，
+ *    且顺序不受本模块控制。这也是「用户把某个源排在第一」这个意图不被破坏的前提。
+ * 2. **被停用的插件排除在外**：启停是插件级门禁，聚合层不认它就会出现
+ *    "停用了却还在取歌词"。
+ * 3. **注册表里没有实现的排除在外**：`buildSourcePlugin` 构造失败的清单不该在这里
+ *    留下一个必然落空的候选。
+ */
+function lyricsSourcesOfInstalled(): LyricsSourceConfig[] {
+  const out: LyricsSourceConfig[] = []
+  for (const manifest of INSTALLED.values()) {
+    // 1. 有音源域声明的插件走源配置那条路（见上）
+    if (manifest.source || manifest.script) continue
+    if (!manifest.lyrics) continue
+    // 2. 插件级启停门禁
+    if (!isPluginEnabled(manifest.id)) continue
+    // 3. 必须真的有实现（构造失败的清单不进候选）
+    const plugin = getPlugin(manifest.id)
+    if (!plugin || typeof plugin.lyricsSource !== 'function') continue
+    const base = lyricsConfigOf(manifest)
+    if (!base) continue
+    // 纯歌词插件**没有用户配置**：清单里的地址是绝对地址，`sourceUrl` 传空串表示
+    // 「没有用户填的地址」—— 服务地址形态的清单会因此派生出 null（它需要用户填地址，
+    // 而纯歌词插件没有可填的地方），那种情况如实跳过，不硬塞一个必然失败的候选。
+    const derived = plugin.lyricsSource(
+      {
+        id: base.id,
+        name: base.name,
+        sourceUrl: '',
+        enabled: true,
+      },
+      // 契约要求 `ctx`：纯歌词插件不读它（地址是清单里的绝对地址），
+      // 但签名必须一致 —— 少传会在运行期炸在这里，而不是构造期被类型挡住。
+      //
+      // 这里**就地构造**最小 ctx 而不是调 `executor.hostContextOf`：
+      // executor → builtins → auroraPlugin 已成链，`installed.js` 再反向 import
+      // executor 会补出一条环；本文件只需要 `fetch` 这一个成员，不值得为它引环。
+      {
+        fetch: globalThis.fetch,
+        log: () => {},
+      }
+    )
+    if (derived) out.push(derived)
+  }
+  return out
+}
+
 /** **仅供单测**：清空已安装登记（配合 `clearPluginsForTest`） */
 export function clearInstalledForTest(): void {
   INSTALLED.clear()
   SCRIPT_BODIES.clear()
 }
+
+/**
+ * 把歌词能力登记给 `lyricsSource`（模块求值期执行一次）。
+ *
+ * 为什么在这里而不是让 `lyricsSource` 直接 import 本文件：见文件顶部那段环说明。
+ * 登记是**引用式**的（两个函数闭包读 `INSTALLED`），所以之后装机 / 卸载
+ * 都能被 `lyricsSource` 立刻看到，不需要重新登记。
+ */
+setInstalledLyricsProvider({
+  sources: lyricsSourcesOfInstalled,
+  hostsOf: hostsOfInstalled,
+})
 
 /**
  * 安装流程的运行期落点（磁盘写完、校验通过后调用）。

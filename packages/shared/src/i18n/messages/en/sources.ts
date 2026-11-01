@@ -179,6 +179,8 @@ const en: LocalizedOf<typeof sources> = {
     allFiles: 'All files',
     installed: 'Installed',
     builtin: 'Built-in',
+    /** 内置歌词兜底插件的说明（domain=lyrics） */
+    builtinLyricsDesc: 'Built-in lyrics fallback: fetches from the open LRCLIB API when no user lyrics source matches. Can be disabled',
     listEmpty: 'No third-party plugins installed yet',
     listBroken: '{count} plugin file(s) could not be read',
     brokenHint:

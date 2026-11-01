@@ -38,6 +38,8 @@ import type {
   MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
+  ParsedSong,
+  PlaylistParseResult,
   RecommendPlaylist,
   SourceProbeResult,
   SourceTrackRef,
@@ -271,6 +273,47 @@ export interface SourcePlugin {
     playlistId: string,
     ctx: PluginContext
   ): Promise<OnlineTrackSearchResult[]>
+
+  /**
+   * 解析歌单**分享链接**（粘贴「分享文案 + 链接」时走这条）。
+   *
+   * ## 为什么它与 `getPlaylistTracks` 是两个方法
+   *
+   * 两者的输入语义完全不同，混成一个会逼着实现方在内部判形态：
+   * - `getPlaylistTracks(config, playlistId)`：调用方**已经有**一个歌单标识
+   *   （插件自己列出来的「我的歌单」条目），直接按 id 拉曲目；
+   * - `parsePlaylist(config, shareUrl)`：调用方只有一个**来自外部的链接**，
+   *   「这个链接对应哪个歌单、要怎么换成可请求的地址」是插件才知道的知识
+   *   （aurora 用 `{url}` 模板把链接当参数透传，汽水要解析出 playlist_id，
+   *   别的平台可能要先去重定向拿 id）。
+   *
+   * ## v15：把「能力被协议劫持」收回到契约
+   *
+   * 改造前歌单链接解析走 `playlistResolver.parsePlaylistLink`，它用
+   * `playlistEndpointOf()`（**aurora 协议私有**的端点派生）判断「哪些源能做这件事」，
+   * 完全不询问插件。后果与歌词链路当初那处一模一样：
+   *
+   * - 装来的声明式插件即便在清单里写了 `playlistTracks`，也永远进不了这条链路；
+   * - `playlistTracksViaPlugin` / `userPlaylistsViaPlugin` 写好了却**零生产调用方**；
+   * - 「这条源能不能解析歌单」有两份真源（`capabilities` 声明 vs 端点派生）。
+   *
+   * 现在插件自己回答这件事。`playlistResolver` 保留为**协议实现**（aurora 仍用它），
+   * 但「谁来解析」的判定权归注册表。
+   *
+   * 返回 `PlaylistParseResult`（而不是裸的 `ParsedSong[]`）：
+   * 歌单名是**只有解析方才知道**的信息（有的平台在响应里给、有的在链接里给、
+   * 有的根本没有）。把它从返回值里抹掉，调用方就只能退化成「导入的歌单」这种
+   * 兜底名 —— 而用户明明粘的是一份有名字的分享链接。`truncated` 同理（分页时用）。
+   *
+   * 失败抛结构化错误（调用方据此逐源收集失败原因，取配置顺序上最后一个）。
+   */
+  parsePlaylist?(
+    config: OnlineSourceConfig,
+    shareUrl: string,
+    ctx: PluginContext,
+    options?: { limit?: number }
+  ): Promise<PlaylistParseResult>
+
 
   // ─── 在线发现（可选，只读浏览） ──────────────────────────────
   //

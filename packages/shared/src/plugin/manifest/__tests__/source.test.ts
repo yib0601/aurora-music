@@ -103,8 +103,46 @@ describe('buildSourcePlugin：能力由清单推导', () => {
     expect(typeof plugin!.getPlaylistTracks).toBe('function')
   })
 
-  it('纯歌词清单不产出音源插件（返回 null，调用方据此知道"它不进音源列表"）', () => {
-    expect(buildSourcePlugin(manifestOf(undefined, { lyrics: { url: 'https://api.example.com/l?t={track}' }, source: undefined }))).toBeNull()
+  /**
+   * v15 修正：纯歌词清单**必须**产出插件对象。
+   *
+   * 改造前这里断言 `toBeNull()`，理由是"它不进音源列表"。那个理由站不住：
+   * 目录投影（`catalog.ts`）按 `manifest.lyrics` 已经把它标成 `domain: 'lyrics'`，
+   * 于是插件列表里有一个条目、点进去却永远取不到歌词，且不报错。
+   * `SourcePlugin` 的能力全是可选的，只实现 `lyricsSource` 是一等合法形态。
+   */
+  it('纯歌词清单产出插件（能力只有 lyrics，且实现了 lyricsSource）', () => {
+    const plugin = buildSourcePlugin(
+      manifestOf(undefined, { lyrics: { url: 'https://api.example.com/l?t={track}' }, source: undefined })
+    )
+    expect(plugin).not.toBeNull()
+    expect(plugin!.capabilities).toEqual(['lyrics'])
+    // 判定一律按方法存在性（本仓一贯口径），不看 capabilities 声明
+    expect(typeof plugin!.lyricsSource).toBe('function')
+    // 它不该凭空拥有音源能力
+    expect(plugin!.search).toBeUndefined()
+    expect(plugin!.resolveTrack).toBeUndefined()
+  })
+
+  /**
+   * 什么声明都没有的清单仍然返回 null：那才是真的什么也不做。
+   *
+   * 注意这里**故意绕过校验器**直接构造裸对象：`validate.ts` 的 `no-capability`
+   * 已经在安装期把这种清单挡掉了，所以生产路径走不到这里。但 `source.ts`
+   * 顶部的判据是**防御性**的 —— 磁盘上的 manifest.json 可能被人手改过
+   * （校验器跑在"写时"，这里是"读时"，与 `installed.ts` 的 id 复检同一个理由）。
+   */
+  it('既无 source、script 也无 lyrics 的裸清单返回 null（读取期防御）', () => {
+    const bare = {
+      format: 'aurora-plugin/1',
+      id: 'bare',
+      name: 'Bare',
+      version: '1.0.0',
+      author: 'x',
+      permissions: ['network'],
+      hosts: ['api.example.com'],
+    } as unknown as Parameters<typeof buildSourcePlugin>[0]
+    expect(buildSourcePlugin(bare)).toBeNull()
   })
 })
 

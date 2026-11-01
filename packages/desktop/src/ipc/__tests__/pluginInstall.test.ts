@@ -223,10 +223,21 @@ describe('listCatalogEntries：列表反映磁盘与运行期的真实状态', (
   })
 })
 
-describe('纯歌词插件的安装（不进音源注册表但算已安装）', () => {
-  it('装上后 isInstalled 为 true、音源表里没有、目录里 domain 是 lyrics', async () => {
+/**
+ * 纯歌词插件的安装。
+ *
+ * v15 修正：旧断言是「音源表里没有它」（`getPlugin` 为 undefined），理由是
+ * "它不进音源列表"。但歌词链路（`lyricsSourceViaPlugin` / `installedLyricsSources`）
+ * 都要靠 `getPlugin(id)` 取实现 —— 不注册等于这条链路必然断，而目录里却仍有
+ * 它的条目（`domain: 'lyrics'`），用户看到的是"装得上、永远取不到歌词、也不报错"。
+ *
+ * 现在它**必须**进注册表；"不进音源列表"由目录的域（`domain`）表达，不由注册表表达。
+ */
+describe('纯歌词插件的安装（进注册表，但目录里归 lyrics 域）', () => {
+  it('装上后 isInstalled 为 true、注册表里有实现、目录里 domain 是 lyrics', async () => {
     const bytes = manifestBytes({
       id: 'lyrics-demo',
+      // 纯歌词清单：**没有** source 块（默认 fixture 自带一份，必须显式去掉）
       source: undefined,
       lyrics: { url: 'https://api.example.com/l?t={track}' },
     })
@@ -235,7 +246,12 @@ describe('纯歌词插件的安装（不进音源注册表但算已安装）', (
     if (!result.ok) return
 
     expect(shared.isInstalledPlugin('lyrics-demo')).toBe(true)
-    expect(shared.getPlugin('lyrics-demo')).toBeUndefined()
+    // 歌词链路要靠它取到实现：没有这一条，「装上了却永远盲」
+    const plugin = shared.getPlugin('lyrics-demo')
+    expect(plugin).toBeDefined()
+    expect(typeof plugin!.lyricsSource).toBe('function')
+    // 它不该凭空拥有音源能力
+    expect(plugin!.search).toBeUndefined()
     expect(result.entry?.domain).toBe('lyrics')
   })
 })

@@ -148,6 +148,27 @@ interface LibraryState {
    * 这里的来源会被扫描入库，曲目长期有效，播放走 aurora-remote:// 协议代理。
    */
   librarySources: LibrarySourceConfig[]
+  /**
+   * 独立歌词源配置（v15 恢复）。
+   *
+   * ## 为什么它存在
+   *
+   * v12 把独立歌词源删掉、并入音源，理由是「一条源同时提供这几种能力」。
+   * 那个前提只对 aurora 协议成立：它的服务端自描述里带 `endpoints.lyric`。
+   * 但结果是歌词这一维度被**绑死在音源**上：
+   *
+   * - 洛雪脚本源没有歌词能力（脚本只有 `musicUrl`），配了它就得连带失去歌词；
+   * - 用户想「音源用 A、歌词用 B」时无处表达；
+   * - 声明式歌词插件的 `domain: 'lyrics'` 没有用户配置可挂。
+   *
+   * 所以它是一个**独立维度**：为空时行为与 v12 完全一致（歌词跟着音源走 + 内置兜底），
+   * 非空时排在这些之前（用户显式配置的东西优先于派生）。
+   *
+   * 为什么不是 `OnlineSourceConfig[]`：歌词源**不需要** id/pluginId/搜索端点，
+   * 也没有歌单与取址语义。用同一个类型会让「这条配置到底该填什么」变得靠猜。
+   */
+  lyricsSources: LyricsSourceConfig[]
+
   /** 默认下载目录：null 表示每次下载都弹保存对话框询问 */
   downloadDir: string | null
   /** 默认下载音质：128 标准 / 320 高品质 / flac 无损（源不支持时按其默认地址下载） */
@@ -157,6 +178,11 @@ interface LibraryState {
   setAlbums: (albums: Album[]) => void
   addTracks: (tracks: Track[]) => void
   updateTrack: (id: string, updates: Partial<Track>) => void
+  /**
+   * 从曲库移除单曲（只删记录与封面缓存，不删磁盘音频文件）。
+   * 平台无此能力时是 no-op（能力缺失用方法不存在表达，不假装成功）。
+   */
+  removeTrack: (id: string) => Promise<void>
   /** 登记一条最近播放记录（本地 + 在线统一入口，最新在前，最多保留 MAX_RECENT_PLAYED 条） */
   addRecentPlayed: (track: Track, lastPlayedAt: number, playCount: number) => void
   setPlaylists: (playlists: Playlist[]) => void
@@ -179,6 +205,16 @@ interface LibraryState {
   likedTracks: Set<string>
   likedTrackIds?: string[]
   // 音源配置操作（一条音源可同时含搜索接口与歌单解析接口）
+  /**
+   * 歌词源的增删改（v15）。
+   *
+   * 与 `addOnlineSource` 是两套：歌词源不需要搜索端点、没有歌单/取址语义，
+   * 合并成一个会让「这条配置该填什么」靠猜。id 由本层生成（调用方不该关心）。
+   */
+  addLyricsSource: (source: Omit<LyricsSourceConfig, 'id'>) => LyricsSourceConfig
+  updateLyricsSource: (id: string, updates: Partial<LyricsSourceConfig>) => void
+  removeLyricsSource: (id: string) => void
+
   addOnlineSource: (source: Omit<OnlineSourceConfig, 'id'>) => void
   updateOnlineSource: (id: string, updates: Partial<OnlineSourceConfig>) => void
   removeOnlineSource: (id: string) => void
@@ -238,6 +274,7 @@ export const useLibraryStore = create<LibraryState>()(
       likedTracks: new Set<string>(),
       onlineSources: [],
       librarySources: [],
+      lyricsSources: [],
       downloadDir: null,
       downloadQuality: 'flac',
 
@@ -267,6 +304,43 @@ export const useLibraryStore = create<LibraryState>()(
       updateTrack: (id, updates) => {
         set({
           tracks: get().tracks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+        })
+      },
+      /**
+       * 从曲库移除单曲：只删曲库记录与封面缓存，**磁盘上的音频文件原样保留**。
+       *
+       * 三条不变量（这也是它必须走平台层而不是纯本地过滤的原因）：
+       * 1. 记录删除要落到持久层，否则下次启动扫描会把这首曲目原样写回来，
+       *    用户看到的是「移除了又自己回来」；
+       * 2. 曲库列表以平台返回的**移除后全库**为准，而不是本地 splice——
+       *    远端/移动端可能有本会话尚未拉到的新记录，本地拼接会与库里不一致；
+       * 3. 平台没有该能力（老 preload / 未知环境）时返回空数组，此时**不动本地列表**：
+       *    本地删了而库里没删，是比「移除失败」更糟的不一致。
+       *
+       * 收藏集合与最近播放在这里一并收敛：like 的真相源是 tracks 表（liked 列随记录消失），
+       * 最近播放是本地快照，保留着会指向一首曲库里已不存在的歌。
+       */
+      removeTrack: async (id) => {
+        if (!get().tracks.some((t) => t.id === id)) return
+        // 能力探测先于调用：不能靠「返回了空数组」判失败——移除最后一首歌时
+        // 合法的结果也是空数组，两者无从区分（这正是能力缺失用「方法不存在」表达的原因）
+        if (typeof platform.removeTrack !== 'function') {
+          console.warn('[libraryStore] 当前平台不支持从曲库移除单曲，已忽略:', id)
+          return
+        }
+        let remaining: Track[]
+        try {
+          remaining = await platform.removeTrack(id)
+        } catch (err) {
+          console.warn('[libraryStore] 从曲库移除单曲失败:', id, (err as Error).message)
+          return
+        }
+        const likedTracks = new Set(get().likedTracks)
+        likedTracks.delete(id)
+        set({
+          tracks: remaining,
+          likedTracks,
+          recentPlayedTracks: get().recentPlayedTracks.filter((t) => t.id !== id),
         })
       },
       addRecentPlayed: (track, lastPlayedAt, playCount) => {
@@ -320,6 +394,22 @@ export const useLibraryStore = create<LibraryState>()(
       },
       toggleLike: (trackId) => {
         get().toggleLiked(trackId)
+      },
+
+      addLyricsSource: (source) => {
+        // id 生成与在线源同口径：时间戳 + 随机后缀，不引 uuid 依赖
+        const id = `lyrics-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+        const next: LyricsSourceConfig = { ...source, id }
+        set({ lyricsSources: [...get().lyricsSources, next] })
+        return next
+      },
+      updateLyricsSource: (id, updates) => {
+        set({
+          lyricsSources: get().lyricsSources.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+        })
+      },
+      removeLyricsSource: (id) => {
+        set({ lyricsSources: get().lyricsSources.filter((s) => s.id !== id) })
       },
 
       addOnlineSource: (source) => {

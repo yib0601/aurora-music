@@ -7,6 +7,8 @@ import {
   Heart,
   MoreHorizontal,
   ArrowLeft,
+  ArrowUp,
+  ArrowDown,
   ListMusic,
   Clock,
   Plus,
@@ -30,6 +32,7 @@ import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
 import { HOME_ROUTE, LIBRARY_ROUTE, NAV_LABEL_KEYS } from '@/lib/routes'
 import { useT } from '@/i18n'
+import { moveTargetsAt } from '@/lib/playlistReorder'
 import { SubPageTitle } from '@/components/PageHeading'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { toast } from '@/components/common/Toast'
@@ -49,6 +52,7 @@ export function PlaylistPage() {
   const navigate = useNavigate()
   const playlists = usePlaylistStore((s) => s.playlists)
   const removeTrackFromPlaylist = usePlaylistStore((s) => s.removeTrackFromPlaylist)
+  const reorderTracks = usePlaylistStore((s) => s.reorderTracks)
   const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist)
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
@@ -73,6 +77,9 @@ export function PlaylistPage() {
       .map((tid) => tracks.find((t) => t.id === tid) || importedTracks[tid])
       .filter(Boolean) as typeof tracks
   }, [playlist, tracks, importedTracks])
+
+  // 展示列表的 id 顺序（过滤后）：上移/下移的目标位置换算要用它，见 moveTargetsAt
+  const visibleTrackIds = useMemo(() => playlistTracks.map((t) => t.id), [playlistTracks])
 
   if (!playlist) {
     return (
@@ -240,106 +247,144 @@ export function PlaylistPage() {
               <span></span>
             </div>
 
-            {playlistTracks.map((track, idx) => (
-              <div
-                key={track.id}
-                // 与曲库一致：桌面端双击播放（单击仅 hover），移动端单击播放
-                onClick={isDesktop() ? undefined : () => handlePlayTrack(track, idx)}
-                onDoubleClick={isDesktop() ? () => handlePlayTrack(track, idx) : undefined}
-                className={cn(
-                  'grid grid-cols-[40px_1fr_3rem_4rem] gap-3 items-center px-4 py-2.5 cursor-pointer group row-hover border-b border-white/5 last:border-0',
-                  isCurrentTrack(track.id) && 'bg-mint/[0.06]'
-                )}
-              >
-                <div className="text-caption text-white/50 w-6">
-                  {isCurrentTrack(track.id) && isPlaying ? (
-                    <div className="flex gap-0.5 items-end h-4">
-                      <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '60%' }} />
-                      <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
-                      <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
-                    </div>
-                  ) : isCurrentTrack(track.id) ? (
-                    <Play className="h-3.5 w-3.5 text-mint" strokeWidth={1.8} />
-                  ) : (
-                    <>
-                      <span className="group-hover:hidden">{idx + 1}</span>
-                      <Play className="h-3.5 w-3.5 hidden group-hover:block text-mint" strokeWidth={1.8} />
-                    </>
+            {playlistTracks.map((track, idx) => {
+              // 上移/下移的目标位置按**原始顺序**换算（展示列表过滤过曲库里已不存在的歌，
+              // 两组下标会错位）；-1 表示该方向没有目标，菜单项不渲染
+              const moves = moveTargetsAt(playlist.trackIds, visibleTrackIds, idx)
+              return (
+                <div
+                  key={track.id}
+                  // 与曲库一致：桌面端双击播放（单击仅 hover），移动端单击播放
+                  onClick={isDesktop() ? undefined : () => handlePlayTrack(track, idx)}
+                  onDoubleClick={isDesktop() ? () => handlePlayTrack(track, idx) : undefined}
+                  className={cn(
+                    'grid grid-cols-[40px_1fr_3rem_4rem] gap-3 items-center px-4 py-2.5 cursor-pointer group row-hover border-b border-white/5 last:border-0',
+                    isCurrentTrack(track.id) && 'bg-mint/[0.06]'
                   )}
-                </div>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden product-shadow">
-                    <CoverImage
-                      track={track}
-                      className="w-full h-full object-cover"
-                      fallback={<Music2 className="h-4 w-4 text-white/40" strokeWidth={1.6} />}
-                    />
+                >
+                  <div className="text-caption text-white/50 w-6">
+                    {isCurrentTrack(track.id) && isPlaying ? (
+                      <div className="flex gap-0.5 items-end h-4">
+                        <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '60%' }} />
+                        <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
+                        <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
+                      </div>
+                    ) : isCurrentTrack(track.id) ? (
+                      <Play className="h-3.5 w-3.5 text-mint" strokeWidth={1.8} />
+                    ) : (
+                      <>
+                        <span className="group-hover:hidden">{idx + 1}</span>
+                        <Play className="h-3.5 w-3.5 hidden group-hover:block text-mint" strokeWidth={1.8} />
+                      </>
+                    )}
                   </div>
-                  <div className="min-w-0">
-                    <p
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-[8px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden product-shadow">
+                      <CoverImage
+                        track={track}
+                        className="w-full h-full object-cover"
+                        fallback={<Music2 className="h-4 w-4 text-white/40" strokeWidth={1.6} />}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p
+                        className={cn(
+                          'font-text text-caption truncate font-semibold',
+                          isCurrentTrack(track.id) ? 'text-mint' : 'text-white'
+                        )}
+                      >
+                        {track.title}
+                      </p>
+                      <p className="font-text text-caption text-white/50 truncate">{track.artist}</p>
+                    </div>
+                  </div>
+                  <span className="font-text text-caption text-white/50 tabular-nums w-12 text-right">
+                    {formatTime(track.duration)}
+                  </span>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-apple w-16 justify-end">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleLike(track.id)
+                      }}
                       className={cn(
-                        'font-text text-caption truncate font-semibold',
-                        isCurrentTrack(track.id) ? 'text-mint' : 'text-white'
+                        'h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-white/[0.06] transition-colors duration-200 ease-apple',
+                        likedTracks.has(track.id) ? 'text-coral' : 'text-white/40'
                       )}
                     >
-                      {track.title}
-                    </p>
-                    <p className="font-text text-caption text-white/50 truncate">{track.artist}</p>
+                      <Heart
+                        className="h-3.5 w-3.5"
+                        fill={likedTracks.has(track.id) ? 'currentColor' : 'none'}
+                        strokeWidth={1.7}
+                      />
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-white/[0.06] text-white/50 transition-colors duration-200 ease-apple"
+                        >
+                          <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.7} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation()
+                          addToQueue(track)
+                        }}>
+                          <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                          {t('library.action.addToQueue')}
+                        </DropdownMenuItem>
+                        {/*
+                          上移 / 下移：仓库没有安装任何拖拽库（无 dnd-kit 等，且不为此新增依赖），
+                          所以歌单顺序编辑走菜单项调用既有的 reorderTracks。
+
+                          ⚠️ 下标必须换算，不能直接用渲染下标 idx：
+                          `playlistTracks` 是「已过滤掉曲库里不存在的 id」的展示列表，
+                          而 reorderTracks 操作的是 `playlist.trackIds` 原始顺序。
+                          一旦歌单里有过从曲库移除的歌，两者下标就错位 ——
+                          直接用 idx 会把相邻的**另一首歌**换位置（用户看到的是移错了行）。
+                          这里取相邻的**可见**曲目在 trackIds 里的真实下标作为目标位置。
+
+                          边界：第一行不显示「上移」、最后一行不显示「下移」——
+                          显示但禁用会留下一个永远点不动的菜单项，不如直接不渲染。
+                        */}
+                        <DropdownMenuSeparator />
+                        {moves.up >= 0 && (
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation()
+                            reorderTracks(playlist.id, playlist.trackIds.indexOf(track.id), moves.up)
+                          }}>
+                            <ArrowUp className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                            {t('library.action.moveUp')}
+                          </DropdownMenuItem>
+                        )}
+                        {moves.down >= 0 && (
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation()
+                            reorderTracks(playlist.id, playlist.trackIds.indexOf(track.id), moves.down)
+                          }}>
+                            <ArrowDown className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                            {t('library.action.moveDown')}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeTrackFromPlaylist(playlist.id, track.id)
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
+                          {t('library.playlist.removeTrack')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
-                <span className="font-text text-caption text-white/50 tabular-nums w-12 text-right">
-                  {formatTime(track.duration)}
-                </span>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-apple w-16 justify-end">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleLike(track.id)
-                    }}
-                    className={cn(
-                      'h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-white/[0.06] transition-colors duration-200 ease-apple',
-                      likedTracks.has(track.id) ? 'text-coral' : 'text-white/40'
-                    )}
-                  >
-                    <Heart
-                      className="h-3.5 w-3.5"
-                      fill={likedTracks.has(track.id) ? 'currentColor' : 'none'}
-                      strokeWidth={1.7}
-                    />
-                  </button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-white/[0.06] text-white/50 transition-colors duration-200 ease-apple"
-                      >
-                        <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.7} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation()
-                        addToQueue(track)
-                      }}>
-                        <Plus className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        {t('library.action.addToQueue')}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          removeTrackFromPlaylist(playlist.id, track.id)
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />
-                        {t('library.playlist.removeTrack')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

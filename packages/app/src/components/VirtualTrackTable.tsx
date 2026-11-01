@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, type ComponentType, type CSSProperties, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Heart, Play, Plus, ListPlus, ListEnd, Disc3, Cloud, MoreHorizontal, Info } from 'lucide-react'
+import { Heart, Play, Plus, ListPlus, ListEnd, Disc3, Cloud, MoreHorizontal, Info, FolderOpen, Trash2 } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -29,6 +29,11 @@ import { isDesktop, formatTime, cn } from '@/lib/utils'
 import { useT } from '@/i18n'
 import { CoverImage } from '@/components/common/CoverImage'
 import { DuplicateBadge } from '@/components/common/DuplicateInfo'
+import {
+  canRevealInFolder,
+  requestRemoveTrackFromLibrary,
+  revealTrackInFolder,
+} from '@/components/common/TrackLibraryActions'
 import type { DuplicateGroup } from '@aurora/shared'
 import type { Track } from '@/types'
 
@@ -219,6 +224,30 @@ const TrackMenuItems = memo(function TrackMenuItems({
         <Heart className={cn('h-4 w-4 mr-2', liked && 'fill-coral text-coral')} strokeWidth={1.5} />
         {liked ? t('library.action.unlike') : t('library.action.like')}
       </Item>
+      {/*
+        曲库级动作：只对**在库曲目**显示。
+        - 在线曲目（歌单导入/最近播放的在线快照，path 为空）本来就不在曲库里，
+          「从曲库移除」对它没有意义；「在文件夹中显示」更不可能——
+          它没有本机文件。判据用 track.path：是曲库记录的本体坐标。
+        - 「在文件夹中显示」按**方法是否存在**决定是否显示：移动端/Web 没有文件
+          管理器桥，能力缺失时隐藏入口，而不是留一个点了没反应的菜单项。
+        - 二次确认发生在点击之后（requestRemoveTrackFromLibrary 唤起全局弹层）。
+      */}
+      {track.path && (
+        <>
+          <Separator />
+          {canRevealInFolder() && (
+            <Item onClick={() => revealTrackInFolder(track.id, t('common.state.failed'))}>
+              <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.5} />
+              {t('library.action.revealInFolder')}
+            </Item>
+          )}
+          <Item onClick={() => requestRemoveTrackFromLibrary(track)}>
+            <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
+            {t('library.action.removeFromLibrary')}
+          </Item>
+        </>
+      )}
     </>
   )
 })

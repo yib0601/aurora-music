@@ -15,8 +15,15 @@
  */
 import { searchLyrics, searchLyricsSource, BUILTIN_LYRICS_GET_SOURCE, BUILTIN_LYRICS_SOURCE } from '../lyricsSource'
 import { setCustomFetch } from '../fetchWithTimeout'
+import { setPluginEnabled } from '../plugin/availability'
+
+/** 测试用：开关内置歌词插件的启停门禁（生产路径由设置页写入同一份内存态） */
+function setBuiltinLyricsPluginEnabled(enabled: boolean): void {
+  setPluginEnabled('builtin-lyrics-lrclib', enabled)
+}
 import type { LyricsSourceConfig } from '../types'
 import { expectCode, rejectionOf } from './i18nAssert'
+import { afterEach } from 'vitest'
 
 /** 上游桩：按 URL 里的 tag 决定延时 / 响应；tag 为空视为内置源（LRCLIB） */
 function installTimedUpstream(spec: Record<string, { ms?: number; body?: unknown; status?: number }>) {
@@ -440,5 +447,56 @@ describe('纯空白歌词：不命中、不固化、不改写内容', () => {
   it('整批候选都是空壳时单源返回 null（不返回空白串）', async () => {
     respondWith({ results: [{ syncedLyrics: '   ' }, { plainLyrics: '\n' }, { syncedLyrics: '' }] })
     await expect(searchLyricsSource(BUILTIN_LYRICS_SOURCE, 't', 'a')).resolves.toBeNull()
+  })
+})
+/**
+ * v15：内置 LRCLIB 从「隐式常量」变成「可停用的内置插件」。
+ *
+ * 改造前它由 `searchLyrics` 无条件追加：用户既看不到、也关不掉，而 LRCLIB
+ * 实测会回 503，那时每次取词都要在它身上白等一轮超时。
+ *
+ * 这里的判据是**行为**而不是实现：停用后不该再有任何请求打到 lrclib.net。
+ * 用出发记录（`started`）断言「一个都没发」，比断言内部数组更有意义 ——
+ * 用户关心的是"关掉了还要不要等那一轮超时"。
+ */
+describe('内置歌词源受插件启停门禁控制（v15）', () => {
+  const BUILTIN_PLUGIN = 'builtin-lyrics-lrclib'
+
+  afterEach(() => setBuiltinLyricsPluginEnabled(true))
+
+  it('默认启用：用户源全空时轮到内置兜底', async () => {
+    const started = installTimedUpstream({ empty: { body: [] }, builtin: { body: hitBody('builtin') } })
+    const out = await searchLyrics('歌', '手', undefined, 200, {
+      sources: [userSource('empty')],
+    })
+    expect(out?.lrc).toContain('词-builtin')
+    expect(started).toContain('builtin')
+  })
+
+  it('停用后不再请求内置源，全空即返回 null', async () => {
+    setBuiltinLyricsPluginEnabled(false)
+    const started = installTimedUpstream({ empty: { body: [] }, builtin: { body: hitBody('builtin') } })
+    const out = await searchLyrics('歌', '手', undefined, 200, {
+      sources: [userSource('empty')],
+    })
+    expect(out).toBeNull()
+    // 关键断言：内置源一个请求都没发（不是发了之后被丢弃）
+    expect(started).not.toContain('builtin')
+  })
+
+  it('停用只影响兜底档，用户源照常工作', async () => {
+    setBuiltinLyricsPluginEnabled(false)
+    installTimedUpstream({ mine: { body: hitBody('mine') }, builtin: { body: hitBody('builtin') } })
+    const out = await searchLyrics('歌', '手', undefined, 200, {
+      sources: [userSource('mine')],
+    })
+    expect(out?.lrc).toContain('词-mine')
+  })
+
+  it('插件 id 与两个歌词源 id 三者互不相同（粒度不能用错）', async () => {
+    const { BUILTIN_LYRICS_PLUGIN_ID } = await import('../lyricsSource')
+    expect(BUILTIN_LYRICS_PLUGIN_ID).not.toBe(BUILTIN_LYRICS_SOURCE.id)
+    expect(BUILTIN_LYRICS_PLUGIN_ID).not.toBe(BUILTIN_LYRICS_GET_SOURCE.id)
+    expect(BUILTIN_LYRICS_SOURCE.id).not.toBe(BUILTIN_LYRICS_GET_SOURCE.id)
   })
 })

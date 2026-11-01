@@ -134,3 +134,28 @@ describe('移动端平台能力', () => {
     expect(usage).toEqual({ usedBytes: 0, count: 0 })
   })
 })
+
+/**
+ * 曲库单条动作的平台能力契约。
+ *
+ * 两条能力的处置**刻意不同**，各自都容易被重构改坏：
+ *   - `removeTrack`：移动端有实现（只删数据库记录 + 封面缓存，不动音频文件）；
+ *   - `revealTrack`：移动端**没有**文件管理器桥（未安装 @capacitor/share 及同类插件，
+ *     也不新增依赖），能力缺失用「方法不存在」表达。UI 依此隐藏「在文件夹中显示」，
+ *     而不是显示一个点了没反应的菜单项（与 LoggingGateway.reveal 同一套约定）。
+ */
+describe('曲库单条动作的平台能力', () => {
+  it('移动端有 removeTrack（只删记录），但没有 revealTrack', async () => {
+    const { createMobilePlatform } = await import('../mobile/index')
+    const platform = createMobilePlatform() as unknown as Record<string, unknown>
+
+    expect(typeof platform.removeTrack).toBe('function')
+    expect(platform.revealTrack).toBeUndefined()
+  })
+
+  it('removeTrack 存在即被 UI 视为可用能力（与方法存在性判定同源）', async () => {
+    const { platform } = await import('../index')
+    expect(typeof platform.removeTrack === 'function').toBe(true)
+    expect(typeof platform.revealTrack === 'function').toBe(false)
+  })
+})

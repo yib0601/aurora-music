@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, Heart, Plus, ListEnd, ListMusic, Music2, ArrowLeft,
   BarChart3, Clock, Calendar, Tag, HardDrive, Layers, History, MoreHorizontal,
-  Disc3, Radio, Folder, Cloud, ChevronDown, Download, Loader2, type LucideIcon,
+  Disc3, Radio, Folder, Cloud, ChevronDown, Download, Loader2, FolderOpen, Trash2, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LyricsView } from '@/components/lyrics/LyricsView'
@@ -28,6 +28,12 @@ import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
 // 歌曲详情页没有独立页头：本页唯一的 h1 是黑胶旁的歌名，故用一级页头档
 import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
+import {
+  canRevealInFolder,
+  requestRemoveTrackFromLibrary,
+  revealTrackInFolder,
+} from '@/components/common/TrackLibraryActions'
+import { PlaybackExtrasMenu } from '@/components/player/PlaybackExtrasMenu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
@@ -404,6 +410,14 @@ export function SongDetailPage() {
                 <Heart className={cn('h-[18px] w-[18px]', isLiked && 'fill-coral')} strokeWidth={1.6} />
               </Button>
 
+              {/* 播放系列操作（速度 / 睡眠定时器）。与收藏同为 icon 档的次级按钮：
+                  这两项是「播放过程中的调节」，不该藏进右侧「更多」的业务菜单里
+                  （那里是加队列/下载/加歌单等对曲目的操作，语义不同）。
+                  速度项在移动端由组件内部按能力隐藏（原生桥无变速通道） */}
+              <div className="h-11 w-11 flex items-center justify-center [&>button]:!w-11 [&>button]:!h-11">
+                <PlaybackExtrasMenu align="start" />
+              </div>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="utility" size="icon" className="h-11 w-11" title={t('player.detail.moreActions')}>
@@ -452,6 +466,24 @@ export function SongDetailPage() {
                     <Heart className={cn('h-4 w-4 mr-2', isLiked && 'fill-coral text-coral')} strokeWidth={1.5} />
                     {isLiked ? t('player.like.remove') : t('player.like.add')}
                   </DropdownMenuItem>
+                  {/* 曲库级动作：只对在库曲目显示（在线曲目 path 为空，不在曲库里，
+                      与其让用户点了发现「移除不了」，不如不显示）；
+                      「在文件夹中显示」按平台能力决定是否显示 */}
+                  {track.path && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {canRevealInFolder() && (
+                        <DropdownMenuItem onClick={() => revealTrackInFolder(track.id, t('common.state.failed'))}>
+                          <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                          {t('library.action.revealInFolder')}
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => requestRemoveTrackFromLibrary(track)}>
+                        <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                        {t('library.action.removeFromLibrary')}
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

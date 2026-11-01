@@ -36,13 +36,32 @@ interface SourcePlugin {
   probe?(config, ctx): Promise<SourceProbeResult>
   search?(config, query, quality, ctx): Promise<OnlineTrackSearchResult[]>
   resolveTrack?(config, ref, quality, ctx): Promise<ResolvedAudio | null>
+  lyricsSource?(config, ctx): LyricsSourceConfig | null
   listUserPlaylists?(config, ctx): Promise<PluginPlaylist[]>
   getPlaylistTracks?(config, playlistId, ctx): Promise<OnlineTrackSearchResult[]>
+  /** v15：解析**外部分享链接**（与上面「按已知 id 拉曲目」是两件事） */
+  parsePlaylist?(config, shareUrl, ctx, options?): Promise<PlaylistParseResult>
+  recommendPlaylists?(config, options, ctx): Promise<RecommendPlaylist[]>
+  toplists?(config, options, ctx): Promise<ToplistGroup[]>
+  toplistDetail?(config, options, ctx): Promise<ToplistDetail>
   login?(ctx): Promise<PluginCredential>
   checkAuth?(credential, ctx): Promise<AuthState>
   logout?(ctx): Promise<void>
 }
 ```
+
+> **v15：两处「能力被协议劫持」已收回契约**
+>
+> 1. **歌单解析**以前走 `playlistResolver.parsePlaylistLink` 里的 `playlistEndpointOf()`
+>    —— 那是 aurora 协议私有的端点派生，等于说"只有协议源能解析歌单"。装来的声明式插件
+>    即便在清单里写了 `playlistTracks` 也永远进不来，而 `playlistTracksViaPlugin` /
+>    `userPlaylistsViaPlugin` 写好了却**零生产调用方**。现在插件自己回答
+>    （`parsePlaylist`），判定用 `canParsePlaylistLink`（方法存在性），
+>    并且**同时**要求该条配置里真有可用端点 —— 只填了搜索接口的源不该被判成
+>    「能解析但失败」，用户该看到的是「你没有能解析歌单的源」。
+> 2. **纯歌词插件**以前构造不出来（`buildSourcePlugin` 在无 `source` 块时返回 null），
+>    但目录却把它标成 `domain: 'lyrics'` 列给用户 —— 装得上、永远取不到词、还不报错。
+>    现在 `SourcePlugin` 只实现 `lyricsSource` 是一等合法形态。
 
 三点强约束（都是从既有代码里踩出来的，别丢）：
 

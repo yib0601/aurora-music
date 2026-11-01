@@ -227,6 +227,8 @@ const sources = {
     /** 列表 */
     installed: '已安装',
     builtin: '内置',
+    /** 内置歌词兜底插件的说明（domain=lyrics） */
+    builtinLyricsDesc: '内置歌词兜底：所有用户歌词源未命中时，从 LRCLIB 开放接口取词。可停用',
     listEmpty: '还没有安装任何第三方插件',
     listBroken: '有 {count} 个插件文件读取失败',
     brokenHint: '这些文件不符合插件清单格式，或内容与被安装时不一致（可能被修改过）',

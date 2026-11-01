@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, type CSSProperties, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Heart, Play, Plus, ListPlus, ListEnd, Music as MusicIcon } from 'lucide-react'
+import { Heart, Play, Plus, ListPlus, ListEnd, Music as MusicIcon, FolderOpen, Trash2 } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,6 +26,11 @@ import {
 import { CoverImage } from '@/components/common/CoverImage'
 import { PlaylistSubmenuItems, useBindScrollElement } from '@/components/VirtualTrackTable'
 import { DuplicateBadge } from '@/components/common/DuplicateInfo'
+import {
+  canRevealInFolder,
+  requestRemoveTrackFromLibrary,
+  revealTrackInFolder,
+} from '@/components/common/TrackLibraryActions'
 import type { DuplicateGroup } from '@aurora/shared'
 import type { Track } from '@/types'
 
@@ -167,6 +172,23 @@ export const TrackCard = memo(function TrackCard({
           <Heart className={cn('h-4 w-4 mr-2', liked && 'fill-coral text-coral')} strokeWidth={1.5} />
           {liked ? t('library.action.unlike') : t('library.action.like')}
         </ContextMenuItem>
+        {/* 曲库级动作：与 VirtualTrackTable 的行菜单保持同一套判据
+            （只对本机/在库曲目显示；「在文件夹中显示」按平台能力决定是否显示） */}
+        {track.path && (
+          <>
+            <ContextMenuSeparator />
+            {canRevealInFolder() && (
+              <ContextMenuItem onClick={() => revealTrackInFolder(track.id, t('common.state.failed'))}>
+                <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                {t('library.action.revealInFolder')}
+              </ContextMenuItem>
+            )}
+            <ContextMenuItem onClick={() => requestRemoveTrackFromLibrary(track)}>
+              <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
+              {t('library.action.removeFromLibrary')}
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )

@@ -12,12 +12,15 @@ import {
   hasCurrentHowl,
   pausePlayback as audioPausePlayback,
   resumePlayback as audioResumePlayback,
+  setPlaybackRate as audioSetPlaybackRate,
 } from '@/services/audio.service'
 import { audioEvents } from '@/services/audioEvents'
 import { resolveCachedAudioSrc } from '@/services/audioCache.service'
 import { toast } from '@/components/common/Toast'
 import { appTranslate } from '@/i18n'
 import { shouldTreatAsNoticeClip } from '@/lib/audioGuard'
+import { normalizePlaybackRate } from '@/lib/playbackRate'
+import { sleepEndsAtFromNow, sleepRemainingMs } from '@/lib/sleepTimer'
 import {
   isNativePlayerAvailable,
   startNativeService,
@@ -56,6 +59,27 @@ interface PlayerState {
    */
   resolvingTrackId: string | null
 
+  /**
+   * 播放速率（1 = 原速）。
+   *
+   * 只在**桌面端**真正生效：桌面走 Howler（`howl.rate(v)`），移动端走原生
+   * MediaPlayer 桥，而 MediaSessionPlugin 没有变速通道（见 mediaSession.ts）。
+   * UI 侧按 `isPlaybackRateAvailable()` 判据隐藏入口，不假装生效。
+   */
+  playbackRate: number
+
+  /**
+   * 睡眠定时器的结束时间戳（毫秒）；null = 未设置。
+   *
+   * ⚠️ 刻意**不持久化**（见 partialize）：定时器是「本次会话内 N 分钟后暂停」
+   * 的意图，跨重启保留会让用户第二天开应用时被一条自己早已忘记的规则打断。
+   * 「重启即失效」是经过考虑的决定，不是遗漏。
+   *
+   * ⚠️ 同样刻意**不存剩余秒数**：只存结束时刻，剩余量由「现在」推导
+   * （见 sleepRemainingMs）。后台节流下递减计数会严重失真。
+   */
+  sleepEndsAt: number | null
+
   playTrack: (track: Track) => Promise<void>
   playQueue: (tracks: Track[], startIndex?: number) => Promise<void>
   addToQueue: (track: Track) => void
@@ -70,6 +94,10 @@ interface PlayerState {
   seekTo: (seconds: number) => void
   setVolume: (volume: number) => void
   toggleMute: () => void
+  setPlaybackRate: (rate: number) => void
+  /** 设置睡眠定时器：minutes 分钟后暂停播放；null 表示取消 */
+  setSleepTimer: (minutes: number | null) => void
+  cancelSleepTimer: () => void
   toggleShuffle: () => void
   cycleRepeat: () => void
   cyclePlayMode: () => void
@@ -94,6 +122,8 @@ const initialState = {
   shuffleMode: 'on' as ShuffleMode,
   shuffleHistory: [] as number[],
   resolvingTrackId: null as string | null,
+  playbackRate: 1,
+  sleepEndsAt: null as number | null,
 }
 
 /**
@@ -421,6 +451,92 @@ function nativeBootstrapPlay(positionSec: number, autoplay = true) {
       if (autoplay) startNativeTicker()
     })
   })
+}
+
+/**
+ * 变速播放是否在本环境真正生效。
+ *
+ * 桌面端走 Howler（每个 Howl 有独立的 `rate`），移动端走原生 MediaPlayer 桥，
+ * 而 `MediaSessionPlugin.kt` 暴露的方法里没有变速通道（start/stop/playQueue/
+ * syncQueue/pause/resume/seekTo/setVolume/next/previous/playAt/stopEngine/
+ * updateArtwork/getState，逐条核对过）。所以移动端**只有在音频真的跑在
+ * WebView 的 HTML5 Audio 上时**才适用，而那种情况并不存在——移动端音频
+ * 一律由原生播放。结论：入口按本函数隐藏，不做「点了没反应」的假入口。
+ */
+export function isPlaybackRateAvailable(): boolean {
+  return !isNativePlayerAvailable()
+}
+
+// ─── 睡眠定时器 ────────────────────────────────────────────────
+/**
+ * 睡眠定时器的运行时调度。
+ *
+ * 语义恒为「到点暂停播放」，不是退出应用：应用留在托盘/后台、队列不丢，
+ * 用户第二天点播放即可续上。
+ *
+ * 三重保险都指向同一件事——**以结束时间戳为准**：
+ *   1. 主定时器：单个 setTimeout 睡满剩余时长（不做 1 秒一跳的倒计时）；
+ *   2. 可视性回调：渲染进程被冻结期间定时器可能被推迟甚至丢弃（Chromium
+ *      对长时间的后台定时器有节流与丢弃策略），回到前台时重算一次，
+ *      已过点就当场结算，未过点就把定时器重新对准真实剩余量；
+ *   3. UI 侧：倒计时数字由 `sleepRemainingMs` 从时间戳推导（见 lib/sleepTimer），
+ *      永远不依赖 interval 的累积步数。
+ */
+let sleepTimerHandle: ReturnType<typeof setTimeout> | null = null
+
+function clearSleepTimerHandle(): void {
+  if (sleepTimerHandle) {
+    clearTimeout(sleepTimerHandle)
+    sleepTimerHandle = null
+  }
+}
+
+/** 到点结算：取消定时器 → 暂停播放 → 给一次性提示 */
+function fireSleepTimer(): void {
+  clearSleepTimerHandle()
+  const st = usePlayerStore.getState()
+  // 先清时间戳再暂停：暂停会触发 play/pause 事件回同步，若那时时间戳还在，
+  // 订阅方可能再排一次，形成重复结算
+  if (st.sleepEndsAt === null) return
+  usePlayerStore.setState({ sleepEndsAt: null })
+  st.pause()
+  toast(appTranslate()('player.sleep.fired'), { type: 'info', duration: 5000 })
+}
+
+/**
+ * 按当前 `sleepEndsAt` 重新排定定时器。
+ * 剩余量非正数时立即结算（回到前台发现已过点、或用户刚设了一个已过去的时刻）。
+ */
+function rescheduleSleepTimer(): void {
+  clearSleepTimerHandle()
+  const endsAt = usePlayerStore.getState().sleepEndsAt
+  if (endsAt === null) return
+  const left = sleepRemainingMs(endsAt)
+  if (left <= 0) {
+    fireSleepTimer()
+    return
+  }
+  // setTimeout 的上限是 2^31-1 毫秒（约 24.8 天），档位最长为 60 分钟，不会溢出；
+  // 但一旦有人把档位改成超长值，这里的夹取保证不会因溢出变成「立刻触发」
+  const delay = Math.min(left, 2_147_483_647)
+  sleepTimerHandle = setTimeout(() => {
+    sleepTimerHandle = null
+    // 触发时**再对一次表**：定时器可能被节流而晚到，但不应早到；
+    // 早到只会出现在系统时钟被回拨这类情形，此时重新排定即可
+    if (sleepRemainingMs(usePlayerStore.getState().sleepEndsAt ?? 0) > 0) {
+      rescheduleSleepTimer()
+      return
+    }
+    fireSleepTimer()
+  }, delay)
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  // 回到前台/窗口重新可见：补齐冻结期间漏掉的结算，并让定时器重新对准真实剩余量
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') rescheduleSleepTimer()
+  })
+  window.addEventListener('focus', rescheduleSleepTimer)
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -787,6 +903,37 @@ export const usePlayerStore = create<PlayerState>()(
         if (!newMuted) audioSetVolume(volume)
       },
 
+      setPlaybackRate: (rate) => {
+        const normalized = normalizePlaybackRate(rate)
+        set({ playbackRate: normalized })
+        // 移动端原生引擎没有变速通道：这里只在桌面端真正下发给播放器。
+        // UI 侧入口由 isPlaybackRateAvailable() 隐藏，所以移动端不会走到这里，
+        // 但状态仍被记录（持久化），迁移到桌面端时立即生效
+        if (!useNative()) audioSetPlaybackRate(normalized)
+      },
+
+      setSleepTimer: (minutes) => {
+        if (minutes === null) {
+          // 取消：清时间戳 + 停掉在跑的定时器，不弹提示（用户主动关的）
+          clearSleepTimerHandle()
+          set({ sleepEndsAt: null })
+          return
+        }
+        // 非正数视为取消：语义上「0 分钟后暂停」没有意义，且会让定时器立刻触发
+        if (!Number.isFinite(minutes) || minutes <= 0) {
+          clearSleepTimerHandle()
+          set({ sleepEndsAt: null })
+          return
+        }
+        set({ sleepEndsAt: sleepEndsAtFromNow(minutes) })
+        rescheduleSleepTimer()
+      },
+
+      cancelSleepTimer: () => {
+        clearSleepTimerHandle()
+        set({ sleepEndsAt: null })
+      },
+
       toggleShuffle: () => {
         const { shuffleMode, currentIndex } = get()
         const newMode: ShuffleMode = shuffleMode === 'off' ? 'on' : 'off'
@@ -874,6 +1021,22 @@ export const usePlayerStore = create<PlayerState>()(
     }),
     {
       name: 'aurora-player-state',
+      /**
+       * 水合完成后把持久化的速率推给音频层。
+       *
+       * audio.service 里的 `currentRate` 是模块级镜像（它不能反向 import 本 store，
+       * 否则形成循环依赖），冷启动时它必然是 1。水合是本进程里第一个知道
+       * 「用户上次是 1.25×」的时刻，必须在这里镜像过去，否则第一首歌会以原速起播，
+       * 直到用户手动再选一次档位才纠正。
+       *
+       * 此刻还没有 Howl 实例（冷启动尚未播放），所以这次调用只落镜像；
+       * 真正的应用发生在 startHowl 的 onload（见 audio.service）。
+       */
+      onRehydrateStorage: () => (state) => {
+        if (state && typeof state.playbackRate === 'number') {
+          audioSetPlaybackRate(state.playbackRate)
+        }
+      },
       partialize: (state) => ({
         volume: state.volume,
         muted: state.muted,
@@ -887,6 +1050,11 @@ export const usePlayerStore = create<PlayerState>()(
         progress: state.progress,
         duration: state.duration,
         shuffleHistory: state.shuffleHistory,
+        // 变速是跨会话成立的收听偏好（听播客的用户每次都要 1.25×），故持久化。
+        // 睡眠定时器**刻意不在这里**：它是「本次会话内 N 分钟后暂停」的意图，
+        // 跨重启保留会在第二天开机时打断用户，重启即失效才是合理语义
+        // （见 PlayerState.sleepEndsAt 的注释）。
+        playbackRate: state.playbackRate,
       }),
     }
   )

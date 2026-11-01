@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music } from 'lucide-react'
+import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music, FolderOpen, Trash2 } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { dedupeTracksForDisplay } from '@aurora/shared'
@@ -11,6 +11,11 @@ import { useT } from '@/i18n'
 import { PageLayout } from '@/components/PageLayout'
 import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
+import {
+  canRevealInFolder,
+  requestRemoveTrackFromLibrary,
+  revealTrackInFolder,
+} from '@/components/common/TrackLibraryActions'
 import type { Track } from '@/types'
 import {
   ContextMenu,
@@ -187,6 +192,23 @@ export function RecentPage() {
                         <Heart className={cn('h-4 w-4 mr-2', likedTracks.has(track.id) && 'fill-coral text-coral')} strokeWidth={1.5} />
                         {likedTracks.has(track.id) ? t('library.action.unlike') : t('library.action.like')}
                       </ContextMenuItem>
+                      {/* 曲库级动作：只对在库曲目显示（在线快照 path 为空，不在曲库里）；
+                          「在文件夹中显示」按平台能力决定是否显示 */}
+                      {track.path && (
+                        <>
+                          <ContextMenuSeparator />
+                          {canRevealInFolder() && (
+                            <ContextMenuItem onClick={() => revealTrackInFolder(track.id, t('common.state.failed'))}>
+                              <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                              {t('library.action.revealInFolder')}
+                            </ContextMenuItem>
+                          )}
+                          <ContextMenuItem onClick={() => requestRemoveTrackFromLibrary(track)}>
+                            <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                            {t('library.action.removeFromLibrary')}
+                          </ContextMenuItem>
+                        </>
+                      )}
                     </ContextMenuContent>
                   </ContextMenu>
                 ))}

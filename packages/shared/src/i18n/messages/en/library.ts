@@ -23,6 +23,11 @@ const en: LocalizedOf<typeof library> = {
     unlike: 'Unlike',
     sortBy: 'Sort by',
     moreActions: 'More actions',
+    removeFromLibrary: 'Remove from library',
+    removeFromLibraryHint: 'Removes the library entry only — the audio file on disk is kept',
+    revealInFolder: 'Show in folder',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
   },
   tab: {
     songs: 'Songs',

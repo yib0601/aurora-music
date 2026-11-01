@@ -12,6 +12,7 @@ import type {
   MusicHallOptions,
   OnlineSourceConfig,
   OnlineTrackSearchResult,
+  PlaylistParseResult,
   RecommendPlaylist,
   SourceProbeResult,
   SourceTrackRef,
@@ -20,8 +21,9 @@ import type {
 } from '../types'
 import type { PluginCapability, PluginContext, ResolvedAudio, SourcePlugin } from './types'
 import { searchMusicSource } from '../musicSource'
-import { lyricEndpointOf, parseSourceInput, probeAuroraService } from '../auroraPreset'
+import { lyricEndpointOf, parseSourceInput, playlistEndpointOf, probeAuroraService } from '../auroraPreset'
 import { auroraProbeToResult } from '../sourceProbe'
+import { auroraError } from '../i18n/errors'
 import {
   isTrackEndpointKnownMissing,
   resolveAuroraTrack,
@@ -170,7 +172,41 @@ export const auroraPlugin: SourcePlugin = {
   },
 
   /**
-   * 歌单解析：aurora 协议由 `{url}` 模板承载（服务地址形态由协议派生，接口模板形态手填）。
+   * 歌单**分享链接**解析（v15）。
+   *
+   * aurora 协议由 `{url}` 模板承载：把链接当参数透传给用户自建的音源服务
+   * （服务地址形态由协议派生，接口模板形态手填 `playlistUrl`）。
+   *
+   * 与 `getPlaylistTracks` 的分工见契约注释：那个收「歌单 id」，这个收「外链」。
+   * aurora 这一族两种输入同义（`{url}` 模板吃的就是链接），但**语义必须分开**——
+   * 汽水那类平台要从链接里解析出 playlist_id，合并成一个方法就会逼实现内部分支。
+   *
+   * 实现直接复用 `resolvePlaylistUrl`：它已带超时、占位符填充、空参数剔除与
+   * 结构化错误。这里只做形状转换，判定「谁来解析」已归注册表（`executor` 门面）。
+   */
+  async parsePlaylist(
+    config: OnlineSourceConfig,
+    shareUrl: string,
+    _ctx: PluginContext,
+    options?: { limit?: number }
+  ): Promise<PlaylistParseResult> {
+    // 先判端点：协议源的歌单能力**由用户填的地址决定**（两条都可能是空 ——
+    // 只填了搜索接口、或填的是不含 {url} 的模板）。不先判就会把
+    // 「这条源没有歌单能力」误报成操作失败，用户看到的是一句技术错误而不是
+    // 「你没有能解析歌单的源」。这句判定与 `playlistEndpointOf` 同源，不会分叉。
+    if (!playlistEndpointOf(config)) {
+      throw auroraError('core.error.playlistUrlMissing', {
+        name: config.name || '',
+        url: '{url}',
+      })
+    }
+    // 直接回整份结果（含歌单名与 truncated）：那两项只有解析方知道，
+    // 抹掉它们会让调用方只能用「导入的歌单」这种兜底名
+    return resolvePlaylistUrl(config, shareUrl, options)
+  },
+
+  /**
+   * 歌单曲目：与 `parsePlaylist` 同一份协议实现，返回的是可直接入队的曲目条目。
    *
    * `playlistRef` 传的是**歌单链接**（协议占位符 `{url}` 的语义），不是歌单 id——
    * 这条语义差异收在插件内，上层统一传「歌单定位串」即可。

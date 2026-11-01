@@ -1,4 +1,5 @@
-import type { PlaylistParseResult, ParsedSong } from './types'
+import type { OnlineSourceConfig, PlaylistParseResult, ParsedSong } from './types'
+import type { PluginContext } from './plugin/types'
 import type { SourceEndpointInput } from './auroraPreset'
 import { dropUnfilledParams, fillEndpointTemplate, playlistEndpointOf } from './auroraPreset'
 import { firstSuccess } from './concurrency'
@@ -16,6 +17,8 @@ import { auroraError, toErrorInfo } from './i18n/errors'
 
 /** 可承载歌单解析能力的源：只要求端点解析与请求所需的字段（OnlineSourceConfig 与之兼容） */
 export type PlaylistCapableSource = SourceEndpointInput & {
+  /** 源 id（插件门面要按它查启停表；调用方不传时补空串，`pluginIdOf` 会回落 aurora） */
+  id?: string
   name?: string
   headers?: Record<string, string>
   enabled?: boolean
@@ -198,13 +201,46 @@ const PLAYLIST_MAX_IN_FLIGHT = 3
  * 其对冲窗口内成功时，后面的源根本不会被启动，因此「源配置顺序」仍是决定性的优先级
  * ——这对歌单尤其重要，不同源返回的字段厚度与服务端分页行为差别很大，
  * 不该让网络快慢替用户决定用哪一份。
+ *
+ * ## v15：判定权归插件注册表
+ *
+ * 改造前这里用 `playlistEndpointOf(s)` 过滤 —— 那是 **aurora 协议私有**的端点派生，
+ * 等于说「只有协议源能解析歌单」。后果与歌词链路当初那处一模一样：装来的声明式插件
+ * 即便在清单里写了 `playlistTracks`，也永远进不了这条链路，而 `playlistTracksViaPlugin`
+ * 写好了却零调用方。
+ *
+ * 现在两条路径分开：
+ * - **判定**（哪些源参与）：问插件注册表（`canParsePlaylist`）；
+ * - **执行**：优先用插件自己的 `parsePlaylist`（`parsePlaylistViaPlugin`）。
+ *
+ * 为什么用**动态 import** 而不是顶层 import：`playlistResolver` 已被
+ * `auroraPlugin` 静态引用，而 `plugin/executor` → `builtins` → `auroraPlugin`，
+ * 再加一条静态边就会形成 evaluator 期闭不上的环（本仓已有多处踩过这个坑，
+ * 见 `builtins.ts` 顶部）。动态 import 在**调用时**解析，求值期零风险。
  */
 export async function parsePlaylistLink(
   sources: PlaylistCapableSource[],
   shareUrl: string,
   options?: ResolvePlaylistOptions
 ): Promise<PlaylistParseResult> {
-  const enabled = (sources || []).filter((s) => s && s.enabled && playlistEndpointOf(s))
+  const { canParsePlaylistLink, parsePlaylistViaPlugin, hostContextOf } = await import(
+    './plugin/executor'
+  )
+
+  // 能力判定：**两个条件同时成立**才算候选。
+  //
+  // 1. 插件声明了 `parsePlaylist`（`canParsePlaylistLink`）—— 决定"这类插件会不会做"；
+  // 2. 这条**具体配置**里有可用的歌单端点（`playlistEndpointOf`）—— 决定"这一条能不能做"。
+  //
+  // 为什么必须两者都要：`aurora` 插件无条件实现了 `parsePlaylist`（它得覆盖所有
+  // 协议源配置），但用户完全可能只填了搜索接口、或填了个不含 `{url}` 的模板。
+  // 只看第 1 条会把这种源判成候选，然后必然失败并抛一句技术错误；
+  // 用户该看到的是「你没有能解析歌单的源」，而不是「歌单解析地址缺少 {url}」。
+  //
+  // 反过来只看第 2 条就是改造前的缺陷（协议派生当判据），装来的声明式插件永远进不来。
+  const enabled = (sources || []).filter(
+    (s) => s && s.enabled && canParsePlaylistLink(toSourceConfig(s)) && Boolean(playlistEndpointOf(s))
+  )
   if (enabled.length === 0) {
     throw auroraError('core.error.playlistNoSource')
   }
@@ -221,7 +257,11 @@ export async function parsePlaylistLink(
     enabled,
     async (source, index) => {
       try {
-        return await resolvePlaylistUrl(source, shareUrl, options)
+        return await parseOneSource(source, shareUrl, options, {
+          canParsePlaylistLink,
+          parsePlaylistViaPlugin,
+          hostContextOf,
+        })
       } catch (err) {
         failures[index] = err
         console.warn(`[歌单解析] 「${source.name || '未命名'}」解析失败:`, err)
@@ -241,4 +281,70 @@ export async function parsePlaylistLink(
     }
   }
   throw lastError instanceof Error ? lastError : auroraError('core.error.playlistFailed')
+}
+
+/** `parsePlaylistLink` 用到的插件门面（由调用处动态 import 后传入，避免模块环） */
+interface PlaylistPluginFacade {
+  canParsePlaylistLink: (source: OnlineSourceConfig) => boolean
+  parsePlaylistViaPlugin: (
+    source: OnlineSourceConfig,
+    shareUrl: string,
+    ctx: PluginContext,
+    options?: { limit?: number }
+  ) => Promise<PlaylistParseResult>
+  hostContextOf: (source?: OnlineSourceConfig | null) => PluginContext
+}
+
+/**
+ * 把宽松的 `PlaylistCapableSource` 收成插件门面要求的 `OnlineSourceConfig`。
+ *
+ * 为什么需要：`PlaylistCapableSource` 是**结构子集**，允许调用方只给端点字段
+ * （既有单测与老调用方如此）。插件门面按 `OnlineSourceConfig` 取 `pluginId` /
+ * `enabled` / `id` 等字段，缺了 `pluginId` 时 `pluginIdOf` 会回落到 `aurora` ——
+ * 这正是老配置该有的行为，所以补上缺省字段即可，不需要调用方改形状。
+ */
+function toSourceConfig(source: PlaylistCapableSource): OnlineSourceConfig {
+  return {
+    id: String(source.id || ''),
+    name: String(source.name || ''),
+    sourceUrl: source.sourceUrl,
+    ...(source.playlistUrl ? { playlistUrl: source.playlistUrl } : {}),
+    ...(source.headers ? { headers: source.headers } : {}),
+    ...(source.endpoints ? { endpoints: source.endpoints } : {}),
+    ...(source.kind ? { kind: source.kind } : {}),
+    ...(source.pluginId ? { pluginId: source.pluginId } : {}),
+    enabled: source.enabled !== false,
+  } as OnlineSourceConfig
+}
+
+/**
+ * 解析**单个源**：插件优先，协议派生兜底。
+ *
+ * 两条路径的取舍：
+ * 1. **插件实现优先**：只有它能覆盖「装来的声明式插件」「脚本插件」这些形态。
+ *    判定用 `canParsePlaylist`（方法存在性），不用端点派生。
+ * 2. **协议兜底**：`PlaylistCapableSource` 允许调用方只给端点字段（既有单测与
+ *    老调用方如此），那种形状在注册表里查不到实现。此时用 `resolvePlaylistUrl`
+ *    继续按协议解析 —— 否则一条「只填了 playlistUrl、没填 pluginId」的老源
+ *    会突然解析不了，这属于纯粹的破坏性变更，不是本次要修的缺陷。
+ *
+ * 两条路径产出的形状相同（`ParsedSong[]` + 可选歌单名），所以这里统一转成
+ * `PlaylistParseResult`，聚合层不必知道走的是哪条。
+ */
+async function parseOneSource(
+  source: PlaylistCapableSource,
+  shareUrl: string,
+  options: ResolvePlaylistOptions | undefined,
+  facade: PlaylistPluginFacade
+): Promise<PlaylistParseResult> {
+  const cfg = toSourceConfig(source)
+  if (facade.canParsePlaylistLink(cfg)) {
+    return facade.parsePlaylistViaPlugin(
+      cfg,
+      shareUrl,
+      facade.hostContextOf(cfg),
+      options?.limit ? { limit: options.limit } : undefined
+    )
+  }
+  return resolvePlaylistUrl(source, shareUrl, options)
 }

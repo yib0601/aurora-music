@@ -26,6 +26,9 @@ import type {
 import type { PluginContext, PreflightResult, ResolvedAudio, SourcePlugin } from './types'
 import { getPlugin } from './registry'
 import { pluginIdOf } from './pluginIdOf'
+// 结构化错误：歌单解析门面在「这条源没有解析能力」时必须抛错而不是返回空
+// （理由见该函数注释：调用方要靠这个错误给出「哪个源、为什么失败」）
+import { auroraError } from '../i18n/errors'
 // 插件启停门禁。`availability` 不 import 任何模块（纯内存表），因此这条 import
 // 不引入新的环，也不会把「注册内置插件」的时机提前。
 import { isPluginEnabled } from './availability'
@@ -86,11 +89,34 @@ export function canSearchSource(source: OnlineSourceConfig | null | undefined): 
   return true
 }
 
-/** 这条源是否能解析歌单（决定歌单导入时是否把它列进候选） */
+/**
+ * 这条源是否能解析歌单（决定歌单导入时是否把它列进候选）。
+ *
+ * 两种方法都算「能解析」，因为它们是同一能力的两个**入口**而非两种能力：
+ * - `parsePlaylist`：收**外部分享链接**（用户粘一条链接进来）；
+ * - `getPlaylistTracks`：收**已知歌单 id**（插件自己列出的「我的歌单」）。
+ *
+ * 一个插件可能只实现后者（它有歌单 id 但解析不了外链），那它仍然不该出现在
+ * 「粘链接导入」的候选里 —— 所以调用方真正要问的是「能不能吃链接」时，
+ * 用 `canParsePlaylistLink`；这里保留宽口径供「我的歌单」相关 UI 使用。
+ */
 export function canParsePlaylist(source: OnlineSourceConfig | null | undefined): boolean {
   ensureBuiltinsRegistered()
   const plugin = pluginForSource(source)
   return Boolean(plugin && typeof plugin.getPlaylistTracks === 'function')
+}
+
+/**
+ * 这条源能否解析**歌单分享链接**（v15）。
+ *
+ * 与 `canParsePlaylist` 的窄口径差别见上：这个只认 `parsePlaylist`。
+ * 歌单导入的候选过滤必须用这个 —— 用宽口径会把「只能按 id 拉曲目」的插件
+ * 也列进来，用户选了它、粘了链接，然后必然失败。
+ */
+export function canParsePlaylistLink(source: OnlineSourceConfig | null | undefined): boolean {
+  ensureBuiltinsRegistered()
+  const plugin = pluginForSource(source)
+  return Boolean(plugin && typeof plugin.parsePlaylist === 'function')
 }
 
 /**
@@ -228,6 +254,28 @@ export async function playlistTracksViaPlugin(
   const plugin = pluginForSource(source)
   if (!plugin || typeof plugin.getPlaylistTracks !== 'function') return []
   return plugin.getPlaylistTracks(source, playlistRef, ctx)
+}
+
+/**
+ * 解析歌单分享链接（插件门面，v15）。
+ *
+ * **失败抛错**（与 `searchViaPlugin` / `playlistTracksViaPlugin` 返回空数组的约定不同）：
+ * 歌单解析的调用方要按「配置顺序上最后一个真正失败过的源」给出原因
+ * （见 `playlistResolver.parsePlaylistLink`），把它压成空数组就丢掉了那条信息，
+ * 用户只会看到「导入失败」而不知道是哪个源、为什么。
+ */
+export async function parsePlaylistViaPlugin(
+  source: OnlineSourceConfig,
+  shareUrl: string,
+  ctx: PluginContext,
+  options?: { limit?: number }
+): Promise<import('../types').PlaylistParseResult> {
+  ensureBuiltinsRegistered()
+  const plugin = pluginForSource(source)
+  if (!plugin || typeof plugin.parsePlaylist !== 'function') {
+    throw auroraError('core.error.playlistNoSource')
+  }
+  return plugin.parsePlaylist(source, shareUrl, ctx, options)
 }
 
 /**

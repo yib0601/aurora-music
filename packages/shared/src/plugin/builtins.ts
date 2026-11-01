@@ -24,6 +24,7 @@ import { resolveRequirements, describeMissingCapabilities } from './hostCapabili
 import { auroraPlugin } from './auroraPlugin'
 import { lxPlugin } from './lxPlugin'
 import { qishuiPlugin } from './qishuiPlugin'
+import { lrclibPlugin } from './lrclibPlugin'
 
 /**
  * 内置插件清单（按注册顺序，UI 列出的顺序即此顺序）。
@@ -31,7 +32,10 @@ import { qishuiPlugin } from './qishuiPlugin'
  * 这是**getter 数组**：模块求值期不读取插件对象，避免在环未闭合时解引用。
  */
 export function builtinPlugins() {
-  return [auroraPlugin, lxPlugin, qishuiPlugin]
+  // 顺序即 UI 列出的顺序：音源类在前，歌词类在后。
+  // `lrclibPlugin` 是**歌词域**（domain: 'lyrics'）—— 它不参与搜索/取址，
+  // 只在所有用户源落空时兜底。把它放最后，是因为用户找歌词源时会先看上面那些。
+  return [auroraPlugin, lxPlugin, qishuiPlugin, lrclibPlugin]
 }
 
 let registered = false

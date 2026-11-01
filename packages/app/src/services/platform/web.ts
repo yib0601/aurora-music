@@ -408,5 +408,21 @@ export function createWebPlatform() {
       dirHandles.delete(folderKey)
       return [...allTracks]
     },
+
+    /**
+     * 从曲库移除单曲：只清会话记录与 objectURL，**不动磁盘文件**
+     * （浏览器本来也没有删本地文件的能力，这里只是语义上对齐桌面/移动端）。
+     * 本平台的曲库本身就是会话级的，刷新后重新授权导入即可恢复。
+     *
+     * 不实现 revealTrack：Web 端只有用户显式授权的目录句柄，
+     * 拿不到可用于在系统文件管理器里定位的路径，能力确实不存在。
+     */
+    async removeTrack(trackId: string): Promise<Track[]> {
+      const target = allTracks.find((t) => t.id === trackId)
+      if (!target) return [...allTracks]
+      releaseTrack(target)
+      allTracks = allTracks.filter((t) => t.id !== trackId)
+      return [...allTracks]
+    },
   }
 }

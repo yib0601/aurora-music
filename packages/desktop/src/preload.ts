@@ -130,6 +130,12 @@ const electronAPI = {
     ipcRenderer.invoke('storage-plugin:list'),
   // 从曲库移除扫描目录：主进程删除该目录下的曲目记录并返回移除后的全库列表
   removeFolder: (folderPath: string): Promise<any[]> => ipcRenderer.invoke('library:removeFolder', folderPath),
+  // 从曲库移除单曲：只删记录与封面缓存，**不删磁盘上的音频文件**；返回移除后的全库
+  removeTrack: (trackId: string): Promise<any[]> => ipcRenderer.invoke('library:removeTrack', trackId),
+  // 在文件管理器中定位曲目：入参是**曲目 id**而不是路径 —— 主进程按 id 反查 path，
+  // 渲染层因此拿不到「定位任意本机文件」的能力（理由见 ipc/libraryActions.ts）
+  showItemInFolder: (trackId: string): Promise<boolean> =>
+    ipcRenderer.invoke('shell:showItemInFolder', trackId),
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),
   // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）；
   // fallback 为不在曲库的曲目（在线快照）的元信息兜底，见主进程 covers:ensure

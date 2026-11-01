@@ -199,6 +199,17 @@ describe('lyricsConfigOf：供既有聚合层消费的形状', () => {
     expect(config.enabled).toBe(true)
   })
 
+  it('格式随配置交下去：format 缺省 json，声明 lrc 时原样带出', () => {
+    // 防回归：「清单写了 format: 'lrc'，却永远取不到词」。
+    // 聚合链实际执行的是 `lyricsSource.searchLyricsSource`，它只认
+    // `LyricsSourceConfig.format`。不映射这一项，清单声明就形同虚设 ——
+    // 插件构造得出来、进得了候选，每次都在 resp.json() 处落空。
+    expect(lyricsConfigOf(lyricsManifest({ url: 'https://x/l?t={track}' }))!.format).toBe('json')
+    expect(
+      lyricsConfigOf(lyricsManifest({ url: 'https://x/l?t={track}', format: 'lrc' }))!.format
+    ).toBe('lrc')
+  })
+
   it('没有歌词声明的清单返回 null', () => {
     const result = validatePluginManifest({
       format: PLUGIN_MANIFEST_FORMAT,

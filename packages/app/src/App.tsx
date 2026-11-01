@@ -12,6 +12,7 @@ import { QueueView } from '@/components/player/QueueView'
 import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { ToastHost, toast, dismissToast } from '@/components/common/Toast'
+import { RemoveTrackConfirmHost } from '@/components/common/TrackLibraryActions'
 import { describeStartupFailures, loadPluginStartupReport } from '@/components/common/pluginManage'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { MusicHallPage } from '@/pages/MusicHallPage'
@@ -928,6 +929,10 @@ function AppLayout() {
 
       {/* 软件内轻量提示挂载点：替代系统 alert/confirm 弹窗 */}
       <ToastHost />
+
+      {/* 「从曲库移除」二次确认：全局挂一次（曲目菜单遍布曲库/收藏/最近/详情四页，
+          逐页各持一份会让 memo 的虚拟行在滚出视口时丢掉弹层状态） */}
+      <RemoveTrackConfirmHost />
 
       {/* 搜索浮层：portal 到 body 全屏覆盖，任意页面唤起均可见 */}
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}

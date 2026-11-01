@@ -313,6 +313,29 @@ function isValidTrackId(id: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/.test(id)
 }
 
+/**
+ * 删除一张移动端封面缓存文件。
+ *
+ * coverPath 是 Capacitor.convertFileSrc 之后的地址（形如
+ * `https://localhost/_capacitor_file_/data/.../aurora-music/covers/xxx.jpg`），
+ * 而 Filesystem API 要的是相对 Directory.Data 的路径，所以要截出 `aurora-music/covers/` 之后的部分。
+ * 截不出来（汽水/在线的远端封面地址等）就跳过：那不是本机文件，删不得也删不到。
+ * 删除失败一律吞掉——封面没删干净只是占一点磁盘，不该让「已从曲库移除」变成失败。
+ */
+async function removeMobileCoverFile(coverPath?: string | null): Promise<void> {
+  if (!coverPath) return
+  const marker = 'aurora-music/covers/'
+  const at = coverPath.lastIndexOf(marker)
+  if (at < 0) return
+  const fileName = coverPath.slice(at + marker.length).split(/[?#]/)[0]
+  if (!fileName || fileName.includes('/')) return
+  try {
+    await Filesystem.deleteFile({ path: `aurora-music/covers/${fileName}`, directory: Directory.Data })
+  } catch {
+    // 封面不存在或已被清理，忽略
+  }
+}
+
 export function createMobilePlatform(): PlatformInterface & {
   // 扩展接口：扫描事件订阅（移动端用回调替代 IPC 事件）
   onTracksScanned: (cb: (tracks: Track[]) => void) => () => void
@@ -323,6 +346,10 @@ export function createMobilePlatform(): PlatformInterface & {
   scanFolder: (folderPath: string) => Promise<Track[]>
   getAllTracks: () => Promise<Track[]>
   removeFolder: (folderPath: string) => Promise<Track[]>
+  // 单曲移除（只删记录 + 封面缓存，不删音频文件）。
+  // 这里**不声明 revealTrack**：移动端没有文件管理器桥，能力缺失用「方法不存在」表达
+  // （与 LoggingGateway.reveal 同一套约定），UI 据此隐藏「在文件夹中显示」。
+  removeTrack: (trackId: string) => Promise<Track[]>
   // 在线音乐（推荐歌单 / 榜单）：渲染层直调共享执行器（原生 fetch 不受 CORS 限制）
   musicHall: {
     recommendPlaylists(
@@ -922,6 +949,23 @@ export function createMobilePlatform(): PlatformInterface & {
       await ensureDbInited()
       const removed = await db.deleteTracksByFolder(folderPath)
       if (removed > 0) console.log('[Mobile] 已移除扫描目录并清理曲目:', folderPath, removed)
+      return db.getAllTracks()
+    },
+
+    /**
+     * 从曲库移除单曲：只删数据库记录（封面缓存随记录一起清理），**不删音频文件**。
+     * 复用 MobileDatabase.deleteTrack —— 桌面端 deleteTrack 也会清封面，
+     * 移动端封面以 trackId 命名，走的是 deleteTrackRows 同一套清理口径。
+     */
+    async removeTrack(trackId: string) {
+      await ensureDbInited()
+      if (typeof trackId !== 'string' || !trackId.trim()) return db.getAllTracks()
+      const track = await db.getTrackById(trackId)
+      if (!track) return db.getAllTracks()
+      await db.deleteTrack(trackId)
+      // 封面文件与桌面端一样随记录清理：app 私有目录里的孤儿封面不会被任何入口回收
+      await removeMobileCoverFile(track.coverPath)
+      console.log('[Mobile] 已从曲库移除单曲（音频文件保留）:', trackId)
       return db.getAllTracks()
     },
 

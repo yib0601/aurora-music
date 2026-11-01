@@ -104,6 +104,16 @@ export interface OnlineLyricsResult {
  *
  * 现在统一走 `lyricsSourceViaPlugin`：插件自己回答"把哪条源交给聚合器"，
  * aurora 派生端点、声明式插件用清单里的绝对地址，上层一视同仁。
+ *
+ * ## 纯歌词插件**不在这里**追加（v15）
+ *
+ * 「已安装的纯歌词插件」没有源配置可遍历，看上去该在这里补一段
+ * `installedLyricsSources()`。但那样只在**移动端**成立：桌面端的插件注册在主进程
+ * （`main.ts` 的 `mountInstalledPlugins`），而本函数跑在渲染进程，注册表在那里是空的
+ * —— 追加永远返回空数组，桌面端依旧取不到歌词。
+ *
+ * 所以那一段放在 `shared/lyricsSource.searchLyrics` 里（两端共用、且桌面端正好跑在
+ * 注册表所在的主进程）。本函数只负责「源配置 → 歌词源」这一段。
  */
 function lyricsSourcesFromLibrary(): LyricsSourceConfig[] {
   const { onlineSources } = useLibraryStore.getState()

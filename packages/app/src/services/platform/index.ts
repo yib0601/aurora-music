@@ -132,6 +132,26 @@ export interface PlatformExtension {
    * 目录条目本身由调用方从 scanFolders 中删除（库数据与配置分离）。
    */
   removeFolder?: (folderPath: string) => Promise<Track[]>
+  /**
+   * 从曲库移除**单曲**：只删曲库记录与封面缓存，**磁盘上的音频文件原样保留**。
+   * 返回移除后的全库曲目（调用方直接 setTracks 刷新，不必再拉一次）。
+   *
+   * 与 removeFolder 分开而不是合并进一个「按目录/按曲目」的重载：两者的确认文案、
+   * 影响范围与用户心智完全不同（一个是「这个目录不再进曲库」，一个是「这首歌不再
+   * 在我曲库里」），合并只会让 UI 侧每次都要多做一次判别。
+   */
+  removeTrack?: (trackId: string) => Promise<Track[]>
+  /**
+   * 在文件管理器中定位曲目。**刻意可选**：移动端没有文件管理器桥
+   * （未安装 @capacitor/share 及同类插件，也不新增依赖），Web 端只有用户显式授权的
+   * 目录句柄、拿不到可用于定位的系统路径，能力确实不存在。
+   * 写成必选会逼这两端提供一个「假装成功」的空实现，而 UI 会因此显示一个
+   * 点了没反应的菜单项（与 LoggingGateway.reveal 同一套判断）。
+   *
+   * 入参是**曲目 id**而不是路径：主进程按 id 反查曲目路径，渲染层因此无法用这条
+   * 通道去定位曲库之外的任意本机文件。
+   */
+  revealTrack?: (trackId: string) => Promise<boolean>
   /** 扫描完成事件订阅 */
   onTracksScanned?: (cb: (tracks: Track[]) => void) => () => void
   /** 单曲扫描完成事件订阅（渐进式刷新：每解析完一首立即通知，UI 追加而非等全部完成） */
@@ -625,6 +645,16 @@ export function createDesktopPlatform(): Platform {
       if (!api?.removeFolder) return []
       return api.removeFolder(folderPath)
     },
+    // 单曲移除与「在文件夹中显示」都按**方法是否存在**表达能力（全仓范式）：
+    // 老版 preload 缺对应通道时保持 undefined，store 的 removeTrack 因此是 no-op
+    // （不会把本地曲库清空），菜单项也不会渲染。
+    // 注意不能写成「返回空数组表示失败」——移除最后一首歌时空数组是合法结果，
+    // 两者无从区分，这正是能力缺失要用方法不存在表达的原因。
+    removeTrack: typeof api?.removeTrack === 'function' ? (trackId: string) => api.removeTrack(trackId) : undefined,
+    revealTrack:
+      typeof api?.showItemInFolder === 'function'
+        ? (trackId: string) => api.showItemInFolder(trackId)
+        : undefined,
     onTracksScanned(cb: (tracks: Track[]) => void) {
       if (!api?.onTracksScanned) return () => {}
       return api.onTracksScanned(cb)

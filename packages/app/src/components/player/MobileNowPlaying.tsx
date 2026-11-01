@@ -11,6 +11,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { LyricsView } from '@/components/lyrics/LyricsView'
 import { CoverImage } from '@/components/common/CoverImage'
+import { PlaybackExtrasMenu } from './PlaybackExtrasMenu'
 
 interface Props {
   open: boolean
@@ -127,18 +128,30 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         >
           <ChevronDown className="h-[22px] w-[22px]" strokeWidth={1.9} />
         </button>
-        <button
-          onClick={(e) => {
-            // 阻止冒泡，避免刚打开的队列浮层被 document 外部点击监听立刻关掉
-            e.stopPropagation()
-            toggleQueuePanel()
-            onClose()
-          }}
-          aria-label={t('player.queue.title')}
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 active:text-white active:bg-white/[0.07] active:scale-95 transition"
-        >
-          <ListMusic className="h-[21px] w-[21px]" strokeWidth={1.7} />
-        </button>
+        <div className="flex items-center">
+          {/* 播放系列操作（速度 / 睡眠定时器）。放在顶栏而不是底部控件行：
+              底部那行是五列等分的传输控制，加第六列会把主播放键挤小；
+              而这两项都是「低频设置」而非「传输控制」，语义上属于顶栏。
+              速度项在移动端由组件内部按能力隐藏（原生桥无变速通道）。
+              外层 `h-11 w-11` + `[&>button]` 把触发按钮撑到 44×44：
+              组件内的图标档（btn-icon btn-xl）是 34px，那是桌面播放条的尺码，
+              本页所有触控目标都必须 ≥44（见文件头第 4 条约定） */}
+          <div className="h-11 w-11 flex items-center justify-center [&>button]:!w-11 [&>button]:!h-11">
+            <PlaybackExtrasMenu align="end" />
+          </div>
+          <button
+            onClick={(e) => {
+              // 阻止冒泡，避免刚打开的队列浮层被 document 外部点击监听立刻关掉
+              e.stopPropagation()
+              toggleQueuePanel()
+              onClose()
+            }}
+            aria-label={t('player.queue.title')}
+            className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 active:text-white active:bg-white/[0.07] active:scale-95 transition"
+          >
+            <ListMusic className="h-[21px] w-[21px]" strokeWidth={1.7} />
+          </button>
+        </div>
       </header>
 
       {/* 封面 + 标题 + 歌词的整体分组。

@@ -14,6 +14,8 @@ const en: LocalizedOf<typeof core> = {
     aurora: 'Aurora protocol source',
     lx: 'LX music script',
     qishui: 'Soda Music',
+    /** 内置歌词兜底插件（domain=lyrics）：不再是隐式常量，可在插件列表里停用 */
+    builtinLyricsLrclib: 'LRCLIB lyrics',
     kw: 'Kuwo',
     kg: 'Kugou',
     tx: 'QQ',
@@ -99,6 +101,8 @@ const en: LocalizedOf<typeof core> = {
     lyricsRequestFailed: 'Lyrics source "{name}" request failed: {reason}',
     lyricsHttpStatus: 'Lyrics source "{name}" returned HTTP {status}',
     lyricsNotJson: 'Lyrics source "{name}" did not return JSON',
+    lyricsHostNotAllowed:
+      'Lyrics source "{name}" requested a host outside the plugin declaration ({reason}); blocked',
 
     // ── 在线音乐读取执行器 ──────────────────────────────────────────
     hallTimeout: 'Source "{name}" timed out ({ms}ms)',

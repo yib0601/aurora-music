@@ -283,6 +283,17 @@ export interface LyricsSourceConfig {
    * 多条结果时优先带时间标签的歌词，其次时长最接近的
    */
   sourceUrl: string
+  /**
+   * 响应体格式：
+   * - `json`（缺省）：按上面的字段容错链解析
+   * - `lrc`：响应体**本身就是 LRC 文本**（多数歌词站如此），直接当歌词用
+   *
+   * 为什么要有这个字段：声明式清单里 `lyrics.format` 早就支持 `lrc`（见
+   * `DeclarativeLyricsSpec`），但执行器只认 JSON —— 于是「清单写了 `format: 'lrc'`
+   * 的插件」构造得出来、也进得了聚合，却每次都在 `resp.json()` 处失败落空。
+   * 格式是**执行器**才知道怎么解析的信息，必须随源配置一起交下去。
+   */
+  format?: 'json' | 'lrc'
   /** 附加请求头（同名头覆盖默认值） */
   headers?: Record<string, string>
   enabled: boolean

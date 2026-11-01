@@ -32,6 +32,19 @@ const library = {
     unlike: '取消收藏',
     sortBy: '排序方式',
     moreActions: '更多操作',
+    /**
+     * 从曲库移除单曲。
+     *
+     * 措辞刻意是「从曲库移除」而不是「删除」：本操作**只删数据库记录与封面缓存**，
+     * 磁盘上的音频文件原样保留。说成「删除」会让用户以为文件没了。
+     */
+    removeFromLibrary: '从曲库移除',
+    removeFromLibraryHint: '只从曲库移除记录，不会删除磁盘上的音频文件',
+    /** 在文件管理器中定位（桌面端 shell.showItemInFolder；移动端无此能力，入口隐藏） */
+    revealInFolder: '在文件夹中显示',
+    /** 歌单内拖动排序的提示（无拖动手柄时用按钮触发） */
+    moveUp: '上移',
+    moveDown: '下移',
   },
   /** 曲库浏览标签：歌曲 / 专辑 / 艺术家（后两个复用 common.label.*） */
   tab: {

@@ -27,6 +27,7 @@ import {
   setCacheEvictListener,
 } from './mediaCache'
 import { watchFolder, unwatchFolder } from './watcher'
+import { registerLibraryActionIpc } from './libraryActions'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
 import { registerLxSourceIpc } from './lxSource'
@@ -268,6 +269,9 @@ export function registerIpcHandlers() {
   registerI18nIpc()
   // 系统环境探测（发行版包格式 / 安装形态）：渲染层据此挑选匹配的安装包
   registerSystemIpc()
+  // 曲库级单条动作：从曲库移除单曲（只删记录，不删音频文件）、
+  // 在文件管理器中定位单曲（只接受曲目 id，不接受路径 —— 理由见该文件顶部的信任边界说明）
+  registerLibraryActionIpc()
   // 内置更新：安装包下载（进度事件）与安装（启动安装器 / 打开终端执行命令）
   registerUpdaterIpc(sendToRenderer)
   // 洛雪音源脚本宿主：脚本拉取 / 能力探测 / 自带搜索 / 取址四类 IPC。

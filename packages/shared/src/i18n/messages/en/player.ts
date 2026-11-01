@@ -38,6 +38,18 @@ const en: LocalizedOf<typeof player> = {
     mute: 'Mute',
     unmute: 'Unmute',
   },
+  rate: {
+    label: 'Playback speed',
+    normal: 'Normal speed',
+    value: '{rate}×',
+  },
+  sleep: {
+    label: 'Sleep timer',
+    off: 'Off',
+    active: '{time} left',
+    preset: '{minutes} min',
+    fired: 'Sleep timer finished — playback paused',
+  },
   like: {
     add: 'Like',
     remove: 'Unlike',

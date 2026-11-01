@@ -23,6 +23,8 @@ const core = {
     aurora: 'Aurora 协议源',
     lx: '洛雪音源脚本',
     qishui: '汽水音乐',
+    /** 内置歌词兜底插件（domain=lyrics）：不再是隐式常量，可在插件列表里停用 */
+    builtinLyricsLrclib: 'LRCLIB 歌词',
     kw: '酷我',
     kg: '酷狗',
     tx: 'QQ',
@@ -123,6 +125,7 @@ const core = {
     lyricsRequestFailed: '歌词源「{name}」请求失败：{reason}',
     lyricsHttpStatus: '歌词源「{name}」返回 HTTP {status}',
     lyricsNotJson: '歌词源「{name}」返回的不是 JSON',
+    lyricsHostNotAllowed: '歌词源「{name}」请求的主机不在插件声明的范围内（{reason}），已拦下',
 
     // ── 在线音乐读取执行器（musicHall） ──────────────────────────────
     hallTimeout: '音源「{name}」请求超时（{ms}ms）',

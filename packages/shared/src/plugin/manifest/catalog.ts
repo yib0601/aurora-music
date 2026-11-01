@@ -53,6 +53,30 @@ import { isPluginEnabled } from '../availability'
  * （内置实现在首次执行时才注册，见 `builtins.ts`），一个没注册的内置插件不该出现在目录里
  * —— 那会让用户点进去发现"不支持"。
  */
+
+/**
+ * 内置插件的域：有音源类能力就是 `source`，否则是 `lyrics`。
+ *
+ * 判据与已安装插件（`installedEntries`）**保持同一口径**：域表达的是
+ * 「用户在哪找它」，而不表达「它是内置还是装的」。两边口径分叉会让同一个插件
+ * 在不同来源下出现在不同分区里 —— 用户会以为装了重复的东西。
+ */
+function builtinDomainOf(plugin: SourcePlugin): PluginDomain {
+  const sourceCapabilities = new Set([
+    'search',
+    'resolveTrack',
+    'playlistParse',
+    'playlistTracks',
+    'userPlaylists',
+    'recommendPlaylists',
+    'toplists',
+    'toplistDetail',
+    'auth',
+  ])
+  const caps = Array.isArray(plugin.capabilities) ? plugin.capabilities : []
+  return caps.some((cap) => sourceCapabilities.has(cap)) ? 'source' : 'lyrics'
+}
+
 function sourceEntries(): PluginCatalogEntry[] {
   ensureBuiltinsRegistered()
   const entries: PluginCatalogEntry[] = []
@@ -61,7 +85,10 @@ function sourceEntries(): PluginCatalogEntry[] {
     if (!getPlugin(plugin.id)) continue
     entries.push({
       id: plugin.id,
-      domain: 'source' as PluginDomain,
+      // 域按**能力**判定，不按"是不是内置"一刀切成 source：
+      // 内置歌词插件（LRCLIB）不提供搜索/取址/歌单，把它标成 source 会让
+      // 「添加音源」的候选列表里出现一个选了没用的条目。
+      domain: builtinDomainOf(plugin),
       displayNameKey: plugin.displayNameKey,
       ...(plugin.descriptionKey ? { descriptionKey: plugin.descriptionKey } : {}),
       version: plugin.version,
