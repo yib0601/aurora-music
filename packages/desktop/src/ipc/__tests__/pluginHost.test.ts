@@ -66,6 +66,16 @@ const call = (channel: string, ...args: unknown[]) => {
   return handler({}, ...args)
 }
 
+/**
+ * 把 `call` 的结果当 Promise 用。
+ *
+ * `call` 的返回类型是 `unknown`（IPC handler 的返回形状本来就不可知，测试里按需 cast）。
+ * 需要 `.catch(...)` 的地方（断言"这次调用会失败，且失败前请求没发出去"）必须先把它收窄
+ * 成 Promise，否则 `unknown` 上取不到 `.catch`。集中一处，避免每个用例各写一个 as。
+ */
+const callAsPromise = (channel: string, ...args: unknown[]): Promise<unknown> =>
+  call(channel, ...args) as Promise<unknown>
+
 const CONFIG = { id: '00000000-0000-0000-0000-000000000000', name: 'Fake', sourceUrl: 'https://source.example.test/', enabled: true }
 
 describe('插件 IPC：通道装配', () => {
@@ -114,6 +124,88 @@ describe('插件 IPC：通道装配', () => {
     // 汽水不声明 search 能力
     const out = call('plugin:search', 'qishui', CONFIG, 'test')
     expect(out).toBeInstanceOf(Promise)
+  })
+})
+
+describe('插件 IPC：已安装插件的主机白名单真的生效', () => {
+  /**
+   * 这组用例钉的是「**越界请求不会发出**」这条装配事实。
+   *
+   * 背景：`guardedFetchOf` 曾经在生产代码里零调用方——清单声明的 `hosts` 是纯装饰，
+   * 作者以为被约束、实际没有。这类缺陷不会有任何报错，只是白名单静静失效，
+   * 所以必须有测试盯着「构造 ctx 的入口是否包了白名单」。
+   */
+  const MANIFEST = {
+    format: 'aurora-plugin/1' as const,
+    id: 'demo-allowlist',
+    name: 'Demo',
+    version: '1.0.0',
+    permissions: ['network' as const],
+    // 白名单只放行 allowed.example.test，而下面的搜索地址打在 api.example.test 上：
+    // 这是"清单声明的白名单与它实际请求的主机不一致"的场景，必须被挡住
+    hosts: ['allowed.example.test'],
+    source: {
+      search: {
+        url: 'https://api.example.test/search?q={query}',
+        map: { id: 'id', title: 'name', audioUrl: 'url' },
+      },
+    },
+  }
+
+  it('hosts 未覆盖的请求：抛错且原请求**没有发出**', async () => {
+    const shared = await import('@aurora/shared')
+    expect(shared.installManifestIntoRuntime(MANIFEST)).toBe(true)
+
+    // 记录全局 fetch 是否被调用：白名单的正确表现是"请求根本没发出去"，
+    // 而不只是"报了错"（报了错但请求已发出，等于地址已经泄露给上游了）
+    const spy = vi.fn(async () => new Response('[]', { status: 200 }))
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = spy as unknown as typeof globalThis.fetch
+    try {
+      await callAsPromise('plugin:search', 'demo-allowlist', {
+        id: 'src-1',
+        name: 'Demo',
+        sourceUrl: '',
+        enabled: true,
+      }, 'q').catch(() => undefined)
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = originalFetch
+      shared.removeManifestFromRuntime('demo-allowlist')
+    }
+  })
+
+  it('白名单放行的请求照常发出（避免把「全挡掉」当成通过）', async () => {
+    const shared = await import('@aurora/shared')
+    const allowed = {
+      ...MANIFEST,
+      id: 'demo-allowlist-ok',
+      // 这次让声明的主机与请求地址一致
+      hosts: ['api.example.test'],
+    }
+    expect(shared.installManifestIntoRuntime(allowed)).toBe(true)
+
+    const spy = vi.fn(async () => new Response('{"results":[]}', { status: 200 }))
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = spy as unknown as typeof globalThis.fetch
+    try {
+      await callAsPromise('plugin:search', 'demo-allowlist-ok', {
+        id: 'src-2',
+        name: 'Demo',
+        sourceUrl: '',
+        enabled: true,
+      }, 'q').catch(() => undefined)
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = originalFetch
+      shared.removeManifestFromRuntime('demo-allowlist-ok')
+    }
+  })
+
+  it('内置插件不受白名单约束（guardedFetchOf 对他们返回 undefined）', async () => {
+    const shared = await import('@aurora/shared')
+    expect(shared.guardedFetchOf('qishui')).toBeUndefined()
+    expect(shared.guardedFetchOf('aurora')).toBeUndefined()
   })
 })
 

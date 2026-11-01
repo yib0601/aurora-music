@@ -44,9 +44,11 @@ import {
 } from '@aurora/shared'
 import type {
   PluginAuthState as PluginAuthStateInfo,
+  TrustedKey,
   PluginCatalogEntry,
   PluginInstallResult as PluginInstallResultInfo,
   PluginPlaylist as PluginPlaylistInfo,
+  PluginStartupReport as PluginStartupReportInfo,
   ResolvedAudio,
   SourceTrackRef,
 } from '@aurora/shared'
@@ -273,6 +275,13 @@ export interface PluginGateway {
 
   /** 插件目录（内置 + 已安装 + 读不出来的文件），纯数据可安全展示 */
   catalog?(locale?: string): Promise<PluginCatalogSnapshot>
+  /**
+   * 本次启动的插件加载报告（挂载数 / 坏文件数 / 注册期失败清单）。
+   *
+   * 可选：老 preload 没有这条通道，渲染层据此跳过提示而不是报错。
+   * 用它而不等主进程 push 的理由见 `pluginInstall.ts` 的同名通道注释。
+   */
+  startup?(): Promise<PluginStartupReportInfo>
   /** 打开系统文件选择框选清单，返回路径（取消为 null） */
   pickManifest?(): Promise<string | null>
   /** 从本地文件安装 */
@@ -289,6 +298,37 @@ export interface PluginGateway {
   openDir?(): Promise<{ ok: boolean }>
   /** 删除一个读不出来的插件目录 */
   removeBroken?(dirPath: string): Promise<{ ok: boolean; message?: string }>
+
+  // ─── 签名信任表（可选：老 preload 没有这组通道） ───
+  /** 列出信任表（内置 / 我导入的） */
+  trustList?(): Promise<PluginTrustSnapshot>
+  /** 导入一条公钥 */
+  trustAdd?(input: {
+    keyId: string
+    publicKey: string
+    note?: string
+  }): Promise<PluginTrustAddResult>
+  /** 删除一条用户导入的公钥（内置的不可删） */
+  trustRemove?(keyId: string): Promise<{ ok: boolean; code?: string }>
+}
+
+/** 信任表快照：内置（随应用发布）与用户导入的分开列，用户才知道哪些能删 */
+export interface PluginTrustSnapshot {
+  builtin: TrustedKeyInfo[]
+  user: TrustedKeyInfo[]
+  effective: number
+}
+
+/** 信任表条目（纯数据，可安全过 IPC） */
+export type TrustedKeyInfo = TrustedKey
+
+/** 导入公钥的结果 */
+export interface PluginTrustAddResult {
+  ok: boolean
+  /** 失败原因码（bad-key-id / bad-public-key / note-too-long / duplicate） */
+  code?: string
+  key?: TrustedKeyInfo
+  keys?: TrustedKeyInfo[]
 }
 
 /** 插件目录快照（`plugin:catalog` 的返回形状） */
@@ -749,6 +789,9 @@ export function createDesktopPlatform(): Platform {
         // **逐个判存在性**而不是整块判：缺了安装通道不该让搜索/登录一起失效，
         // 插件管理入口据 `installFromUrl === undefined` 自行隐藏。
         catalog: typeof plugins.catalog === 'function' ? (locale) => plugins.catalog(locale) : undefined,
+        // 启动加载报告：老 preload 没有这条通道时保持 undefined（渲染层跳过提示）
+        startup:
+          typeof plugins.startup === 'function' ? () => plugins.startup() : undefined,
         pickManifest:
           typeof plugins.pickManifest === 'function' ? () => plugins.pickManifest() : undefined,
         installFromFile:
@@ -767,6 +810,17 @@ export function createDesktopPlatform(): Platform {
         removeBroken:
           typeof plugins.removeBroken === 'function'
             ? (dirPath) => plugins.removeBroken(dirPath)
+            : undefined,
+        // 签名信任表：老 preload 没有这组通道时保持 undefined（UI 隐藏该区块）
+        trustList:
+          typeof plugins.trustList === 'function' ? () => plugins.trustList() : undefined,
+        trustAdd:
+          typeof plugins.trustAdd === 'function'
+            ? (input) => plugins.trustAdd(input)
+            : undefined,
+        trustRemove:
+          typeof plugins.trustRemove === 'function'
+            ? (keyId) => plugins.trustRemove(keyId)
             : undefined,
       }
     },

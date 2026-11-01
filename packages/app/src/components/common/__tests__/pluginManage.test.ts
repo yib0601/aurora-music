@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { PluginCatalogEntry, PluginInstallResult, ManifestIssue } from '@aurora/shared'
+import type {
+  PluginCatalogEntry,
+  PluginInstallResult,
+  PluginStartupReport,
+  ManifestIssue,
+} from '@aurora/shared'
 import {
   capabilityLabelsOf,
   describeBrokenReason,
+  describeFailureReason,
   describeInstallResult,
   describeIssues,
+  describeStartupFailures,
   displayDescriptionOf,
   displayNameOf,
   installedEntries,
@@ -308,5 +315,66 @@ describe('本端能力判定（老 preload 兼容）', () => {
     const mod = await import('../pluginManage')
     expect(typeof mod.pluginExecutionAvailable).toBe('function')
     expect(typeof mod.pluginInstallAvailable).toBe('function')
+  })
+})
+
+describe('启动加载失败提示：插件坏了要告诉用户，但不影响使用', () => {
+  const t = fakeT()
+
+  it('没有报告（老 preload / 读失败）时不提示 —— 不能把"读不到"说成"坏了"', () => {
+    expect(describeStartupFailures(null, t)).toBeNull()
+  })
+
+  it('全好时一声不响（插件是背景功能，正常时不该抢注意力）', () => {
+    const report: PluginStartupReport = { mounted: ['aurora'], broken: 0, failures: [] }
+    expect(describeStartupFailures(report, t)).toBeNull()
+  })
+
+  it('只有一个注册期失败也提示，并带上数量', () => {
+    const report: PluginStartupReport = {
+      mounted: [],
+      broken: 0,
+      failures: [{ id: 'demo', stage: 'installed', reason: 'boom', at: 1 }],
+    }
+    const notice = describeStartupFailures(report, t)
+    expect(notice).not.toBeNull()
+    expect(notice!.count).toBe(1)
+    expect(notice!.message).toContain('sources.plugins.startupWarning')
+    expect(notice!.message).toContain('"count":1')
+    // 动作标签同一条来源，UI 不用自己再编一个词
+    expect(notice!.actionLabel).toBe('sources.plugins.startupWarningAction')
+  })
+
+  it('磁盘坏文件与注册期失败合并成一个数字（对用户是同一件事）', () => {
+    const report: PluginStartupReport = {
+      mounted: [],
+      broken: 2,
+      failures: [
+        { id: 'a', stage: 'builtin', reason: 'x', at: 1 },
+        { id: 'b', stage: 'storage', reason: 'y', at: 2 },
+      ],
+    }
+    expect(describeStartupFailures(report, t)!.count).toBe(4)
+  })
+
+  it('坏的计数是负数 / NaN 时按 0 处理（不让一条脏数据变成提示）', () => {
+    const report: PluginStartupReport = { mounted: [], broken: Number.NaN, failures: [] }
+    expect(describeStartupFailures(report, t)).toBeNull()
+  })
+})
+
+describe('单条加载失败的原因渲染', () => {
+  const t = fakeT()
+
+  it('技术原因原样透出（不吞插件作者写的异常信息）', () => {
+    expect(
+      describeFailureReason({ id: 'x', stage: 'installed', reason: 'TypeError: x is undefined', at: 1 }, t)
+    ).toBe('TypeError: x is undefined')
+  })
+
+  it('原因缺失时回落到通用提示，不显示空白行', () => {
+    expect(describeFailureReason({ id: 'x', stage: 'builtin', reason: '', at: 1 }, t)).toBe(
+      'sources.plugins.brokenHint'
+    )
   })
 })

@@ -240,6 +240,36 @@ a.b|a.c      → 多路径按顺序取第一个有值的（上游字段名不统
 **已知局限**（写在 `manifest/host.ts` 里）：只校验请求发起时的目标主机；
 上游 302 到白名单外的主机由 fetch 自己跟随，这一层看不到中间跳转。
 
+### 一条插件出错，不影响软件启动
+
+插件是可失败的外部输入：清单来自磁盘、脚本来自网络、内置实现也可能在某一版里引入
+求值期异常。所以**启动链路上每一处"一条插件"的粒度都必须被隔离** —— 任何一处抛出去
+都会沿 `app.whenReady()` 的 promise 链冒出去，最坏情况是窗口根本没被创建。
+
+三条纪律：
+
+1. **只有一个隔离原语**：`plugin/health.ts` 的 `isolatePluginStep(stage, id, run)`。
+   它跑一步插件逻辑，抛错时记一条失败记录并返回 `undefined`。不要在各调用点各写一遍
+   try/catch：迟早漏一处，而漏掉的正好是启动路径。
+2. **失败要能被用户看到**：记录进 `pluginFailures()`，启动后经 `plugin:startup` 通道
+   （移动端是 `platform.plugins.startup()`）交给渲染层，汇总成一条 toast + 一个
+   「查看」跳设置页；设置页里逐条列出插件 id 与技术原因。
+3. **不拿别的插件顶上**：一条失败就是这一条失败。悄悄换另一个实现去执行，只会在
+   另一处产生更难懂的现象。
+
+隔离落点（都走 `isolatePluginStep`）：
+
+| 阶段（`stage`） | 位置 | 为什么危险 |
+|---|---|---|
+| `storage` | `plugin/storage/index.ts` 顶层 | 模块求值期执行，抛错等于整个包 import 失败 |
+| `builtin` | `plugin/builtins.ts` 的 `ensureBuiltinsRegistered` | 首次执行时才注册，抛错发生在业务调用里 |
+| `installed` | `plugin/installed.ts` 的 `mountInstalled` | 启动路径上，在建窗之前 |
+
+`mountInstalledPlugins()`（桌面 `ipc/pluginInstall.ts` / 移动 `mobile/pluginInstall.ts`）
+本身**绝不抛错**，并返回 `PluginStartupReport { mounted, broken, failures }`：
+`broken` 是"磁盘上的文件读不出来"，`failures` 是"加载时抛错"。两者对用户是同一件事
+（这些插件用不了），所以提示里合并成一个数字。
+
 ## 5. 代码地图
 
 | 关注点 | 文件 |
@@ -252,6 +282,7 @@ a.b|a.c      → 多路径按顺序取第一个有值的（上游字段名不统
 | 清单 → 歌词执行器 | `packages/shared/src/plugin/manifest/lyrics.ts` |
 | 跨域统一目录（内置 + 已安装） | `packages/shared/src/plugin/manifest/catalog.ts` |
 | 已安装插件的运行期登记 / 撤销 / 脚本正文 | `packages/shared/src/plugin/installed.ts` |
+| 加载隔离与失败登记 | `packages/shared/src/plugin/health.ts` |
 | 落盘（目录、哈希、原子写、扫描）· 桌面 | `packages/desktop/src/ipc/pluginStore.ts` |
 | 安装 / 卸载 / 目录 IPC · 桌面 | `packages/desktop/src/ipc/pluginInstall.ts` |
 | 落盘（Capacitor Filesystem）· 移动 | `packages/app/src/services/platform/mobile/pluginStore.ts` |
@@ -278,6 +309,7 @@ a.b|a.c      → 多路径按顺序取第一个有值的（上游字段名不统
 - 哈希按**原始字节**算，每次启动核对，不符即拒绝加载
 - 原子写：先写 staging 目录，全部成功后才挪到正式目录
 - 一个坏插件不让其余插件消失（坏条目进 `broken` 列表）
+- **插件异常不阻止启动**（`isolatePluginStep` + `PluginStartupReport`，见第 4 节）
 - 安装前完成全部校验；B 档脚本安装时拉取并落盘，运行期不回源
 
 移动端的两处差异（都是环境决定的，不是取舍）：
@@ -310,5 +342,9 @@ a.b|a.c      → 多路径按顺序取第一个有值的（上游字段名不统
 - 装失败 / 卸载失败的原因是否**能归因**到具体动作（而不是统一一句"失败"）？
 - 已安装插件的越界请求是否**没被发出去**（而不只是报了错）？
 - 卸载是否同时摘掉了磁盘目录与运行期注册？（只做一半 = "已卸载但还在工作"）
+- 新代码里有没有一处"一条插件"的抛错会冒到启动链路上？
+  该走 `isolatePluginStep` 而不是裸调用（判据：这段代码会在 `app.whenReady()` 里
+  或模块求值期执行吗？）
+- 新增的失败通道是否**接到了 UI**？（只记日志 = 用户永远不知道）
 - 第三方插件的展示名是否**不依赖本仓库字典**（用字面量）？
 - 新增字典键是否 zh-CN 与 en **两边都加了**，且占位符集合一致？

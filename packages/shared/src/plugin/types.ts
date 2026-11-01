@@ -30,6 +30,8 @@
  */
 
 import type { MessageKey } from '../i18n'
+// 依赖声明的形状。type-only：本文件是契约形状层，不引入运行期依赖
+import type { CapabilityRequirement } from './hostCapabilities'
 import type {
   DownloadQuality,
   MusicHallOptions,
@@ -177,6 +179,19 @@ export interface SourcePlugin {
   readonly version: string
   /** 能力清单（供 UI 渲染徽章；调用前判定仍用方法是否存在） */
   readonly capabilities: readonly PluginCapability[]
+
+  /**
+   * **宿主依赖声明**：本插件要求宿主提供哪些能力。
+   *
+   * 与 `capabilities` 方向相反 —— 那个是「我能做什么」，这个是「我需要宿主给我什么」。
+   * 由 `hostCapabilities.resolveRequirements()` 在**注册之前**判定：必需的缺失时
+   * 插件不会被注册，UI 明确显示"当前平台缺少 X"，而不是装上去点播放才失败。
+   *
+   * 缺省视为「无依赖」：纯计算型插件（如只做字段映射）确实不需要任何宿主能力。
+   * **内置插件手写**（作者就是仓库作者）；**声明式插件由清单推导**
+   * （`requirementsOfManifest`），不提供手写入口，避免两份真源。
+   */
+  readonly requires?: readonly CapabilityRequirement[]
 
   // ─── 只读能力 ───────────────────────────────────────────────
 

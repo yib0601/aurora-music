@@ -37,15 +37,31 @@ import {
   readPluginCredential,
   savePluginCredential,
 } from './pluginCredentials'
+import { guardedFetchOf } from '@aurora/shared'
 
 /** 与各插件内部的超时保持同一量级；插件自己也带 AbortController */
 const DEFAULT_TIMEOUT_MS = 20000
 
 /**
+ * 插件的网络实现：**已安装插件受其清单 `hosts` 白名单约束**。
+ *
+ * 内置插件的请求目标由我们审过，直接给全局 fetch（Node 内置实现 **不带 Origin**，
+ * 这正是汽水 API 能通的关键，不要在这里加 Referer/Origin）。
+ *
+ * 已安装插件是第三方写的清单，`hosts` 是它的承诺，而承诺靠自觉不算数：越界请求必须
+ * **不发出**。`guardedFetchOf` 就是这个包装，未被安装的 id 返回 undefined 即回落全局。
+ *
+ * 这层必须落在**构造 ctx 的唯一入口**上（本函数 + 下面三处登录态 ctx），
+ * 否则「插件只依赖注入的 fetch」这条契约就漏了：插件换一个调用点就绕过了白名单。
+ */
+function pluginFetchOf(pluginId: string): typeof globalThis.fetch {
+  return guardedFetchOf(pluginId) ?? globalThis.fetch
+}
+
+/**
  * 装配插件执行上下文。
  *
- * `fetch` 用主进程的全局实现（Node 内置 fetch）：它**不带 Origin**，
- * 这正是汽水 API 能通的关键。不要在这里加 Referer/Origin。
+ * `fetch` 见 `pluginFetchOf()`：内置插件用全局实现，已安装插件包主机白名单。
  */
 function buildContext(
   plugin: SourcePlugin,
@@ -53,7 +69,7 @@ function buildContext(
 ): Record<string, unknown> | never {
   const credential = plugin.id ? readCredentialOf(plugin.id) : null
   return {
-    fetch: globalThis.fetch,
+    fetch: pluginFetchOf(plugin.id),
     headers: config?.headers,
     credential,
   }
@@ -217,7 +233,7 @@ export function registerPluginIpc(): void {
     }
 
     const ctx = {
-      fetch: globalThis.fetch,
+      fetch: pluginFetchOf(pluginId),
       // login 的入参经 credential.payload.input 传给插件（见 qishuiPlugin.login）
       credential: { pluginId, payload: { input: rawInput }, savedAt: 0 },
     }
@@ -248,7 +264,7 @@ export function registerPluginIpc(): void {
     let valid: boolean | undefined
     if (typeof plugin.checkAuth === 'function') {
       try {
-        const ctx = { fetch: globalThis.fetch, credential }
+        const ctx = { fetch: pluginFetchOf(pluginId), credential }
         const state = await withTimeout(() => plugin.checkAuth!(credential, ctx as never), 10000)
         valid = state?.valid
         return {
@@ -272,7 +288,7 @@ export function registerPluginIpc(): void {
     if (typeof plugin.logout === 'function') {
       try {
         await withTimeout(
-          () => plugin.logout!({ fetch: globalThis.fetch, credential } as never),
+          () => plugin.logout!({ fetch: pluginFetchOf(pluginId), credential } as never),
           5000
         )
       } catch {

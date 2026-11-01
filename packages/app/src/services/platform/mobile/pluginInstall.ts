@@ -30,11 +30,14 @@ import {
   canInstall,
   installManifestIntoRuntime,
   mountInstalled,
+  notePluginFailure,
+  pluginStartupReport,
   removeManifestFromRuntime,
   type ManifestIssue,
   type PluginCatalogEntry,
   type PluginInstallRecord,
   type PluginInstallResult,
+  type PluginStartupReport,
   TRUSTED_PLUGIN_KEYS,
   hexToBytes,
   verifyManifestSignature,
@@ -284,32 +287,63 @@ export async function listCatalogEntries(locale = 'zh-CN'): Promise<{
 }
 
 /**
+ * 最近一次启动挂载的结果（`pluginInstallGateway.startup()` 与启动提示都读它）。
+ *
+ * 存模块级而不是让调用方自己去挂一遍：移动端没有主进程的 IPC 通道，
+ * 启动挂载只在 `main.tsx` 发起一次，UI 需要的是"那一刻的结果"。
+ */
+let startupReport: PluginStartupReport | null = null
+
+/** 本次启动的插件报告；还没挂载过（如单测直接驱动流程函数）时现算一份 */
+export function lastPluginStartupReport(): PluginStartupReport {
+  return startupReport ?? pluginStartupReport()
+}
+
+/**
  * 启动时挂载磁盘上的全部已安装插件。
  *
  * 必须在 UI 首帧之前调用：否则渲染层第一次问插件目录时是空的，
  * 过一会儿插件才"自己冒出来"。逐条容错（`mountInstalled` 的职责）。
+ *
+ * **绝不抛错**：调用方是 `main.tsx` 顶层的 fire-and-forget，抛出去只会变成一条
+ * unhandled rejection；插件坏了不该影响启动。失败由报告交给 UI 提示。
  */
-export async function mountInstalledPlugins(): Promise<{ mounted: string[]; broken: number }> {
-  let scan
+export async function mountInstalledPlugins(): Promise<PluginStartupReport> {
+  const report = await collectStartupReport()
+  startupReport = report
+  return report
+}
+
+async function collectStartupReport(): Promise<PluginStartupReport> {
+  let scan: Awaited<ReturnType<typeof scanInstalledPlugins>>
   try {
     scan = await scanInstalledPlugins()
   } catch (err) {
     // 扫盘失败（权限 / 存储异常）不该阻止应用启动
     console.error('[plugin] 扫描插件目录失败:', err)
-    return { mounted: [], broken: 0 }
+    return pluginStartupReport({ mounted: [], broken: 0 })
   }
-  const result = mountInstalled(scan)
-  if (result.mounted.length > 0) {
-    console.log(`[plugin] 已挂载 ${result.mounted.length} 个已安装插件:`, result.mounted.join(', '))
+  let mounted: string[] = []
+  try {
+    const result = mountInstalled(scan)
+    mounted = result.mounted
+    if (result.mounted.length > 0) {
+      console.log(`[plugin] 已挂载 ${result.mounted.length} 个已安装插件:`, result.mounted.join(', '))
+    }
+    for (const item of result.skipped) {
+      console.warn(`[plugin] 已跳过插件 ${item.id}: ${item.reason}`)
+    }
+  } catch (err) {
+    // `mountInstalled` 内部已逐条隔离，走到这里是它自身出问题：已安装插件全不可用，
+    // 内置插件与本地播放不受影响。
+    notePluginFailure('installed', '', err)
+    console.error('[plugin] 挂载已安装插件失败:', err)
   }
   if (scan.broken.length > 0) {
     console.warn(`[plugin] ${scan.broken.length} 个插件文件无法加载:`)
     for (const item of scan.broken) console.warn('  -', item.path, item.message || '')
   }
-  for (const item of result.skipped) {
-    console.warn(`[plugin] 已跳过插件 ${item.id}: ${item.reason}`)
-  }
-  return { mounted: result.mounted, broken: scan.broken.length }
+  return pluginStartupReport({ mounted, broken: scan.broken.length })
 }
 
 /** 下载/校验失败 → 可归因的原因码（渲染层据此翻文案，不在本层烧中文） */

@@ -183,9 +183,20 @@ describe('webdav 存储插件：契约形状', () => {
     }
   })
 
-  it('内置注册：webdav 在 import 期就已注册，且是唯一内置插件', () => {
-    expect(BUILTIN_STORAGE_PLUGINS.map((p) => p.id)).toEqual(['webdav'])
+  it('内置注册：webdav 在 import 期就已注册（SFTP / SMB 是后来的内置协议）', () => {
+    // 断言"包含 webdav"而不是"等于 ['webdav']"：新增内置协议是**正常演进**，
+    // 用全等断言会让每次加协议都要改这条测试，而它真正要守的是
+    // "webdav 在 import 期确实被注册了" 这一件事。
+    expect(BUILTIN_STORAGE_PLUGINS.map((p) => p.id)).toContain('webdav')
     expect(getStoragePlugin('webdav')).toBe(webdavStoragePlugin)
+  })
+
+  it('SFTP / SMB 也已内置注册（依赖只在桌面端注入，插件本身双端可见）', () => {
+    expect(BUILTIN_STORAGE_PLUGINS.map((p) => p.id)).toEqual(
+      expect.arrayContaining(['webdav', 'sftp', 'smb'])
+    )
+    expect(getStoragePlugin('sftp')).toBeDefined()
+    expect(getStoragePlugin('smb')).toBeDefined()
   })
 
   it('四个能力方法都存在（播放代理可优先走 openStream）', () => {

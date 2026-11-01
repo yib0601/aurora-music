@@ -85,6 +85,16 @@ export {
 } from './signature'
 export type { PluginSignature, SignatureVerdict } from './signature'
 
+// 信任表的纯逻辑（校验 / 合并 / 增删 / 容错解析）。落盘由两端各自负责。
+export {
+  mergeTrustedKeys,
+  parseTrustedKeys,
+  removeTrustedKey,
+  serializeTrustedKeys,
+  validateTrustedKey,
+} from './trust'
+export type { TrustedKey, TrustedKeyIssueCode, TrustedKeyValidation } from './trust'
+
 // B 档：受限脚本（洛雪格式）。脚本正文由安装器落盘，运行期只读本地副本。
 export {
   buildScriptPlugin,

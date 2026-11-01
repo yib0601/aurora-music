@@ -30,14 +30,21 @@ import {
   buildPluginCatalog,
   installManifestIntoRuntime,
   mountInstalled,
+  notePluginFailure,
+  pluginStartupReport,
   removeManifestFromRuntime,
   canInstall,
   hexToBytes,
   verifyManifestSignature,
-  TRUSTED_PLUGIN_KEYS,
 } from '@aurora/shared'
-import type { PluginCatalogEntry, PluginInstallRecord, PluginInstallResult } from '@aurora/shared'
+import type {
+  PluginCatalogEntry,
+  PluginInstallRecord,
+  PluginInstallResult,
+  PluginStartupReport,
+} from '@aurora/shared'
 import { getMainLocale, mainErrorText, mainTranslate } from '../i18n'
+import { effectiveTrustedKeys } from './pluginTrust'
 import {
   downloadManifest,
   downloadScriptBody,
@@ -77,6 +84,20 @@ function currentLocale(): string {
 }
 
 /**
+ * 最近一次启动挂载的结果。
+ *
+ * 存在模块级是为了让 `plugin:startup` 通道能回答"本次启动时插件怎么了"：
+ * 渲染层在启动后主动拉一次（而不是主进程 push），因为它可能在报告生成**之后**才
+ * 挂载好监听器 —— 一次性的 push 会静默丢掉那条提示。
+ */
+let startupReport: PluginStartupReport | null = null
+
+/** 本次启动的插件报告；没有启动过（单测直接驱动流程函数）时现算一份 */
+export function lastPluginStartupReport(): PluginStartupReport {
+  return startupReport ?? pluginStartupReport()
+}
+
+/**
  * 启动时挂载磁盘上的全部已安装插件。
  *
  * 在 `createWindow()` **之前**调用（见 main.ts）：渲染层首帧就会问插件目录，
@@ -85,29 +106,54 @@ function currentLocale(): string {
  * 逐条容错（`mountInstalled` 的职责）：一个坏文件不该让其余插件一起消失。
  * 坏条目在这里只记日志 —— 用户要看的可读原因由 `plugin:catalog` 通道的
  * `broken` 列表提供（那时能按当前语言渲染），启动期没有语言上下文。
+ *
+ * ## 本函数**绝不抛错**
+ *
+ * 它在 `app.whenReady()` 的同步段里跑，抛出去就是窗口建不出来。前面几层已经
+ * 逐条包住了（`mountInstalled` / `ensureBuiltinsRegistered` / 存储插件注册），
+ * 这里再兜一层是刻意的冗余：插件是外部输入，任何一处漏掉的 throw 都该停在这条
+ * 边界上，而不是变成"应用打不开"。失败原因由 `plugin:startup` 通道交给渲染层提示。
  */
-export function mountInstalledPlugins(): { mounted: string[]; broken: number } {
-  let scan
+export function mountInstalledPlugins(): PluginStartupReport {
+  const report = collectStartupReport()
+  startupReport = report
+  return report
+}
+
+function collectStartupReport(): PluginStartupReport {
+  let scan: ReturnType<typeof scanInstalledPlugins>
   try {
     scan = scanInstalledPlugins()
   } catch (err) {
     // 扫盘本身失败（权限 / 磁盘异常）：不该阻止应用启动，其余功能照常可用
     console.error('[plugin] 扫描插件目录失败:', err)
-    return { mounted: [], broken: 0 }
+    return pluginStartupReport({ mounted: [], broken: 0 })
   }
-  const result = mountInstalled(scan)
-  if (result.mounted.length > 0) {
-    console.log(`[plugin] 已挂载 ${result.mounted.length} 个已安装插件:`, result.mounted.join(', '))
+
+  let mounted: string[] = []
+  try {
+    const result = mountInstalled(scan)
+    mounted = result.mounted
+    if (result.mounted.length > 0) {
+      console.log(`[plugin] 已挂载 ${result.mounted.length} 个已安装插件:`, result.mounted.join(', '))
+    }
+    for (const item of result.skipped) {
+      console.warn(`[plugin] 已跳过插件 ${item.id}: ${item.reason}`)
+    }
+  } catch (err) {
+    // 批量挂载整体失败（`mountInstalled` 内部已逐条隔离，走到这里说明是它自己出了问题）：
+    // 已安装插件全部不可用，但内置插件与本地播放不受影响，应用照常启动。
+    notePluginFailure('installed', '', err)
+    console.error('[plugin] 挂载已安装插件失败:', err)
   }
+
   if (scan.broken.length > 0) {
     // 不打断启动：坏文件在插件管理页里会逐条列出可读原因
     console.warn(`[plugin] ${scan.broken.length} 个插件文件无法加载:`)
     for (const item of scan.broken) console.warn('  -', item.path, item.message || '')
   }
-  for (const item of result.skipped) {
-    console.warn(`[plugin] 已跳过插件 ${item.id}: ${item.reason}`)
-  }
-  return { mounted: result.mounted, broken: scan.broken.length }
+
+  return pluginStartupReport({ mounted, broken: scan.broken.length })
 }
 
 /** 安装进行中标记（防连点重入） */
@@ -178,7 +224,9 @@ export async function performInstall(input: {
   // （中间人替换 / 托管被入侵）。
   if (manifest.signature) {
     const verdict = await verifyManifestSignature(manifest, {
-      trustedKeys: TRUSTED_PLUGIN_KEYS,
+      // 用**生效的**信任表（内置 ∪ 用户在设置页导入的），而不是编译期常量：
+      // 否则自建托管的人在设置里导入了自己的公钥也不会生效
+      trustedKeys: effectiveTrustedKeys(),
       verify: verifyEd25519,
     })
     if (verdict.status === 'invalid') {
@@ -256,6 +304,15 @@ export function performUninstall(pluginId: string, locale?: string): PluginInsta
 }
 
 export function registerPluginInstallIpc(): void {
+  /**
+   * 本次启动的插件加载报告。
+   *
+   * 为什么要一条通道而不是启动时 push：渲染层可能在报告生成之后才装好监听器
+   * （窗口创建、React 挂载都晚于挂载插件），一次性的 push 会静默丢掉提示。
+   * 它只回答"启动时插件怎么了"，不影响任何能力调用。
+   */
+  ipcMain.handle('plugin:startup', () => lastPluginStartupReport())
+
   /** 列出插件目录（内置 + 已安装 + 坏掉的文件） */
   ipcMain.handle('plugin:catalog', (_event, locale?: unknown) => {
     return listCatalogEntries(typeof locale === 'string' && locale ? locale : currentLocale())

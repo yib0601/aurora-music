@@ -371,3 +371,58 @@ describe('签名校验：校验失败必须拒绝安装', () => {
     expect(result.issues?.map((issue) => issue.path)).toContain('signature.sig')
   })
 })
+
+describe('启动挂载：插件异常不得阻止应用启动', () => {
+  /** 按磁盘上的正式目录布局写一个插件（先过校验器拿到规范化清单） */
+  function writePlugin(id: string): void {
+    const bytes = manifestBytes({ id })
+    const parsed = shared.validatePluginManifest(JSON.parse(bytes.toString('utf8')))
+    if (!parsed.ok) throw new Error(`fixture manifest invalid: ${JSON.stringify(parsed.issues)}`)
+    store.writeInstalledPlugin(parsed.manifest, bytes, {
+      id,
+      version: '1.0.0',
+      sha256: store.sha256OfBytes(bytes),
+      installedAt: 1,
+      origin: 'test',
+    })
+  }
+
+  it('正常启动：报告里有挂载结果，没有失败记录', () => {
+    writePlugin('demo')
+
+    const report = install.mountInstalledPlugins()
+    expect(report.mounted).toEqual(['demo'])
+    expect(report.failures).toEqual([])
+    expect(shared.getPlugin('demo')).toBeDefined()
+  })
+
+  it('扫盘抛错时返回空报告而不是抛出（否则窗口建不出来）', () => {
+    // 把插件根目录换成一个普通文件：readdirSync 会 ENOTDIR，走到扫盘失败的兜底分支
+    const root = store.installedPluginsRoot()
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.mkdirSync(path.dirname(root), { recursive: true })
+    fs.writeFileSync(root, 'not a directory')
+
+    const report = install.mountInstalledPlugins()
+    expect(report.mounted).toEqual([])
+    expect(report.broken).toBe(0)
+    // 关键：函数返回了而不是抛错 —— 调用点在 app.whenReady() 的同步段里
+    expect(install.lastPluginStartupReport()).toEqual(report)
+
+    fs.rmSync(root, { force: true })
+  })
+
+  it('一个坏文件不影响同批其它插件，且报告里如实计数', () => {
+    writePlugin('demo')
+
+    // 造一个坏目录：install.json 缺失 → 扫盘时进 broken，不阻断其余插件
+    const badDir = path.join(store.installedPluginsRoot(), 'broken-plugin')
+    fs.mkdirSync(badDir, { recursive: true })
+    fs.writeFileSync(path.join(badDir, 'manifest.json'), '{}')
+
+    const report = install.mountInstalledPlugins()
+    expect(report.mounted).toEqual(['demo'])
+    expect(report.broken).toBeGreaterThan(0)
+    expect(shared.getPlugin('demo')).toBeDefined()
+  })
+})

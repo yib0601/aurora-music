@@ -18,8 +18,10 @@
 import type {
   ManifestIssue,
   PluginCatalogEntry,
+  PluginFailure,
   PluginInstallResult,
   PluginPermission,
+  PluginStartupReport,
 } from '@aurora/shared'
 import { catalogByDomain, entryHasCapability } from '@aurora/shared'
 import { platform } from '@/services/platform'
@@ -455,4 +457,66 @@ export async function removeBrokenPlugin(dirPath: string): Promise<boolean> {
     console.warn('[插件] 删除坏插件失败:', err)
     return false
   }
+}
+
+/**
+ * 读本次启动的插件加载报告。
+ *
+ * 返回 null 表示"本端没有这条通道"（老 preload / Web），调用方据此**什么都不提示** ——
+ * 不能把"读不到报告"说成"插件全好了"，也不能说成"插件坏了"。
+ *
+ * 读取失败同样返回 null：这是启动路径上的一次诊断查询，它自己失败不该变成一条
+ * 用户可见的错误（插件页里仍会如实列出目录）。
+ */
+export async function loadPluginStartupReport(): Promise<PluginStartupReport | null> {
+  const gateway = platform.plugins
+  if (!gateway?.startup) return null
+  try {
+    const report = await gateway.startup()
+    return report && typeof report === 'object' ? report : null
+  } catch (err) {
+    console.warn('[插件] 读取启动加载报告失败:', err)
+    return null
+  }
+}
+
+/**
+ * 启动报告 → 一句给用户的话；不需要提示时返回 null。
+ *
+ * ## 文案的三条取舍
+ *
+ * 1. **只报数量，不列清单**。启动提示是一行 toast，塞进插件 id 与技术原因会变成
+ *    一段没人读的日志；详细原因在插件页里逐条展示。
+ * 2. **两个计数合并成一句**。"磁盘上有 N 个读不出来"与"注册期 M 个出错"对用户是同一件事
+ *    （都是"这些插件用不了"），分两句只会让人以为出了两种毛病。
+ * 3. **全好时什么都不说**。插件是背景功能，正常时不该占用启动后的注意力。
+ *
+ * 返回的 `{ message, action }` 由调用方决定怎么展示（当前是带"查看"按钮的 toast）。
+ */
+export function describeStartupFailures(
+  report: PluginStartupReport | null,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string
+): { message: string; count: number; actionLabel: string } | null {
+  if (!report) return null
+  const failures = Array.isArray(report.failures) ? report.failures.length : 0
+  const broken = Number.isFinite(report.broken) && report.broken > 0 ? report.broken : 0
+  const count = failures + broken
+  if (count <= 0) return null
+  return {
+    message: t('sources.plugins.startupWarning', { count }),
+    count,
+    actionLabel: t('sources.plugins.startupWarningAction'),
+  }
+}
+
+/** 单条加载失败 → 可读的一行（插件页逐条展示用） */
+export function describeFailureReason(
+  failure: PluginFailure,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string
+): string {
+  // 技术原因原样透出：插件作者写下的异常信息比任何翻译都准（与 `describeBrokenReason`
+  // 的兜底同一条纪律）。阶段只用来解释"是加载的哪一步"，不替代原因。
+  const reason = String(failure?.reason || '').trim()
+  if (!reason) return t('sources.plugins.brokenHint')
+  return reason
 }

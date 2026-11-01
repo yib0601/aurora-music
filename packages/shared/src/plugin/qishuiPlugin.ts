@@ -183,6 +183,22 @@ export const qishuiPlugin: SourcePlugin = {
   capabilities: ['probe', 'userPlaylists', 'playlistTracks', 'auth'] as const,
 
   /**
+   * 依赖声明：汽水需要**凭证安全存储**，但它是 `optional`。
+   *
+   * 这是刻意的：不登录也能用公开歌单（`probe` / `playlistTracks` 都不需要 sessionid），
+   * 只有「我的歌单」要登录。移动端/浏览器没有 `safeStorage` 等价物，缺这条时插件
+   * 照常注册，`auth` 能力在 UI 里标为不可用 —— 与它「先能播、登录是增强」的语义一致。
+   *
+   * 对比 `lx` 的 `script.host`（必需）：差别正是「能力缺失是致命还是降级」，
+   * 必须逐个插件判断，不能一刀切。
+   */
+  requires: [
+    { id: 'http.fetch', version: 1 },
+    { id: 'credential', version: 1, optional: true },
+    { id: 'log', version: 1, optional: true },
+  ],
+
+  /**
    * 探测：不依赖登录，直接打一个公开歌单验证连通性。
    * 这里**不发 `me/playlist`**——未登录时它必失败，会被误判成「源不可用」。
    */

@@ -22,6 +22,7 @@
 import type { SourcePlugin } from './types'
 import { getPlugin, registerPlugin, unregisterPlugin } from './registry'
 import { ensureBuiltinsRegistered, builtinPlugins } from './builtins'
+import { isolatePluginStep } from './health'
 import type { InstalledPlugin, PluginManifest } from './manifest/types'
 import { buildSourcePlugin } from './manifest/source'
 import { createGuardedFetch } from './manifest/host'
@@ -89,13 +90,20 @@ export function canInstall(
  * 那是**正常情况**而不是错误 —— 调用方据此知道"这个插件不进音源列表"。
  */
 export function registerInstalledPlugin(manifest: PluginManifest): boolean {
+  // 先构造、后登记：`buildSourcePlugin` 是唯一会抛错的一步（清单形状被手改过、
+  // 脚本块字段缺失等）。若先 `INSTALLED.set` 再构造，抛错之后这条记录会留在
+  // 已安装表里而实现根本没注册 —— 用户看到的是"装了但用不了"，且重装会被
+  // `canInstall` 判成 `duplicate`，只能手动删目录才恢复。
+  const plugin = buildSourcePlugin(manifest)
   INSTALLED.set(manifest.id, manifest)
   // 清单 → 插件。三种来源都收在这一处：
   //   1. 声明式端点（A 档）
   //   2. 受限脚本（B 档）
   //   3. 两者并存（脚本补声明式没声明的能力）
   // 所以这里不需要按 `manifest.script` 分支 —— `buildSourcePlugin` 已经处理。
-  const plugin = buildSourcePlugin(manifest)
+  //
+  // 纯歌词插件（没有音源域声明）在这里返回 false：那是**正常情况**，
+  // 它照样进 `INSTALLED`（卸载与重装判定依赖它），只是不进音源注册表。
   if (!plugin) return false
   ensureBuiltinsRegistered()
   registerPlugin(plugin)
@@ -133,12 +141,19 @@ export function installedManifests(): PluginManifest[] {
  * 与 `registerInstalledPlugin` 的差别：这里是**批量 + 容错**。单个清单有问题时
  * 跳过它并记录，**不**让整个插件目录加载失败 —— 否则一个坏文件会让用户的所有插件
  * 一起消失（见 `InstalledPluginScan` 的注释）。
+ *
+ * ## 为什么每次注册都包一层 `isolatePluginStep`
+ *
+ * 上面的"跳过"只覆盖了**我们预见到**的不合格清单（id 形状、内置撞名、重复）。
+ * 但 `buildSourcePlugin` 要读清单里的几十个字段，任何一处手改过的内容都可能让它
+ * 抛错；而本函数在**启动路径上**（`main.ts` 建窗之前），一次抛错就是应用起不来。
+ * 所以真正"这条插件坏了"的兜底在这里：抛错的那条进失败清单，其余照常挂载。
  */
 export function mountInstalled(
   scan: { plugins: readonly InstalledPlugin[]; broken: readonly unknown[] }
-): { mounted: string[]; skipped: Array<{ id: string; reason: 'builtin' | 'duplicate' | 'invalid' }> } {
+): { mounted: string[]; skipped: Array<{ id: string; reason: 'builtin' | 'duplicate' | 'invalid' | 'error' }> } {
   const mounted: string[] = []
-  const skipped: Array<{ id: string; reason: 'builtin' | 'duplicate' | 'invalid' }> = []
+  const skipped: Array<{ id: string; reason: 'builtin' | 'duplicate' | 'invalid' | 'error' }> = []
   for (const item of scan.plugins) {
     const manifest = item?.manifest
     // id 形状必须在这里再判一次：`registerInstalledPlugin` 依赖已校验过的清单，
@@ -159,8 +174,17 @@ export function mountInstalled(
     if (typeof item.scriptBody === 'string' && item.scriptBody.trim()) {
       SCRIPT_BODIES.set(manifest.id, item.scriptBody)
     }
-    registerInstalledPlugin(manifest)
-    mounted.push(manifest.id)
+    const done = isolatePluginStep('installed', manifest.id, () => {
+      registerInstalledPlugin(manifest)
+      return true
+    })
+    if (done) {
+      mounted.push(manifest.id)
+    } else {
+      // 构造/注册抛错：登记表里已经留下失败记录（UI 据此提示用户），
+      // 这里保证它不出现在 mounted 里 —— 否则调用方会以为它可用。
+      skipped.push({ id: manifest.id, reason: 'error' })
+    }
   }
   return { mounted, skipped }
 }

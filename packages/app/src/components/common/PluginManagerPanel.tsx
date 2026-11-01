@@ -12,17 +12,19 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useLocale, useT } from '@/i18n'
-import type { PluginCatalogEntry } from '@aurora/shared'
+import type { PluginCatalogEntry, PluginFailure } from '@aurora/shared'
 import {
   builtinEntries,
   capabilityLabelsOf,
   describeBrokenReason,
+  describeFailureReason,
   displayDescriptionOf,
   displayNameOf,
   installFromFileDialog,
   installFromUrl,
   installedEntries,
   loadPluginCatalog,
+  loadPluginStartupReport,
   openPluginDir,
   permissionLinesOf,
   removeBrokenPlugin,
@@ -49,6 +51,8 @@ export function PluginManagerPanel() {
   const t = useT()
   const [entries, setEntries] = useState<PluginCatalogEntry[] | null>(null)
   const [broken, setBroken] = useState<Array<{ path: string; message?: string }>>([])
+  /** 启动加载阶段出错的插件（注册期抛错，与"磁盘文件读不出来"是两种不同的失败） */
+  const [failures, setFailures] = useState<PluginFailure[]>([])
   const [manageable, setManageable] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ ok: boolean; text: string; issues?: InstallOutcome['issues'] } | null>(
@@ -70,6 +74,9 @@ export function PluginManagerPanel() {
     setEntries(state.entries)
     setBroken(state.broken)
     setManageable(state.manageable)
+    // 启动加载失败清单：一次性读，不随刷新变（那是"本次启动"的事实，重读也不会变）
+    const report = await loadPluginStartupReport()
+    setFailures(report?.failures ?? [])
   }, [locale])
 
   useEffect(() => {
@@ -330,6 +337,38 @@ export function PluginManagerPanel() {
                 >
                   <X className="h-3.5 w-3.5" strokeWidth={1.6} />
                 </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ─── 启动时加载失败的插件 ─── */}
+      {/* 与下面的「读不出来的文件」分开：那种是磁盘内容不合格（有路径可删），
+          这种是加载代码时抛错（没有文件路径可靠，只能给出 id 与原因）。
+          两者对用户都是"这个插件用不了"，但补救动作不同，混在一起会说不清。 */}
+      {failures.length > 0 && (
+        <section className="space-y-2">
+          <p className="font-text text-caption-strong text-coral/80">
+            {t('sources.plugins.startupFailedList')}
+            <span className="text-white/30 ml-1.5">{failures.length}</span>
+          </p>
+          <p className="font-text text-caption text-white/40">
+            {t('sources.plugins.startupFailedHint')}
+          </p>
+          <div className="space-y-1.5">
+            {failures.map((failure, index) => (
+              <div
+                key={`${failure.stage}:${failure.id}:${index}`}
+                className="bg-coral/[0.05] border border-coral/15 rounded-[8px] px-3 py-2"
+              >
+                <p className="font-text text-caption text-white/70 truncate" title={failure.id}>
+                  {/* 连 id 都取不到时显示阶段名：空行会让用户以为列表坏了 */}
+                  {failure.id || failure.stage}
+                </p>
+                <p className="font-text text-caption text-white/45 mt-0.5 break-all">
+                  {describeFailureReason(failure, t)}
+                </p>
               </div>
             ))}
           </div>

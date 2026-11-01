@@ -1,4 +1,5 @@
 import {
+  toLxMusicInfo,
   auroraError,
   fetchLxScript as sharedFetchLxScript,
   inspectLxSource as sharedInspectLxSource,
@@ -19,6 +20,7 @@ import type {
   LxTrackRef,
 } from '@aurora/shared'
 import { createNativeFetch } from './nativeFetch'
+import { openSandbox, sandboxSupported, type SandboxRequestFn } from './sandbox'
 
 /**
  * 移动端洛雪脚本宿主适配层。
@@ -190,4 +192,125 @@ export async function resolveLxSourceUrl(
 ): Promise<{ url: string; quality: string }> {
   installMobileLxHost()
   return await sharedResolveLxSourceUrl(source, ref, quality)
+}
+
+// ─── Worker 沙箱执行路径 ──────────────────────────────────────────
+//
+// 上面注册的 `setLxHostDeps` 走的是 `lxHost` 的 `new Function` 回退路径 ——
+// 那条路上第三方脚本的同步死循环会**永久冻结 WebView**。
+//
+// 本文件末尾这组函数提供**另一条**路径：脚本在 Web Worker 里跑，超时用
+// `terminate()` 强制终止。它不复用 `lxHost` 的 evaluate 契约（那个是同步语义，
+// Worker 是异步的），而是完整替代：Worker 内既跑脚本也持宿主，主线程只负责
+// 启动 / 超时终止 / 代发请求 / 收结果。详见 `sandbox.ts` 顶部说明。
+
+/**
+ * 把 `LxRequestFn`（洛雪回调式）适配成沙箱要求的形状。
+ *
+ * 两者语义相同（成功回调 `(null, resp)`，失败回调 `(err, null)`），
+ * 差别只是 resp 的类型收窄 —— 沙箱侧要纯数据（能过 structured clone）。
+ */
+function sandboxRequest(): SandboxRequestFn {
+  const base = createMobileLxRequest()
+  return (url, options, callback) => {
+    base(url, options as LxRequestOptions, (err, resp) => {
+      // resp 里的 body 可能含函数（脚本自己塞的），structured clone 会抛；
+      // 这里只透传纯数据字段，body 若不是可序列化值则降级为 raw
+      callback(err, resp ? (sanitizeForClone(resp) as Record<string, unknown>) : null)
+    })
+  }
+}
+
+/** 把值裁成**可 structured clone** 的纯数据；不可序列化的部分降级为原始文本 */
+function sanitizeForClone(value: unknown): unknown {
+  try {
+    // 试一次克隆：能过就直接用（绝大多数响应体是纯 JSON）
+    structuredClone(value)
+    return value
+  } catch {
+    // 含函数或循环引用：只留最关键的纯数据字段
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      const out: Record<string, unknown> = {}
+      for (const key of ['statusCode', 'statusMessage', 'headers', 'bytes', 'raw']) {
+        const item = record[key]
+        if (item === undefined) continue
+        try {
+          structuredClone(item)
+          out[key] = item
+        } catch {
+          /* 该字段不可序列化：丢弃 */
+        }
+      }
+      return out
+    }
+    return String(value)
+  }
+}
+
+/** 探测一条脚本（Worker 沙箱路径；不支持时返回 null 让调用方回落 lxHost） */
+export async function inspectLxSourceInSandbox(
+  source: LxScriptSource
+): Promise<LxSourceInspection | null> {
+  if (!sandboxSupported()) return null
+  const script = await ensureScript(source)
+  const session = await openSandbox({ script, request: sandboxRequest() })
+  try {
+    return {
+      ok: session.inspection.ok,
+      ...(session.inspection.error ? { error: session.inspection.error } : {}),
+      platforms: session.inspection.platforms as LxSourceInspection['platforms'],
+    }
+  } finally {
+    // 任何路径都必须 terminate：Worker 可能正卡在死循环
+    session.dispose()
+  }
+}
+
+/**
+ * 取址（Worker 沙箱路径；不支持时返回 null 让调用方回落 lxHost）。
+ *
+ * 每次取址新建一个 Worker：Worker 一旦 terminate 就丢了脚本状态，
+ * 而"一定会被打断"比"省一次 boot"重要得多（见 sandbox.ts 的已知局限 1）。
+ */
+export async function resolveLxSourceUrlInSandbox(
+  source: LxScriptSource,
+  ref: LxTrackRef,
+  quality: DownloadQuality
+): Promise<{ url: string; quality: string } | null> {
+  if (!sandboxSupported()) return null
+  const script = await ensureScript(source)
+  const session = await openSandbox({ script, request: sandboxRequest() })
+  try {
+    if (!session.inspection.ok) return null
+    // 交给脚本的 info 与桌面端同源（toLxMusicInfo 负责字段映射）
+    const info = toLxMusicInfoSafe(ref.platform, ref.meta)
+    const value = await session.call(ref.platform, 'musicUrl', {
+      type: quality,
+      musicInfo: { musicInfos: { [ref.platform]: info } },
+    })
+    // 脚本可能返回字符串，也可能返回 { url }
+    const url =
+      typeof value === 'string'
+        ? value
+        : value && typeof value === 'object' && typeof (value as { url?: unknown }).url === 'string'
+          ? String((value as { url: string }).url)
+          : ''
+    if (!url || !/^https?:\/\//i.test(url)) return null
+    return { url, quality: String(quality) }
+  } catch (err) {
+    console.warn('[Lx][sandbox] 取址失败:', err)
+    return null
+  } finally {
+    session.dispose()
+  }
+}
+
+/** `toLxMusicInfo` 的容错包装：映射失败时给空对象（脚本会按自己的规则降级） */
+function toLxMusicInfoSafe(platform: string, meta: Record<string, unknown> | null | undefined) {
+  try {
+    return toLxMusicInfo(platform, meta)
+  } catch {
+    return {}
+  }
 }

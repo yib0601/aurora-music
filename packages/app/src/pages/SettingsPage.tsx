@@ -48,6 +48,7 @@ import { checkLxScriptLink, lxFormSupported, renderError } from '@/components/co
 import { pluginFormRows, formKindOf, type PluginFormRow } from '@/components/common/pluginForm'
 import { PluginAuthPanel } from '@/components/common/PluginAuthPanel'
 import { PluginManagerPanel } from '@/components/common/PluginManagerPanel'
+import { PluginTrustPanel } from '@/components/common/PluginTrustPanel'
 import { builtinPlugins } from '@aurora/shared'
 import {
   buildAuroraEndpoints,
@@ -2505,6 +2506,13 @@ export function SettingsPage() {
                 typeof platform.plugins?.installFromFile === 'function') && (
                 <SettingRow label={t('sources.plugins.title')} hint={t('sources.plugins.desc')}>
                   <PluginManagerPanel />
+                </SettingRow>
+              )}
+              {/* 签名信任根：只在支持管理信任表的端出现（桌面端）。
+                  与插件管理分开一个 SettingRow —— 它回答的是"我信任谁"，不是"我装了什么"。 */}
+              {typeof platform.plugins?.trustList === 'function' && (
+                <SettingRow label={t('sources.plugins.trust.title')} hint={t('sources.plugins.trust.desc')}>
+                  <PluginTrustPanel />
                 </SettingRow>
               )}
             </SettingsSection>

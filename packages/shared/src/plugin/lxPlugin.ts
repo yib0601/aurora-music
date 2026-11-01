@@ -46,6 +46,20 @@ export const lxPlugin: SourcePlugin = {
   capabilities: ['probe', 'search', 'resolveTrack'] as const,
 
   /**
+   * 依赖声明：**脚本源的本质就是「要宿主给我一个脚本沙箱」**。
+   *
+   * 这条以前只写在 `preflight` 里（`if (!getLxHostDeps())` → 运行时才发现不可用），
+   * 现在提前到注册期：浏览器端没有 `script.host`，于是 lx 在那里**不会被注册**，
+   * 设置页显示"当前平台缺少脚本宿主"，而不是让用户填完链接、点完测试才被拒。
+   * 这同时替掉了 `pluginForm.ts` 里那张按插件 id 硬编码的 `pluginAvailableOn` 表。
+   */
+  requires: [
+    { id: 'http.fetch', version: 1 },
+    { id: 'script.host', version: 1 },
+    { id: 'log', version: 1, optional: true },
+  ],
+
+  /**
    * 前置检查：脚本源要真能跑，需要「宿主已装配」+「脚本源码可下载」。
    *
    * 这两件事缺任一，搜索必然失败；若不在这里摘掉，用户看到的是

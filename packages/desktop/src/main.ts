@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
 import { mountInstalledPlugins } from './ipc/pluginInstall'
+import { installStorageProtocolDeps } from './ipc/storageProtocols'
 import { mainTranslate, onMainLocaleChange } from './i18n'
 import { attachEdgeSnap } from './edgeSnap'
 import { closeDatabase } from './ipc/database'
@@ -516,8 +517,13 @@ if (!gotTheLock) {
     registerIpcHandlers()
     // 已安装插件挂载：必须早于 createWindow —— 渲染层首帧就会问插件目录，
     // 迟了用户会看到"刚装的插件不存在"、过一会儿又自己冒出来。
-    // 内部逐条容错：一个坏文件不会让其余插件一起消失（见 ipc/pluginInstall.ts）。
+    // **本调用绝不抛错**（内部逐层隔离 + 最后一道 try），插件坏了不影响启动；
+    // 返回的启动报告由 registerPluginInstallIpc 的 `plugin:startup` 通道交给渲染层提示。
     mountInstalledPlugins()
+    // 存储协议依赖注入（SFTP / SMB）。
+    // 这两个包（ssh2 / @marsaud/smb2）刻意**只装在桌面端**：它们需要原始 TCP，
+    // 而渲染层是 nodeIntegration:false。shared 侧用注入接口，不声明依赖。
+    installStorageProtocolDeps()
     registerMediaCacheIpc()
     initMediaCache()
     const win = createWindow()

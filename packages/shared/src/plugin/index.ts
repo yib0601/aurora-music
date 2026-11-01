@@ -28,8 +28,38 @@ export {
 export {
   ensureBuiltinsRegistered,
   builtinPlugins,
+  degradedBuiltins,
   resetBuiltinsRegistrationForTest,
 } from './builtins'
+// 宿主能力注册表：插件「需要宿主给什么」的判定层。
+// 与 `../health`（加载是否成功）是两件事：那个记"坏了"，这个记"这个端做不了"。
+export {
+  HOST_CAPABILITY_VERSION,
+  clearHostCapabilitiesForTest,
+  describeMissingCapabilities,
+  getHostCapability,
+  listHostCapabilities,
+  registerHostCapability,
+  requirementsOfManifest,
+  resolveRequirements,
+  unregisterHostCapability,
+} from './hostCapabilities'
+export type {
+  CapabilityGap,
+  CapabilityRequirement,
+  HostCapability,
+  HostCapabilityId,
+  ManifestDependencyInput,
+  PluginAvailability,
+} from './hostCapabilities'
+export type { PluginFailure, PluginFailureStage, PluginStartupReport } from './health'
+export {
+  clearPluginFailuresForTest,
+  isolatePluginStep,
+  notePluginFailure,
+  pluginFailures,
+  pluginStartupReport,
+} from './health'
 export { pluginIdOf, pluginFieldsOf, DEFAULT_PLUGIN_ID } from './pluginIdOf'
 export {
   pluginForSource,

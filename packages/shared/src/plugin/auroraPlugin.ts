@@ -49,6 +49,17 @@ export const auroraPlugin: SourcePlugin = {
   displayNameKey: 'core.platform.aurora',
   descriptionKey: 'sources.form.kindAuroraHint',
   version: '1.0.0',
+  /**
+   * 依赖声明：只要有地址就能跑，因此只需要出网能力。
+   *
+   * `log` 是 optional：诊断日志通道缺失时插件照常工作，只是少一条排查线索。
+   * （P3 把 aurora 改成真正吃 `ctx.fetch` 之后，这条依赖才有实际用途；
+   * 在那之前它如实反映「本插件不要求脚本宿主、不要求凭证存储」这两件事。）
+   */
+  requires: [
+    { id: 'http.fetch', version: 1 },
+    { id: 'log', version: 1, optional: true },
+  ],
   // playlistParse 由 getPlaylistTracks 承载；auth 能力不在此插件内（协议源没有登录概念）
   // lyrics：歌词端点由协议派生（见 auroraPreset.lyricEndpointOf），属于本插件能力
   // recommendPlaylists / toplists / toplistDetail：在线发现三端点，同样由协议派生

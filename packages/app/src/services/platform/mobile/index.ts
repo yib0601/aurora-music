@@ -46,6 +46,8 @@ import {
 import {
   fetchLxScript,
   inspectLxSource,
+  inspectLxSourceInSandbox,
+  resolveLxSourceUrlInSandbox,
   installMobileLxHost,
   resolveLxSourceUrl,
 } from './lxHost'
@@ -559,15 +561,18 @@ export function createMobilePlatform(): PlatformInterface & {
       if ((input.kind || 'aurora') === 'lx') {
         try {
           const script = input.script?.trim() || (await fetchLxScript(input.sourceUrl))
-          const inspection = await inspectLxSource({
+          const config = {
             id: input.id || 'probe-draft',
             name: input.name || '',
-            kind: 'lx',
+            kind: 'lx' as const,
             sourceUrl: input.sourceUrl,
             headers: input.headers,
             enabled: true,
             script,
-          })
+          }
+          // 优先走 Worker 沙箱（超时可强制终止）；不支持时回落 lxHost 的 new Function 路径
+          const sandboxed = await inspectLxSourceInSandbox(config)
+          const inspection = sandboxed ?? (await inspectLxSource(config))
           return lxInspectionToProbe(inspection)
         } catch (err) {
           // 底层错误可能是 AuroraError（码 + 参数）：走 renderErrorMessage 渲染成当前语言，
@@ -599,9 +604,12 @@ export function createMobilePlatform(): PlatformInterface & {
           const source = state.onlineSources.find((s) => s.id === ref.sourceId)
           // 找不到音源配置或形态对不上：返回 null 由调用方回落既有取址路径
           if (!source || source.kind !== 'lx') return null
-          const { url } = await resolveLxSourceUrl(source, ref, quality)
-          if (!url || !/^https?:\/\//i.test(url)) return null
-          return { ...track, onlineUrl: url }
+          // 优先走 Worker 沙箱（同步死循环可被 terminate 打断）；
+          // 不支持时回落 lxHost 的 new Function 路径（语义一致、但无中断能力）
+          const sandboxed = await resolveLxSourceUrlInSandbox(source, ref, quality)
+          const resolved = sandboxed ?? (await resolveLxSourceUrl(source, ref, quality))
+          if (!resolved.url || !/^https?:\/\//i.test(resolved.url)) return null
+          return { ...track, onlineUrl: resolved.url }
         }
 
         // 自有服务协议：按源内 id 取址（服务端 /aurora/track）。移动端 fetch 已被换成
@@ -722,6 +730,12 @@ export function createMobilePlatform(): PlatformInterface & {
       async catalog(locale?: string) {
         const { listCatalogEntries } = await import('./pluginInstall')
         return listCatalogEntries(locale || currentLocale())
+      },
+      // 启动加载报告：移动端没有 IPC，直接读本进程那次挂载的结果。
+      // 与桌面端同一形状，UI 的"插件没加载起来"提示两端共用一套逻辑。
+      async startup() {
+        const { lastPluginStartupReport } = await import('./pluginInstall')
+        return lastPluginStartupReport()
       },
       // 移动端没有"选本地文件"（需要额外原生插件）：明确不给这个方法，
       // UI 据 `pickManifest === undefined` 隐藏对应按钮

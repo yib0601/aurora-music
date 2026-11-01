@@ -28,6 +28,7 @@
     "iconv-lite": "^0.6.3",
     "mpris-service": "^2.1.2",
     "music-metadata": "^10.5.0",
+    "ssh2": "^1.17.0",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

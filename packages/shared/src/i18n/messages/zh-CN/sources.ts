@@ -165,6 +165,48 @@ const sources = {
     fieldRequired: '{field}不能为空',
   },
   /**
+   * SFTP（SSH 文件传输）。
+   *
+   * 与 WebDAV 同一套声明式字段机制：设置页据 `fields` 通用渲染表单，这里只给文案。
+   * 认证两条路（口令 / 私钥）都要有明确说明 —— 用户最容易卡在"到底该填哪个"。
+   */
+  sftp: {
+    title: 'SFTP',
+    desc: '通过 SSH 访问 NAS 或服务器上的音乐目录',
+    hostLabel: '主机',
+    hostPlaceholder: '如：nas.example.com 或 192.168.1.10',
+    portLabel: '端口（默认 22）',
+    portPlaceholder: '22',
+    usernameLabel: '用户名',
+    passwordLabel: '口令',
+    passwordHint: '口令经系统密钥加密后保存在本机，不会写入配置文件',
+    privateKeyLabel: '私钥（可选）',
+    privateKeyHint: '粘贴 OpenSSH 私钥全文（以 -----BEGIN 开头）。填了私钥就无需口令',
+    rootLabel: '音乐库根目录（可选）',
+    rootPlaceholder: '如：/volume1/music 或 music，留空表示登录目录',
+  },
+  /**
+   * SMB / CIFS（Windows 共享）。
+   */
+  smb: {
+    title: 'SMB',
+    desc: '访问 Windows 共享或 NAS 的 SMB 共享目录',
+    hostLabel: '主机',
+    hostPlaceholder: '如：nas.example.com 或 192.168.1.10',
+    portLabel: '端口（默认 445）',
+    portPlaceholder: '445',
+    shareLabel: '共享名',
+    sharePlaceholder: '如：music',
+    shareHint: '共享名是路径的第一段，不是完整路径（如 //nas/music 里的 music）',
+    domainLabel: '域（可选）',
+    domainPlaceholder: '如：WORKGROUP',
+    usernameLabel: '用户名',
+    passwordLabel: '口令',
+    passwordHint: '口令经系统密钥加密后保存在本机，不会写入配置文件',
+    rootLabel: '共享内子目录（可选）',
+    rootPlaceholder: '如：Music，留空表示共享根目录',
+  },
+  /**
    * 结构化错误的显示端文案（键路径即错误码）。
    * 只放**本域自有**的错误：音源链接与歌单解析接口的校验错误由
    * shared 的 `checkSourceForm` 直接产出（键在 `core.error.formLinkInvalid` /
@@ -195,6 +237,16 @@ const sources = {
     brokenHint: '这些文件不符合插件清单格式，或内容与被安装时不一致（可能被修改过）',
     removeBroken: '删除该文件',
     openDir: '打开插件目录',
+    /**
+     * 启动时的插件异常提示。
+     *
+     * 措辞的关键是**先说"不影响使用"**：用户看到"插件出错"第一反应是"我是不是得修"，
+     * 而这件事的正确答案是"不用，其他功能照常"。第二句才说他能做什么。
+     */
+    startupWarning: '{count} 个插件没能正常加载，它们的音源暂不可用。软件其余功能不受影响',
+    startupWarningAction: '查看',
+    startupFailedList: '启动时未能加载',
+    startupFailedHint: '这些插件在加载阶段出错，因此没有出现在上面的列表里。可以重新安装或删除它们所在目录',
     /** 安装 */
     install: '安装插件',
     installFromUrl: '从网址安装',
@@ -250,6 +302,49 @@ const sources = {
       unsignedHint: '未签名的插件无法证明来源，请确认你信任它的发布者',
       unknownKeyHint: '签名者「{keyId}」不在本机的可信列表里，无法证明来源',
       verifiedHint: '内容由可信发布者「{keyId}」签名，且未被改动',
+    },
+    /**
+     * 签名信任表（用户导入自己的公钥）。
+     *
+     * 文案要交代两件事，缺一条用户就会做错决定：
+     * 1. 导入公钥**不会**让插件变安全，它只是"我认识这个发布者"
+     * 2. 导入后该 keyId 签名的插件才会被判为"已验证"（否则是"签名者未知"）
+     */
+    trust: {
+      title: '签名信任根',
+      desc: '导入发布者的公钥后，由它签名的插件才会被标记为「已验证」。公钥本身不是秘密，可以分享',
+      empty: '还没有导入任何公钥（当前只信任随应用内置的发布者）',
+      keyIdLabel: '公钥标识',
+      keyIdPlaceholder: '如：my-registry',
+      keyIdHint: '发布者自定的短名，必须与插件清单里签名块的 keyId 一致',
+      publicKeyLabel: '公钥',
+      publicKeyPlaceholder: '64 位十六进制的 Ed25519 公钥',
+      publicKeyHint: '从发布者处获取。长度不是 64 位 hex 时会被拒绝',
+      noteLabel: '备注（可选）',
+      notePlaceholder: '如：公司内部插件源',
+      add: '导入公钥',
+      adding: '导入中…',
+      remove: '删除',
+      removeConfirmTitle: '删除公钥「{keyId}」？',
+      removeConfirmBody: '删除后，由它签名的插件会变回「签名者未知」（不会卸载插件，但来源不再被验证）',
+      added: '已导入「{keyId}」',
+      addedKeyId: '公钥标识：{keyId}',
+      removed: '已删除「{keyId}」',
+      builtinHint: '随应用发布，不可删除',
+      userTag: '我导入的',
+      builtinTag: '内置',
+      /**
+       * 导入失败的结构化原因（键路径即错误码，与 `validateTrustedKey` 的 code 一一对应）。
+       * 每条都必须说清"怎么改"，因为用户手上只有他从发布者那里抄来的一串字符。
+       */
+      error: {
+        badKeyId: '公钥标识格式不对：需以小写字母开头，只能用字母、数字、点、下划线、短横',
+        badPublicKey: '公钥格式不对：需要 64 位十六进制字符（32 字节的 Ed25519 公钥）',
+        noteTooLong: '备注太长（最多 120 字）',
+        duplicate: '已经有同标识的公钥了，请先删除再导入',
+        notFoundOrBuiltin: '这条公钥不存在，或者是随应用内置的（不可删除）',
+        unsupportedEnv: '当前环境不支持管理信任根（请使用桌面端）',
+      },
     },
     issue: {
       title: '清单内容有问题',

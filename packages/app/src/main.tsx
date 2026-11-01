@@ -33,8 +33,13 @@ if (platform.platform === 'mobile' && platform.plugins) {
   void import('@/services/platform/mobile/pluginInstall')
     .then((mod) => mod.mountInstalledPlugins())
     .catch((err) => {
-      // 挂载失败不该阻止应用启动：内置插件仍可用，本地播放完全不受影响
+      // 挂载失败不该阻止应用启动：内置插件仍可用，本地播放完全不受影响。
+      // 但要留痕 —— 报告里没有这条记录，UI 就无从提示"插件没加载起来"。
       console.error('[plugin] 移动端插件挂载失败:', err)
+      // 动态 import 才能拿到 shared：这里已是 catch 分支，多一次加载没有代价
+      void import('@aurora/shared').then(({ notePluginFailure }) =>
+        notePluginFailure('installed', '', err)
+      )
     })
 }
 

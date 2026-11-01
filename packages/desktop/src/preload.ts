@@ -212,6 +212,9 @@ const electronAPI = {
     // 校验（清单结构、id 冲突、权限、主机白名单）全部在主进程完成，
     // 渲染层只负责展示与确认（见 ipc/pluginInstall.ts）。
     catalog: (locale?: string): Promise<unknown> => ipcRenderer.invoke('plugin:catalog', locale),
+    // 本次启动的插件加载报告：渲染层启动后拉一次，据此提示"有插件没加载起来"。
+    // 用拉取而不是主进程 push —— 窗口与 React 挂载都晚于挂载插件，push 会丢。
+    startup: (): Promise<unknown> => ipcRenderer.invoke('plugin:startup'),
     pickManifest: (): Promise<string | null> => ipcRenderer.invoke('plugin:pickManifest'),
     installFromFile: (filePath: string, locale?: string): Promise<unknown> =>
       ipcRenderer.invoke('plugin:installFromFile', filePath, locale),
@@ -222,6 +225,14 @@ const electronAPI = {
     openDir: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('plugin:openDir'),
     removeBroken: (dirPath: string): Promise<{ ok: boolean; message?: string }> =>
       ipcRenderer.invoke('plugin:removeBroken', dirPath),
+
+    // ─── 签名信任表 ───
+    // 公钥不是秘密，但它是**安全关键**：导入后该 keyId 签名的插件才会被判为"已验证"。
+    trustList: (): Promise<unknown> => ipcRenderer.invoke('plugin:trust:list'),
+    trustAdd: (input: { keyId: string; publicKey: string; note?: string }): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:trust:add', input),
+    trustRemove: (keyId: string): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:trust:remove', keyId),
   },
   // 自有服务协议的单曲取址（按源内 id 取直链）：与在线搜索同理在主进程执行
   // （渲染进程直连上游会被 CORS 拦），渲染层只拿结果；失败时返回带原因的结果，

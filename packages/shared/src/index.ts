@@ -259,6 +259,12 @@ export {
   builtinPlugins,
   ensureBuiltinsRegistered,
   resetBuiltinsRegistrationForTest,
+  // 加载健康登记：插件出错只记账、不打断启动，UI 据此提示用户
+  clearPluginFailuresForTest,
+  isolatePluginStep,
+  notePluginFailure,
+  pluginFailures,
+  pluginStartupReport,
   pluginIdOf,
   pluginFieldsOf,
   // 能力判定（取代各处 `kind === 'xxx'` 分支）
@@ -275,6 +281,17 @@ export {
   toplistsViaPlugin,
   toplistDetailViaPlugin,
   hostContextOf,
+  // 宿主能力注册表：插件「需要宿主给什么」的登记与判定（与 health 的「坏没坏」是两件事）
+  HOST_CAPABILITY_VERSION,
+  clearHostCapabilitiesForTest,
+  describeMissingCapabilities,
+  getHostCapability,
+  listHostCapabilities,
+  registerHostCapability,
+  requirementsOfManifest,
+  resolveRequirements,
+  unregisterHostCapability,
+  degradedBuiltins,
 } from './plugin'
 export type {
   SourcePlugin,
@@ -284,6 +301,16 @@ export type {
   PluginAuthState,
   PluginPlaylist,
   ResolvedAudio,
+  PluginFailure,
+  PluginFailureStage,
+  PluginStartupReport,
+  // 依赖声明的形状（`SourcePlugin.requires` 用的是它）
+  CapabilityGap,
+  CapabilityRequirement,
+  HostCapability,
+  HostCapabilityId,
+  ManifestDependencyInput,
+  PluginAvailability,
 } from './plugin'
 
 // ─── 存储插件层（曲库来源形态的注册表与契约） ─────────────────────
@@ -307,6 +334,19 @@ export {
   storagePluginOf,
   storageStringField,
   webdavStoragePlugin,
+  // SFTP / SMB：依赖只装在桌面端，故为注入式
+  SFTP_STORAGE_FIELDS,
+  SMB_STORAGE_FIELDS,
+  sftpStoragePlugin,
+  smbStoragePlugin,
+  setSsh2Module,
+  setSmb2Module,
+  ssh2Available,
+  smb2Available,
+  parseRangeHeader,
+  parseSmbRangeHeader,
+  sftpRemotePathOf,
+  smbPathOf,
 } from './plugin/storage'
 export type {
   StorageFieldDef,
@@ -360,6 +400,12 @@ export {
   signableBytes,
   signatureBadgeKey,
   verifyManifestSignature,
+  // 信任表（签名信任根）的纯逻辑
+  mergeTrustedKeys,
+  parseTrustedKeys,
+  removeTrustedKey,
+  serializeTrustedKeys,
+  validateTrustedKey,
 } from './plugin/manifest'
 export type {
   DeclarativeLyricsHit,
@@ -385,6 +431,9 @@ export type {
   PluginProvenance,
   PluginSignature,
   SignatureVerdict,
+  TrustedKey,
+  TrustedKeyIssueCode,
+  TrustedKeyValidation,
 } from './plugin/manifest'
 
 // 已安装插件的运行期登记（注册 / 撤销 / 启动时挂载）

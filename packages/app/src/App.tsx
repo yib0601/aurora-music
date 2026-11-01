@@ -12,6 +12,7 @@ import { QueueView } from '@/components/player/QueueView'
 import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { ToastHost, toast, dismissToast } from '@/components/common/Toast'
+import { describeStartupFailures, loadPluginStartupReport } from '@/components/common/pluginManage'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { MusicHallPage } from '@/pages/MusicHallPage'
 import { MusicHallDetailPage } from '@/pages/MusicHallDetailPage'
@@ -57,6 +58,14 @@ import type { Track, FolderPickerOptions } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
 let initialScanTriggered = false
+
+/**
+ * 启动插件异常提示是否已发过。
+ *
+ * 与 `initialScanTriggered` 同一用途：StrictMode 下 effect 会双挂载，
+ * 不加模块级闸门就会出现两条一模一样的提示。
+ */
+let pluginStartupWarned = false
 
 /**
  * 顶栏工具带「左入口 + 右更新胶囊」并排所需的最小内联宽度（px）。
@@ -479,6 +488,46 @@ function AppLayout() {
       cancelled = true
     }
   }, [])
+
+  /**
+   * 启动时插件加载异常的一次性提示。
+   *
+   * 这条提示的存在理由是产品决定，不是实现细节：**插件坏了不能影响启动**，
+   * 但用户有权知道"为什么我的音源少了几个"。所以启动流程全程不抛错（见
+   * shared 的 `plugin/health.ts`），失败只汇总成一条 toast —— 一行字 + 一个
+   * 「查看」跳到设置页，那里逐条列出插件 id 与原因。
+   *
+   * 三个刻意的选择：
+   * 1. **只提示一次**（模块级 `pluginStartupWarned`）：StrictMode 开发模式会双挂载
+   *    effect，不挡住就会出现两条一模一样的提示。
+   * 2. **不阻塞首屏**：报告读取是异步的，且失败时静默（`loadPluginStartupReport`
+   *    返回 null）；插件是背景功能，为它延后渲染不值得。
+   * 3. **不弹对话框**：模态框会打断"打开软件就想放歌"这条主路径。
+   */
+  useEffect(() => {
+    if (pluginStartupWarned) return
+    pluginStartupWarned = true
+    let cancelled = false
+    loadPluginStartupReport()
+      .then((report) => {
+        if (cancelled) return
+        const notice = describeStartupFailures(report, appTranslate())
+        if (!notice) return
+        toast(notice.message, {
+          type: 'error',
+          action: {
+            label: notice.actionLabel,
+            onClick: () => navigate(ROUTES.settings),
+          },
+        })
+      })
+      .catch(() => {
+        // 读报告本身失败：不提示。插件页里仍会如实列出目录与坏文件。
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [navigate])
 
   useEffect(() => {
     initAudioAnalyser()

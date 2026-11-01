@@ -29,6 +29,9 @@ import { pluginIdOf } from './pluginIdOf'
 // 否则会撞上 musicSource → executor → builtins → auroraPlugin → musicSource 的环，
 // 拿到尚未初始化的插件对象（见 builtins.ts 顶部说明）
 import { ensureBuiltinsRegistered } from './builtins'
+// 诊断日志出口。`logging/logger` 只依赖 `redact` 与 `types`，不反向依赖插件层，
+// 因此这条 import 不会引入新的环（与 `installed.ts` 那条被刻意避开的不一样）。
+import { createLogger } from '../logging/logger'
 
 export { pluginIdOf }
 
@@ -187,11 +190,43 @@ export async function playlistTracksViaPlugin(
  *
  * `fetch` 用全局实现：插件不自带网络栈，同一份代码才能在两端共用。
  * 桌面端注册宿主时已把 Node 网络栈装进全局；移动端用的是 CapacitorHttp 包装版。
+ *
+ * ⚠️ 已安装插件的**主机白名单**不在这里包：本函数在 shared 层，而
+ * `guardedFetchOf` 所在的 `installed.ts` 会经 `manifest/source` → `script` 反向
+ * import 回本模块，构成循环。白名单落在**真正持有宿主的那一侧**（桌面端
+ * `ipc/pluginHost.ts` 的 `pluginFetchOf`，它同时覆盖 5 处构造点）。
+ * 移动端的插件调用走 `mobile/index.ts` 里自己的通道，同样在那一侧包。
  */
 export function hostContextOf(source?: OnlineSourceConfig | null): PluginContext {
   return {
     fetch: globalThis.fetch,
     headers: source?.headers,
+    log: pluginLogger(source?.name),
+  }
+}
+
+/**
+ * 插件的诊断日志出口。
+ *
+ * 契约上 `PluginContext.log` 是可选的，但**留空等于丢诊断**：第三方插件出错时
+ * 我们只能看到一句网络错误。这里统一接到应用的 logger 上，scope 带源名，
+ * 日志里能直接看出是哪条源在报。
+ *
+ * 惰性取 `createLogger`：`logging` 层在应用初始化期才装配 sink，模块求值期取会
+ * 拿到未初始化的出口。取不到就退化成 `console`，绝不因为日志而让插件调用失败。
+ */
+function pluginLogger(name?: string): (message: string, detail?: unknown) => void {
+  const scope = `plugin${name ? `:${name}` : ''}`
+  return (message, detail) => {
+    try {
+      // 延迟到调用时求值：`logging` 的 sink 在应用启动后才有
+      const logger = createLogger(scope)
+      if (detail === undefined) logger.warn(message)
+      else logger.warn(message, detail)
+    } catch {
+      // 日志永不是致命路径
+      console.warn(`[${scope}] ${message}`, detail ?? '')
+    }
   }
 }
 
