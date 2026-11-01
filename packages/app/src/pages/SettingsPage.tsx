@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Monitor, Moon, Sun, FolderOpen, Trash2, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Check, Github, FileText, Copy, ShieldAlert } from 'lucide-react'
+import { Monitor, Moon, Sun, FolderOpen, Trash2, RefreshCw, Download, CheckCircle2, AlertCircle, ChevronDown, Check, Github, FileText, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PageLayout } from '@/components/PageLayout'
 import { PageTitle } from '@/components/PageHeading'
 import { useLibraryStore, defaultAudioCacheLimitMB } from '@/stores/libraryStore'
-import type { LogStorageInfo } from '@/types'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
 import { platform, DEFAULT_MOBILE_DOWNLOAD_DIR } from '@/services/platform'
@@ -26,13 +25,7 @@ import { APP_VERSION, REPO_URL, checkForUpdate, openDownloadPage, type UpdateInf
 import { isInAppUpdateAvailable, startInAppDownload, useUpdateDownloadStore } from '@/stores/updateDownloadStore'
 import { getAudioCacheUsage, clearAudioCache } from '@/services/audioCache.service'
 import { resetCoverCache } from '@/components/common/CoverImage'
-import {
-  exportLogs,
-  getLogInfo,
-  revealLogs,
-  supportsLogExport,
-  supportsLogReveal,
-} from '@/services/logging.service'
+import { exportLogs, revealLogs, supportsLogExport, supportsLogReveal } from '@/services/logging.service'
 import { PluginManagerPanel } from '@/components/common/PluginManagerPanel'
 import { pluginExecutionAvailable, pluginInstallAvailable } from '@/components/common/pluginManage'
 import {
@@ -529,23 +522,9 @@ export function SettingsPage() {
   // 整个分区隐藏，而不是给出一个点了必然失败的按钮。
   const supportsDiagnostics = supportsLogExport()
   const canRevealLogs = supportsLogReveal()
-  const [logInfo, setLogInfo] = useState<LogStorageInfo | null>(null)
   const [logExporting, setLogExporting] = useState(false)
   /** 最近一次导出的落盘路径：展示在行内，用户要自己把文件发出来，路径是唯一线索 */
   const [logExportPath, setLogExportPath] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!supportsDiagnostics) return
-    let mounted = true
-    // 只在进入设置页时取一次：日志文件按天滚动，短时间内不会变，
-    // 而 info() 在移动端要逐个 stat 文件，低频调用即可
-    void getLogInfo().then((info) => {
-      if (mounted) setLogInfo(info)
-    })
-    return () => {
-      mounted = false
-    }
-  }, [supportsDiagnostics])
 
   const handleExportLogs = async () => {
     if (logExporting) return
@@ -575,9 +554,6 @@ export function SettingsPage() {
           { type: 'error', duration: 5000 }
         )
       }
-      // 导出会新增文件，占用随之变化 —— 刷新一次状态
-      const info = await getLogInfo()
-      if (info) setLogInfo(info)
     } finally {
       setLogExporting(false)
     }
@@ -1180,47 +1156,6 @@ export function SettingsPage() {
                     }
                   />
                 )}
-
-                <SettingRow
-                  label={t('settings.diagnostics.storage.label')}
-                  hint={
-                    logInfo && logInfo.files.length > 0
-                      ? t('settings.diagnostics.storage.hint', {
-                          files: formatNumber(logInfo.files.length, locale),
-                          size: formatBytes(logInfo.totalBytes, locale),
-                        })
-                      : t('settings.diagnostics.storage.hintEmpty')
-                  }
-                  control={
-                    // 上限写成胶囊而非长句：它是常量说明，不是每次都要读的信息
-                    logInfo ? (
-                      <span className="font-text text-caption text-white/45">
-                        {t('settings.diagnostics.storage.maxHint', {
-                          size: formatBytes(logInfo.maxFileBytes, locale),
-                          files: formatNumber(logInfo.maxFiles, locale),
-                        })}
-                      </span>
-                    ) : undefined
-                  }
-                />
-
-                {/*
-                  隐私提示是**必需**的一条，不是可选的免责声明：
-                  日志可用性建立在「用户愿意把它发出来」之上，而发出来之前他必须知道
-                  这里面可能有什么。脱敏只按名字认凭据，歌名 / 文件路径 / 目录名
-                  依然会原样出现，所以文案写「请自行检查」而不是「可放心发送」。
-                */}
-                <div className="inset-note flex items-start gap-2 px-3 py-2.5">
-                  <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400/80" strokeWidth={1.6} />
-                  <div className="min-w-0">
-                    <p className="font-text text-caption-strong text-white/80">
-                      {t('settings.diagnostics.privacy.title')}
-                    </p>
-                    <p className="font-text text-caption mt-1 leading-[1.5] text-white/55">
-                      {t('settings.diagnostics.privacy.body')}
-                    </p>
-                  </div>
-                </div>
               </SettingsSection>
             )}
           </div>

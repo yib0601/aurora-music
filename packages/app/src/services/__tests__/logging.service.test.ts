@@ -280,8 +280,8 @@ describe('★ 护栏：导出文本不含凭据原值', () => {
   it('已知边界：分两条记录打印的「键名在上、值在下」拦不住（脱敏按行认，不跨记录）', () => {
     // 这不是 bug 而是策略边界：脱敏按名字认键值对，跨记录拼接需要把整个日志包
     // 当上下文重新推理，代价与误伤都不可接受（会把正常文案也打码）。
-    // 把这个边界**钉进测试**而不是假装它不存在 —— 设置页的隐私提示
-    // （settings.diagnostics.privacy.body 的「发送前请自行检查」）正是为它而写。
+    // 把这个边界**钉进测试**而不是假装它不存在：导出前必须自己看一眼，
+    // 不能指望脱敏兜住一切。
     transmit('info', 'config loaded password:')
     transmit('info', `value is ${FAKE_PASSWORD}`)
     const exportedText = buildExportText(mocks.recorded)

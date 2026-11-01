@@ -117,16 +117,6 @@ const en: LocalizedOf<typeof settings> = {
       button: 'Open folder',
       failed: 'Could not open the log folder',
     },
-    storage: {
-      label: 'Log size',
-      hint: '{files} file(s), {size} total',
-      hintEmpty: 'No log files yet (the app may not have produced any output since it started)',
-      maxHint: 'Up to {size} per file, {files} file(s) kept',
-    },
-    privacy: {
-      title: 'Privacy notice',
-      body: 'Logs are redacted automatically (passwords, API keys, cookies and auth headers are replaced with ***), but they can still contain song titles, file paths and similar personal data. Please skim the file before sending it anywhere.',
-    },
   },
 }
 
