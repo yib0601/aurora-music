@@ -48,28 +48,103 @@ export function getPlaybackRate(): number {
 export function setPlaybackRate(rate: number): void {
   currentRate = normalizePlaybackRate(rate)
   if (currentHowl) {
-    applyRate(currentHowl, currentRate)
+    applyRate(currentHowl)
   }
 }
 
 /**
  * 把速率应用到某个 Howl。
  *
- * 未加载完成时 Howler 会把这次调用推进它自己的 `_queue`，在 `load` 之后
- * 自动补做（howler.js 的 rate()：`_state !== 'loaded'` 即入队）。
- * 因此这里不需要等待 onload，调用顺序也是安全的。
+ * ## 为什么不能只调一次 `howl.rate()`
  *
- * 仍然在 startHowl 的 onload 里再应用一次：那条路径**同步**（state 已是
- * 'loaded'），不依赖 Howler 的队列时序，是「每个新 Howl 都吃到速率」的
- * 确定性保证。两次设置同一个值，幂等。
+ * Howler 的 `rate()` 在 `_state !== 'loaded'` **或 `_playLock` 为真**时**不生效**，
+ * 只是把动作推进它自己的 `_queue`（见 howler.js `rate:` 分支）。那两个条件在
+ * `html5: true` 模式下恰恰是起播时的常态：`play()` 会先置 `_playLock = true`、
+ * 再把 `_state` 置为 `'loading'`，直到元素 `canplay` 才释放。
+ *
+ * 而 `_loadQueue()` **只清掉队首那一条匹配事件的任务**，且只在
+ * `if (parent._state !== 'loaded')` 那个分支里被调用一次。于是：
+ *
+ * - 起播瞬间写一次 → 入队 → 后续没有任何东西把它重新跑一遍；
+ * - 同一个 Howl 上再写一次 → 队列里堆两条（实测 `_queue.length === 2`）→ 都不生效。
+ *
+ * 表现就是**变速静默失效**：`store.playbackRate` 显示 2，进度条仍按 1× 走，
+ * 控制台一句话都没有。这正是本轮实测抓到的真缺陷（旧实现的两处调用都落在这个坑里）。
+ *
+ * ## 现在的做法
+ *
+ * 写入前先看 Howler 的两个闸门；关着就等它开（`loaded` + 未加锁）再写一次，
+ * 不依赖 Howler 的队列时序。等待有次数上限，超时后放弃并留一条诊断日志 ——
+ * 变速是附加能力，不能因为它卡住播放链路。
  */
-function applyRate(howl: Howl, rate: number): void {
+function applyRate(howl: Howl, attempt = 0): void {
+  const h = howl as unknown as {
+    _state?: string
+    _playLock?: boolean
+    rate: (r: number) => unknown
+  }
+
+  // Howler 此刻接不了速率：等一个可写的时机再写（`once('load')` 之外还要避开
+  // `_playLock` —— 实测 `load` 事件发出时 `_playLock` 仍可能为真）。
+  //
+  // 判定写成「**明确处于加载中**」而不是「不等于 loaded」：内部字段缺失
+  // （`_state === undefined`，例如较新的 Howler 改了私有字段名、或单测里的替身）
+  // 时应当**照常写入**。反过来写会把一处内部实现细节变成硬依赖：字段一改名，
+  // 变速就会静默失效，而它本该只是"这一帧不确定，先试一次"。
+  const loading = h._state === 'loading' || h._state === 'unloaded'
+  if (loading || h._playLock) {
+    if (attempt >= RATE_APPLY_MAX_ATTEMPTS) {
+      // 放弃但不影响播放：这条日志是给"用户报变速无效"时定位用的唯一线索
+      console.warn('[播放] 速率未能应用（Howler 长时间不可写）:', {
+        rate: currentRate,
+        state: h._state,
+        playLock: h._playLock,
+      })
+      return
+    }
+    rateApplyTimers.set(howl, setTimeout(() => {
+      rateApplyTimers.delete(howl)
+      applyRate(howl, attempt + 1)
+    }, RATE_APPLY_RETRY_MS))
+    return
+  }
+
   try {
-    howl.rate(rate)
+    // ⚠️ 每次都用**当前**的 `currentRate`，不接受调用点传进来的快照值。
+    //
+    // 快照会造成一个只在时序里才出现的缺陷：用户连点两档（1× → 2× → 0.5×）时，
+    // 前一次的重试还挂在同一个 Howl 上，等它到点执行就会把中间那个 2× 写回去 ——
+    // 用户看到的是「最后一次选择没生效，停在倒数第二次」。实测已复现。
+    // 读全局值让所有在途重试自然收敛到"最后一次用户意图"，也省掉一次参数传递。
+    h.rate(currentRate)
   } catch (err) {
     // 越界速率在部分内核上会让 HTMLMediaElement.playbackRate 抛
     // InvalidStateError。变速是附加能力，不能因此中断播放
-    console.warn('[播放] 设置播放速率失败:', rate, err)
+    console.warn('[播放] 设置播放速率失败:', currentRate, err)
+  }
+}
+
+/**
+ * 待写入速率的 Howl → 定时器。
+ *
+ * 为什么按 Howl 记而不是一个全局定时器：切歌时旧 Howl 会被 unload，
+ * 它还挂着的重试必须能被取消（见 `stopPlayback` / `startHowl` 的清理），
+ * 否则旧实例的重试会在新实例上跑一遍，把速率写成上一个用户设定值。
+ */
+const rateApplyTimers = new WeakMap<Howl, ReturnType<typeof setTimeout>>()
+
+/** 重试间隔：Howler 的 `_playLock` 在 canplay 后释放，实测量级是几十毫秒 */
+const RATE_APPLY_RETRY_MS = 40
+/** 重试上限：40ms × 50 ≈ 2s，足够覆盖慢速网络下的首次 canplay；再久就没有意义了 */
+const RATE_APPLY_MAX_ATTEMPTS = 50
+
+/** 取消某个 Howl 上尚未执行的重试（切歌 / 停止时调用） */
+function cancelRateApply(howl: Howl | null): void {
+  if (!howl) return
+  const timer = rateApplyTimers.get(howl)
+  if (timer !== undefined) {
+    clearTimeout(timer)
+    rateApplyTimers.delete(howl)
   }
 }
 
@@ -143,6 +218,8 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
     const oldHowl = currentHowl
     // 立即停止输出(即使 unload 之前的 fade 也已无效)
     oldHowl.volume(0)
+    // 取消旧实例上挂着的速率重试：不清会在新曲目上跑一遍，把速率写成旧值
+    cancelRateApply(oldHowl)
     oldHowl.unload()
     currentHowl = null
   }
@@ -224,7 +301,7 @@ function startHowl(track: Track, src: string, isOnline: boolean, targetVolume: n
       const dur = howl.duration()
       // 新 Howl 的 rate 不会继承上一个实例（Howler 的速率是按 Howl 存的），
       // 这里同步再落一次，保证「切歌后速率回到用户设定」而不是悄悄变回 1×
-      applyRate(howl, currentRate)
+      applyRate(howl)
       // 上源提示音 / 试听片段闸门：实际时长远短于**元数据时长**时，这个地址指向的是
       // 版权提示音或试听片段，不是本曲音频。判据是比例（见 lib/audioGuard），
       // 不是「小于 10 秒」——实测片段是 48~221 秒，绝对阈值会整批漏过。
@@ -362,6 +439,7 @@ export function togglePlayPause(isPlaying: boolean): void {
 
 export function stopPlayback(): void {
   if (currentHowl) {
+    cancelRateApply(currentHowl)
     currentHowl.stop()
     currentHowl.unload()
     currentHowl = null
