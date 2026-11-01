@@ -19,7 +19,7 @@ const showItemInFolder = vi.fn()
 const deleteTrack = vi.fn()
 const getAllTracks = vi.fn()
 const getTrackById = vi.fn()
-const existsSync = vi.fn(() => true)
+const existsSync = vi.fn((_path: string) => true)
 
 vi.mock('electron', () => ({
   ipcMain: {
