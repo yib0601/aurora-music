@@ -53,9 +53,15 @@ const DEFAULT_TIMEOUT_MS = 20000
  *
  * 这层必须落在**构造 ctx 的唯一入口**上（本函数 + 下面三处登录态 ctx），
  * 否则「插件只依赖注入的 fetch」这条契约就漏了：插件换一个调用点就绕过了白名单。
+ *
+ * `configuredUrl` 是 `configured-origin` 形态的判定依据 —— 见 `guardedFetchOf`
+ * 的注释：漏传会让那类插件被自己的白名单全拒。拿不到配置的通道（登录态）传 undefined。
  */
-function pluginFetchOf(pluginId: string): typeof globalThis.fetch {
-  return guardedFetchOf(pluginId) ?? globalThis.fetch
+function pluginFetchOf(
+  pluginId: string,
+  config?: OnlineSourceConfig | null
+): typeof globalThis.fetch {
+  return guardedFetchOf(pluginId, config?.sourceUrl) ?? globalThis.fetch
 }
 
 /**
@@ -69,7 +75,7 @@ function buildContext(
 ): Record<string, unknown> | never {
   const credential = plugin.id ? readCredentialOf(plugin.id) : null
   return {
-    fetch: pluginFetchOf(plugin.id),
+    fetch: pluginFetchOf(plugin.id, config),
     headers: config?.headers,
     credential,
   }

@@ -194,11 +194,24 @@ export function mountInstalled(
  *
  * 只对已安装插件有意义：内置插件的请求目标由我们审过，不需要运行期白名单。
  * 未安装的 id 返回 undefined（调用方回落全局 fetch）。
+ *
+ * ## `configuredUrl` 必须由调用方传
+ *
+ * `configured-origin` 形态下放行的是**用户填的那一个 origin**，它只存在于
+ * `config.sourceUrl` 里 —— 清单与注册表都拿不到。不传的后果是 `originOf('')`
+ * 返回空串，而 `allowlistAllows` 对空 origin 是 fail-closed，**该插件所有请求
+ * 都被拒**（表现为"装上了但搜不到任何东西"，且日志里只有一行越界错误）。
+ *
+ * 所以这个参数是必需语义、可空类型：调用方拿不到 `config` 时（如登录态通道）
+ * 传 undefined 是**明确没有地址**，不是忘了传。
  */
-export function guardedFetchOf(pluginId: string): typeof globalThis.fetch | undefined {
+export function guardedFetchOf(
+  pluginId: string,
+  configuredUrl?: string
+): typeof globalThis.fetch | undefined {
   const manifest = INSTALLED.get(pluginId)
   if (!manifest) return undefined
-  return createGuardedFetch(manifest, globalThis.fetch)
+  return createGuardedFetch(manifest, globalThis.fetch, { configuredUrl })
 }
 
 /** 某插件是否已在音源注册表里（诊断用：注册失败时 UI 能说明"这个插件没有音源能力"） */

@@ -23,13 +23,14 @@ release
 
 # TypeScript 编译产物（源码目录内）
 # 注意：源码目录里也有**手写**的 .js 与 .d.ts（移动端沙箱 Worker、
-# vite 的 `?raw` 类型声明），它们必须入库，所以这里排除 .ts 同源的产物：
-# tsc 的输出与被编译的 .ts 同名同目录，下面按名字取反（!）逐个放行。
+# vite 的 `?raw` 类型声明），它们必须入库，所以按**具体文件**逐个放行。
+# 不写 `!/**/src/**/*.d.ts` 这类通配取反：那会把整条忽略规则抵消掉，
+# 将来任何工具往 src 里吐 .d.ts 都会静默入库。
 **/src/**/*.js
 **/src/**/*.js.map
 **/src/**/*.d.ts
-!/**/src/**/*.worker.js
-!/**/src/**/*.d.ts
+!packages/app/src/vite-env.d.ts
+!packages/app/src/services/platform/mobile/lxSandbox.worker.js
 
 # 环境变量
 .env

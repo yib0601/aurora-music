@@ -14,7 +14,7 @@ import {
   mergeSelfDescribed,
   splitServiceUrl,
 } from '../service'
-import { allowlistAllows, createGuardedFetch, originOf } from '../host'
+import { allowlistAllows, createGuardedFetch, manifestAllowlistMode, originOf } from '../host'
 import type { PluginManifest } from '../types'
 
 describe('splitServiceUrl：服务地址与密钥拆分', () => {
@@ -187,6 +187,76 @@ describe('createGuardedFetch：越界请求不发出', () => {
     // 放行的地址正常发出
     await guarded('https://mine.example.com/aurora')
     expect(called).toBe(1)
+  })
+
+  /**
+   * 回归：mode 由清单推断，而不是调用方硬编码。
+   *
+   * 曾经的 bug：`installed.ts` 调 `createGuardedFetch` 不传 options，mode 回落
+   * `declared-hosts`；而 service 形态的 `hosts` 按约定允许为空 → 白名单恒空 →
+   * **该插件所有请求都被拒**，表现是"装上了但什么也搜不到"。
+   *
+   * 这个用例故意**不传 options**，模拟生产路径的真实调用方式。
+   */
+  it('service 形态清单不传 options 时，按 configured-origin 放行同 origin 请求', async () => {
+    let called = 0
+    const base = (async () => {
+      called++
+      return new Response('ok')
+    }) as unknown as typeof globalThis.fetch
+
+    // 真实 service 形态：allowlist + service 同时存在，hosts 为空（validate 已放行）
+    const manifest = {
+      id: 'svc',
+      hosts: [],
+      allowlist: 'configured-origin',
+      service: { endpoints: {} },
+    } as unknown as Parameters<typeof createGuardedFetch>[0]
+
+    const guarded = createGuardedFetch(manifest, base, {
+      configuredUrl: 'https://h.example.com?key=k',
+    })
+
+    // 用户填的那个 origin 必须放行 —— 否则整条 service 链路在运行期全废
+    await guarded('https://h.example.com/aurora?query=x&key=k')
+    expect(called).toBe(1)
+
+    // 仍然禁止越界（不因为推断就放宽）
+    await expect(guarded('https://evil.example.com/x')).rejects.toThrow()
+    expect(called).toBe(1)
+  })
+
+  it('没填用户地址时 service 形态仍 fail-closed（不放行一切）', async () => {
+    const base = (async () => new Response('ok')) as unknown as typeof globalThis.fetch
+    const manifest = {
+      id: 'svc',
+      hosts: [],
+      allowlist: 'configured-origin',
+      service: { endpoints: {} },
+    } as unknown as Parameters<typeof createGuardedFetch>[0]
+    // 不传 configuredUrl：调用方没拿到配置，不能因此放行
+    const guarded = createGuardedFetch(manifest, base)
+    await expect(guarded('https://h.example.com/x')).rejects.toThrow()
+  })
+
+  it('普通清单（无 service）仍走 declared-hosts，不因改动误放行', async () => {
+    const base = (async () => new Response('ok')) as unknown as typeof globalThis.fetch
+    const manifest = { id: 'p', hosts: ['api.example.com'] } as unknown as Parameters<
+      typeof createGuardedFetch
+    >[0]
+    const guarded = createGuardedFetch(manifest, base)
+    await guarded('https://api.example.com/x')
+    await expect(guarded('https://other.example.com/x')).rejects.toThrow()
+  })
+})
+
+describe('manifestAllowlistMode：清单是 mode 的唯一权威', () => {
+  it('allowlist + service 同时具备才推断为 configured-origin', () => {
+    const svc = { allowlist: 'configured-origin', service: {} } as never
+    expect(manifestAllowlistMode(svc)).toBe('configured-origin')
+    // 只有 allowlist 没有 service：校验期就会被拒，运行期按旧规则处理
+    expect(manifestAllowlistMode({ allowlist: 'configured-origin' } as never)).toBe('declared-hosts')
+    expect(manifestAllowlistMode({ hosts: [] } as never)).toBe('declared-hosts')
   })
 })
 

@@ -153,15 +153,27 @@ export function isHostNotAllowedError(err: unknown): boolean {
  * 返回的函数**签名与 `globalThis.fetch` 完全一致**，可以直接塞进
  * `PluginContext.fetch`，插件实现里不需要任何分支（"我是不是外部插件"这个判断
  * 在运行期不存在）。
+ *
+ * ## mode 从清单推断，不由调用方硬编码
+ *
+ * 清单自己声明了 `allowlist`（见 `validate.ts`：`service` 与 `configured-origin`
+ * 互为必要条件）。调用方若要手写 mode，就得在每个构造 ctx 的地方重复一遍这条
+ * 对应关系——漏一处，那份清单就会用另一套规则判定。实测过的后果：
+ * `installed.ts` 曾经不传 options，于是 service 形态清单回落 `declared-hosts`，
+ * 而它的 `hosts` 按约定允许为空 → 白名单恒空 → **插件的每个请求都被拒**，
+ * 表现是"装上了但什么也搜不到"。
+ *
+ * 所以这里让清单做唯一权威：`options.mode` 只在调用方确实要覆盖时才给。
  */
 export function createGuardedFetch(
-  manifest: Pick<PluginManifest, 'id' | 'hosts'>,
+  manifest: Pick<PluginManifest, 'id' | 'hosts' | 'allowlist' | 'service'>,
   base: typeof globalThis.fetch,
   /** `configured-origin` 模式下用户填的服务地址（调用方现传，因为配置会变） */
   options?: { mode?: AllowlistMode; configuredUrl?: string }
 ): typeof globalThis.fetch {
   const policy: AllowlistPolicy = {
-    mode: options?.mode ?? 'declared-hosts',
+    // 清单声明的 mode 优先于默认值；显式 options 仍可覆盖（单测与诊断用）
+    mode: options?.mode ?? manifestAllowlistMode(manifest),
     hosts: Array.isArray(manifest.hosts) ? manifest.hosts : [],
     configuredUrl: options?.configuredUrl,
   }
@@ -172,4 +184,20 @@ export function createGuardedFetch(
   }
   // 只补 `preconnect`（fetch 的类型上它是可选的静态方法），其余静态成员不属于契约
   return guarded as typeof globalThis.fetch
+}
+
+/**
+ * 从清单读出白名单模式。
+ *
+ * 缺省 `declared-hosts`（向后兼容：老清单没有这两个字段）。
+ * `configured-origin` 要求 `allowlist` 与 `service` 同时具备 —— 与
+ * `validate.ts:408-413` 的校验口径一致，这里再判一次是因为运行期拿到的清单
+ * 可能来自磁盘上已存在的老文件（校验只发生在安装当时）。
+ */
+export function manifestAllowlistMode(
+  manifest: Pick<PluginManifest, 'allowlist' | 'service'>
+): AllowlistMode {
+  return manifest.allowlist === 'configured-origin' && manifest.service
+    ? 'configured-origin'
+    : 'declared-hosts'
 }

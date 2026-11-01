@@ -59,6 +59,7 @@ export {
   hostNotAllowedError,
   hostOf,
   isHostNotAllowedError,
+  manifestAllowlistMode,
 } from './host'
 
 export {
