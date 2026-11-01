@@ -116,13 +116,28 @@ export interface OnlineLyricsResult {
  * 注册表所在的主进程）。本函数只负责「源配置 → 歌词源」这一段。
  */
 function lyricsSourcesFromLibrary(): LyricsSourceConfig[] {
-  const { onlineSources } = useLibraryStore.getState()
+  const { onlineSources, lyricsSources } = useLibraryStore.getState()
   const out: LyricsSourceConfig[] = []
+
+  // 1. 用户**显式配置**的歌词源排最前（v15）。
+  //
+  // 为什么在派生源之前：用户填了就说明他要它优先。反过来（派生源抢先）会出现
+  // 「我把歌词源改成 B 了，怎么还是 A 的歌词」—— 而 A 只是因为他还有一条音源。
+  // 顺序即优先级（`firstSuccess` 按此顺序启动各档），所以这一条必须是第 1 段。
+  for (const cfg of lyricsSources || []) {
+    if (!cfg || cfg.enabled === false) continue
+    if (!cfg.sourceUrl) continue
+    out.push(cfg)
+  }
+
+  // 2. 从音源派生的歌词源（服务地址形态的音源自描述里带 `endpoints.lyric`）
   for (const source of onlineSources) {
     if (!source.enabled) continue
     // 派生不出歌词源的源直接跳过（"这个源不提供歌词"是正常情况，不是失败）
     const cfg = lyricsSourceViaPlugin(source, hostContextOf(source))
     if (!cfg) continue
+    // 与显式配置的 id 撞了就跳过：同一份上游被打两遍是纯浪费，且顺序不受控
+    if (out.some((item) => item.id === cfg.id)) continue
     out.push(cfg)
   }
   return out

@@ -7,7 +7,7 @@ import {
   clearLxSourceCache,
   clearTrackEndpointCache,
 } from '@aurora/shared'
-import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig } from '@/types'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig, LyricsSourceConfig } from '@/types'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
 import { configureAudioCache } from '@/services/audioCache.service'
@@ -481,6 +481,8 @@ export const useLibraryStore = create<LibraryState>()(
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
         searchHistory: state.searchHistory,
+        // 歌词源全部字段都是配置数据、没有运行期字段，直接落盘即可（不做白名单裁剪）
+        lyricsSources: state.lyricsSources,
         onlineSources: state.onlineSources.map((s) => ({
           id: s.id,
           name: s.name,
@@ -585,6 +587,10 @@ export const useLibraryStore = create<LibraryState>()(
             // 歌词并入音源：独立「歌词源」配置退场，歌词能力改为读音源服务的端点自描述
             // （见 shared/src/auroraPreset.ts 的 lyricEndpointOf）。歌词是「用完即弃」的
             // 在线查询，没有需要保留的用户数据，老字段直接丢弃即可。
+            //
+            // ⚠️ v15 起这条**只对 version < 12 的历史数据**生效：v12 之后歌词源配置
+            // 重新成为一等公民（见 `lyricsSources` 字段注释）。不能再无条件删 ——
+            // 否则每次升级都会把用户在 v15 里配的歌词源清空。
             delete persisted.lyricsSources
           }
           if (version < 13) {
@@ -636,7 +642,7 @@ export const useLibraryStore = create<LibraryState>()(
       // v13 存储插件化：曲库来源由存储插件执行，`pluginId` 取代 `kind` 成为标识；
       //     老配置的顶层扁平字段搬进 `settings`，**口令从持久化里摘出**改由主进程
       //     safeStorage 加密保存（见上方 toPersistedLibrarySource / pendingStorageSecrets）
-      version: 13,
+      version: 14,
       onRehydrateStorage: () => (state) => {
         if (state?.likedTrackIds) {
           state.likedTracks = new Set(state.likedTrackIds)
