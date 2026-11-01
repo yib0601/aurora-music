@@ -57,13 +57,21 @@ export async function loadPluginMeta(): Promise<PluginMetaInfo[]> {
 }
 
 /**
- * 需要登录的插件（有 `auth` 能力）。
+ * 需要登录的插件（有 `auth` 能力，且未被用户停用）。
  *
  * 判定按能力而不是按 id：将来任何插件声明了 auth 都自动出现在登录区，
- * 无需改本文件。
+ * 无需改本文件。停用的插件排除在外 —— 它不参与执行，登录状态没有任何意义。
  */
 export function pluginsNeedingAuth(metas: readonly PluginMetaInfo[]): PluginMetaInfo[] {
-  return metas.filter((m) => Array.isArray(m.capabilities) && m.capabilities.includes('auth'))
+  return metas.filter(
+    (m) =>
+      Array.isArray(m.capabilities) &&
+      m.capabilities.includes('auth') &&
+      // 已停用的插件不列出来：对它展示"登录 / 退出登录"会让用户以为它还能用，
+      // 而真正该做的动作在插件列表上（重新启用）。`enabled` 缺失（老 preload）
+      // 按启用处理，行为与改造前一致。
+      m.enabled !== false
+  )
 }
 
 /** 查询登录态 */

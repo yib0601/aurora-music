@@ -31,7 +31,6 @@ import {
   type PluginPermission,
 } from './types'
 import { parsePath } from './path'
-import { checkSignatureShape } from './signature'
 
 /**
  * 允许的权限。
@@ -337,9 +336,6 @@ export function validatePluginManifest(input: unknown): ManifestValidation {
   if (input.homepage !== undefined && !isHttpUrl(input.homepage)) {
     log.add('homepage', 'invalid-url', input.homepage)
   }
-
-  // 签名块：只查**形状**。有效性需要公钥与异步验签，属于安装流程（见 signature.ts）
-  checkSignatureShape(log, 'signature', input.signature)
 
   // ─── 权限与主机 ─────────────────────────────────────────────
 
@@ -770,9 +766,6 @@ function buildManifest(input: Record<string, unknown>): PluginManifest {
   }
   if (input.description !== undefined) manifest.description = input.description as PluginManifest['description']
   if (input.author !== undefined) manifest.author = input.author as string
-  if (input.signature !== undefined) {
-    manifest.signature = input.signature as PluginManifest['signature']
-  }
   if (input.homepage !== undefined) manifest.homepage = input.homepage as string
   if (input.source !== undefined) manifest.source = input.source as PluginManifest['source']
   if (input.script !== undefined) manifest.script = input.script as PluginManifest['script']

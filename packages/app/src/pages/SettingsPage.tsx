@@ -48,7 +48,6 @@ import { checkLxScriptLink, lxFormSupported, renderError } from '@/components/co
 import { pluginFormRows, formKindOf, type PluginFormRow } from '@/components/common/pluginForm'
 import { PluginAuthPanel } from '@/components/common/PluginAuthPanel'
 import { PluginManagerPanel } from '@/components/common/PluginManagerPanel'
-import { PluginTrustPanel } from '@/components/common/PluginTrustPanel'
 import { builtinPlugins } from '@aurora/shared'
 import {
   buildAuroraEndpoints,
@@ -831,6 +830,14 @@ function SourceAddDialog({
   const [probe, setProbe] = useState<{ loading: boolean; ok?: boolean; message?: string }>({ loading: false })
   const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(undefined)
   const [lxProbe, setLxProbe] = useState<LxProbeState>({ loading: false })
+  /**
+   * 被用户停用的插件 id。
+   *
+   * 必须**从平台层取**而不是在本进程查 `isPluginEnabled`：桌面端的启停状态活在主进程，
+   * 渲染层这份 `@aurora/shared` 的内存表永远是空的。自己查会把停用判成启用，
+   * 于是这里仍能选到已停用的插件，建出一条永远不工作的源。
+   */
+  const [disabledPluginIds, setDisabledPluginIds] = useState<string[]>([])
   const t = useT()
 
   // 每次打开重置表单
@@ -849,13 +856,28 @@ function SourceAddDialog({
     }
   }, [open])
 
+  // 停用清单跟着弹窗打开刷新：用户很可能是刚在插件列表关掉一个插件就回来加音源，
+  // 缓存住旧值会让那个插件仍然可选。取不到（老 preload / 移动端旧包）时按"全部启用"。
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void (async () => {
+      const list = (await platform.plugins?.listDisabledPlugins?.()) || []
+      if (!cancelled) setDisabledPluginIds(list)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
   // 洛雪脚本要在平台侧拉取与执行：桌面端经主进程、移动端走原生 HTTP，纯浏览器（web）没有该能力。
   // 入口就挡掉——不让用户填完链接、点完测试才拿到「不支持」；平台在运行期不会变，取一次即可
   const lxSupported = lxFormSupported({ desktop: isDesktop(), mobile: isMobile() })
   // 形态列表由注册表推导：新增插件不需要改本文件（见 components/common/pluginForm.ts）
   const pluginRows: PluginFormRow[] = pluginFormRows(
     builtinPlugins(),
-    { desktop: isDesktop(), mobile: isMobile() }
+    { desktop: isDesktop(), mobile: isMobile() },
+    disabledPluginIds
   )
   const formKind = formKindOf(pluginId)
   // 洛雪脚本形态：提供的是取址能力，与 aurora 端点的占位符协议并列
@@ -1341,11 +1363,16 @@ function LibrarySourceAddDialog({
                 }}
                 className={inputCls}
               >
-                {plugins.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {t(p.displayNameKey)}
-                  </option>
-                ))}
+                {/* 已停用的协议不出现在新增来源的选项里：选它只会建出一条永远连不上的来源，
+                    而"为什么连不上"的真实原因（插件被停用）在另一个页面。
+                    已存在的来源不受影响 —— 它们会以具体原因失败，用户据此回去打开开关。 */}
+                {plugins
+                  .filter((p) => p.enabled !== false)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {t(p.displayNameKey)}
+                    </option>
+                  ))}
               </select>
             </div>
           )}
@@ -2506,13 +2533,6 @@ export function SettingsPage() {
                 typeof platform.plugins?.installFromFile === 'function') && (
                 <SettingRow label={t('sources.plugins.title')} hint={t('sources.plugins.desc')}>
                   <PluginManagerPanel />
-                </SettingRow>
-              )}
-              {/* 签名信任根：只在支持管理信任表的端出现（桌面端）。
-                  与插件管理分开一个 SettingRow —— 它回答的是"我信任谁"，不是"我装了什么"。 */}
-              {typeof platform.plugins?.trustList === 'function' && (
-                <SettingRow label={t('sources.plugins.trust.title')} hint={t('sources.plugins.trust.desc')}>
-                  <PluginTrustPanel />
                 </SettingRow>
               )}
             </SettingsSection>

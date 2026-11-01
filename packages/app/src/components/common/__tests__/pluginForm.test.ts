@@ -39,6 +39,43 @@ describe('插件表单：由注册表推导形态列表', () => {
   })
 })
 
+/**
+ * 插件启停与「本端没有该能力」是**两种不同的不可选**：
+ * 前者用户点一下开关就能恢复，后者换设备才行。若两种都落成一句"不可用"，
+ * 用户会去换设备，而不是去打开那个开关。
+ */
+describe('插件表单：停用的插件不可选，且原因与本端不支持区分开', () => {
+  it('停用的插件被标为不可选，并给出"去插件里启用"的原因', () => {
+    const rows = pluginFormRows([plugin('aurora')], DESKTOP, ['aurora'])
+    expect(rows[0].enabled).toBe(false)
+    expect(rows[0].disabledTitleKey).toBe('sources.form.kindDisabledByUser')
+  })
+
+  it('停用优先于本端不支持：两者同时成立时报"已停用"（那是用户能动的那个）', () => {
+    // lx 在浏览器端本来就不支持，同时它又被用户停用了
+    const rows = pluginFormRows([plugin('lx')], BROWSER, ['lx'])
+    expect(rows[0].enabled).toBe(false)
+    expect(rows[0].disabledTitleKey).toBe('sources.form.kindDisabledByUser')
+  })
+
+  it('不传停用清单时行为不变（既有调用点零改动，默认全部可选）', () => {
+    const rows = pluginFormRows([plugin('aurora')], DESKTOP)
+    expect(rows[0].enabled).toBe(true)
+    expect(rows[0].disabledTitleKey).toBeUndefined()
+  })
+
+  it('停用清单里无关的 id 不影响其他插件', () => {
+    const rows = pluginFormRows([plugin('aurora'), plugin('qishui')], DESKTOP, ['someone-else'])
+    expect(rows.every((r) => r.enabled)).toBe(true)
+  })
+
+  it('内置插件也能被停用（可卸载与否不影响启停）', () => {
+    const rows = pluginFormRows([plugin('aurora'), plugin('lx')], DESKTOP, ['lx'])
+    expect(rows.find((r) => r.value === 'aurora')?.enabled).toBe(true)
+    expect(rows.find((r) => r.value === 'lx')?.enabled).toBe(false)
+  })
+})
+
 describe('插件表单：端能力判定', () => {
   it('桌面端三种插件都可用', () => {
     expect(pluginAvailableOn('aurora', DESKTOP)).toBe(true)

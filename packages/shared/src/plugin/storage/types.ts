@@ -175,6 +175,15 @@ export interface StoragePluginMeta {
   readonly fields: readonly StorageFieldDef[]
   /** 实际实现了的能力（由方法存在性派生） */
   readonly capabilities: readonly StoragePluginCapability[]
+  /**
+   * 用户是否启用该插件（与音源插件的 `PluginCatalogEntry.enabled` 同一口径）。
+   *
+   * 这里带一份是给**添加来源时的类型选择**用的：一个已停用的协议不该出现在
+   * "新增网络存储"的下拉里 —— 选它只会建出一条永远连不上的来源。
+   * 已存在的来源配置不受影响（它们会以"插件未启用"的具体原因失败，
+   * 用户据此去插件列表重新打开开关）。
+   */
+  readonly enabled: boolean
 }
 
 /**

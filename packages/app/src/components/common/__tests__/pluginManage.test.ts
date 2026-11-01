@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   PluginCatalogEntry,
   PluginInstallResult,
@@ -16,9 +16,33 @@ import {
   displayNameOf,
   installedEntries,
   builtinEntries,
+  loadPluginCatalog,
   permissionLinesOf,
+  pluginToggleAvailable,
   sourceEntriesOf,
+  togglePluginEnabled,
 } from '../pluginManage'
+
+/**
+ * 平台的桩。
+ *
+ * 用 getter 而不是把对象拍平：`pluginManage` 是在**模块加载时**取一次 `platform`
+ * 这个单例引用，但每次读 `.plugins` 都走 getter —— 于是每个用例可以换掉网关，
+ * 不必重新加载模块（重载会连带丢掉 `appTranslate` 的缓存对象）。
+ */
+const h = vi.hoisted(() => ({ plugins: undefined as unknown }))
+
+vi.mock('@/services/platform', () => ({
+  platform: {
+    get plugins() {
+      return h.plugins
+    },
+  },
+}))
+
+beforeEach(() => {
+  h.plugins = undefined
+})
 
 /** 假翻译器：把 key 原样返回并记录插值参数，让断言只关心"用了哪个键" */
 function fakeT(): ((key: string, params?: Record<string, unknown>) => string) & {
@@ -41,6 +65,7 @@ function entry(overrides: Partial<PluginCatalogEntry> = {}): PluginCatalogEntry 
     capabilities: ['search'],
     provenance: 'installed',
     removable: true,
+    enabled: true,
     ...overrides,
   }
 }
@@ -315,6 +340,99 @@ describe('本端能力判定（老 preload 兼容）', () => {
     const mod = await import('../pluginManage')
     expect(typeof mod.pluginExecutionAvailable).toBe('function')
     expect(typeof mod.pluginInstallAvailable).toBe('function')
+  })
+})
+
+describe('启停能力判定：只认 setPluginEnabled', () => {
+  it('完全没有网关 → 没有启停能力', () => {
+    expect(pluginToggleAvailable()).toBe(false)
+  })
+
+  it('有网关但没有 setPluginEnabled（老 preload）→ 没有启停能力', () => {
+    h.plugins = { list: async () => [], catalog: async () => ({ entries: [], broken: [] }) }
+    expect(pluginToggleAvailable()).toBe(false)
+  })
+
+  it('只有 listDisabledPlugins（读通道）也算没有：拨开关会失败，所以整块隐藏', () => {
+    h.plugins = { listDisabledPlugins: async () => [] }
+    expect(pluginToggleAvailable()).toBe(false)
+  })
+
+  it('setPluginEnabled 存在 → 有启停能力', () => {
+    h.plugins = { setPluginEnabled: async () => ({ ok: true, enabled: false }) }
+    expect(pluginToggleAvailable()).toBe(true)
+  })
+})
+
+describe('拨开关：成功 / 失败 / 无能力三条路径', () => {
+  const t = fakeT()
+
+  it('成功时透出网关回报的 enabled，而不是回显入参', async () => {
+    // 网关若因某种原因回了反值（如落盘失败后回滚），必须以网关为准 ——
+    // 否则开关会停在"已经切过去了"的假状态上
+    h.plugins = { setPluginEnabled: async () => ({ ok: true, enabled: true }) }
+    const outcome = await togglePluginEnabled('demo', false, t)
+    expect(outcome).toEqual({ ok: true, enabled: true })
+  })
+
+  it('成功且网关回了目标值 → 无 message（成功不弹提示）', async () => {
+    h.plugins = { setPluginEnabled: async () => ({ ok: true, enabled: false }) }
+    const outcome = await togglePluginEnabled('demo', false, t)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.enabled).toBe(false)
+    expect(outcome.message).toBeUndefined()
+  })
+
+  it('网关回 ok:false → 失败带 enableFailed 前缀（用户要知道失败的只是这次切换）', async () => {
+    h.plugins = { setPluginEnabled: async () => ({ ok: false, enabled: true }) }
+    const outcome = await togglePluginEnabled('demo', false, t)
+    expect(outcome.ok).toBe(false)
+    // 契约里 ok:false 不带原因字段，所以 reason 被兜成通用文案，绝不留 undefined
+    expect(outcome.message).toContain('sources.plugins.enableFailed')
+    expect(outcome.message).not.toContain('undefined')
+  })
+
+  it('抛异常 → 原因来自 renderErrorMessage（可归因，不是"操作失败"了事）', async () => {
+    h.plugins = {
+      setPluginEnabled: async () => {
+        throw new Error('EACCES: permission denied')
+      },
+    }
+    const outcome = await togglePluginEnabled('demo', false, t)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.message).toContain('sources.plugins.enableFailed')
+    // `renderErrorMessage` 走的是**真实**翻译器（不经过上面的 fakeT），所以这里断言
+    // 具体的本地化原因落在句子里 —— 关键是"权限"这件事被说出来了，
+    // 而不是被一句"操作失败"抹平，也不是把 `undefined` / `[object Object]` 拼进去。
+    expect(outcome.message).toContain('权限')
+    expect(outcome.message).not.toContain('undefined')
+  })
+
+  it('无能力 → 不调用、不假装成功，返回 toggleUnsupported', async () => {
+    h.plugins = { list: async () => [] }
+    const outcome = await togglePluginEnabled('demo', false, t)
+    expect(outcome).toEqual({
+      ok: false,
+      enabled: false,
+      message: 'sources.plugins.toggleUnsupported',
+    })
+  })
+})
+
+describe('目录回落路径的条目形状完整', () => {
+  it('没有 catalog 通道时用 list() 拼条目，enabled 补 true', async () => {
+    h.plugins = {
+      list: async () => [
+        { id: 'solon', displayNameKey: 'core.platform.solon', version: '1.0.0', capabilities: ['search'] },
+      ],
+    }
+    const state = await loadPluginCatalog('zh-CN')
+    expect(state.entries).toHaveLength(1)
+    // 必填字段不能缺：缺了 UI 会渲染成"已停用"，而这个端根本没有启停能力
+    expect(state.entries[0].enabled).toBe(true)
+    expect(state.entries[0].removable).toBe(false)
+    expect(state.manageable).toBe(false)
+    expect(state.executable).toBe(true)
   })
 })
 

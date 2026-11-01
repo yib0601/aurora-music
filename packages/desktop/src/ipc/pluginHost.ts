@@ -19,6 +19,7 @@ import { ipcMain } from 'electron'
 import {
   auroraError,
   getPlugin,
+  isPluginEnabled,
   listPlugins,
   type OnlineSourceConfig,
   type PluginCredential,
@@ -88,13 +89,32 @@ function readCredentialOf(pluginId: string): PluginCredential | null {
   return { pluginId, payload, savedAt: 0 }
 }
 
-/** 插件 id 校验：IPC 入参来自渲染层，按不可信处理 */
+/**
+ * 插件 id 校验：IPC 入参来自渲染层，按不可信处理。
+ *
+ * ## 为什么"被停用"要在这里也挡一次
+ *
+ * 执行门禁已经在 `pluginForSource()` / `storagePluginOf()` 里按源配置挡过一层，
+ * 但本文件是**按插件 id 直呼**的通道（`plugin:search` / `plugin:resolveTrack` /
+ * `plugin:probe` 等 8 处）。渲染层手里仍有旧音源配置时完全可以无视那条门禁直接调，
+ * 于是"停用了却还搜得到"就会从这条路漏出来。
+ *
+ * 报 `notFound` 而不是造一个新的"已停用"错误码：两者对调用方的处理完全一样
+ * （跳过这条源、给出可读原因），而多一个码就要在渲染层多一处分支，
+ * 且 UI 早就该在列表上把停用状态显示出来（`PluginCatalogEntry.enabled`）——
+ * 走到这里说明是配置过期，不是用户需要读懂的第二种失败。
+ */
 function requirePlugin(pluginId: unknown): SourcePlugin {
   if (typeof pluginId !== 'string' || !pluginId) {
     throw auroraError('desktop.error.plugin.invalidId', { id: String(pluginId ?? '') })
   }
   const plugin = getPlugin(pluginId)
   if (!plugin) throw auroraError('desktop.error.plugin.notFound', { id: pluginId })
+  // 用户停用的插件与"没注册"一样不可执行。放在 getPlugin 之后：先确认它确实存在，
+  // 否则"停用"和"不存在"会被混成同一句，排查时分不清是哪一种。
+  if (!isPluginEnabled(pluginId)) {
+    throw auroraError('desktop.error.plugin.notFound', { id: pluginId })
+  }
   return plugin
 }
 
@@ -319,6 +339,14 @@ export interface PluginMeta {
   capabilities: readonly string[]
   /** 该插件是否已保存凭证（只回布尔，不回内容） */
   hasCredential: boolean
+  /**
+   * 用户是否启用该插件。
+   *
+   * 登录面板用它把已停用的插件藏起来：对一个不再执行的插件展示"登录 / 退出登录"
+   * 只会让用户以为它还能用。`plugin:list` 消费方据这个字段自行决定显示与否，
+   * 主进程不替 UI 过滤 —— 过滤掉会让"为什么我的插件不见了"变成无解的问题。
+   */
+  enabled: boolean
 }
 
 export function listPluginMeta(): PluginMeta[] {
@@ -330,5 +358,6 @@ export function listPluginMeta(): PluginMeta[] {
     capabilities: plugin.capabilities,
     // 只回布尔：凭证原文永不出主进程
     hasCredential: hasPluginCredential(plugin.id),
+    enabled: isPluginEnabled(plugin.id),
   }))
 }

@@ -36,6 +36,24 @@ describe('需要登录的插件筛选', () => {
   it('没有 auth 能力的插件不出现', () => {
     expect(pluginsNeedingAuth([meta('aurora', ['search'])])).toEqual([])
   })
+
+  /**
+   * 停用的插件不列进登录区：它不参与执行，登录状态没有任何意义，
+   * 而"能登录"这个入口本身会让用户以为插件还在工作。
+   */
+  it('已停用的插件不出现（即使有 auth 能力）', () => {
+    const list = [
+      { ...meta('qishui', ['auth']), enabled: false },
+      { ...meta('future', ['auth']), enabled: true },
+    ]
+    expect(pluginsNeedingAuth(list).map((p) => p.id)).toEqual(['future'])
+  })
+
+  it('enabled 缺失（老 preload 不带该字段）按启用处理，行为与改造前一致', () => {
+    const legacy = meta('qishui', ['auth'])
+    expect('enabled' in legacy).toBe(false)
+    expect(pluginsNeedingAuth([legacy]).map((p) => p.id)).toEqual(['qishui'])
+  })
 })
 
 describe('登录态文案', () => {

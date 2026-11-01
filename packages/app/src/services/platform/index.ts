@@ -45,7 +45,6 @@ import {
 } from '@aurora/shared'
 import type {
   PluginAuthState as PluginAuthStateInfo,
-  TrustedKey,
   PluginCatalogEntry,
   PluginInstallResult as PluginInstallResultInfo,
   PluginPlaylist as PluginPlaylistInfo,
@@ -62,6 +61,13 @@ export interface PluginMetaInfo {
   version: string
   capabilities: readonly string[]
   hasCredential: boolean
+  /**
+   * 用户是否启用该插件（可选：老 preload 的 `plugin:list` 不带这个字段）。
+   *
+   * 只在 UI 侧用来隐藏"已停用插件的登录入口"，不参与执行判定 —— 那是主进程
+   * `requirePlugin` 的事。写成可选是为了让旧通道继续可用（缺省按启用处理）。
+   */
+  enabled?: boolean
 }
 import { appTranslate } from '@/i18n'
 import { renderErrorMessage } from '@/lib/utils'
@@ -300,36 +306,21 @@ export interface PluginGateway {
   /** 删除一个读不出来的插件目录 */
   removeBroken?(dirPath: string): Promise<{ ok: boolean; message?: string }>
 
-  // ─── 签名信任表（可选：老 preload 没有这组通道） ───
-  /** 列出信任表（内置 / 我导入的） */
-  trustList?(): Promise<PluginTrustSnapshot>
-  /** 导入一条公钥 */
-  trustAdd?(input: {
-    keyId: string
-    publicKey: string
-    note?: string
-  }): Promise<PluginTrustAddResult>
-  /** 删除一条用户导入的公钥（内置的不可删） */
-  trustRemove?(keyId: string): Promise<{ ok: boolean; code?: string }>
-}
-
-/** 信任表快照：内置（随应用发布）与用户导入的分开列，用户才知道哪些能删 */
-export interface PluginTrustSnapshot {
-  builtin: TrustedKeyInfo[]
-  user: TrustedKeyInfo[]
-  effective: number
-}
-
-/** 信任表条目（纯数据，可安全过 IPC） */
-export type TrustedKeyInfo = TrustedKey
-
-/** 导入公钥的结果 */
-export interface PluginTrustAddResult {
-  ok: boolean
-  /** 失败原因码（bad-key-id / bad-public-key / note-too-long / duplicate） */
-  code?: string
-  key?: TrustedKeyInfo
-  keys?: TrustedKeyInfo[]
+  // ─── 插件启停（可选：老 preload 没有这组通道） ───
+  /**
+   * 开 / 关一个插件。
+   *
+   * 与卸载是两件事：卸载会删磁盘（连带凭证、脚本正文），启停只改运行期门禁。
+   * 内置插件不可卸载，但**必须**能停用 —— 否则用户想临时只留一个音源时，
+   * 除了逐条改源配置没有别的办法。
+   *
+   * 落盘在各自平台侧（桌面主进程 / 移动端 Filesystem）；返回的 `enabled`
+   * 是**落盘之后**的真实状态，UI 据此渲染而不是乐观翻转 —— 写盘失败时
+   * 乐观翻转会让开关停在一个并未生效的位置上。
+   */
+  setPluginEnabled?(pluginId: string, enabled: boolean): Promise<{ ok: boolean; enabled: boolean }>
+  /** 全部已停用的插件 id（诊断与对账用；UI 的当前状态以目录条目的 enabled 为准） */
+  listDisabledPlugins?(): Promise<string[]>
 }
 
 /** 插件目录快照（`plugin:catalog` 的返回形状） */
@@ -803,16 +794,26 @@ export function createDesktopPlatform(): Platform {
           typeof plugins.removeBroken === 'function'
             ? (dirPath) => plugins.removeBroken(dirPath)
             : undefined,
-        // 签名信任表：老 preload 没有这组通道时保持 undefined（UI 隐藏该区块）
-        trustList:
-          typeof plugins.trustList === 'function' ? () => plugins.trustList() : undefined,
-        trustAdd:
-          typeof plugins.trustAdd === 'function'
-            ? (input) => plugins.trustAdd(input)
+        // 插件启停：老 preload 没有这组通道时保持 undefined（UI 隐藏开关而不是显示后失败）
+        //
+        // 切换成功后**顺手把渲染层那份 shared 内存态刷新一遍**：桌面端有主进程与渲染进程
+        // 两个 `@aurora/shared` 实例，权威状态在主进程。不刷新的话，界面层的
+        // `canBrowseHall` / `isSearchableSource` 仍按"全部启用"判断，于是用户停用一个
+        // 插件后还能看到它的入口，点进去才没结果。移动端刷新是幂等空操作
+        // （同一个进程同一份状态），不额外分支。
+        setPluginEnabled:
+          typeof plugins.setPluginEnabled === 'function'
+            ? async (pluginId, enabled) => {
+                const result = await plugins.setPluginEnabled(pluginId, enabled)
+                // 落盘失败时主进程会回滚，此时也必须以权威值为准重新同步
+                const { syncPluginAvailability } = await import('../pluginAvailability')
+                await syncPluginAvailability()
+                return result
+              }
             : undefined,
-        trustRemove:
-          typeof plugins.trustRemove === 'function'
-            ? (keyId) => plugins.trustRemove(keyId)
+        listDisabledPlugins:
+          typeof plugins.listDisabledPlugins === 'function'
+            ? () => plugins.listDisabledPlugins()
             : undefined,
       }
     },

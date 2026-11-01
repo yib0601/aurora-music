@@ -759,6 +759,15 @@ export function createMobilePlatform(): PlatformInterface & {
           return { ok: false, message: 'AURORA_PLUGIN_REMOVE_FAILED' }
         }
       },
+      // ─── 插件启停（与卸载分开：不删磁盘、不碰凭证，内置插件也能停用） ───
+      async setPluginEnabled(pluginId: string, enabled: boolean) {
+        const { applyPluginEnabled } = await import('./pluginAvailability')
+        return applyPluginEnabled(pluginId, enabled)
+      },
+      async listDisabledPlugins() {
+        const { pluginAvailabilitySnapshot } = await import('./pluginAvailability')
+        return pluginAvailabilitySnapshot().disabled
+      },
     },
 
     /**

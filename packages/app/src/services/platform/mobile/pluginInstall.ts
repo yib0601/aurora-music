@@ -38,9 +38,6 @@ import {
   type PluginInstallRecord,
   type PluginInstallResult,
   type PluginStartupReport,
-  TRUSTED_PLUGIN_KEYS,
-  hexToBytes,
-  verifyManifestSignature,
 } from '@aurora/shared'
 import {
   parseManifestText,
@@ -107,41 +104,6 @@ async function fetchText(
 }
 
 /**
- * Ed25519 验签（WebCrypto）。
- *
- * raw 32 字节公钥要包成 SPKI DER 才能被 `importKey` 接受 —— 前缀与桌面端
- * （node:crypto 那条）**必须一致**，否则同一个签名在两端结论会不一样。
- * 这个前缀不是可选项：它是 ASN.1 里 Ed25519 的固定编码头（OID 1.3.101.112）。
- *
- * 运行环境不支持 Ed25519 时**抛错**而不是返回 false：调用方据此走 invalid 分支拒绝安装。
- * 理由见 `performInstall` 里那段注释 —— 不能把"验不了"当成"没签名"。
- */
-async function verifyEd25519WebCrypto(
-  sigHex: string,
-  publicKeyHex: string,
-  message: string
-): Promise<boolean> {
-  const keyBytes = hexToBytes(publicKeyHex)
-  if (!keyBytes || keyBytes.length !== 32) return false
-  const sigBytes = hexToBytes(sigHex)
-  if (!sigBytes || sigBytes.length !== 64) return false
-
-  const prefix = hexToBytes('302a300506032b6570032100')
-  if (!prefix) return false
-  const spki = new Uint8Array(prefix.length + keyBytes.length)
-  spki.set(prefix, 0)
-  spki.set(keyBytes, prefix.length)
-
-  const key = await crypto.subtle.importKey('spki', spki, { name: 'Ed25519' }, false, ['verify'])
-  return crypto.subtle.verify(
-    { name: 'Ed25519' },
-    key,
-    sigBytes as unknown as ArrayBuffer,
-    new TextEncoder().encode(message)
-  )
-}
-
-/**
  * 执行一次安装。
  *
  * 顺序与桌面端逐条对齐（见 `pluginInstall.performInstall` 的注释）：
@@ -174,25 +136,6 @@ export async function performInstall(input: {
       ok: false,
       message: allowed.code === 'builtin' ? 'AURORA_PLUGIN_BUILTIN_ID' : 'AURORA_PLUGIN_DUPLICATE_ID',
       issues: [{ path: 'id', code: 'duplicate', value: manifest.id }],
-    }
-  }
-
-  // 3.5) 签名校验（Ed25519）
-  //
-  // 与桌面端同一语义：未签名放行；签名者不在信任表放行但标注；
-  // **签名存在且校验失败必须拒绝**。
-  //
-  // 移动端的 WebCrypto 对 Ed25519 的支持随系统 WebView 版本变化：
-  // 不支持时 `verify` 会抛错 → 走 invalid 分支 → 拒绝安装。
-  // 这个方向是刻意选的：**不能**把"验不了"当成"没签名"放过去，
-  // 那会让"给手机装个签名插件"变成绕过校验的路径。
-  if (manifest.signature) {
-    const verdict = await verifyManifestSignature(manifest, {
-      trustedKeys: TRUSTED_PLUGIN_KEYS,
-      verify: verifyEd25519WebCrypto,
-    })
-    if (verdict.status === 'invalid') {
-      return { ok: false, message: 'AURORA_PLUGIN_SIGNATURE_INVALID', issues: [] }
     }
   }
 

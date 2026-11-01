@@ -226,13 +226,12 @@ const electronAPI = {
     removeBroken: (dirPath: string): Promise<{ ok: boolean; message?: string }> =>
       ipcRenderer.invoke('plugin:removeBroken', dirPath),
 
-    // ─── 签名信任表 ───
-    // 公钥不是秘密，但它是**安全关键**：导入后该 keyId 签名的插件才会被判为"已验证"。
-    trustList: (): Promise<unknown> => ipcRenderer.invoke('plugin:trust:list'),
-    trustAdd: (input: { keyId: string; publicKey: string; note?: string }): Promise<unknown> =>
-      ipcRenderer.invoke('plugin:trust:add', input),
-    trustRemove: (keyId: string): Promise<unknown> =>
-      ipcRenderer.invoke('plugin:trust:remove', keyId),
+    // ─── 插件启停 ───
+    // 与卸载分开：卸载删磁盘（连带凭证与脚本正文），启停只改运行期门禁，
+    // 内置插件也能停用。返回的是**落盘之后**的真实状态，UI 不乐观翻转。
+    setPluginEnabled: (pluginId: string, enabled: boolean): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:setEnabled', pluginId, enabled),
+    listDisabledPlugins: (): Promise<unknown> => ipcRenderer.invoke('plugin:disabled'),
   },
   // 自有服务协议的单曲取址（按源内 id 取直链）：与在线搜索同理在主进程执行
   // （渲染进程直连上游会被 CORS 拦），渲染层只拿结果；失败时返回带原因的结果，

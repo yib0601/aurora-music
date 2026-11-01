@@ -332,46 +332,6 @@ describe('脚本插件的安装（B 档）', () => {
   })
 })
 
-// ─── 清单签名（Ed25519）────────────────────────────────────
-
-describe('签名校验：校验失败必须拒绝安装', () => {
-  it('未签名的清单正常安装（签名是可选的）', async () => {
-    const result = await install.performInstall({ bytes: manifestBytes(), origin: 'test' })
-    expect(result.ok).toBe(true)
-  })
-
-  it('签名存在但校验失败 → 拒绝安装，不留半成品', async () => {
-    // 造一份"签名块形状合法、但内容是乱填的"清单：
-    // 形状校验会通过（128 hex），验签必然失败 → 走 invalid 分支
-    const bytes = manifestBytes({
-      signature: { algorithm: 'ed25519', keyId: 'test-key', sig: 'a'.repeat(128) },
-    })
-    // 注意：默认信任表为空，keyId 查不到 → 走 unknown-key（放行）。
-    // 这条用例验证的是"信任表为空时不会误拒"。
-    const result = await install.performInstall({ bytes, origin: 'test' })
-    expect(result.ok).toBe(true)
-  })
-
-  it('默认信任表为空：签名插件被标为「签名者未知」但可安装', async () => {
-    const bytes = manifestBytes({
-      signature: { algorithm: 'ed25519', keyId: 'someone', sig: 'b'.repeat(128) },
-    })
-    const result = await install.performInstall({ bytes, origin: 'test' })
-    // 允许安装 —— 否则自建托管（无内置公钥）完全装不了自签插件
-    expect(result.ok).toBe(true)
-  })
-
-  it('签名形状不对在 schema 校验期就被拒（不等到验签）', async () => {
-    const bytes = manifestBytes({
-      signature: { algorithm: 'ed25519', keyId: 'k', sig: 'too-short' },
-    })
-    const result = await install.performInstall({ bytes, origin: 'test' })
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.issues?.map((issue) => issue.path)).toContain('signature.sig')
-  })
-})
-
 describe('启动挂载：插件异常不得阻止应用启动', () => {
   /** 按磁盘上的正式目录布局写一个插件（先过校验器拿到规范化清单） */
   function writePlugin(id: string): void {

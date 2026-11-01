@@ -71,21 +71,6 @@ export {
 
 export { buildLyricsRunner, fillLyricsUrl, lyricsConfigOf } from './lyrics'
 
-// 清单签名（Ed25519）：防"下载链路被中间人替换"。信任根是内置公钥表，不是清单自带的公钥。
-export {
-  PLUGIN_SIGNATURE_ALGORITHM,
-  TRUSTED_PLUGIN_KEYS,
-  bytesToHex,
-  canonicalizeManifest,
-  checkSignatureShape,
-  hexToBytes,
-  readSignature,
-  signableBytes,
-  signatureBadgeKey,
-  verifyManifestSignature,
-} from './signature'
-export type { PluginSignature, SignatureVerdict } from './signature'
-
 // 服务地址形态：从用户填的地址派生端点（自建托管型插件）
 export {
   SERVICE_ENDPOINT_KEYS,
@@ -96,16 +81,6 @@ export {
   splitServiceUrl,
 } from './service'
 export type { DerivedService, ServiceEndpointKey } from './service'
-
-// 信任表的纯逻辑（校验 / 合并 / 增删 / 容错解析）。落盘由两端各自负责。
-export {
-  mergeTrustedKeys,
-  parseTrustedKeys,
-  removeTrustedKey,
-  serializeTrustedKeys,
-  validateTrustedKey,
-} from './trust'
-export type { TrustedKey, TrustedKeyIssueCode, TrustedKeyValidation } from './trust'
 
 // B 档：受限脚本（洛雪格式）。脚本正文由安装器落盘，运行期只读本地副本。
 export {

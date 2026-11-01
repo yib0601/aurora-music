@@ -451,35 +451,3 @@ describe('removeInstalledPlugin：幂等', () => {
     await expect(removeInstalledPlugin('../escape')).rejects.toThrow()
   })
 })
-
-// ─── 清单签名（移动端）──────────────────────────────────────
-
-describe('签名校验（移动端 WebCrypto）', () => {
-  it('未签名 → 正常安装', async () => {
-    httpResponses.push({ status: 200, data: manifestText() })
-    const result = await installFromUrl('https://api.example.com/plugin.json')
-    expect(result.ok).toBe(true)
-  })
-
-  it('签名形状不对 → schema 校验期拒绝', async () => {
-    httpResponses.push({
-      status: 200,
-      data: manifestText({ signature: { algorithm: 'ed25519', keyId: 'k', sig: 'short' } }),
-    })
-    const result = await installFromUrl('https://api.example.com/plugin.json')
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.issues?.map((issue) => issue.path)).toContain('signature.sig')
-  })
-
-  it('签名者不在信任表 → 放行（否则自建托管装不了自签插件）', async () => {
-    httpResponses.push({
-      status: 200,
-      data: manifestText({
-        signature: { algorithm: 'ed25519', keyId: 'unknown-signer', sig: 'a'.repeat(128) },
-      }),
-    })
-    const result = await installFromUrl('https://api.example.com/plugin.json')
-    expect(result.ok).toBe(true)
-  })
-})

@@ -478,23 +478,6 @@ export interface PluginManifest {
    * 必须同时申请 `script` 权限（校验器强制配平）。
    */
   script?: DeclarativeScriptSpec
-  /**
-   * 可选的 Ed25519 签名块。
-   *
-   * 签名覆盖的是**去掉本字段后的规范化清单**（见 `signature.ts` 的
-   * `signableBytes`）。它防的是"下载链路被中间人替换"，防不住
-   * "作者本身就写了恶意插件" —— 后者只有用户自己的判断能挡。
-   *
-   * 语义分三档：未签名 / 签名者未知（公钥不在信任表）/ 已验证。
-   * **签名存在但校验失败必须拒绝安装**。
-   */
-  signature?: {
-    algorithm: 'ed25519'
-    /** 作者自定的公钥标识（应用据此在信任表里查公钥，而不是盲信清单附带的公钥） */
-    keyId: string
-    /** Ed25519 签名，64 字节的 hex（128 个字符） */
-    sig: string
-  }
 }
 
 // ─── 校验 ────────────────────────────────────────────────────
@@ -572,6 +555,19 @@ export interface PluginCatalogEntry {
   hosts?: readonly string[]
   /** 是否可卸载（内置插件不可） */
   removable: boolean
+  /**
+   * 用户是否启用该插件。
+   *
+   * 与 `removable` 是**两个正交的维度**，不要合成一个：
+   * - `removable` 回答"能不能删"（内置插件不能：它的实现编译在应用里）
+   * - `enabled` 回答"现在用不用"（内置插件也必须能关 —— 用户想临时只留一个音源时，
+   *   卸不掉的内置插件若也不能关，他只能去逐条改源配置）
+   *
+   * 目录投影时由 `isPluginEnabled(id)` 填（`availability.ts`）；执行门禁
+   * （`pluginForSource` / `storagePluginOf`）读同一份状态，于是"列表上显示的开关"
+   * 与"实际生效与否"不会分叉 —— 分叉正是本仓库反复修过的那类故障。
+   */
+  enabled: boolean
 }
 
 /**

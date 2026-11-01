@@ -267,6 +267,15 @@ export {
   pluginStartupReport,
   pluginIdOf,
   pluginFieldsOf,
+  // 插件启停（用户级开关）：纯内存态，落盘由两端平台层负责
+  clearPluginAvailabilityForTest,
+  disabledPluginIds,
+  isPluginEnabled,
+  parseDisabledPluginIds,
+  serializeDisabledPluginIds,
+  setDisabledPluginIds,
+  setPluginEnabled,
+  PLUGIN_AVAILABILITY_FILE_VERSION,
   // 能力判定（取代各处 `kind === 'xxx'` 分支）
   pluginForSource,
   canSearchSource,
@@ -393,23 +402,6 @@ export {
   supportedFormatsLabel,
   validatePluginManifest,
   valueAtPath,
-  // 清单签名（Ed25519）
-  PLUGIN_SIGNATURE_ALGORITHM,
-  TRUSTED_PLUGIN_KEYS,
-  bytesToHex,
-  canonicalizeManifest,
-  checkSignatureShape,
-  hexToBytes,
-  readSignature,
-  signableBytes,
-  signatureBadgeKey,
-  verifyManifestSignature,
-  // 信任表（签名信任根）的纯逻辑
-  mergeTrustedKeys,
-  parseTrustedKeys,
-  removeTrustedKey,
-  serializeTrustedKeys,
-  validateTrustedKey,
 } from './plugin/manifest'
 export type {
   DeclarativeLyricsHit,
@@ -433,12 +425,8 @@ export type {
   PluginManifest,
   PluginPermission,
   PluginProvenance,
-  PluginSignature,
-  SignatureVerdict,
-  TrustedKey,
-  TrustedKeyIssueCode,
-  TrustedKeyValidation,
 } from './plugin/manifest'
+export type { PluginAvailabilityFile, PluginAvailabilitySnapshot } from './plugin/availability'
 
 // 已安装插件的运行期登记（注册 / 撤销 / 启动时挂载）
 export {

@@ -207,15 +207,32 @@ function isCommentOnlyLine(line) {
 
 /**
  * 日志行：面向开发者，不进界面。
- * 除了 Web 侧的 console.*，也要认 Android 原生的 Log.x( / Timber / printStackTrace：
- * 之前只认 console.*，Kotlin 里的中文日志行被逐条误报，只能靠行尾 i18n-exempt 压下去。
+ *
+ * 认这些形态：
+ * - Web 侧的 `console.*`
+ * - Android 原生 `Log.x(` / `Timber.*` / `printStackTrace`
+ * - 本仓的日志门面：`logger.warn(...)` / `createLogger(scope).error(...)`
+ * - **插件上下文的诊断出口** `ctx?.log?.('...')` / `ctx.log('...')`
+ *
+ * 后两类是补进来的：判据第 2 条本来就写着「日志不算」，但早先只认 `console.*`，
+ * 于是走日志门面与 `ctx.log` 的中文日志被逐条误报。那种误报最坏的结果不是噪音，
+ * 而是逼着人去给日志加 `i18n-exempt` 注释 —— 一条本来正确的判据被稀释成
+ * 「反正都加豁免」，下次真的漏了界面文案也没人细看。
+ *
+ * `ctx?.log?.(...)` 的实现在 `plugin/executor.ts` 的 `pluginLogger()`：
+ * 最终落到 `createLogger()` 的日志 sink，绝不进界面。
  */
 function isLogLine(line) {
   return (
     /\bconsole\.(log|info|warn|error|debug)\s*\(/.test(line) ||
     /\bLog\.[vdiew]\s*\(/.test(line) ||
     /\bTimber\.[vdiew]\s*\(/.test(line) ||
-    /\bprintStackTrace\s*\(/.test(line)
+    /\bprintStackTrace\s*\(/.test(line) ||
+    // 日志门面：logger.warn / logger.error / createLogger(...).info 等
+    /\b(?:logger|createLogger\s*\([^)]*\))\s*\.?\s*(?:log|info|warn|error|debug|verbose)\s*\(/.test(line) ||
+    // 插件上下文诊断出口：ctx?.log?.(...) / ctx.log(...)（含解构后的 log(...) 不在内，
+    // 那种形态无法与普通函数区分，仍交给 i18n-exempt 处理）
+    /\bctx\s*\??\.\s*log\s*\??\.?\s*\(/.test(line)
   )
 }
 

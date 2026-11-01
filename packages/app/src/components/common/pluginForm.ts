@@ -86,21 +86,38 @@ export function pluginAvailableOn(
  */
 export function pluginFormRows(
   plugins: readonly SourcePlugin[],
-  platform: { desktop: boolean; mobile: boolean }
+  platform: { desktop: boolean; mobile: boolean },
+  /**
+   * 被用户停用的插件 id（来自平台层，**不是**渲染层内存态）。
+   *
+   * 为什么要单独传而不在本文件里查：桌面端的启停状态活在主进程，渲染层的
+   * `@aurora/shared` 是另一个实例、内存表是空的。在这里自己查会把"停用"判成"启用"，
+   * 于是新增音源时还能选到已停用的插件 —— 建出来的源永远不会工作。
+   *
+   * 缺省空集合 = 全部可选，保持既有调用点零改动。
+   */
+  disabledPluginIds: readonly string[] = []
 ): PluginFormRow[] {
+  const disabled = new Set(disabledPluginIds)
   return plugins.map((plugin) => {
-    const available = pluginAvailableOn(plugin.id, platform)
+    const availableOnPlatform = pluginAvailableOn(plugin.id, platform)
+    // 两种"不可选"的原因必须分开说：一个是这个端没有该能力（永远如此），
+    // 一个是用户自己关掉的（开关就在插件列表上，随时能打开）。混成一句话，
+    // 用户会以为浏览器端也能靠开关救回来。
+    const disabledByUser = disabled.has(plugin.id)
+    const enabled = availableOnPlatform && !disabledByUser
     return {
       value: plugin.id,
       labelKey: plugin.displayNameKey,
       hintKey: plugin.descriptionKey || plugin.displayNameKey,
-      enabled: available,
-      disabledTitleKey:
-        available
-          ? undefined
+      enabled,
+      disabledTitleKey: !enabled
+        ? disabledByUser
+          ? 'sources.form.kindDisabledByUser'
           : plugin.id === 'lx'
             ? 'sources.form.kindLxDisabledTitle'
-            : 'sources.form.kindQishuiDisabledTitle',
+            : 'sources.form.kindQishuiDisabledTitle'
+        : undefined,
       formKind: FORM_KIND_OF[plugin.id] || 'service',
     }
   })

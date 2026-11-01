@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
 import { mountInstalledPlugins } from './ipc/pluginInstall'
+import { loadPluginAvailability } from './ipc/pluginAvailability'
 import { installStorageProtocolDeps } from './ipc/storageProtocols'
 import { mainTranslate, onMainLocaleChange } from './i18n'
 import { attachEdgeSnap } from './edgeSnap'
@@ -515,6 +516,10 @@ if (!gotTheLock) {
     // 顺序有讲究：缓存索引要落在曲库之上——启动收敛（超限驱逐）会把被清掉的
     // 封面路径回填进曲库，所以先起 IPC（内部初始化数据库并注册缓存回调）再初始化缓存
     registerIpcHandlers()
+    // 插件启停状态：必须早于插件挂载 —— 挂载会注册实现，而"这个插件被用户停用了"
+    // 是执行门禁的输入。晚一步会让停用的插件在本次启动的头几秒照常工作，
+    // 表现为"停用了但还能搜到歌"，用户只能靠重启才能确认设置生效。
+    loadPluginAvailability()
     // 已安装插件挂载：必须早于 createWindow —— 渲染层首帧就会问插件目录，
     // 迟了用户会看到"刚装的插件不存在"、过一会儿又自己冒出来。
     // **本调用绝不抛错**（内部逐层隔离 + 最后一道 try），插件坏了不影响启动；

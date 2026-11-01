@@ -32,7 +32,7 @@ import { registerUpdaterIpc } from './updater'
 import { registerLxSourceIpc } from './lxSource'
 import { registerPluginIpc } from './pluginHost'
 import { registerPluginInstallIpc } from './pluginInstall'
-import { registerPluginTrustIpc } from './pluginTrust'
+import { registerPluginAvailabilityIpc } from './pluginAvailability'
 import { mainErrorText, mainTranslate, registerI18nIpc } from '../i18n'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, OnlineSourceConfig, Track, LibrarySourceConfig } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource, DownloadQuality } from '@aurora/shared'
@@ -283,8 +283,9 @@ export function registerIpcHandlers() {
   // 这条通道的入参里含文件路径与 URL，且会改动磁盘，见 ipc/pluginInstall.ts 顶部说明）。
   // 磁盘扫描与挂载发生在 main.ts 的启动流程里，这里只注册通道。
   registerPluginInstallIpc()
-  // 签名信任表：用户导入自己的公钥后，签名校验才会把对应 keyId 判为"已验证"
-  registerPluginTrustIpc()
+  // 插件启停：只改运行期门禁与一份小配置，**不碰插件目录**，
+  // 所以与安装通道分开注册（信任边界不同：那条入参含路径与 URL）
+  registerPluginAvailabilityIpc()
 
   // 媒体缓存清出封面时回填曲库：被删掉的封面文件不能留在 cover_path 里，
   // 否则渲染层认为「已有封面」而不再提取，封面对用户就永久消失了。

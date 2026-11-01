@@ -32,6 +32,10 @@ import { builtinPlugins, ensureBuiltinsRegistered } from '../builtins'
 import { getPlugin } from '../registry'
 import type { PluginCatalogEntry, PluginDomain, PluginManifest } from './types'
 import { manifestDescription, manifestDisplayName } from './source'
+// 插件启停状态。目录是**唯一**把启停状态投影给 UI 的地方：执行门禁
+// （`pluginForSource` / `storagePluginOf`）只回答"用不用"，不回答"为什么不用"。
+// `availability` 零依赖（纯内存表），这条 import 不进任何环。
+import { isPluginEnabled } from '../availability'
 
 /**
  * 内置音频插件 → 目录条目。
@@ -64,6 +68,9 @@ function sourceEntries(): PluginCatalogEntry[] {
       capabilities: [...plugin.capabilities],
       provenance: 'builtin' as const,
       removable: false,
+      // 停用的内置插件**仍然留在目录里**（它只是不执行）：用户得有个地方把它打开，
+      // 从列表里藏掉等于让开关本身消失。
+      enabled: isPluginEnabled(plugin.id),
     })
   }
   return entries
@@ -80,6 +87,10 @@ function storageEntries(): PluginCatalogEntry[] {
     capabilities: storageCapabilitiesOf(plugin),
     provenance: 'builtin' as const,
     removable: false,
+    // 与音源插件同一口径：能力照旧全量投影，启停另用一个字段表达。
+    // 不能因为停用就把 `capabilities` 清空 —— 那会让 UI 分不清"这插件没这个能力"
+    // 与"这插件有这个能力但被关了"。
+    enabled: isPluginEnabled(plugin.id),
   }))
 }
 
@@ -125,6 +136,8 @@ function installedEntries(
       hosts: [...manifest.hosts],
       // 已安装插件**可以**卸载：清单与本机安装记录都能删干净
       removable: true,
+      // 已装但停用是常见中间态（用户想留着插件、只是先别用），所以它照样进目录。
+      enabled: isPluginEnabled(manifest.id),
     }
   })
 }

@@ -19,6 +19,23 @@ if (typeof (window as any).Buffer === 'undefined') (window as any).Buffer = Buff
 // 接管 console），一个字节都没写盘，所以不会拖慢首屏 —— 真正的 I/O 在有记录要发时才发生。
 initRendererLogging()
 
+// 插件启停状态：把主进程的权威停用清单灌进渲染层这份 `@aurora/shared` 内存态。
+//
+// **只在桌面端做镜像**。桌面端有两个 shared 实例（主进程 / 渲染进程），执行门禁在
+// 主进程那份上，渲染层这份默认为空 —— 不灌的话界面层的 `canBrowseHall` /
+// `isSearchableSource` 会认为被停用的插件仍然可用，表现为"看得到入口、点了没结果"。
+//
+// 移动端不能走这条：它只有一个 shared 实例，权威状态就是下面 `loadPluginAvailability()`
+// 从磁盘读出来的那份。两者都写会互相覆盖 —— 镜像读到"尚未加载"的空集合、再灌回去，
+// 就把磁盘状态清空了，表现为"手机上停用的插件重启后又自己开了"。
+if (platform.platform === 'desktop') {
+  void import('@/services/pluginAvailability')
+    .then((mod) => mod.syncPluginAvailability())
+    .catch((err) => {
+      console.warn('[plugin] 初始化插件启停状态失败，按全部启用处理:', err)
+    })
+}
+
 // 移动端：把已安装插件挂载进本进程的注册表。
 //
 // 为什么必须在 render 之前发起而不是等某个页面 useEffect：渲染层首帧就会问
@@ -30,7 +47,15 @@ initRendererLogging()
 // （Capacitor Filesystem），等它会拖慢首屏；而未挂载完成的窗口里，
 // 插件列表只是少几条已安装项，内置插件与本地播放都不受影响。
 if (platform.platform === 'mobile' && platform.plugins) {
-  void import('@/services/platform/mobile/pluginInstall')
+  // 启停状态必须先灌入 shared 的内存态，再挂载插件：挂载会注册实现，而执行门禁
+  // 读的就是这份状态。顺序颠倒会让被停用的插件在本次启动的头几秒照常工作。
+  void import('@/services/platform/mobile/pluginAvailability')
+    .then((mod) => mod.loadPluginAvailability())
+    .catch((err) => {
+      // 读不到启停状态就按全部启用（坏配置不该让插件集体消失）
+      console.warn('[plugin] 移动端读取插件启停状态失败，按全部启用处理:', err)
+    })
+    .then(() => import('@/services/platform/mobile/pluginInstall'))
     .then((mod) => mod.mountInstalledPlugins())
     .catch((err) => {
       // 挂载失败不该阻止应用启动：内置插件仍可用，本地播放完全不受影响。

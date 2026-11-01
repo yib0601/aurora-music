@@ -72,7 +72,7 @@ export const HOST_NOT_ALLOWED = 'AURORA_PLUGIN_HOST_NOT_ALLOWED'
  * 但有一种形态与之根本冲突：**「用户填自己的服务地址」** —— 自建托管者填
  * `https://music.myserver.com?key=…`，上游主机由用户决定，作者**不可能**
  * 在清单里穷举。若不支持它，这类插件只能放弃白名单强制（那等于把白名单变成
- * 装饰），或者要求用户改清单重新打包（那等于宣告"自建托管者用不了签名"）。
+ * 装饰），或者要求用户手改清单再重新装一遍（那等于宣告"自建托管者用不了插件"）。
  *
  * ## `configured-origin` 不比 `declared-hosts` 松
  *

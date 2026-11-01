@@ -127,7 +127,24 @@ describe('listStoragePluginMeta（纯数据，可过 IPC）', () => {
       version: '1.0.0',
       fields: [{ key: 'baseUrl', labelKey: 'sources.webdav.baseUrlLabel', kind: 'url' }],
       capabilities: ['probe'],
+      // 启停状态随 meta 一起下发：新增来源的类型选择据它过滤掉已停用的协议
+      enabled: true,
     })
+  })
+
+  it('停用的插件仍出现在 meta 里，但 enabled 为 false（条目不能消失，否则开关就没了）', async () => {
+    registerStoragePlugin(makePlugin('alpha', { probe: async () => ({ ok: true, message: 'x' }) }))
+    const { setPluginEnabled } = await import('../../availability')
+    setPluginEnabled('alpha', false)
+    try {
+      const meta = listStoragePluginMeta()
+      // 条目仍在：删掉它会让用户没有任何入口把开关打开
+      expect(meta.map((m) => m.id)).toContain('alpha')
+      expect(meta.find((m) => m.id === 'alpha')?.enabled).toBe(false)
+    } finally {
+      // 启停表是模块级状态，必须还原，否则会影响同文件后续用例
+      setPluginEnabled('alpha', true)
+    }
   })
 
   it('meta 里不含函数（Electron IPC 走 structured clone，函数会抛 DataCloneError）', () => {

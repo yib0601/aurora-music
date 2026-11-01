@@ -13,6 +13,22 @@
  * 安装失败的原因有六种以上（清单非法 / id 冲突 / 哈希不符 / 下载失败 / 不是 UTF-8 /
  * 磁盘写失败）。若统一显示"安装失败"，用户唯一的补救方式是反复重试。所以这里的每个
  * 出口都尽量产出**具体**的原因，且清单结构问题要逐条列出字段路径。
+ *
+ * ## 启停是**插件粒度**，与源配置的 `enabled` 是两层
+ *
+ * 音源配置上的 `enabled` 回答的是"这条配置参不参与搜索"，启停开关回答的是"这个实现
+ * 还上不上场"。两者必须分开：
+ *
+ * - 一个插件可以同时被多条音源配置使用（比如内置的 aurora 有多个入口）。想"先别用这个源"
+ *   的用户如果只能逐条去关配置，会漏掉自己忘了的那条；而按插件关掉，一次到底。
+ * - 内置插件的实现编译在应用里，**没法卸载**。没有插件级开关时，"我不想用它"这件事
+ *   对内置插件根本无法表达。
+ * - 停用不删任何东西（凭证、脚本、安装记录都留着），所以它是可逆的临时动作，
+ *   不该复用"卸载"那套二次确认 + 破坏性文案。
+ *
+ * 当前状态一律读目录条目的 `entry.enabled`（主进程 / 移动端投影目录时已算好），
+ * 本文件不直接查 shared 的 `isPluginEnabled`：渲染层没有那份内存态，
+ * 自己算会得出"开关显示开着、实际不生效"这类最难排查的错位。
  */
 
 import type {
@@ -67,6 +83,16 @@ export function pluginInstallAvailable(): boolean {
 }
 
 /**
+ * 本端是否具备**启停**能力。
+ *
+ * 判据只认 `setPluginEnabled`：`listDisabledPlugins` 是给启动路径灌内存态用的读通道，
+ * 有它但没有写通道时拨开关只会失败，所以那种组合一律当作"没有启停能力"（隐藏开关）。
+ */
+export function pluginToggleAvailable(): boolean {
+  return typeof platform.plugins?.setPluginEnabled === 'function'
+}
+
+/**
  * 读插件目录。
  *
  * 失败时返回空目录而不是抛错：插件页是设置里的一个分区，读失败不该让整个设置页白屏。
@@ -93,6 +119,11 @@ export async function loadPluginCatalog(locale: string): Promise<PluginCatalogSt
           capabilities: meta.capabilities,
           provenance: 'builtin' as const,
           removable: false,
+          // 这条回落路径没有目录投影，拿不到"主进程算好的启停状态"。
+          // 补 `true` 而不是留空：`enabled` 在 `PluginCatalogEntry` 上是必填字段，
+          // 而老 preload 本来就没有启停通道 —— 开关会因 `pluginToggleAvailable()` 为 false
+          // 而整块隐藏，所以这里的 `true` 不会被渲染成"用户关得掉"的开关。
+          enabled: true,
         })),
         broken: [],
         manageable: false,
@@ -430,6 +461,59 @@ export async function uninstallPlugin(pluginId: string, locale: string): Promise
     return outcome.ok ? { ok: true, name: pluginId } : outcome
   } catch (err) {
     return { ok: false, message: renderErrorMessage(err) }
+  }
+}
+
+/**
+ * 启用 / 停用一个插件。
+ *
+ * 与安装/卸载同一套出口形状（`{ ok, message }`），原因同上：用户看到"切换失败"时
+ * 必须能据此判断"是界面坏了、还是这一端不支持、还是磁盘写不进去"。
+ *
+ * 三处刻意的不对称：
+ *
+ * 1. **失败一律包上 `enableFailed` 前缀**，而 `reason` 里放的是**具体**原因。裸的
+ *    `EACCES: permission denied` 会让用户以为整个插件系统坏了；带上"启用失败："他才
+ *    知道失败的只是这次切换，插件本身还在。
+ * 2. **返回值里的 `enabled` 以网关为准，不用入参**。落盘失败时主进程可能已经回滚，
+ *    此时若直接把入参回显给 UI，开关会显示成"已经切过去了"，而实际状态没变 ——
+ *    这类"界面撒了谎"的状态错位要靠刷新列表才能纠正，必须避免。
+ * 3. **没有能力时不抛错，也不假装成功**：返回 `toggleUnsupported` 文案，调用方本应
+ *    在此之前就用 `pluginToggleAvailable()` 把开关隐藏掉，这是最后一道兜底。
+ */
+export async function togglePluginEnabled(
+  pluginId: string,
+  enabled: boolean,
+  t?: (key: MessageKey, params?: Record<string, string | number>) => string
+): Promise<{ ok: boolean; enabled: boolean; message?: string }> {
+  const translate = t ?? appTranslate()
+  const gateway = platform.plugins
+  if (typeof gateway?.setPluginEnabled !== 'function') {
+    // 没有能力时把入参原样当作当前状态返回：调用方拿它渲染开关，而不是当成"已切换成功"
+    return { ok: false, enabled, message: translate('sources.plugins.toggleUnsupported') }
+  }
+  try {
+    const result = await gateway.setPluginEnabled(pluginId, enabled)
+    if (result?.ok) {
+      // 网关回了 enabled 就用它（见上面第 2 条），没回才退回入参
+      return { ok: true, enabled: typeof result.enabled === 'boolean' ? result.enabled : enabled }
+    }
+    // 契约里 `ok: false` 不带原因字段（只有 `{ ok, enabled }`）。于是这里只能给一句
+    // 通用原因，而不是把 `undefined` 拼进句子变成「启用失败：undefined」。
+    // 网关将来若补了 message/code，这里按存在性取用，不需要再改。
+    const detail = (result as { message?: unknown } | undefined)?.message
+    const reason = detail === undefined ? translate('errors.unknown') : renderErrorMessage(detail)
+    return {
+      ok: false,
+      enabled,
+      message: translate('sources.plugins.enableFailed', { reason }),
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      enabled,
+      message: translate('sources.plugins.enableFailed', { reason: renderErrorMessage(err) }),
+    }
   }
 }
 

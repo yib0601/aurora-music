@@ -24,7 +24,6 @@
 import { ipcMain, dialog, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import crypto from 'node:crypto'
 import {
   auroraError,
   buildPluginCatalog,
@@ -34,8 +33,6 @@ import {
   pluginStartupReport,
   removeManifestFromRuntime,
   canInstall,
-  hexToBytes,
-  verifyManifestSignature,
 } from '@aurora/shared'
 import type {
   PluginCatalogEntry,
@@ -44,7 +41,6 @@ import type {
   PluginStartupReport,
 } from '@aurora/shared'
 import { getMainLocale, mainErrorText, mainTranslate } from '../i18n'
-import { effectiveTrustedKeys } from './pluginTrust'
 import {
   downloadManifest,
   downloadScriptBody,
@@ -56,27 +52,6 @@ import {
   sha256OfBytes,
   writeInstalledPlugin,
 } from './pluginStore'
-
-/**
- * Ed25519 验签（主进程用 node:crypto，不依赖 WebCrypto 的 Ed25519 支持）。
- *
- * 公钥来源是**信任表**而不是清单：让签名自己证明自己毫无意义。
- * raw 32 字节公钥要拼上 SPKI DER 前缀才能被 node:crypto 接受。
- */
-function verifyEd25519(sigHex: string, publicKeyHex: string, message: string): boolean {
-  const keyBytes = hexToBytes(publicKeyHex)
-  if (!keyBytes || keyBytes.length !== 32) return false
-  const sigBytes = hexToBytes(sigHex)
-  if (!sigBytes || sigBytes.length !== 64) return false
-  // SPKI DER 的固定前缀（OID 1.3.101.112 = Ed25519）+ raw key
-  const prefix = Buffer.from('302a300506032b6570032100', 'hex')
-  const key = crypto.createPublicKey({
-    key: Buffer.concat([prefix, Buffer.from(keyBytes)]),
-    format: 'der',
-    type: 'spki',
-  })
-  return crypto.verify(null, Buffer.from(message, 'utf8'), key, Buffer.from(sigBytes))
-}
 
 /** 当前界面语言：主进程有唯一来源（渲染层推过来的语言），不要在这里另存一份 */
 function currentLocale(): string {
@@ -214,23 +189,6 @@ export async function performInstall(input: {
       // 两种冲突给不同的码，UI 才能说清"这是内置的"还是"你已经装过一个同名的"
       message: allowed.code === 'builtin' ? 'AURORA_PLUGIN_BUILTIN_ID' : 'AURORA_PLUGIN_DUPLICATE_ID',
       issues: [{ path: 'id', code: 'duplicate', value: manifest.id }],
-    }
-  }
-
-  // ─── 签名校验（Ed25519） ────────────────────────────────────
-  //
-  // 语义分档（见 shared 的 signature.ts）：未签名放行；签名者不在信任表放行但标注；
-  // **签名存在且校验失败必须拒绝** —— 那说明下载到的内容不是发布者签的那份
-  // （中间人替换 / 托管被入侵）。
-  if (manifest.signature) {
-    const verdict = await verifyManifestSignature(manifest, {
-      // 用**生效的**信任表（内置 ∪ 用户在设置页导入的），而不是编译期常量：
-      // 否则自建托管的人在设置里导入了自己的公钥也不会生效
-      trustedKeys: effectiveTrustedKeys(),
-      verify: verifyEd25519,
-    })
-    if (verdict.status === 'invalid') {
-      return { ok: false, message: 'AURORA_PLUGIN_SIGNATURE_INVALID', issues: [] }
     }
   }
 

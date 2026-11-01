@@ -14,6 +14,8 @@
 
 import type { LibrarySourceConfig } from '../../webdav'
 import { storageCapabilitiesOf, type StoragePlugin, type StoragePluginMeta } from './types'
+// 插件启停门禁。`availability` 零依赖（纯内存表），这条 import 不进任何环。
+import { isPluginEnabled } from '../availability'
 
 /** id → 插件。Map 的插入序即注册序 */
 const STORAGE_PLUGINS = new Map<string, StoragePlugin>()
@@ -79,6 +81,7 @@ export function listStoragePluginMeta(): StoragePluginMeta[] {
     // 浅拷贝字段数组：调用方 push 不该改到注册表里的插件
     fields: plugin.fields.map((f) => ({ ...f })),
     capabilities: storageCapabilitiesOf(plugin),
+    enabled: isPluginEnabled(plugin.id),
   }))
 }
 
@@ -109,11 +112,28 @@ export function librarySourcePluginId(
  *
  * 组合了「配置 → 插件 id」与「id → 注册表」两步，免得调用方各写一遍、
  * 或者写成两套（平台层历史上确实出现过 `providerFor()` 与裸 `getMediaProvider` 并存）。
+ *
+ * ## 停用与未注册都返回 undefined，但边界不同
+ *
+ * 本函数把**两种完全不同的原因**压成同一个返回值：
+ * - 未注册：配置里写的 id 本机没有实现（配置错误 / 插件被卸载）——**不会自己好**；
+ * - 已停用：用户在设置里关掉了它 —— 用户一拨开关就恢复，且这是**用户本意**。
+ *
+ * 调用方只看 undefined 时两者都表现为"无实现"，因此可以走同一条降级路径
+ * （跳过这条来源 / 提示不支持）；但**若要向用户解释原因**，必须回到
+ * `isPluginEnabled(pluginId)` 与 `registeredStoragePluginIds()` 各自判断 ——
+ * 把"你停用的插件现在用不了"说成"不支持这种类型"，是本层刻意留给上层的一次选择，
+ * 而不是这里的疏忽。
  */
 export function storagePluginOf(
   source: Pick<LibrarySourceConfig, 'kind' | 'pluginId'> | null | undefined
 ): StoragePlugin | undefined {
-  return getStoragePlugin(librarySourcePluginId(source))
+  const plugin = getStoragePlugin(librarySourcePluginId(source))
+  if (!plugin) return undefined
+  // 门禁用插件自己的 id 而不是配置里的 id：配置可能是 `kind` 推导出来的，
+  // 启停表记的是**实现**的 id。
+  if (!isPluginEnabled(plugin.id)) return undefined
+  return plugin
 }
 
 /** 清空注册表（**仅供单测**：生产代码没有「卸载全部插件」的需求） */

@@ -26,6 +26,9 @@ import type {
 import type { PluginContext, PreflightResult, ResolvedAudio, SourcePlugin } from './types'
 import { getPlugin } from './registry'
 import { pluginIdOf } from './pluginIdOf'
+// 插件启停门禁。`availability` 不 import 任何模块（纯内存表），因此这条 import
+// 不引入新的环，也不会把「注册内置插件」的时机提前。
+import { isPluginEnabled } from './availability'
 // 注册内置插件：执行器是所有人必经的门面。**在函数内调用**而不是模块顶层，
 // 否则会撞上 musicSource → executor → builtins → auroraPlugin → musicSource 的环，
 // 拿到尚未初始化的插件对象（见 builtins.ts 顶部说明）
@@ -42,10 +45,15 @@ export { pluginIdOf }
 /**
  * 取这条配置对应的插件。
  *
- * 返回 undefined 有三种可能，对调用方的含义都一样（跳过该源）：
+ * 返回 undefined 有四种可能，对调用方的含义都一样（跳过该源）：
  * 1. pluginId 指向的插件没注册（配置错误 / 插件被卸载）；
  * 2. 注册了但源被停用（enabled === false）；
- * 3. 配置本身为空。
+ * 3. 配置本身为空；
+ * 4. 插件被用户在设置里停用（插件级开关，与第 2 条的**源**开关是两层）。
+ *
+ * 第 2 条与第 4 条为什么共用同一个返回值：执行侧关心的是"这次要不要用这个插件"，
+ * 而两种关闭都该得到"不用"。区别留给 UI —— 它读目录条目的 `enabled` 与源配置的
+ * `enabled` 分别展示，用户看到的是"插件关了"或"这条源关了"两条不同提示。
  */
 export function pluginForSource(
   source: OnlineSourceConfig | null | undefined
@@ -53,7 +61,12 @@ export function pluginForSource(
   ensureBuiltinsRegistered()
   if (!source) return undefined
   if (source.enabled === false) return undefined
-  return getPlugin(pluginIdOf(source))
+  const plugin = getPlugin(pluginIdOf(source))
+  if (!plugin) return undefined
+  // 门禁放在"取到之后"而不是"取之前"：要先有 plugin.id 才能查启停表 ——
+  // 配置里的 pluginId 与插件自己的 id 未必一字不差（id 有归一与回落逻辑）。
+  if (!isPluginEnabled(plugin.id)) return undefined
+  return plugin
 }
 
 /**

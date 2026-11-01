@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { buildPluginCatalog, catalogByDomain, entryHasCapability, entryUsableAsSource } from '../catalog'
 import { validatePluginManifest } from '../validate'
 import { PLUGIN_MANIFEST_FORMAT, type PluginManifest } from '../types'
+import { clearPluginAvailabilityForTest, setPluginEnabled } from '../../availability'
 
 function manifest(id: string, extra: Record<string, unknown> = {}): PluginManifest {
   const result = validatePluginManifest({
@@ -163,7 +164,60 @@ describe('目录是纯数据（必须能过 IPC structured clone）', () => {
   })
 })
 
-// beforeEach 未用时 vitest 会提示；此处显式声明保持与其他测试文件一致
+describe('启停投影：三条来源都带 enabled', () => {
+  const entryOf = (id: string) => buildPluginCatalog([{ manifest: manifest('demo'), record: record() }]).find((item) => item.id === id)!
+
+  it('默认全部 enabled=true', () => {
+    for (const entry of buildPluginCatalog([])) expect(entry.enabled).toBe(true)
+    expect(entryOf('demo').enabled).toBe(true)
+  })
+
+  it('内置音源插件停用后 enabled=false，开回来为 true', () => {
+    setPluginEnabled('aurora', false)
+    expect(entryOf('aurora').enabled).toBe(false)
+    // 其它插件不受影响
+    expect(entryOf('lx').enabled).toBe(true)
+
+    setPluginEnabled('aurora', true)
+    expect(entryOf('aurora').enabled).toBe(true)
+  })
+
+  it('内置存储插件停用后 enabled=false，且能力清单不被清空', () => {
+    setPluginEnabled('webdav', false)
+    const webdav = entryOf('webdav')
+    expect(webdav.enabled).toBe(false)
+    // 能力照旧全量投影：否则 UI 分不清"没这个能力"与"有但被关了"
+    expect(webdav.capabilities).toEqual(
+      expect.arrayContaining(['listAudio', 'openRange', 'openStream', 'probe'])
+    )
+
+    setPluginEnabled('webdav', true)
+    expect(entryOf('webdav').enabled).toBe(true)
+  })
+
+  it('已安装插件停用后 enabled=false，但仍留在目录里（否则开关会跟着条目一起消失）', () => {
+    setPluginEnabled('demo', false)
+    const demo = entryOf('demo')
+    expect(demo.enabled).toBe(false)
+    // 仍可卸载：停用与卸载是两件事
+    expect(demo.removable).toBe(true)
+  })
+
+  it('停用不改变可卸载性、展示名与域', () => {
+    const before = entryOf('aurora')
+    setPluginEnabled('aurora', false)
+    const after = entryOf('aurora')
+    expect(after).toMatchObject({
+      domain: before.domain,
+      displayNameKey: before.displayNameKey,
+      removable: false,
+      provenance: 'builtin',
+    })
+  })
+})
+
+// 目录本身不写注册表，但**会读**启停表这份模块级单例：一个用例停用了某个插件，
+// 不清就会让后面的用例看到 enabled=false。这里清的是启停态，不是目录缓存。
 beforeEach(() => {
-  /* 无共享状态需要清理：buildPluginCatalog 不写注册表 */
+  clearPluginAvailabilityForTest()
 })

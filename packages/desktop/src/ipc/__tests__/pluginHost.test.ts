@@ -263,3 +263,80 @@ describe('插件 IPC：凭证边界', () => {
     await expect(call('plugin:login', 'qishui', '   ')).rejects.toThrow()
   })
 })
+
+/**
+ * 插件停用必须在这条通道上也挡住。
+ *
+ * 执行门禁（`pluginForSource`）只在"按源配置执行"的路径上生效；本文件的 8 个通道是
+ * **按插件 id 直呼**的，渲染层手里只要还留着一份旧音源配置（用户先配源、后停用插件），
+ * 就能绕过那道门禁。不在这里挡，"停用了却还搜得到"会从这条路漏出来。
+ */
+describe('插件 IPC：停用的插件不可执行', () => {
+  it('plugin:list 如实给出 enabled，未被停用时为 true', () => {
+    const list = call('plugin:list') as Array<Record<string, unknown>>
+    const aurora = list.find((p) => p.id === 'aurora')
+    expect(aurora?.enabled).toBe(true)
+  })
+
+  it('停用后 plugin:list 的 enabled 变 false，但条目仍在（否则开关就没了）', async () => {
+    const shared = await import('@aurora/shared')
+    shared.setPluginEnabled('aurora', false)
+    try {
+      const list = call('plugin:list') as Array<Record<string, unknown>>
+      const aurora = list.find((p) => p.id === 'aurora')
+      // 条目不能消失：删掉它用户就没有任何入口把开关打开
+      expect(aurora).toBeTruthy()
+      expect(aurora?.enabled).toBe(false)
+    } finally {
+      shared.setPluginEnabled('aurora', true)
+    }
+  })
+
+  it('停用后按 id 直呼的能力通道被拒（搜索不会偷偷继续工作）', async () => {
+    const shared = await import('@aurora/shared')
+    shared.setPluginEnabled('aurora', false)
+    try {
+      // 每种能力通道走的是同一个 requirePlugin，逐个确认没有被漏掉
+      await expect(
+        callAsPromise('plugin:search', 'aurora', CONFIG, 'query', '128')
+      ).rejects.toThrow()
+      await expect(
+        callAsPromise('plugin:probe', 'aurora', CONFIG)
+      ).rejects.toThrow()
+      await expect(
+        callAsPromise('plugin:resolveTrack', 'aurora', CONFIG, { id: 'x' }, '128')
+      ).rejects.toThrow()
+    } finally {
+      shared.setPluginEnabled('aurora', true)
+    }
+  })
+
+  it('重新启用后同一通道恢复可用（停用是可逆的临时动作）', async () => {
+    const shared = await import('@aurora/shared')
+    shared.setPluginEnabled('aurora', false)
+    shared.setPluginEnabled('aurora', true)
+    // 不抛错即可：具体返回内容取决于插件实现与网络，这里只验证门禁已放行
+    await expect(callAsPromise('plugin:probe', 'aurora', CONFIG)).resolves.toBeDefined()
+  })
+
+  it('未注册的 id 与已停用的 id 报同一种错（都是"不可执行"，UI 无需多一条分支）', async () => {
+    const shared = await import('@aurora/shared')
+    shared.setPluginEnabled('aurora', false)
+    try {
+      const disabledErr = String(
+        await callAsPromise('plugin:probe', 'aurora', CONFIG).catch((e) => e)
+      )
+      const missingErr = String(
+        await callAsPromise('plugin:probe', 'no-such-plugin', CONFIG).catch((e) => e)
+      )
+      // 比的是**错误码**而不是整条报文：params 里的 id 天然不同（一个是 aurora、
+      // 一个是不存在的 id），但两者对调用方的含义必须是同一个 —— "这个插件不可用"，
+      // 而不是"已停用"这种要用户二次理解的结论（那会让渲染层多一条分支）。
+      const codeOf = (text: string) => /"code":"([^"]+)"/.exec(text)?.[1]
+      expect(codeOf(disabledErr)).toBe('desktop.error.plugin.notFound')
+      expect(codeOf(disabledErr)).toBe(codeOf(missingErr))
+    } finally {
+      shared.setPluginEnabled('aurora', true)
+    }
+  })
+})

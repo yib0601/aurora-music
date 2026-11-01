@@ -61,6 +61,18 @@ export {
   pluginStartupReport,
 } from './health'
 export { pluginIdOf, pluginFieldsOf, DEFAULT_PLUGIN_ID } from './pluginIdOf'
+// 插件启停（用户级开关）。纯内存态：落盘由两端平台层负责，执行门禁读同一份状态。
+export {
+  clearPluginAvailabilityForTest,
+  disabledPluginIds,
+  isPluginEnabled,
+  parseDisabledPluginIds,
+  serializeDisabledPluginIds,
+  setDisabledPluginIds,
+  setPluginEnabled,
+  PLUGIN_AVAILABILITY_FILE_VERSION,
+} from './availability'
+export type { PluginAvailabilityFile, PluginAvailabilitySnapshot } from './availability'
 export {
   pluginForSource,
   canSearchSource,
