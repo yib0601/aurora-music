@@ -35,7 +35,7 @@ import {
   uninstallPlugin,
   type InstallOutcome,
 } from './pluginManage'
-import { configSummaryOf, configsOfPlugin, hasPluginConfig } from './pluginConfig'
+import { configSummaryOf, configsOfPlugin, hasPluginConfig, storageCapabilityOf } from './pluginConfig'
 import { PluginSettingsDialog } from '@/components/plugin/PluginSettingsDialog'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { platform } from '@/services/platform'
@@ -43,8 +43,10 @@ import { platform } from '@/services/platform'
 /**
  * 插件管理面板（安装 / 卸载 / 目录）。
  *
- * 只出现在**具备安装能力**的端（桌面端）：移动端与 Web 没有插件文件系统，
- * 入口在那里整块隐藏而不是显示后再失败（与 `PluginAuthPanel` 同一纪律）。
+ * 入场条件是「有插件层」（`pluginExecutionAvailable() || pluginInstallAvailable()`），
+ * 而不是「能装插件」：配置按插件归属之后，改音源 / 改网络存储的唯一入口就在这张
+ * 列表的齿轮上，藏掉列表等于藏掉唯一路径。安装那一段仍按能力自己隐藏
+ * （Web 没有插件文件系统，移动端只有 URL 安装）。
  *
  * ## 四条刻意的交互决定
  *
@@ -103,12 +105,25 @@ export function PluginManagerPanel() {
   const onlineSources = useLibraryStore((s) => s.onlineSources)
   const librarySources = useLibraryStore((s) => s.librarySources)
   /**
+   * 本端**能跑**的存储协议 id（白名单）。
+   *
+   * `null` = 这一端拿不到 meta 名单（老 preload / 尚未读到）。两者必须分开：
+   * 混成空数组会让桌面端在首帧把存储入口整块藏掉（用户看到齿轮闪一下就没了）。
+   */
+  const [storagePluginIds, setStoragePluginIds] = useState<readonly string[] | null>(null)
+  /**
    * 本端的配置能力（卡片齿轮与面板分区必须用同一份判据）。
    *
-   * `storage` 看 `scanLibrarySource`：只有桌面端实现了主进程侧的存储代理与扫描。
-   * 移动端目录里同样有 WebDAV / SFTP / SMB 条目，但那一端配不了、也扫不了。
+   * 判据分两层：`scanLibrarySource` 回答「这一端做不做存储」，
+   * 插件名单回答「这一端跑得动哪些协议」（移动端只有 WebDAV：SFTP/SMB 的依赖
+   * 只在桌面端注入，见 shared 的 `storagePluginAvailable`）。
    */
-  const configCapability = { storage: typeof platform.scanLibrarySource === 'function' }
+  const configCapability = {
+    storage: storageCapabilityOf(
+      typeof platform.scanLibrarySource === 'function',
+      storagePluginIds
+    ),
+  }
   /**
    * 某插件当前持有的配置条数。
    *
@@ -133,6 +148,20 @@ export function PluginManagerPanel() {
     // 启停能力单独探一次：它不随目录内容变，但与"能不能装"是两件事
     setToggleAvailable(pluginToggleAvailable())
     setInstallAvailable(pluginInstallAvailable())
+    /**
+     * 可跑的存储协议名单：`available === false` 的插件（移动端的 SFTP / SMB）
+     * 不进白名单，卡片因此不给齿轮、面板里也不给新增入口。
+     *
+     * 通道不存在（老 preload）时置 null = "拿不到名单，按全部可配处理"，
+     * 与引入白名单之前的行为一致。
+     */
+    const storageMetas =
+      typeof platform.listStoragePlugins === 'function'
+        ? await platform.listStoragePlugins().catch(() => [])
+        : null
+    setStoragePluginIds(
+      storageMetas ? storageMetas.filter((meta) => meta.available !== false).map((meta) => meta.id) : null
+    )
     // 启动加载失败清单：一次性读，不随刷新变（那是"本次启动"的事实，重读也不会变）
     const report = await loadPluginStartupReport()
     setFailures(report?.failures ?? [])
@@ -231,7 +260,15 @@ export function PluginManagerPanel() {
   // 连列表都看不到 —— 而现在列表里带着每个插件的**配置入口**，藏掉它等于藏掉
   // 改音源 / 改网络存储的唯一路径。所以只要有条目就渲染。
   if (!manageable && !installAvailable && (entries === null || entries.length === 0)) return null
-  if (entries === null) {
+  /**
+   * 还差「本端可跑的存储协议名单」时也按加载中处理。
+   *
+   * 不这样做的话，手机端会先按"全部可配"渲染一帧（SFTP / SMB 各闪出一个齿轮），
+   * 名单到齐后再消失 —— 那种闪动比一直不显示更让人怀疑功能坏了。
+   */
+  const storageIdsPending =
+    typeof platform.listStoragePlugins === 'function' && storagePluginIds === null
+  if (entries === null || storageIdsPending) {
     return (
       <div className="flex items-center gap-2 text-white/45 font-text text-caption py-2">
         <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.6} />
@@ -648,6 +685,13 @@ function PluginEntryCard({
           {!enabled && onToggle && (
             <p className="font-text text-[10px] text-white/40 mt-1.5">
               {t('sources.plugins.disabledHint')}
+            </p>
+          )}
+          {/* 存储插件在**这一端**跑不动（移动端的 SFTP / SMB）：必须说出来。
+              否则用户只看到"这张卡片少了齿轮"，会当成按钮漏做（曾是这样被报上来的） */}
+          {entry.domain === 'storage' && !onConfigure && (
+            <p className="font-text text-[10px] text-white/40 mt-1.5">
+              {t('sources.plugins.unsupportedHere')}
             </p>
           )}
         </div>

@@ -154,7 +154,19 @@ const sources = {
     credentialSaved: '口令已安全保存',
     credentialMissing: '未保存口令',
     credentialUnavailable: '本机无法安全保存口令，每次启动都需要重新输入',
-    credentialHint: '口令经系统密钥加密后保存在本机，不会写入配置文件，也不会出现在播放地址里',
+    /**
+     * 移动端形态：没有系统密钥（keyring / safeStorage 等价物），口令只能落在
+     * 应用私有目录。文案必须说清"存在哪、清得掉吗"，不能冒充"已加密"。
+     */
+    credentialSavedUnprotected: '口令保存在应用私有目录（未加密），卸载应用会一并清除',
+    /**
+     * 口令去向的通用说明。
+     *
+     * 不能写死"经系统密钥加密"：手机端没有 keyring，口令可能落在应用私有目录
+     * （见 `credentialSavedUnprotected`）。这里只承诺两端都成立的部分，
+     * 「到底怎么保护的」交给保存后卡片上的状态文案如实回答。
+     */
+    credentialHint: '口令不会写入配置文件，也不会出现在播放地址里；保存后卡片上会标明它的保护方式',
     clearCredential: '清除口令',
     /** 必填字段缺失时的提交校验提示 */
     fieldRequired: '{field}不能为空',
@@ -229,6 +241,13 @@ const sources = {
     builtin: '内置',
     /** 内置歌词兜底插件的说明（domain=lyrics） */
     builtinLyricsDesc: '内置歌词兜底：所有用户歌词源未命中时，从 LRCLIB 开放接口取词。可停用',
+    /**
+     * 卡片上的「这一端用不了」说明。
+     *
+     * 与「没有可配置项」是两件事：SFTP / SMB 的协议库只在桌面端注入，
+     * 手机上的卡片若什么都不说，用户只会看到"这里少了齿轮"（本 bug 的起点）。
+     */
+    unsupportedHere: '当前设备不支持该协议（仅桌面端可用）',
     listEmpty: '还没有安装任何第三方插件',
     listBroken: '有 {count} 个插件文件读取失败',
     brokenHint: '这些文件不符合插件清单格式，或内容与被安装时不一致（可能被修改过）',

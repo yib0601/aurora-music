@@ -67,6 +67,10 @@ dependencies {
     implementation project(':capacitor-android')
     // MediaSession + 后台播放通知栏控件
     implementation "androidx.media:media:$androidxMediaVersion"
+    // NativeHttp 插件用：HttpURLConnection 拒绝非标准动词（WebDAV 的 PROPFIND 会抛
+    // ProtocolException），OkHttp 接受任意 method 字符串。版本固定在 4.12.0（Kotlin 1.9
+    // 可编译，且是 4.x 最后一个维护版本）。
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "androidx.core:core-ktx:$androidxCoreKtxVersion"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

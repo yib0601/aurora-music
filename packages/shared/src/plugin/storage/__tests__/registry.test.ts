@@ -127,6 +127,8 @@ describe('listStoragePluginMeta（纯数据，可过 IPC）', () => {
       version: '1.0.0',
       fields: [{ key: 'baseUrl', labelKey: 'sources.webdav.baseUrlLabel', kind: 'url' }],
       capabilities: ['probe'],
+      // 依赖注入状态随 meta 一起下发：未声明 available 的插件按"本端可用"处理
+      available: true,
       // 启停状态随 meta 一起下发：新增来源的类型选择据它过滤掉已停用的协议
       enabled: true,
     })

@@ -20,6 +20,9 @@ import type {
   ToplistDetail,
   MusicHallOptions,
   MusicHallSource,
+  LibrarySourceConfig,
+  StoragePluginMeta,
+  StorageCredentialState,
 } from '@/types'
 import { MobileDatabase } from './database'
 import {
@@ -72,6 +75,18 @@ import {
   openAllFilesAccessSettings,
 } from '@/services/permission'
 import { createMobileLogging, type MobileLoggingApi } from './logging'
+import {
+  clearStorageCredential,
+  listMobileStoragePlugins,
+  ensureStorageCoverForTrack,
+  probeLibrarySource as probeMobileLibrarySource,
+  removeLibrarySource as removeMobileLibrarySource,
+  resolveStorageAudio as resolveMobileStorageAudio,
+  saveStorageCredential,
+  scanLibrarySource as scanMobileLibrarySource,
+  storageCredentialState,
+  syncLibrarySources as syncMobileLibrarySources,
+} from './storage'
 import { currentLocale } from '@/stores/localeStore'
 import { APP_VERSION } from '@/services/update.service'
 
@@ -350,6 +365,8 @@ export function createMobilePlatform(): PlatformInterface & {
   // 这里**不声明 revealTrack**：移动端没有文件管理器桥，能力缺失用「方法不存在」表达
   // （与 LoggingGateway.reveal 同一套约定），UI 据此隐藏「在文件夹中显示」。
   removeTrack: (trackId: string) => Promise<Track[]>
+  // 按需补齐内嵌封面（网络存储曲目）：与桌面端同一契约，见 storage.ts 的 ensureStorageCover
+  ensureCover: (trackId: string) => Promise<string | null>
   // 在线音乐（推荐歌单 / 榜单）：渲染层直调共享执行器（原生 fetch 不受 CORS 限制）
   musicHall: {
     recommendPlaylists(
@@ -371,6 +388,23 @@ export function createMobilePlatform(): PlatformInterface & {
     headers?: Record<string, string>,
     downloadDir?: string
   ) => Promise<{ savedPath: string }>
+  /** 媒体库来源（网络存储）：实现在 ./storage.ts，与桌面端同契约、不同形态 */
+  syncLibrarySources: (sources: readonly LibrarySourceConfig[]) => Promise<void>
+  listStoragePlugins: () => Promise<StoragePluginMeta[]>
+  probeLibrarySource: (sourceId: string) => Promise<{ ok: boolean; message: string; sample?: string[] }>
+  scanLibrarySource: (sourceId: string) => Promise<{
+    tracks: Track[]
+    complete: boolean
+    failedDirs: number
+  }>
+  removeLibrarySource: (sourceId: string) => Promise<Track[]>
+  saveStorageCredential: (
+    sourceId: string,
+    payload: Record<string, string>
+  ) => Promise<{ ok: boolean } & StorageCredentialState>
+  storageCredentialState: (sourceId: string) => Promise<StorageCredentialState>
+  clearStorageCredential: (sourceId: string) => Promise<{ ok: boolean } & StorageCredentialState>
+  resolveStorageAudio: (track: Pick<Track, 'sourceId' | 'path'>) => Promise<{ src: string | null }>
   /** 媒体缓存（音频 / 封面 / 歌词）：实现在 ./mediaCache.ts，与桌面端同构 */
   resolveCachedAudio: (req: {
     url: string
@@ -921,6 +955,65 @@ export function createMobilePlatform(): PlatformInterface & {
         console.warn('[Mobile] 获取保存路径失败，回退相对路径:', err)
         return { savedPath: savePath }
       }
+    },
+
+    // ─── 媒体库来源（网络存储）：实现在 ./storage.ts ───
+    // 与桌面端**同契约、不同形态**：桌面端把这套跑在主进程（IPC + 自定义协议代理），
+    // 移动端就跑在渲染进程里 —— 插件注册表本来就在这个进程，配置、口令、扫描、
+    // 取地址全在这里完成。能力探测（`pluginConfigSurfaces`）看的就是这几个方法。
+    async syncLibrarySources(sources: readonly LibrarySourceConfig[]): Promise<void> {
+      syncMobileLibrarySources(sources)
+    },
+    async listStoragePlugins(): Promise<StoragePluginMeta[]> {
+      return listMobileStoragePlugins()
+    },
+    async probeLibrarySource(sourceId: string) {
+      return probeMobileLibrarySource(sourceId)
+    },
+    async scanLibrarySource(sourceId: string) {
+      return scanMobileLibrarySource(sourceId, { db, ensureDbInited })
+    },
+    async removeLibrarySource(sourceId: string): Promise<Track[]> {
+      return removeMobileLibrarySource(sourceId, { db, ensureDbInited })
+    },
+    async saveStorageCredential(
+      sourceId: string,
+      payload: Record<string, string>
+    ): Promise<{ ok: boolean } & StorageCredentialState> {
+      return saveStorageCredential(sourceId, payload)
+    },
+    async storageCredentialState(sourceId: string): Promise<StorageCredentialState> {
+      return storageCredentialState(sourceId)
+    },
+    async clearStorageCredential(
+      sourceId: string
+    ): Promise<{ ok: boolean } & StorageCredentialState> {
+      return clearStorageCredential(sourceId)
+    },
+    /**
+     * 远端媒体库曲目 → 本机可播地址（整首落缓存后再播）。
+     * 桌面端不实现：那边用 `aurora-remote://` 协议代理流式播放，不需要落文件。
+     */
+    async resolveStorageAudio(track: Pick<Track, 'sourceId' | 'path'>) {
+      return resolveMobileStorageAudio(track)
+    },
+
+    /**
+     * 按需补齐内嵌封面（与桌面端 `covers:ensure` 同一契约，`<CoverImage>` 无 coverPath 时调用）。
+     *
+     * 移动端与桌面端的差别只在**在哪儿执行**：桌面端在主进程解析后写库；
+     * 移动端没有第二层进程，所以这里自己读库、自己写库 —— 只更新 store 是不够的，
+     * 否则每次冷启动都要为同一首歌再 Range 读一遍同一张封面。
+     *
+     * 本地曲目不走这条路：它们在扫描阶段（`scanner.ts`）就已经把封面落了盘，
+     * 这里返回 null 让渲染层按"无封面"处理，不做重复解析。
+     */
+    async ensureCover(trackId: string) {
+      if (!isValidTrackId(trackId)) return null
+      await ensureDbInited()
+      // 传输层失败会让 ensureStorageCoverForTrack 抛错：故意不吞，渲染层据此退避重试，
+      // 而不是把"NAS 暂时不可达"记成"这首没有封面"
+      return ensureStorageCoverForTrack(trackId, { db })
     },
 
     // ─── 媒体缓存：音频 / 封面 / 歌词（实现在 ./mediaCache.ts）───

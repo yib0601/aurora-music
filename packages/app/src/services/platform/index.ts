@@ -109,9 +109,14 @@ export interface PlatformExtension {
   /** 获取所有已扫描曲目 */
   getAllTracks?: () => Promise<Track[]>
   /**
-   * 按需补齐封面（桌面端）：扫描阶段用 skipCovers 跳过内嵌图片读取以提速，
-   * 记录中无 coverPath 时由 UI 调用本方法单独提取并缓存，返回封面绝对路径。
-   * 曲目无内嵌封面时返回 null。移动端扫描阶段已内联提取，故不实现此方法。
+   * 按需补齐封面（两端都实现，语义一致）：扫描阶段跳过内嵌图片读取以提速，
+   * 记录中无 coverPath 时由 UI 调用本方法单独提取并缓存，返回封面地址。
+   * 曲目无内嵌封面时返回 null。
+   *
+   * - 桌面端：主进程按 Range 读远端文件头，或解析本地文件；返回**绝对路径**。
+   * - 移动端：只处理网络存储曲目（本地曲目在扫描阶段已落盘），返回
+   *   `Capacitor.convertFileSrc` 之后的地址；失败（远端不可达）抛错让 UI 退避重试。
+   *
    * fallback：不在曲库的曲目（在线快照）的元信息兜底，主进程据此判定形态。
    */
   ensureCover?: (trackId: string, fallback?: Partial<Track>) => Promise<string | null>
@@ -195,6 +200,17 @@ export interface PlatformExtension {
   ) => Promise<{ ok: boolean; message: string; sample?: string[] }>
   /** 移除来源及其全部曲目，返回移除后的全库 */
   removeLibrarySource?: (sourceId: string) => Promise<Track[]>
+  /**
+   * 远端媒体库曲目 → **本机可播地址**（只移动端实现）。
+   *
+   * 桌面端不实现：那边播放走 `aurora-remote://` 协议代理（流式、Range 透传），
+   * 曲目自带 `remoteUrl`，不需要先落成文件。移动端没有自定义协议、播放器也带不上
+   * 鉴权头，所以只能把远端文件整首缓存到本地后再播 —— 判据见 `lib/storageTrack`。
+   */
+  resolveStorageAudio?: (track: {
+    sourceId?: string
+    path: string
+  }) => Promise<{ src: string | null }>
 
   // ─── 存储协议与口令（能力缺失 = 该端不支持，调用方降级） ──────────
   // 口令的读写全部留在主进程（safeStorage 加密落盘），渲染层只拿「有没有」这类状态。

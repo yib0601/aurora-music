@@ -75,6 +75,18 @@ const runtime = {
     downloadFailed: '下载失败，请检查网络连接或稍后重试',
     databaseNotInited: '数据库未初始化',
     scriptSourceUrlMissing: '音源未填写脚本地址',
+    /**
+     * 媒体库来源（网络存储）在**运行期**的失败结论。
+     *
+     * 桌面端这套文案在 `desktop.error.source.*`（主进程用自己的字典）；
+     * 移动端的存储跑在渲染进程里，用的是 app 字典，因此在这里另立一份 ——
+     * 不共用键名是为了不让"移动端弹出一句叫 desktop.xxx 的话"这种错位出现。
+     */
+    sourceNotFound: '来源配置不存在',
+    sourcePluginUnsupported: '暂不支持的媒体库来源插件：{pluginId}',
+    sourceCapabilityMissing: '该存储插件不支持此操作：{capability}',
+    sourceReadFailed: '读取远端文件失败：HTTP {status}',
+    sourceNoDirectUrl: '该存储协议无法直接取址播放',
   },
 }
 

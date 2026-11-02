@@ -3,6 +3,7 @@ import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { scoreOnlineResult, matchTracksByPaths, searchEndpointOf } from '@aurora/shared'
+import { needsStorageResolve } from '@/lib/storageTrack'
 import type { OnlineTrackSearchResult } from '@/types'
 
 // 路径匹配（含「不得跨来源串味」的规则）实现在 @aurora/shared/src/importMatch.ts，
@@ -108,6 +109,21 @@ const PLAY_RESOLVE_CONCURRENCY = 4
  * 时返回 null（上屏取址失败），而不是退回「取第一条结果」—— 那等于把别的录音当原唱播。
  */
 export async function ensurePlayableTrack(track: Track): Promise<Track | null> {
+  /**
+   * 远端媒体库曲目（移动端）：先换成"本机可播地址"。
+   *
+   * 桌面端这类曲目自带 `remoteUrl`（aurora-remote:// 协议代理），不会走到这里；
+   * 移动端没有自定义协议，`resolveStorageAudio` 会把远端文件整首落到媒体缓存并
+   * 返回本地地址。取不到（断网 / 口令失效 / 空间不足）就返回 null，
+   * 由调用方按"取址失败"上屏，而不是把不可加载的坐标塞给播放器。
+   */
+  if (needsStorageResolve(track)) {
+    const resolved = await platform
+      .resolveStorageAudio?.({ sourceId: track.sourceId, path: track.path })
+      .catch(() => null)
+    if (!resolved?.src) return null
+    return { ...track, onlineUrl: resolved.src }
+  }
   if (track.path || track.onlineUrl) return track
   if (track.trackRef || track.onlineId) {
     const viaSource = await platform.resolveTrackAudio?.(track).catch(() => null)

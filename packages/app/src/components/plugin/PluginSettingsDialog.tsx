@@ -6,7 +6,7 @@ import { useT } from '@/i18n'
 import { platform } from '@/services/platform'
 import { NAV_LABEL_KEYS } from '@/lib/routes'
 import { PluginAuthRow } from '@/components/common/PluginAuthPanel'
-import { configsOfPlugin, pluginConfigSurfaces } from '@/components/common/pluginConfig'
+import { configsOfPlugin, pluginConfigSurfaces, storageCapabilityOf } from '@/components/common/pluginConfig'
 import { displayNameOf } from '@/components/common/pluginManage'
 import { formKindOf } from '@/components/common/pluginForm'
 import {
@@ -52,13 +52,31 @@ export function PluginSettingsDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const t = useT()
-  // 仅桌面端实现了主进程侧的存储插件代理与扫描；Web/移动端即便目录里有存储条目，
-  // 也没有可用的配置动作（连不上、扫不了）。那种情况下把「网络存储」整段去掉，
-  // 而不是留一个只有空态、没有新增按钮的分区 —— 后者读起来像功能坏了。
+  /**
+   * 可用的存储协议（插件的纯数据 meta）：决定卡片渲染哪些字段，以及新增弹窗的字段集。
+   *
+   * `null` = 还没读到，"空数组" = 读到了但没有这个插件。两者必须分开：
+   * 混成空数组会让面板在首帧渲染出「一条字段都没有」的编辑表单 —— 用户看到的是
+   * 一个点不动的保存按钮，而不是"正在加载"。
+   *
+   * 它同时承担第二件事：**本端可跑的协议白名单**（`available === false` 的插件
+   * 例如移动端的 SFTP / SMB 不算），配置面的判定与卡片齿轮必须共用这份名单。
+   */
+  const [storagePlugins, setStoragePlugins] = useState<StoragePluginMeta[] | null>(null)
+  const [libraryStatus, setLibraryStatus] = useState<Record<string, LibrarySourceStatus>>({})
+
+  /**
+   * 这一端做不做存储：桌面端有主进程代理与扫描，移动端有本进程内的传输层与入库；
+   * Web 端两者都没有（`scanLibrarySource` 缺省）。
+   */
   const supportsLibrarySources = typeof platform.scanLibrarySource === 'function'
-  // 硬件能力参与「有哪些面」的判定：与卡片上的齿轮用**同一个** capability，
+  const storageIds =
+    storagePlugins === null
+      ? null
+      : storagePlugins.filter((meta) => meta.available !== false).map((meta) => meta.id)
+  // 端能力参与「有哪些面」的判定：与卡片上的齿轮用**同一个** capability，
   // 否则会出现"卡片有入口、点开是空分区"
-  const configCapability = { storage: supportsLibrarySources }
+  const configCapability = { storage: storageCapabilityOf(supportsLibrarySources, storageIds) }
   const surfaces = pluginConfigSurfaces(entry, configCapability)
 
   // ─── 音源配置 ───
@@ -72,15 +90,6 @@ export function PluginSettingsDialog({
   const addLibrarySource = useLibraryStore((s) => s.addLibrarySource)
   const updateLibrarySource = useLibraryStore((s) => s.updateLibrarySource)
   const removeLibrarySource = useLibraryStore((s) => s.removeLibrarySource)
-  /**
-   * 可用的存储协议（插件的纯数据 meta）：决定卡片渲染哪些字段，以及新增弹窗的字段集。
-   *
-   * `null` = 还没读到，"空数组" = 读到了但没有这个插件。两者必须分开：
-   * 混成空数组会让面板在首帧渲染出「一条字段都没有」的编辑表单 —— 用户看到的是
-   * 一个点不动的保存按钮，而不是"正在加载"。
-   */
-  const [storagePlugins, setStoragePlugins] = useState<StoragePluginMeta[] | null>(null)
-  const [libraryStatus, setLibraryStatus] = useState<Record<string, LibrarySourceStatus>>({})
 
   // 只拉一次：本插件的字段声明在面板打开期间不会变
   useEffect(() => {
@@ -106,8 +115,10 @@ export function PluginSettingsDialog({
   }, [open])
 
   const bundle = useMemo(
-    () => configsOfPlugin(entry, onlineSources, librarySources, { storage: supportsLibrarySources }),
-    [entry, onlineSources, librarySources, supportsLibrarySources]
+    () => configsOfPlugin(entry, onlineSources, librarySources, configCapability),
+    // configCapability 由 entry / supportsLibrarySources / storagePlugins 一起决定，
+    // 三项都列进依赖，避免"名单变了但分段没重算"
+    [entry, onlineSources, librarySources, supportsLibrarySources, storagePlugins]
   )
 
   // 展示名双形态（内置给字典键、已安装给字面量）的解析收在 pluginManage 一处，不在这里再写一遍

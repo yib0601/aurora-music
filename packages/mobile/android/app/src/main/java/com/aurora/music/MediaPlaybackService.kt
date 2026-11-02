@@ -672,13 +672,37 @@ class MediaPlaybackService : Service() {
     }
 
     /**
-     * JS 侧曲目 path 为外部存储相对路径（如 "Music/xx.flac"）或在线 URL；
-     * MediaPlayer 需要绝对路径或 http(s) URL。
+     * JS 侧曲目 path 为外部存储相对路径（如 "Music/xx.flac"）、在线 URL，
+     * 或 Capacitor 的本地文件地址；MediaPlayer 需要绝对路径或**真实** http(s) URL。
+     *
+     * 关键一条：`https://localhost/_capacitor_file_...` 只是 WebView 内部拦截用的
+     * 伪 URL，并**没有**对应的 HTTP 服务端（`WebViewLocalServer` 只处理来自 WebView
+     * 的请求）。把它交给 MediaPlayer 必然失败 —— 媒体缓存命中后"点了没声音"就是这条。
+     * 所以在判断 http(s) 之前先把它还原成本地路径。
      */
     private fun resolvePath(path: String): String {
+        capacitorFilePath(path)?.let { return it }
         if (path.startsWith("http://") || path.startsWith("https://")) return path
         if (path.startsWith("/")) return path
         return "/storage/emulated/0/$path"
+    }
+
+    /**
+     * 从 Capacitor 本地文件地址里取出真实路径；不是该形态返回 null。
+     *
+     * `Capacitor.convertFileSrc` 只是把入参字符串拼进 `.../_capacitor_file_<path>`，
+     * 而入参是经 `encodeFilePathToUrl` 逐段编码过的 —— 播放中文/含空格路径必须先解码，
+     * 否则 MediaPlayer 打不开文件（表现为"这首歌播不了"，日志里只有 IOException）。
+     */
+    private fun capacitorFilePath(path: String): String? {
+        val marker = "/_capacitor_file_"
+        if (!path.contains(marker)) return null
+        val raw = path.substringAfter(marker)
+        return try {
+            java.net.URLDecoder.decode(raw, "UTF-8")
+        } catch (_: Throwable) {
+            raw
+        }
     }
 
     private fun releasePlayer() {
@@ -892,8 +916,9 @@ class MediaPlaybackService : Service() {
     private fun decodeArtworkSource(src: String): Bitmap? = try {
         when {
             // Capacitor convertFileSrc：https://localhost/_capacitor_file_/data/.../covers/x.jpg
-            // 该前缀后的路径是原样拼接（未做 URL 编码），直接截取即为真实文件路径
-            src.contains("/_capacitor_file_") -> decodeArtworkFile(src.substringAfter("/_capacitor_file_"))
+            // 入参是逐段编码过的（`encodeFilePathToUrl`），必须解码后才能打开；
+            // 与 resolvePath 共用同一个解码函数，免得两处口径分叉
+            src.contains("/_capacitor_file_") -> capacitorFilePath(src)?.let { decodeArtworkFile(it) }
             src.startsWith("file://") -> decodeArtworkFile(src.removePrefix("file://"))
             src.startsWith("/") -> decodeArtworkFile(src)
             isRemote(src) -> downloadArtwork(src)

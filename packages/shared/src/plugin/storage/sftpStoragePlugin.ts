@@ -467,6 +467,9 @@ export const sftpStoragePlugin: StoragePlugin = {
   version: '1.0.0',
   fields: SFTP_STORAGE_FIELDS,
 
+  // 同 smb：ssh2 只在桌面端注入，移动端此协议不可用（入口按 available 隐藏）
+  available: () => ssh2Available(),
+
   listAudio: (cfg, options) => walkSftpAudio(cfg, options),
   openStream: (cfg, relPath, init) => openSftpStream(cfg, relPath, init),
 

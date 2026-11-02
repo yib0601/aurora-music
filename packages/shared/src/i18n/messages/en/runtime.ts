@@ -47,6 +47,11 @@ const en: LocalizedOf<typeof runtime> = {
     downloadFailed: 'Download failed; check your network connection or try again later',
     databaseNotInited: 'The database is not initialized',
     scriptSourceUrlMissing: 'The source has no script URL',
+    sourceNotFound: 'The source configuration does not exist',
+    sourcePluginUnsupported: 'Unsupported media library source plugin: {pluginId}',
+    sourceCapabilityMissing: 'This storage plugin does not support this action: {capability}',
+    sourceReadFailed: 'Failed to read the remote file: HTTP {status}',
+    sourceNoDirectUrl: 'This storage protocol cannot be streamed directly by URL',
   },
 }
 

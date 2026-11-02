@@ -13,8 +13,10 @@
 import {
   openWebdavRange,
   openWebdavStream,
+  resolveRemoteUrl,
   testWebdavConnection,
   walkWebdavAudio,
+  webdavHeaders,
   type LibrarySourceConfig,
 } from '../../webdav'
 import type { StoragePlugin } from './types'
@@ -61,4 +63,8 @@ export const webdavStoragePlugin: StoragePlugin = {
   // 播放代理的首选路径：Range 头原样透传，206 与 Content-Range 原样回给调用方
   openStream: (cfg, relPath, init) => openWebdavStream(cfg, relPath, init),
   probe: (cfg) => testWebdavConnection(cfg),
+  // 直连形态：移动端把"地址 + 鉴权头"交给原生 HTTP（下载/播放），
+  // 桌面端走 aurora-remote:// 代理，不使用这两个方法
+  directUrl: (cfg, relPath) => resolveRemoteUrl(cfg, relPath),
+  directHeaders: (cfg) => webdavHeaders(cfg),
 }

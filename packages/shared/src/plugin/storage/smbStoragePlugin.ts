@@ -412,6 +412,10 @@ export const smbStoragePlugin: StoragePlugin = {
   version: '1.0.0',
   fields: SMB_STORAGE_FIELDS,
 
+  // 依赖池（@marsaud/smb2）只在桌面端注入；移动端没有原始 TCP，也没有这个模块，
+  // 于是在那一端连"新增来源"的入口都不该出现（契约里的能力方法仍完整存在）
+  available: () => smb2Available(),
+
   listAudio: (cfg, options) => walkSmbAudio(cfg, options),
   // 只实现 openRange 与 openStream 中的**两者**：openStream 会在有 Range 时
   // 精确读取那一段，行为比 openRange 更完整（能处理尾段），所以优先它。

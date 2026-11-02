@@ -342,6 +342,7 @@ export {
   registerStoragePlugin,
   registeredStoragePluginIds,
   storageCapabilitiesOf,
+  storagePluginAvailable,
   storageErrorStatus,
   storageFieldValue,
   storagePluginOf,

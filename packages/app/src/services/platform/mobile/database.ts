@@ -36,6 +36,8 @@ interface TrackRow {
   last_played_at: number | null
   play_count: number
   liked: number
+  /** 所属媒体库来源（迁移新增列；老库没有该列时读出来是 undefined） */
+  source_id?: string | null
 }
 
 interface AlbumRow {
@@ -64,6 +66,8 @@ function rowToTrack(row: TrackRow): Track {
     lastPlayedAt: row.last_played_at || undefined,
     playCount: row.play_count || 0,
     liked: !!row.liked,
+    // 远端曲目才有来源；本机目录的曲目该字段为空（与桌面端同一口径）
+    ...(row.source_id ? { sourceId: row.source_id } : {}),
   }
 }
 
@@ -125,7 +129,8 @@ export class MobileDatabase implements DatabaseAdapter {
             added_at INTEGER,
             last_played_at INTEGER,
             play_count INTEGER DEFAULT 0,
-            liked INTEGER DEFAULT 0
+            liked INTEGER DEFAULT 0,
+            source_id TEXT
           );
           CREATE TABLE IF NOT EXISTS albums (
             id TEXT PRIMARY KEY,
@@ -160,6 +165,7 @@ export class MobileDatabase implements DatabaseAdapter {
         } catch {
           // 部分平台/版本不支持 PRAGMA，忽略
         }
+        await this.migrateSchema()
         console.log('[MobileDB] 数据库已初始化')
         initialized = true
       } catch (err) {
@@ -177,6 +183,28 @@ export class MobileDatabase implements DatabaseAdapter {
     }
   }
 
+  /**
+   * 增量表结构迁移（幂等，每次启动执行）。
+   *
+   * `source_id`：曲目所属媒体库来源（NULL = 本机目录）。桌面端早在
+   * `packages/desktop/src/ipc/database.ts` 的 `migrateSchema` 里加过同一列；
+   * 移动端此前不需要它（没有网络存储来源），现在要靠它把远端曲目按来源归组
+   * （「移除来源」按前缀清理、曲目行显示来源名）。
+   *
+   * 与桌面端同一套理由：**不改 UNIQUE(path) 约束**。远端曲目把来源编进 path
+   * （`webdav:<sourceId>/...`），天然按来源隔离；重建表会因外键级联清空歌单条目。
+   */
+  private async migrateSchema(): Promise<void> {
+    if (!dbConn) return
+    const result = await dbConn.query('PRAGMA table_info(tracks)')
+    const columns = (result.values || []) as Array<{ name: string }>
+    if (!columns.some((column) => column.name === 'source_id')) {
+      await dbConn.execute('ALTER TABLE tracks ADD COLUMN source_id TEXT')
+      console.log('[MobileDB] 迁移：tracks 表新增 source_id 列')
+    }
+    await dbConn.execute('CREATE INDEX IF NOT EXISTS idx_tracks_source ON tracks(source_id)')
+  }
+
   private async query<T>(statement: string, values: any[] = []): Promise<T[]> {
     if (!dbConn) throw auroraError('runtime.error.databaseNotInited')
     const res = await dbConn.query(statement, values)
@@ -192,9 +220,10 @@ export class MobileDatabase implements DatabaseAdapter {
   async insertTrack(track: Track): Promise<void> {
     // 与桌面端一致：path 冲突时按已有记录更新元数据，保留原 id 与用户数据（播放统计/收藏/入库时间）
     const statement = `
-      INSERT INTO tracks (id, path, title, artist, album, year, genre, duration, track_number, cover_path, file_size, added_at, last_played_at, play_count, liked)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tracks (id, path, source_id, title, artist, album, year, genre, duration, track_number, cover_path, file_size, added_at, last_played_at, play_count, liked)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
+        source_id = excluded.source_id,
         title = excluded.title,
         artist = excluded.artist,
         album = excluded.album,
@@ -208,6 +237,8 @@ export class MobileDatabase implements DatabaseAdapter {
     await this.run(statement, [
       track.id,
       track.path,
+      // 远端来源 id：本机曲目为 null（与桌面端 database.ts 同一列语义）
+      track.sourceId || null,
       track.title,
       track.artist || null,
       track.album || null,
@@ -222,6 +253,31 @@ export class MobileDatabase implements DatabaseAdapter {
       track.playCount,
       track.liked ? 1 : 0,
     ])
+  }
+
+  /**
+   * 按 path 批量取已有记录（远端扫描复用元数据与播放统计用）。
+   *
+   * 分批拼 IN：SQLite 的变量上限（旧版本 999）与远端库的条目数都可能很大，
+   * 一次塞几千个占位符会在某些设备上直接报错，而扫描是"少一批就少几十首"的路径。
+   */
+  async getTracksByPaths(paths: readonly string[]): Promise<Map<string, Track>> {
+    const out = new Map<string, Track>()
+    const CHUNK = 400
+    for (let i = 0; i < paths.length; i += CHUNK) {
+      const batch = paths.slice(i, i + CHUNK)
+      if (batch.length === 0) continue
+      const placeholders = batch.map(() => '?').join(',')
+      const rows = await this.query<TrackRow>(
+        `SELECT * FROM tracks WHERE path IN (${placeholders})`,
+        [...batch]
+      )
+      for (const row of rows) {
+        const track = rowToTrack(row)
+        out.set(track.path, track)
+      }
+    }
+    return out
   }
 
   async getAllTracks(): Promise<Track[]> {
@@ -432,6 +488,31 @@ export class MobileDatabase implements DatabaseAdapter {
       [prefix + '%']
     )
     return this.deleteTrackRows(rows.filter((r) => r.path.startsWith(prefix)))
+  }
+
+  /**
+   * 按来源前缀清理远端曲目。
+   *
+   * 两种用法（与桌面端 `deleteMissingRemoteTracks` / `deleteTracksBySourcePrefix` 同义）：
+   * - 传 `existingPaths`：只删"远端已经没有的"（扫描后的缺失清理）；
+   * - 不传：删光该来源（用户在设置里移除来源）。
+   *
+   * 远端扫描的清理策略比本地保守得多：目录列举失败时调用方**不会**调到这里，
+   * 否则出门在外连不上 NAS 一次就会丢掉整个曲库。
+   */
+  async deleteTracksBySourcePrefix(
+    prefix: string,
+    existingPaths?: ReadonlySet<string>
+  ): Promise<number> {
+    if (!prefix) return 0
+    const rows = await this.query<{ id: string; path: string; cover_path: string | null }>(
+      'SELECT id, path, cover_path FROM tracks WHERE path LIKE ?',
+      [prefix + '%']
+    )
+    const stale = rows.filter(
+      (row) => row.path.startsWith(prefix) && !(existingPaths && existingPaths.has(row.path))
+    )
+    return this.deleteTrackRows(stale)
   }
 
   /** 逐条删除曲目记录并清理封面缓存文件，返回删除数量 */

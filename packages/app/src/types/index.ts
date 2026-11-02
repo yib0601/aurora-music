@@ -296,4 +296,12 @@ export interface StorageCredentialState {
    * 主进程会**拒绝**写明文，UI 应提示「本机无法安全保存口令」而不是让用户反复重试。
    */
   encryptionAvailable: boolean
+  /**
+   * 口令落在哪儿（可选：老对话通道没有这个字段，按 `'keystore'` 理解）。
+   *
+   * 存在的理由：移动端没有 keyring，只能写进应用私有目录（Android 上受应用沙箱保护，
+   * 但没有额外加密）。这件事**必须能被 UI 如实说出来** —— 用 `encryptionAvailable:false`
+   * 表达会走进"每次启动都要重新输入"的文案，而那边其实已经存住了。
+   */
+  protection?: 'keystore' | 'app-private'
 }

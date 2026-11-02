@@ -159,3 +159,43 @@ describe('曲库单条动作的平台能力', () => {
     expect(typeof platform.revealTrack === 'function').toBe(false)
   })
 })
+
+/**
+ * 网络存储（媒体库来源）的平台能力契约。
+ *
+ * 判据链只有一条：`pluginConfigSurfaces` 与卡片齿轮都看
+ * `typeof platform.scanLibrarySource === 'function'`（见 components/common/pluginConfig）。
+ * 也就是说：**手机上插件卡片有没有"配置"齿轮，等价于这里断言失败**。
+ *
+ * 这条曾在真机上表现为"手机版这里没有配置的按钮"，而单测全绿 —— 因为没有测试
+ * 钉住"移动端也实现了存储能力"。补齐实现的同时把这份契约固定下来。
+ */
+describe('网络存储的平台能力（决定插件卡片上有没有配置入口）', () => {
+  it('移动端暴露完整的存储能力：探测 / 扫描 / 移除 / 口令 / 协议名单', async () => {
+    const { createMobilePlatform } = await import('../mobile/index')
+    const platform = createMobilePlatform() as unknown as Record<string, unknown>
+    for (const method of [
+      'syncLibrarySources',
+      'listStoragePlugins',
+      'probeLibrarySource',
+      'scanLibrarySource',
+      'removeLibrarySource',
+      'saveStorageCredential',
+      'storageCredentialState',
+      'clearStorageCredential',
+      'resolveStorageAudio',
+    ] as const) {
+      expect(typeof platform[method], method).toBe('function')
+    }
+  })
+
+  it('协议名单里只有依赖已注入的协议可用（SFTP / SMB 依赖只在桌面端）', async () => {
+    const { createMobilePlatform } = await import('../mobile/index')
+    const platform = createMobilePlatform()
+    const metas = await platform.listStoragePlugins()
+    const byId = new Map(metas.map((meta) => [meta.id, meta]))
+    expect(byId.get('webdav')?.available).toBe(true)
+    expect(byId.get('sftp')?.available).toBe(false)
+    expect(byId.get('smb')?.available).toBe(false)
+  })
+})

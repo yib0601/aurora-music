@@ -13,7 +13,12 @@
  */
 
 import type { LibrarySourceConfig } from '../../webdav'
-import { storageCapabilitiesOf, type StoragePlugin, type StoragePluginMeta } from './types'
+import {
+  storageCapabilitiesOf,
+  storagePluginAvailable,
+  type StoragePlugin,
+  type StoragePluginMeta,
+} from './types'
 // 插件启停门禁。`availability` 零依赖（纯内存表），这条 import 不进任何环。
 import { isPluginEnabled } from '../availability'
 
@@ -81,6 +86,9 @@ export function listStoragePluginMeta(): StoragePluginMeta[] {
     // 浅拷贝字段数组：调用方 push 不该改到注册表里的插件
     fields: plugin.fields.map((f) => ({ ...f })),
     capabilities: storageCapabilitiesOf(plugin),
+    // 依赖是否已注入（SFTP/SMB 在移动端为 false）：UI 据此决定给不给新增入口，
+    // 而不是让用户配完一条永远连不上的来源
+    available: storagePluginAvailable(plugin),
     enabled: isPluginEnabled(plugin.id),
   }))
 }

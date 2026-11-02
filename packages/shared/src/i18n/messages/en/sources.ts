@@ -129,8 +129,10 @@ const en: LocalizedOf<typeof sources> = {
     credentialMissing: 'No password saved',
     credentialUnavailable:
       'This machine cannot store passwords securely; you will need to re-enter it each time',
+    credentialSavedUnprotected:
+      'The password is stored in the app-private folder (not encrypted) and is removed when you uninstall the app',
     credentialHint:
-      'The password is encrypted with your system keyring and saved locally. It never enters the config file and never appears in playback URLs.',
+      'The password never enters the config file and never appears in playback URLs; once saved, the card states how it is protected.',
     clearCredential: 'Clear password',
     fieldRequired: '{field} is required',
   },
@@ -181,6 +183,7 @@ const en: LocalizedOf<typeof sources> = {
     builtin: 'Built-in',
     /** 内置歌词兜底插件的说明（domain=lyrics） */
     builtinLyricsDesc: 'Built-in lyrics fallback: fetches from the open LRCLIB API when no user lyrics source matches. Can be disabled',
+    unsupportedHere: 'This device does not support this protocol (desktop only)',
     listEmpty: 'No third-party plugins installed yet',
     listBroken: '{count} plugin file(s) could not be read',
     brokenHint:

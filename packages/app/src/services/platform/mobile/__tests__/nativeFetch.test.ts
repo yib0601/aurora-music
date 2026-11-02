@@ -82,3 +82,85 @@ describe('createNativeFetch', () => {
     expect(resp.status).toBe(502)
   })
 })
+
+/**
+ * 两条绕开 CapacitorHttp 的路径（见 nativeFetch 文件头）。
+ *
+ * 存在的理由：`CapacitorHttp` 在 Android 上最终调 `HttpURLConnection`，
+ * 它拒绝非标准动词（PROPFIND → ProtocolException），而文本通道会毁掉二进制。
+ * 这两条**必须**走原生插件，否则移动端网络存储整条链路直接不可用。
+ */
+describe('createNativeFetch：非标准动词与二进制读体走 NativeHttp 插件', () => {
+  const nativeCalls: Array<Record<string, unknown>> = []
+
+  const installPlugin = () => {
+    ;(globalThis as unknown as { window: unknown }).window = {
+      Capacitor: {
+        Plugins: {
+          NativeHttp: {
+            request: async (opts: Record<string, unknown>) => {
+              nativeCalls.push(opts)
+              return {
+                status: 207,
+                headers: { 'content-type': 'application/xml' },
+                // 「ok」的 base64：证明回传的是字节而非被解码过的文本
+                data: Buffer.from('ok', 'utf8').toString('base64'),
+              }
+            },
+          },
+        },
+      },
+    }
+  }
+
+  afterEach(() => {
+    nativeCalls.length = 0
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  it('PROPFIND 不再交给 CapacitorHttp（那边会抛 ProtocolException）', async () => {
+    installPlugin()
+    const resp = await createNativeFetch()('https://nas.invalid/dav/Music', {
+      method: 'PROPFIND',
+      headers: { Depth: '1', Authorization: 'Basic abc' },
+      body: '<?xml version="1.0"?><propfind/>',
+    })
+    expect(mocks.request).not.toHaveBeenCalled()
+    expect(nativeCalls).toHaveLength(1)
+    // 方法与请求体原样透传：PROPFIND 的 XML 体就在 body 里
+    expect(nativeCalls[0].method).toBe('PROPFIND')
+    expect(nativeCalls[0].body).toContain('<propfind/>')
+    expect(resp.status).toBe(207)
+    // base64 → 字节 → Response：读出来必须是原文
+    expect(await resp.text()).toBe('ok')
+  })
+
+  it('带 Range 的 GET（元数据头）也走插件，避免文本通道损坏二进制', async () => {
+    installPlugin()
+    await createNativeFetch()('https://nas.invalid/dav/Music/a.mp3', {
+      method: 'GET',
+      headers: { Range: 'bytes=0-1023' },
+    })
+    expect(mocks.request).not.toHaveBeenCalled()
+    expect(nativeCalls).toHaveLength(1)
+    expect((nativeCalls[0].headers as Record<string, string>).Range).toBe('bytes=0-1023')
+  })
+
+  it('普通 GET 仍走 CapacitorHttp（少一层 JS 桥）', async () => {
+    installPlugin()
+    mocks.request.mockResolvedValue(okResponse('{"ok":true}'))
+    await createNativeFetch()('https://source.invalid/api', {})
+    expect(mocks.request).toHaveBeenCalledTimes(1)
+    expect(nativeCalls).toHaveLength(0)
+  })
+
+  it('插件缺失（老包 / 未注册）时回落 CapacitorHttp，而不是直接失败', async () => {
+    mocks.request.mockResolvedValue(okResponse('{}'))
+    const resp = await createNativeFetch()('https://nas.invalid/dav', {
+      method: 'PROPFIND',
+      headers: { Depth: '1' },
+    })
+    expect(mocks.request).toHaveBeenCalledTimes(1)
+    expect(resp.status).toBe(200)
+  })
+})

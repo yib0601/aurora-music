@@ -1,9 +1,9 @@
 import { Filesystem, Directory } from '@capacitor/filesystem'
-import { Capacitor } from '@capacitor/core'
 import { encodeFilePathToUrl, auroraError } from '@aurora/shared'
 import * as mm from 'music-metadata-browser'
 import type { Track } from '@/types'
 import { MobileDatabase } from './database'
+import { saveCoverImage } from './coverFile'
 import { registerLyricsFile, touchLyricsFile } from './mediaCache'
 
 const AUDIO_EXTENSIONS = new Set([
@@ -35,43 +35,6 @@ async function walkDir(dirPath: string, files: string[] = []): Promise<string[]>
     }
   }
   return files
-}
-
-/**
- * 判断封面扩展名：以**真实字节**为准，声明类型仅作兜底。
- * 部分打标工具会把 PNG 封面声明成 image/jpeg，只信 pic.format 会存错扩展名。
- */
-function coverExtensionFor(data: Uint8Array, declaredFormat?: string): string {
-  if (data && data.length >= 12) {
-    if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return '.jpg'
-    if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return '.png'
-    if (
-      data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
-      data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50
-    ) {
-      return '.webp'
-    }
-    if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return '.gif'
-    if (data[0] === 0x42 && data[1] === 0x4d) return '.bmp'
-  }
-  const m = (declaredFormat || '').toLowerCase()
-  if (m.includes('png')) return '.png'
-  if (m.includes('webp')) return '.webp'
-  if (m.includes('gif')) return '.gif'
-  if (m.includes('bmp')) return '.bmp'
-  return '.jpg'
-}
-
-/** 获取封面缓存目录路径（应用专属目录下 aurora-music/covers） */
-async function getCoverCachePath(trackId: string, ext = '.jpg'): Promise<string> {
-  const dir = 'aurora-music/covers'
-  try {
-    await Filesystem.mkdir({ path: dir, directory: Directory.Data, recursive: true })
-  } catch (err: any) {
-    // 目录已存在不报错
-    if (err?.message && !/exist/i.test(err.message)) throw err
-  }
-  return `${dir}/${trackId}${ext}`
 }
 
 /** 获取歌词缓存目录路径（应用专属目录下 aurora-music/lyrics） */
@@ -171,27 +134,10 @@ async function parseNewFile(filePath: string): Promise<ParsedFile | null> {
     if (hadPicture) {
       const pic = metadata.common.picture![0]
       try {
-        // 将 pic.data (Uint8Array) 转 base64 写入
-        let bin = ''
         const buf = pic.data instanceof Uint8Array ? pic.data : new Uint8Array(pic.data)
-        const coverDest = await getCoverCachePath(trackId, coverExtensionFor(buf, pic.format))
-        const chunk = 0x8000
-        for (let i = 0; i < buf.length; i += chunk) {
-          bin += String.fromCharCode.apply(null, buf.subarray(i, i + chunk) as any)
-        }
-        const b64 = btoa(bin)
-        await Filesystem.writeFile({
-          path: coverDest,
-          directory: Directory.Data,
-          data: b64,
-          recursive: true,
-        })
-        // 获取可直接在 WebView 中加载的 URL：
-        // Filesystem.getUri 返回 file:///data/data/<pkg>/files/aurora-music/covers/xxx.jpg
-        // Capacitor.convertFileSrc 把 file:// 转成 capacitor://localhost/... 或 https://localhost/_capacitor_file_/...
-        // 直接存可访问 URL 到 coverPath，UI 层 getCoverSrc 原样返回即可
-        const { uri } = await Filesystem.getUri({ path: coverDest, directory: Directory.Data })
-        coverPath = Capacitor.convertFileSrc(uri)
+        // 落盘 + 转可访问地址：`coverPath` 存的必须是 convertFileSrc 之后的形态，
+        // UI 层 getCoverSrc 原样返回即可（见 ./coverFile.ts 的说明）
+        coverPath = await saveCoverImage(trackId, buf, pic.format)
         coverPlan = 'own'
       } catch (err) {
         // 落盘失败保持 coverPlan='none'：**不登记也不借用**，与旧实现的 if/else-if

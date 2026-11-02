@@ -21,7 +21,7 @@ export type {
   StoragePluginMeta,
   StorageProbeResult,
 } from './types'
-export { storageCapabilitiesOf } from './types'
+export { storageCapabilitiesOf, storagePluginAvailable } from './types'
 export { storageFieldValue, storageStringField } from './fields'
 export {
   isStorageTransportError,

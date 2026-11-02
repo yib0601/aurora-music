@@ -176,12 +176,29 @@ interface StoragePlugin {
   /** 声明式字段：设置页据此**通用渲染**表单，不写死任何协议的输入框 */
   readonly fields: readonly StorageFieldDef[]
 
+  /** 本端是否具备跑通该协议的前提（依赖注入检查）；缺省 = 具备 */
+  available?(): boolean
+
   listAudio?(config, options?): Promise<RemoteEntry[]>
   openRange?(config, relPath, start, end): Promise<Response>
   openStream?(config, relPath, init?: { range?: string }): Promise<Response>
   probe?(config): Promise<StorageProbeResult>
+
+  /** 可直连的 http(s) 地址 + 鉴权头：移动端没有自定义协议代理，靠这两个方法取文件 */
+  directUrl?(config, relPath): string
+  directHeaders?(config): Record<string, string>
 }
 ```
+
+`available()` 与那组能力方法回答的是**两个不同问题**：能力方法说「这个插件会做什么」，
+`available()` 说「它的依赖在本端注入没有」。SFTP / SMB 的协议库（`ssh2` / `@marsaud/smb2`）
+只在桌面端注入，移动端不注入时那几个能力方法依然存在（契约完整）、调用却在运行期抛
+`SFTP_UNAVAILABLE`。把这件事交给插件自己回答，两端才只有一份事实 —— 设置页据此只给
+**本端跑得动**的协议放"新增来源"入口（`storageCapabilityOf`）。
+
+`directUrl` / `directHeaders` 只有 HTTP 系协议实现（WebDAV）。桌面端用不到它们
+（`aurora-remote://` 协议代理负责流式播放），移动端必须用：那里没有自定义协议、
+播放器也带不上鉴权头，只能把"地址 + 请求头"交给原生 HTTP 落成本地文件再播。
 
 `StorageFieldDef` 是「字段自描述」：`{ key, labelKey, kind: 'text'|'password'|'url'|'path',
 required?, placeholderKey?, hintKey? }`。新增协议只需声明自己的字段，**设置页零改动**。
@@ -223,8 +240,29 @@ isStorageTransportError(err) // 传输层失败（可重试）vs 内容格式问
 
 ## 当前内置插件
 
-只有 `webdav`（群晖 / 威联通 / Nextcloud / rclone serve webdav）。SMB / SFTP / NFS
-按本契约各写一个文件 + 注册即可，设置页会自动出现对应表单。
+`webdav`（群晖 / 威联通 / Nextcloud / rclone serve webdav）、`sftp`、`smb`。
+新增协议按本契约"一个插件文件 + 注册"，设置页会自动出现对应表单。
+
+**两端的可用范围不同**（由 `available()` 决定，不是靠 `if (desktop)` 分支）：
+
+| 协议 | 桌面端 | 移动端 | 原因 |
+|---|---|---|---|
+| WebDAV | 可配 | **可配** | 纯 HTTP，两端都有原生 HTTP 通道 |
+| SFTP | 可配 | 不可配 | `ssh2` 需要原始 TCP，只在桌面端注入 |
+| SMB | 可配 | 不可配 | `@marsaud/smb2` 同上 |
+
+移动端的实现形态与桌面端不同（**同契约、不同链路**）：
+
+- 插件执行在渲染进程（注册表本来就在同一进程，无需 IPC）；
+- 列目录的 `PROPFIND` 由原生插件 `NativeHttp`（OkHttp）发出 —— Android 的
+  `HttpURLConnection` 拒绝非标准动词（`ProtocolException`，见 JDK-7017158），
+  `CapacitorHttp` 正是架在它上面；
+- 播放不走 `aurora-remote://`：远端曲目被整首下载进媒体缓存后再播本地文件，
+  首次播放有等待、之后命中缓存（`resolveStorageAudio`）；
+- 口令经 Android Keystore 加密（原生插件 `SecureStorage`，AES-256-GCM）后落在
+  应用私有目录（`Directory.Data`）；插件缺失时才退回明文，并由
+  `storageCredentialState` 的 `protection` 如实区分 `keystore` / `app-private`；
+- 远端封面与桌面端同策略：扫描不提取，`<CoverImage>` 挂载时按需 Range 读头段。
 
 > 注：NFS 通常以本地挂载点形式出现，那属于**本机目录**来源，走 `scanner.ts`，不需要存储插件。
 
@@ -233,8 +271,9 @@ isStorageTransportError(err) // 传输层失败（可重试）vs 内容格式问
 - 上层是否还出现 `kind === 'webdav'` 或 `webdav:` 字面量？应为零（用上面两个 single entry）。
 - 新增协议是「加一个插件文件 + 声明字段」，还是又要改设置页/配置类型/IPC？
 - `openStream` 缺失时，代理是否**降级**而不是抛错？
-- 口令是否只在主进程、只经 `safeStorage`、且按 sourceId 存？
+- 口令是否只在主进程、只经 `safeStorage`、且按 sourceId 存？（移动端走 Keystore 原生插件，见上表）
 - 插件抛的错误是否带 `status`（让代理能映射 502/上游状态）？
+- 新协议是否实现了 `available()`？依赖没注入的端要靠它隐藏入口，而不是让用户配完一条连不上的来源。
 
 ---
 

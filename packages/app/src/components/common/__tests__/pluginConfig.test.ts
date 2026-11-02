@@ -9,6 +9,7 @@ import {
   newConfigOwner,
   newSourceEnabled,
   pluginConfigSurfaces,
+  storageCapabilityOf,
 } from '../pluginConfig'
 
 /** 目录条目工厂：只填必填项，其余按用例覆盖 */
@@ -292,7 +293,7 @@ describe('newConfigOwner：新建配置只写 pluginId', () => {
  * 端能力参与「有没有配置面」的判定。
  *
  * 背景：插件目录是跨域统一视图，**手机端的列表里同样有 WebDAV / SFTP / SMB**，
- * 但移动端没有主进程侧的存储代理与扫描，配不了也扫不了。若不把端能力算进来，
+ * 移动端实现了存储链路、但跑不动 SFTP / SMB（协议库只在桌面端注入）。若不把端能力算进来，
  * 那些卡片会带一个齿轮，点开是一个只有空态、没有新增按钮的分区 ——
  * 用户读到的结论是"功能坏了"，而真实原因是"这一端没有这个能力"。
  *
@@ -321,6 +322,53 @@ describe('pluginConfigSurfaces：存储面受端能力约束', () => {
     const bundle = configsOfPlugin(storageEntry, [], [librarySource()], { storage: false })
     expect(bundle.surfaces).toEqual([])
     expect(bundle.librarySources).toEqual([])
+  })
+
+  /**
+   * 白名单形态：移动端能做存储，但只有 WebDAV（SFTP / SMB 的协议库只在桌面端注入）。
+   *
+   * 这三条钉住的是「两端都做存储、差别只在协议」这条事实 —— 用布尔表达就会在手机上
+   * 给 SFTP / SMB 放出齿轮，点开新增后永远连不上。
+   */
+  it('白名单里有的插件才有存储面，名单外的插件整块没有', () => {
+    const webdav = entry({ id: 'webdav', domain: 'storage' })
+    const sftp = entry({ id: 'sftp', domain: 'storage' })
+    expect(pluginConfigSurfaces(webdav, { storage: ['webdav'] })).toContain('storage')
+    expect(pluginConfigSurfaces(sftp, { storage: ['webdav'] })).toEqual([])
+    expect(hasPluginConfig(sftp, { storage: ['webdav'] })).toBe(false)
+  })
+
+  it('白名单只影响存储域：同一个插件若还有 auth 面，仍然保留', () => {
+    const sftpWithAuth = entry({ id: 'sftp', domain: 'storage', capabilities: ['auth'] })
+    expect(pluginConfigSurfaces(sftpWithAuth, { storage: ['webdav'] })).toEqual(['auth'])
+  })
+
+  it('空白名单 = 这一端一个协议都跑不动（不是"全部可配"）', () => {
+    const webdav = entry({ id: 'webdav', domain: 'storage' })
+    expect(pluginConfigSurfaces(webdav, { storage: [] })).toEqual([])
+  })
+})
+
+/**
+ * `storageCapabilityOf`：把「端有没有扫描能力」与「端能跑哪些协议」拼成 capability。
+ *
+ * 三档语义必须分开，否则会出现两类真实故障：
+ * - 拿不到名单（老 preload）就关掉全部入口 → 升级错配时用户连已配好的来源都改不了；
+ * - 名单没到时按"全支持"渲染 → 手机上 SFTP/SMB 的齿轮闪一下就消失。
+ */
+describe('storageCapabilityOf：端能力 → 存储可配范围', () => {
+  it('这一端不做存储（Web）→ false', () => {
+    expect(storageCapabilityOf(false, ['webdav'])).toBe(false)
+    expect(storageCapabilityOf(false, null)).toBe(false)
+  })
+
+  it('拿不到名单（老 preload）→ true（全部可配，与引入白名单前一致）', () => {
+    expect(storageCapabilityOf(true, null)).toBe(true)
+  })
+
+  it('拿得到名单 → 原样作为白名单', () => {
+    expect(storageCapabilityOf(true, ['webdav'])).toEqual(['webdav'])
+    expect(storageCapabilityOf(true, [])).toEqual([])
   })
 })
 

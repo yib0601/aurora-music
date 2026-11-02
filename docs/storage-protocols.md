@@ -132,6 +132,105 @@ export const smbStoragePlugin: StoragePlugin = {
 设置页、播放代理、扫描流程**一行都不用改** —— 这是 `StoragePlugin` 契约
 （尤其是声明式 `fields` 与 `openStream` 的 Range 透传语义）设计时就留好的位置。
 
+## 4.5 移动端（Capacitor / Android）：同契约、不同链路
+
+移动端现在**也能配网络存储**，但只有 WebDAV —— 原因不在产品取舍，而在协议本身：
+SFTP / SMB 需要原始 TCP 连接，WebView 里没有；那两个依赖（`ssh2` / `@marsaud/smb2`）
+也只注入了桌面端主进程。`StoragePlugin.available()` 把这件事交给插件自己回答，
+设置页据此只给本端跑得动的协议放"新增来源"入口。
+
+桌面端与移动端的差异（都是环境决定的）：
+
+| 环节 | 桌面端 | 移动端 |
+|---|---|---|
+| 插件执行 | 主进程（`desktop/src/ipc/librarySource.ts`） | 渲染进程（`app/src/services/platform/mobile/storage.ts`） |
+| 列目录 | 主进程 fetch | `NativeHttp` 原生插件（OkHttp） |
+| 播放 | `aurora-remote://` 协议代理，流式 + Range 透传 | 整首下载进媒体缓存后播本地文件 |
+| 口令 | `safeStorage`（系统密钥环） | Android Keystore（AES-256-GCM）加密后落盘 |
+| 封面 | 主进程 `ensureRemoteCover` 按需 Range 提取 | 渲染层 `ensureStorageCover`，同一策略 |
+
+### 为什么列目录必须走原生插件
+
+`CapacitorHttp` 在 Android 上最终调 `HttpURLConnection`，它只放行 RFC 2616 的
+标准动词，`PROPFIND` 会抛 `ProtocolException`（JDK 自 1.6 起的行为，见 JDK-7017158）。
+WebDAV 列目录只有 PROPFIND 一条路，因此移动端加了一个最小的原生桥
+`NativeHttpPlugin`（OkHttp）：接受任意 method，响应以 base64 回传（顺带解决
+"文本通道损坏二进制"的问题 —— 读元数据头与封面都要原始字节）。
+
+JS 侧的分流在 `app/src/services/platform/mobile/nativeFetch.ts`：**非标准动词**
+或**带 `Range` 的请求**走原生插件，其余仍走 `CapacitorHttp`。
+
+### 播放为什么是"先下载再播"
+
+`<audio>` 与原生 `MediaPlayer` 都无法给请求附加 `Authorization` 头，WebView 里也没有
+自定义协议可以拦截。可用的通道只有 `Filesystem.downloadFile({url, headers})`（原生 HTTP，
+可带鉴权头、可带 UA、不受 CORS 限制），于是远端曲目先整首落进媒体缓存（同一份配额与
+LRU 驱逐），再把本地文件地址交给播放器。
+
+代价如实记录：首次播放要等整首下载完（之后走缓存命中）；大文件（无损 30–80MB）在慢网
+下有可感知的等待。换来的是"能播、能 seek、锁屏能控"三者同时成立。桌面端不受此限，
+仍然是流式代理。
+
+### 口令：Keystore 加密，且有降级与如实标注
+
+移动端没有 `safeStorage` 的等价物，但 Android 有 Keystore —— 密钥由系统生成、
+不可导出，密文离了这台设备就是废字节。为此加了一个最小原生桥
+`SecureStoragePlugin`（`AES/GCM/NoPadding`、AES-256、随机 IV、128 位认证标签），
+JS 侧包装在 `app/src/services/platform/mobile/secureStorage.ts`。
+
+口令文件因此不再是明文表，而是密文容器：
+
+```json
+{ "format": "keystore-v1", "data": "<base64(iv(12) || ciphertext+tag)>" }
+```
+
+`storageCredentialState` 回报三档，UI 各有对应文案，不冒充也不自贬：
+
+| 情形 | `protection` | UI 文案 |
+|---|---|---|
+| 有 Keystore，已加密 | `keystore` | 口令已安全保存 |
+| 插件缺失（老包 / iOS） | `app-private` | 口令保存在应用私有目录（未加密） |
+| 密钥失效（恢复备份 / 换机重装） | 按 `saved: false` 处理 | 未保存口令（提示重填） |
+
+两个实现细节值得记住：
+
+1. **历史明文文件会被原地迁移。** 触发点是「保存」与「查询口令状态」（用户打开来源卡片时），
+   都在串行写队列里**重读一次再写** —— 拿旧快照写回会把用户刚存进去的口令抹掉。
+2. **密钥失效不是错误，是事实。** 恢复备份或换机后密文还在、密钥没了，解密必然失败；
+   这时唯一可行的补救就是让用户重填，所以按"未保存"处理，并保留旧密文等它被覆盖。
+
+不要求 `setUserAuthenticationRequired`：曲库扫描在后台跑，要求解锁会让息屏时的扫描与
+取址失败。威胁模型的边界是"拿到应用私有目录文件的人"，这一点已在 UI 里说清。
+
+与桌面端同一条纪律不变：**口令不进 localStorage**，只在调用插件前的一瞬间并进配置副本。
+
+### 封面：按需提取，扫描不碰
+
+远端曲目的内嵌封面在扫描阶段**不提取**（与桌面端 `ensureRemoteCover` 同一策略）：
+扫描已经为元数据读过文件头，但把图片解出来再落盘会让一次扫描平白多出几百次写盘，
+而封面只在对用户可见时才需要。所以提交时 `coverPath` 留空，由 `<CoverImage>` 挂载时
+调 `platform.ensureCover` → `ensureStorageCover`：Range 读 1 MiB 头段、`parseBlob`
+解出图片、落 `aurora-music/covers/<trackId>.<ext>`、转 `convertFileSrc` 地址，
+并**写回数据库**（移动端没有第二层进程，持久化由这里负责）。
+
+三条错误语义与桌面端对齐：
+
+- **传输层失败抛错**，不返回 null：渲染层只对"确认无内嵌封面"缓存 null，
+  若把 NAS 短暂不可达记成"这首没封面"，封面就再也补不回来了；
+- **解析失败按无封面处理**：标签损坏或封面大于头段时，不拿同一段字节反复打远端；
+- **半张图不落盘**：按图片格式校验尾部（JPEG 的 EOI、PNG 的 IEND、GIF 的 0x3B），
+  免得留下一个"有 coverPath 但显示碎图"的记录。
+
+已知边界：封面位于文件尾部的少数 MP4 变体取不到（头段里没有 moov）。这与桌面端一致，
+不为此引入"整文件下载"。
+
+### 数据库
+
+移动端 `tracks` 表补了 `source_id` 列（幂等迁移，见
+`app/src/services/platform/mobile/database.ts` 的 `migrateSchema`）。与桌面端同一套理由：
+远端曲目把来源编进 `path`（`webdav:<sourceId>/...`），天然按来源隔离，
+**不动 `UNIQUE(path)` 约束**（重建表会因外键级联清空歌单条目）。
+
 ## 5. NFS 与本地挂载点
 
 NFS 在桌面 Linux 上通常已经挂载到本地路径（`/mnt/nas`）。那种情况**不是**存储插件，

@@ -96,6 +96,21 @@ export interface StoragePlugin {
   /** 声明式字段清单：UI 通用渲染，插件不发一行业务表单代码 */
   readonly fields: readonly StorageFieldDef[]
 
+  /**
+   * 本端是否**具备跑通该协议的前提**（可选，缺失 = 视为具备）。
+   *
+   * 与下面那组「能力方法」回答的是两个不同的问题：
+   * - 能力方法回答「这个插件会做什么」（`listAudio` / `probe` …）；
+   * - 本方法回答「它的依赖在本端注入没有」。
+   *
+   * 为什么必须有它：SFTP / SMB 的协议库（`ssh2` / `@marsaud/smb2`）只在桌面端注入
+   * （见 `docs/storage-protocols.md`），移动端没注入时那三个能力方法**依然存在**
+   * （契约完整），调用却在运行期抛 `SFTP_UNAVAILABLE`。于是「按方法存在性判能力」
+   * 在这两个协议上会得出「本端能做」的错误结论 —— 表现为设置页给出一个
+   * 永远连不上的新增入口。判据放在插件自己手里，两端才只有一份事实。
+   */
+  available?(): boolean
+
   // ─── 能力（可选，缺失 = 不支持） ───────────────────────────────
 
   /** 递归列举来源中的全部音频文件（路径相对来源根目录） */
@@ -133,6 +148,24 @@ export interface StoragePlugin {
 
   /** 探测可用性：只列举根目录，不递归、不入库 */
   probe?(config: LibrarySourceConfig): Promise<StorageProbeResult>
+
+  /**
+   * 可直连的 http(s) 地址（相对路径 → 完整 URL）。
+   *
+   * 只有**协议本身就是 HTTP** 的插件实现它（WebDAV，以及将来任何 REST 式存储）。
+   * 用途：移动端没有自定义协议代理（桌面端的 `aurora-remote://`），远端音频与
+   * 元数据字节都要交给原生 HTTP 去取 —— 那条路径需要的是"一个地址 + 一组请求头"，
+   * 而不是 `Response`。缺这个方法即表示该协议不能直连（SFTP / SMB）。
+   */
+  directUrl?(config: LibrarySourceConfig, relPath: string): string
+
+  /**
+   * 直连所需的请求头（鉴权、UA 等），与 `directUrl` 配套。
+   *
+   * **只在调用前的一瞬间使用**：这里会带上口令，调用方不得把它写进日志、
+   * Track 或持久化配置。
+   */
+  directHeaders?(config: LibrarySourceConfig): Record<string, string>
 }
 
 /**
@@ -160,6 +193,24 @@ export function storageCapabilitiesOf(plugin: StoragePlugin): StoragePluginCapab
 }
 
 /**
+ * 本端能否真正使用该协议（依赖注入检查）。
+ *
+ * 缺省为 true：只有明确声明了 `available()` 的插件才可能被判成不可用 ——
+ * 这样新增协议时不会因为"忘了写 available"而被无声地关掉入口。
+ */
+export function storagePluginAvailable(plugin: StoragePlugin | undefined | null): boolean {
+  if (!plugin) return false
+  if (typeof plugin.available !== 'function') return true
+  try {
+    return plugin.available() !== false
+  } catch {
+    // 依赖探测自己抛错（模块加载失败等）：按不可用处理，让 UI 隐藏入口，
+    // 而不是让一次探测异常冒到渲染层把插件列表整块打挂
+    return false
+  }
+}
+
+/**
  * 插件元数据（**纯数据**，可安全经 IPC 传给渲染层）。
  *
  * 为什么必须单独有这么一个形状：`StoragePlugin` 上挂着函数，而 Electron IPC 走
@@ -175,6 +226,13 @@ export interface StoragePluginMeta {
   readonly fields: readonly StorageFieldDef[]
   /** 实际实现了的能力（由方法存在性派生） */
   readonly capabilities: readonly StoragePluginCapability[]
+  /**
+   * 本端是否具备跑通该协议的前提（见 `StoragePlugin.available`）。
+   *
+   * 投影进 meta 而不是让 UI 自己去看插件实现：渲染层只拿得到纯数据，
+   * 「能不能配」必须在取数这一侧就算好，否则每个渲染点都要重推一遍。
+   */
+  readonly available: boolean
   /**
    * 用户是否启用该插件（与音源插件的 `PluginCatalogEntry.enabled` 同一口径）。
    *

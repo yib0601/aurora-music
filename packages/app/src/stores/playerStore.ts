@@ -20,6 +20,7 @@ import { toast } from '@/components/common/Toast'
 import { appTranslate } from '@/i18n'
 import { shouldTreatAsNoticeClip } from '@/lib/audioGuard'
 import { normalizePlaybackRate } from '@/lib/playbackRate'
+import { needsStorageResolve } from '@/lib/storageTrack'
 import { sleepEndsAtFromNow, sleepRemainingMs } from '@/lib/sleepTimer'
 import {
   isNativePlayerAvailable,
@@ -189,6 +190,10 @@ function markPlaying(track: Track, resolving: boolean): void {
 
 /** 是否已有可直接播放的地址（无需走取址闸门） */
 function hasPlayableSrc(track: Track): boolean {
+  // 远端媒体库曲目在移动端要先把地址取回来（桌面端有 aurora-remote:// 协议地址，
+  // 判据见 lib/storageTrack）。没有这一步，播放器会拿 `webdav:...` 这种不可加载的
+  // 坐标去起播，表现为"点了没声音"
+  if (needsStorageResolve(track)) return false
   return !!(track.path || track.onlineUrl || track.remoteUrl)
 }
 

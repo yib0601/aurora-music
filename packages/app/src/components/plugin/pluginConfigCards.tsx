@@ -905,10 +905,16 @@ export function StorageConfigCard({
     if (Object.keys(secrets).length > 0) {
       void (async () => {
         const result = await platform.saveStorageCredential?.(source.id, secrets)
+        // `protection` 必须跟着走：它是「口令是怎么存的」的唯一事实来源，
+        // 漏掉它会让卡片退回默认值（按 keystore 理解）—— 于是在明文落盘的
+        // 机器上显示"口令已安全保存"，正是本轮改造要避免的那种谎。
         setCredential((prev) => ({
           saved: result?.saved ?? prev.saved,
           encryptionAvailable: result?.encryptionAvailable ?? prev.encryptionAvailable,
+          protection: result?.protection ?? prev.protection,
         }))
+        // 以平台回报为准再校一次（保存时可能刚把历史明文迁成密文）
+        refreshCredential()
       })()
     }
     setEditing(false)
@@ -927,11 +933,19 @@ export function StorageConfigCard({
       ].join(' · ')
     : source.name
 
-  const credentialLabel = !credential.encryptionAvailable
-    ? t('sources.webdav.credentialUnavailable')
-    : credential.saved
-      ? t('sources.webdav.credentialSaved')
-      : t('sources.webdav.credentialMissing')
+  /**
+   * 口令状态文案。三种平台形态各一句：
+   * - 存住了且经系统密钥加密（桌面端 safeStorage / 移动端 Android Keystore）：「口令已安全保存」
+   * - 存住了但只有应用私有目录保护（移动端原生插件缺失时的降级）：如实说明"未加密"
+   * - 本机连存都存不住（无 keyring 的 Linux 桌面，主进程拒绝写明文）：「每次启动都要重输」
+   */
+  const credentialLabel = credential.saved
+    ? credential.protection === 'app-private'
+      ? t('sources.webdav.credentialSavedUnprotected')
+      : t('sources.webdav.credentialSaved')
+    : credential.encryptionAvailable
+      ? t('sources.webdav.credentialMissing')
+      : t('sources.webdav.credentialUnavailable')
 
   return (
     <div className="inset-row px-3.5 py-3">

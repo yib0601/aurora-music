@@ -57,15 +57,53 @@ function declares(entry: PluginCatalogEntry, capability: string): boolean {
  *
  * 为什么这个判断必须参与「有没有配置面」：插件目录是**跨域统一视图**
  * （`buildPluginCatalog` 总是带上内置存储插件），于是手机端的插件列表里
- * 同样会出现 WebDAV / SFTP / SMB 条目。但移动端没有主进程侧的存储代理与扫描，
- * 那一条目的「配置」打开后是一个空的网络存储分区 —— 用户看到的是"功能坏了"。
+ * 同样会出现 WebDAV / SFTP / SMB 条目。两端的差别不是"有没有存储能力"，
+ * 而是"跑得动哪些协议"：移动端实现了存储链路（扫描 / 口令 / 取址），但 SFTP / SMB
+ * 的协议库只在桌面端注入。若不做这层判定，手机上会给那两张卡片也放出齿轮，
+ * 点开配一条永远连不上的来源。
  *
  * 所以「有没有配置面」必须同时回答「这个端做不做得到」，两处判定若分开写，
  * 迟早出现「卡片上有齿轮、点开是空的」。
  */
 export interface PluginConfigCapability {
-  /** 本端是否具备存储插件代理与扫描（`platform.scanLibrarySource` 存在） */
-  storage?: boolean
+  /**
+   * 本端能配哪些存储协议。
+   *
+   * - `undefined`：不传 = 支持（纯逻辑单测与旧调用点的语义，保持原样）；
+   * - `false`：这一端完全没有存储能力（没有主进程代理、也没有可用的传输层）；
+   * - `string[]`：**白名单** —— 这一端能做存储，但只有这些插件在本端可跑
+   *   （移动端只有 WebDAV：SFTP / SMB 依赖 `ssh2` / `@marsaud/smb2`，那两个模块
+   *   只在桌面端注入，见 `storagePluginAvailable()`）。
+   *
+   * 为什么不简化成布尔：两端都"能做存储"，差别只在**协议**。用布尔就必须在
+   * 移动端把 SFTP / SMB 卡片也放出齿轮，点开却是一个新增后永远连不上的表单。
+   */
+  storage?: boolean | readonly string[]
+}
+
+/** 某个存储插件在本端是否可配（判据见 `PluginConfigCapability.storage`） */
+function storageConfigurable(pluginId: string, storage: PluginConfigCapability['storage']): boolean {
+  if (storage === false) return false
+  // 数组形态是白名单；只出现在数组里的 id 才算可配
+  if (Array.isArray(storage)) return storage.includes(pluginId)
+  return true
+}
+
+/**
+ * 把「本端能力」拼成 `PluginConfigCapability.storage`（两处调用点共用同一份规则）。
+ *
+ * `hasScan`：这一端有没有存储代理与扫描（桌面 / 移动端都有，Web 没有）。
+ * `pluginIds`：本端**可跑**的协议 id；`null` 表示这一端拿不到 meta 名单
+ * （老 preload 没有 `listStoragePlugins` 通道）——那时按"全部可配"处理，
+ * 与引入白名单之前的行为一致，不让一次版本错配把入口全关掉。
+ */
+export function storageCapabilityOf(
+  hasScan: boolean,
+  pluginIds: readonly string[] | null
+): PluginConfigCapability['storage'] {
+  if (!hasScan) return false
+  if (pluginIds === null) return true
+  return pluginIds
 }
 
 /**
@@ -88,7 +126,7 @@ export function pluginConfigSurfaces(
 ): PluginConfigSurface[] {
   const surfaces: PluginConfigSurface[] = []
   if (entry.domain === 'source') surfaces.push('sources')
-  if (entry.domain === 'storage' && capability.storage !== false) surfaces.push('storage')
+  if (entry.domain === 'storage' && storageConfigurable(entry.id, capability.storage)) surfaces.push('storage')
   if (declares(entry, 'auth')) surfaces.push('auth')
   return surfaces
 }

@@ -448,6 +448,33 @@ async function downloadToCache(
 }
 
 /**
+ * 命中检查：索引里有登记且文件确实还在，就返回可直接加载的本地地址。
+ *
+ * 抽出来的理由：`resolveCachedMedia`（业务后台预热）与 `awaitCachedAudio`
+ * （远端媒体库必须等文件到位）共用同一份"什么算命中"的判定 —— 两侧各写一遍
+ * 迟早会分叉，表现为一边能播、另一边永远 miss。
+ */
+async function readCachedSrc(pool: CachePool, indexKey: string): Promise<string | null> {
+  const entry = entries.get(indexKey)
+  if (!entry) return null
+  // 文件可能被外部清理（系统清理应用缓存、用户清空数据）：查一次真实存在性
+  const stat = await statQuiet(pathOf(entry))
+  if (!stat || stat.size <= 0) {
+    await dropEntry(indexKey, entry)
+    return null
+  }
+  entry.size = stat.size
+  touchEntry(entry)
+  try {
+    const uri = await poolUriOf(pool)
+    return toLoadableSrc(`${uri}/${entry.file}`)
+  } catch {
+    // getUri 失败不影响本次播放：退回远端地址
+    return null
+  }
+}
+
+/**
  * 命中解析：命中返回可直接加载的本地地址；未命中返回 null 并触发后台下载。
  * 文件名主体用 sha1(缓存键)——直链会变，只有稳定键的哈希能当文件名。
  */
@@ -465,26 +492,55 @@ async function resolveCachedMedia(
   }
   const stem = hashCacheKey(req.key)
   const indexKey = cacheBodyKey(pool, stem)
-  const entry = entries.get(indexKey)
-  if (entry) {
-    // 文件可能被外部清理（系统清理应用缓存、用户清空数据）：查一次真实存在性
-    const stat = await statQuiet(pathOf(entry))
-    if (stat && stat.size > 0) {
-      entry.size = stat.size
-      touchEntry(entry)
-      try {
-        const uri = await poolUriOf(pool)
-        return { src: toLoadableSrc(`${uri}/${entry.file}`) }
-      } catch {
-        // getUri 失败不影响本次播放：退回远端地址
-        return { src: null }
-      }
-    }
-    await dropEntry(indexKey, entry)
+  /**
+   * 未命中时**同步**起后台下载，中间不插任何 await。
+   *
+   * 这不只是性能问题：下载开始时捕获的 epoch 决定"清空期间完成的下载要不要丢弃"。
+   * 若在"查索引"与"起下载"之间插一个 await，下载会晚一拍起步，于是清空先发生、
+   * 下载后拿到新 epoch —— 清空语义失效（实测会让"清空期间完成的下载"留下条目）。
+   */
+  if (!entries.has(indexKey)) {
+    // 未命中就后台拉一份：任何档位都缓存，不限制档只是不做驱逐
+    void downloadToCache(pool, indexKey, stem, req.url, req.headers, pool === 'audio' ? audioExtFrom : imageExtFrom)
+    return { src: null }
   }
-  // 未命中就后台拉一份：任何档位都缓存，不限制档只是不做驱逐
+  const hit = await readCachedSrc(pool, indexKey)
+  if (hit) return { src: hit }
   void downloadToCache(pool, indexKey, stem, req.url, req.headers, pool === 'audio' ? audioExtFrom : imageExtFrom)
   return { src: null }
+}
+
+/**
+ * 「等它下完」的音频缓存：命中直接返回，未命中**等待下载完成**后返回本地地址。
+ *
+ * 与 `resolveCachedMedia` 的差别只有这一点（那个是后台下载、本次返回 null）。
+ * 专门的用途是**远端媒体库曲目**：移动端没有 `aurora-remote://` 协议代理，
+ * 播放器拿不到带鉴权头的流，只能先落成本地文件再播 —— 这条路径必须能"等到"，
+ * 否则第一次点播永远拿不到地址。
+ *
+ * 失败（网络、鉴权、空间不足）返回 `{ src: null }`，调用方按"取址失败"处理；
+ * 下载本身已在 `downloadToCache` 里清理了半截文件，不会留下脏索引。
+ */
+export async function awaitCachedAudio(req: {
+  url: string
+  key: string
+  headers?: Record<string, string>
+}): Promise<{ src: string | null }> {
+  if (!req || typeof req.url !== 'string' || !/^https?:\/\//i.test(req.url) || !req.key) {
+    return { src: null }
+  }
+  try {
+    await ensureInit()
+  } catch {
+    return { src: null }
+  }
+  const stem = hashCacheKey(req.key)
+  const indexKey = cacheBodyKey('audio', stem)
+  const hit = await readCachedSrc('audio', indexKey)
+  if (hit) return { src: hit }
+  await downloadToCache('audio', indexKey, stem, req.url, req.headers, audioExtFrom)
+  const after = await readCachedSrc('audio', indexKey)
+  return { src: after }
 }
 
 /** 音频命中解析（渲染层播放前调用） */
