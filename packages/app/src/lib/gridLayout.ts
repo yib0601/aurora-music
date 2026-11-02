@@ -33,10 +33,6 @@
 // ===== Tailwind 尺寸 → px（数字全部来自 packages/app/tailwind.config.js
 //       与 src/styles/globals.css 的既有配置，非臆造）=====
 
-/** 卡片内边距 `p-2.5` = 0.25rem × 2.5 = 10px（Tailwind spacing 刻度 1 = 4px） */
-const CARD_PADDING = 10
-/** `.card-utility` 的 `border: 1px solid`（globals.css 内该组件类的固有描边） */
-const CARD_BORDER = 1
 /** 封面下外边距 `mb-2.5` = 10px */
 const COVER_MARGIN_BOTTOM = 10
 /** 副标题上外边距 `mt-0.5` = 0.125rem × 2 = 2px */

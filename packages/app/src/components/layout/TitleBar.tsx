@@ -45,16 +45,19 @@ export function TitleBar({ trailing }: { trailing?: ReactNode }) {
   const t = useT()
   const api = (window as any).electronAPI
   const [isMaximized, setIsMaximized] = useState(false)
-
-  // 只在桌面环境且具备窗口控制 API 时渲染
-  if (!hasDesktopTitleBar()) {
-    return null
-  }
+  // 只在桌面环境且具备窗口控制 API 时渲染。判断结果先落到变量上：
+  // hooks 必须无条件调用，提前 return 之后再调 useEffect 会破坏 hooks 顺序
+  const enabled = hasDesktopTitleBar()
 
   // 初始化时检查窗口状态
   useEffect(() => {
+    if (!enabled) return
     api.windowControls.isMaximized?.().then(setIsMaximized)
-  }, [api])
+  }, [api, enabled])
+
+  if (!enabled) {
+    return null
+  }
 
   const handleMinimize = () => api.windowControls.minimize()
   const handleMaximize = () => {

@@ -18,7 +18,6 @@ export function QueueView() {
   const openSongDetail = useOpenSongDetail()
   const queue = usePlayerStore((s) => s.queue)
   const currentIndex = usePlayerStore((s) => s.currentIndex)
-  const currentTrack = usePlayerStore((s) => s.currentTrack)
   const showQueuePanel = usePlaylistStore((s) => s.showQueuePanel)
   const setQueuePanel = usePlaylistStore((s) => s.setQueuePanel)
   const panelRef = useRef<HTMLDivElement>(null)

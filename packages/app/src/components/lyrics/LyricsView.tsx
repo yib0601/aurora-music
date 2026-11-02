@@ -23,15 +23,6 @@ interface LyricsViewProps {
   onHasLyricsChange?: (hasLyrics: boolean) => void
 }
 
-const sampleLyrics = `[00:00.00]Aurora Music
-[00:03.00]跨平台音乐播放器
-[00:06.00]
-[00:10.00]点击歌曲开始播放
-[00:14.00]歌词将在此处同步显示
-[00:18.00]
-[00:22.00]享受音乐，享受生活
-`
-
 export function LyricsView({ lyricsText, className, large, onLineClick, onHasLyricsChange }: LyricsViewProps) {
   const t = useT()
   const progress = usePlayerStore((s) => s.progress)

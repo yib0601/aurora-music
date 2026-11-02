@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Clock, Play, Plus, ListEnd, ListPlus, Heart, Music, FolderOpen, Trash2 } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'

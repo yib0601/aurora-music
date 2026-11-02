@@ -155,7 +155,6 @@ export function PluginAuthRow({ plugin }: { plugin: { id: string; displayNameKey
  * 设置页已经有太多「空态占位」了。
  */
 export function PluginAuthPanel() {
-  const t = useT()
   const [metas, setMetas] = useState<PluginMetaInfo[] | null>(null)
 
   useEffect(() => {

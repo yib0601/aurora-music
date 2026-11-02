@@ -78,7 +78,7 @@ vi.mock('@capacitor/filesystem', () => {
       state.files.set(to, file)
     },
     async rmdir() {},
-    async downloadFile({ url, path }: { url: string; path: string }) {
+    async downloadFile({ path }: { url: string; path: string }) {
       state.files.set(path, { size: 1024, mtime: Date.now() })
       return { path }
     },

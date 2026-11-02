@@ -89,7 +89,7 @@ export function usePlaylistImport() {
     setPhase('parsing')
     cancelRef.current = false
 
-    let songs: ParsedSong[] = []
+    let songs: ParsedSong[]
     let suggestedName = t('library.playlist.defaultImportName')
     let nameFromSource = false
 

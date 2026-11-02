@@ -168,7 +168,7 @@ function serializeWrite<T>(task: () => Promise<T>): Promise<T> {
  * 用户看到的是"未保存口令"，正好对应他要做的动作（重新填一次）。
  */
 async function readCredentialFile(): Promise<CredentialFileState> {
-  let text = ''
+  let text: string
   try {
     const result = await Filesystem.readFile({
       path: CREDENTIALS_FILE,

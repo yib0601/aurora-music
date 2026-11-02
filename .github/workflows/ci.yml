@@ -64,6 +64,12 @@ jobs:
       - name: Typecheck app
         run: pnpm --filter @aurora/app exec tsc --noEmit
 
+      # 渲染层的 eslint 基线（packages/app/eslint.config.js）。脚本自首提交就存在，
+      # 但 eslint 一直没进 devDependencies，等于空转了整段历史；这里把它真正跑起来，
+      # 否则规则会随代码漂移，下次谁再动 lint 又是从零开始。
+      - name: Lint app
+        run: pnpm --filter @aurora/app lint
+
       # 移动端媒体缓存的落盘逻辑（索引 / 驱逐 / 清空 / 失败清理）跑在
       # Capacitor Filesystem 的内存实现上，CI 只做 typecheck 覆盖不到。
       - name: Test app

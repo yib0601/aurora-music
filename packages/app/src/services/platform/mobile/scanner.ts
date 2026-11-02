@@ -321,7 +321,7 @@ export async function scanFolder(
     // 主循环，若放任异常冒泡就会 reject 整个 scanFolder —— 单条记录读不出来
     // 会让整张库扫不动，这是明确的退化。按旧语义降级为「该文件本次跳过」，
     // 并把 settled[i] 置位让提交游标能越过它。
-    let existing: Track | null = null
+    let existing: Track | null
     try {
       existing = await db.getTrackByPath(files[i])
     } catch (err) {

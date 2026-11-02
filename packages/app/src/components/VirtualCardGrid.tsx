@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, type CSSProperties, type RefObject } from 'react'
+import { memo, useCallback, useEffect, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Heart, Play, Plus, ListPlus, ListEnd, Music as MusicIcon, FolderOpen, Trash2 } from 'lucide-react'

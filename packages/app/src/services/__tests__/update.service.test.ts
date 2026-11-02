@@ -14,8 +14,6 @@ import { checkForUpdate } from '@/services/update.service'
 const t = createAppTranslator('zh-CN')
 const tEn = createAppTranslator('en')
 
-const GITHUB_URL = 'https://api.github.com/repos/yib0601/aurora-music/releases/latest'
-
 type Handler = (url: string) => Response | Promise<Response>
 
 /** 所有候选走同一个 handler；抛异常表示网络不可用 */

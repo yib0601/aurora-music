@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CheckCircle2, Download, Loader2, AlertCircle, FolderOpen } from 'lucide-react'
-import { translateError, type MessageKey, type TFunction } from '@aurora/shared'
+import { translateError, type MessageKey } from '@aurora/shared'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/common/Toast'

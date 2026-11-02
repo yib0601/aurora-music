@@ -74,7 +74,7 @@ export function canRevealInFolder(): boolean {
 export async function revealTrackInFolder(trackId: string, failedLabel: string): Promise<void> {
   const reveal = platform.revealTrack
   if (typeof reveal !== 'function') return
-  let ok = false
+  let ok: boolean
   try {
     ok = await reveal(trackId)
   } catch {

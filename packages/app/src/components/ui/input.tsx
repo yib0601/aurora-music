@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
  * - focus 态：只提高表面叠色（更亮的白），**不画绿色描边/焦点环**——
  *   详见 globals.css 里 :focus-visible 的说明
  */
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
+export type InputProps = React.InputHTMLAttributes<HTMLInputElement>
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {

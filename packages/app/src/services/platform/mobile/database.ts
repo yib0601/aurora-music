@@ -90,7 +90,7 @@ export class MobileDatabase implements DatabaseAdapter {
     if (initInFlight) {
       try {
         await initInFlight
-      } catch (e) {
+      } catch {
         // 重试由 caller 自行处理（initInFlight 已被 catch 块清空）
       }
       return
@@ -175,12 +175,8 @@ export class MobileDatabase implements DatabaseAdapter {
         throw err
       }
     })()
-    try {
-      await initInFlight
-    } catch (e) {
-      // initInFlight 已在内部 catch 清空，这里直接抛出
-      throw e
-    }
+    // initInFlight 已在内部 catch 清空，异常直接抛给 caller
+    await initInFlight
   }
 
   /**

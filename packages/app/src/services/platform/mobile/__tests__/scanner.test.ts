@@ -36,13 +36,13 @@ const state = vi.hoisted(() => ({
   /** 自带内嵌封面的文件名集合 */
   hasCover: new Set<string>(),
   /** 封面写入/取 uri 的耗时（毫秒），按文件名 */
-  coverDelay: (name: string): number => 0,
+  coverDelay: (_name: string): number => 0,
   /** 每个文件的解析完成序号（供用例自证「谁先解析完」的构造前提） */
   parseDoneSeq: new Map<string, number>(),
   /** 完成序号计数器 */
   doneCounter: 0,
   /** 文件名 → 专辑名（缺省统一为「专辑」） */
-  albumOf: (name: string): string => '专辑',
+  albumOf: (_name: string): string => '专辑',
   /** 已写入的封面文件路径（用于断言封面确实落盘） */
   coverWrites: [] as string[],
   /** 让指定文件名的封面落盘抛错（模拟 Capacitor 写失败） */
@@ -79,7 +79,6 @@ vi.mock('@capacitor/filesystem', () => ({
     },
     async mkdir() {},
     async getUri({ path }: { path: string }) {
-      const name = (path.split('/').pop() || '').replace(/^[0-9a-f-]+/, '')
       return { uri: `file:///data/user/0/com.aurora.music/files/${path}` }
     },
     async writeFile({ path, data }: { path: string; data: string }) {
@@ -208,7 +207,6 @@ async function loadScanner(): Promise<ScannerModule> {
 }
 
 const ROOT = 'Music'
-const fileOf = (name: string) => `${ROOT}/${name}`
 
 beforeEach(() => {
   vi.unstubAllGlobals()
@@ -502,9 +500,6 @@ describe('移动端 scanFolder：专辑封面借用的并发等价性', () => {
   function withCovers(own: string[]) {
     state.hasCover = new Set(own)
   }
-
-  const coversOf = (out: Array<{ path: string; coverPath?: string }>) =>
-    out.map((t) => [t.path.split('/').pop(), t.coverPath ? 'has' : 'none'])
 
   it('同一专辑：无封面曲目借用「排在自己之前」那首的封面（与串行语义一致）', async () => {
     // 顺序：a（自带封面）、b（无）、c（无）。b/c 必须借到 a 的封面。

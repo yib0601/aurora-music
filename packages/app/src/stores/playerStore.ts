@@ -177,7 +177,7 @@ function markPlaying(track: Track, resolving: boolean): void {
   const prev = usePlayerStore.getState().currentTrack
   // 切到另一首歌：旧音频立即停掉。取址要网络往返，若还让上一首继续出声，
   // 就会出现「界面显示新歌、耳朵里是旧歌」的错位
-  if (!useNative() && prev && prev.id !== track.id && hasCurrentHowl()) {
+  if (!isNative() && prev && prev.id !== track.id && hasCurrentHowl()) {
     audioStopPlayback()
   }
   usePlayerStore.setState({
@@ -348,7 +348,7 @@ async function restoreOnlineTrack(): Promise<void> {
   }
 
   try {
-    if (useNative()) {
+    if (isNative()) {
       // 移动端：原生引擎可能仍持有有效流并续播中（START_STICKY），先对账；
       // 引擎活跃（snap.index >= 0）则无需重新取址，仅同步 UI
       await reconcileNativePlayback().catch(() => {})
@@ -387,7 +387,7 @@ async function restoreOnlineTrack(): Promise<void> {
       currentTrack: playable,
       queue: st.queue.map((t) => (t.id === track.id ? playable : t)),
     })
-    if (useNative()) {
+    if (isNative()) {
       // 移动端：队列已带新地址下发，从持久化进度引导但不自动播放
       nativeBootstrapPlay(st.progress, false)
       return
@@ -405,7 +405,8 @@ async function restoreOnlineTrack(): Promise<void> {
 // ─── 移动端原生播放引擎桥接 ──────────────────────────────────────
 // 锁屏后系统会杀掉 WebView 渲染进程，WebView 内的 HTML5 Audio 会中断且
 // 锁屏控件失效，因此移动端音频由原生 MediaPlayer 播放，JS 仅管理状态。
-const useNative = () => isNativePlayerAvailable()
+// 普通谓词，不是 React Hook：故意不叫 useXxx，避免被 hooks 规则误判成自定义 Hook
+const isNative = () => isNativePlayerAvailable()
 
 /** 原生引擎是否已完成队列引导（服务已启动且队列已下发） */
 let nativeBootstrapped = false
@@ -413,7 +414,7 @@ let nativeBootstrapped = false
 /** 进度轮询：原生引擎不主动推 progress，播放中每 500ms 查询一次快照 */
 let nativeTicker: ReturnType<typeof setInterval> | null = null
 function startNativeTicker() {
-  if (nativeTicker || !useNative()) return
+  if (nativeTicker || !isNative()) return
   nativeTicker = setInterval(async () => {
     const st = usePlayerStore.getState()
     if (!st.isPlaying) return
@@ -432,7 +433,7 @@ function stopNativeTicker() {
 
 /** 同步队列/循环/随机镜像到原生引擎（不打断当前播放） */
 function syncNativeMirror() {
-  if (!useNative()) return
+  if (!isNative()) return
   const s = usePlayerStore.getState()
   nativeSyncQueue(toQueueItems(s.queue), s.currentIndex, s.shuffleMode, s.repeatMode)
 }
@@ -568,7 +569,7 @@ export const usePlayerStore = create<PlayerState>()(
         markPlaying(track, hasResolvableGap(track))
         // 已有地址：全同步路径，同一 tick 连点两首时不会互串（见 hasResolvableGap）
         if (!hasResolvableGap(track)) {
-          if (useNative()) {
+          if (isNative()) {
             set({ currentTrack: track, progress: 0 })
             nativeBootstrapPlay(0, true)
             return
@@ -583,7 +584,7 @@ export const usePlayerStore = create<PlayerState>()(
         // 命中的旧条目可能还是无地址的快照：用取到地址的副本替换，避免续播时又空跑
         set({ queue: get().queue.map((t) => (t.id === ready.id ? ready : t)) })
         if (!confirmResolved(ready)) return
-        if (useNative()) {
+        if (isNative()) {
           set({ currentTrack: ready, progress: 0 })
           nativeBootstrapPlay(0, true)
           return
@@ -604,7 +605,7 @@ export const usePlayerStore = create<PlayerState>()(
         markPlaying(start, hasResolvableGap(start))
         // 已有地址：全同步起播（同 playTrack 的同步分支）
         if (!hasResolvableGap(start)) {
-          if (useNative()) {
+          if (isNative()) {
             set({ currentTrack: start, progress: 0 })
             nativeBootstrapPlay(0, true)
             return
@@ -618,7 +619,7 @@ export const usePlayerStore = create<PlayerState>()(
           set({ queue: get().queue.map((t) => (t.id === ready.id ? ready : t)) })
         }
         if (!confirmResolved(ready)) return
-        if (useNative()) {
+        if (isNative()) {
           set({ currentTrack: ready, progress: 0 })
           nativeBootstrapPlay(0, true)
           return
@@ -671,7 +672,7 @@ export const usePlayerStore = create<PlayerState>()(
             newCurrentIndex = -1
           } else {
             newCurrentIndex = Math.min(currentIndex, newQueue.length - 1)
-            if (useNative()) {
+            if (isNative()) {
               // 队列变化较大（当前曲目被删），重新下发队列并从接续位置播放
               set({ queue: newQueue, currentIndex: newCurrentIndex, currentTrack: newQueue[newCurrentIndex], progress: 0 })
               nativeBootstrapPlay(0, true)
@@ -693,7 +694,7 @@ export const usePlayerStore = create<PlayerState>()(
       clearQueue: () => {
         // 取消在途取址意图：清空后旧取址回调不得再落地任何播放状态
         playIntent++
-        if (useNative()) {
+        if (isNative()) {
           nativeStopEngine()
           stopNativeService()
           stopNativeTicker()
@@ -708,7 +709,7 @@ export const usePlayerStore = create<PlayerState>()(
       togglePlay: () => {
         const state = get()
         if (!state.currentTrack) return
-        if (useNative()) {
+        if (isNative()) {
           if (!nativeBootstrapped) {
             // 引擎未引导（如 app 冷启动恢复）：下发队列从当前进度续播
             set({ isPlaying: true })
@@ -751,7 +752,7 @@ export const usePlayerStore = create<PlayerState>()(
       play: () => {
         const state = get()
         if (!state.currentTrack) return
-        if (useNative()) {
+        if (isNative()) {
           if (!nativeBootstrapped) {
             nativeBootstrapPlay(state.progress, true)
           } else {
@@ -777,7 +778,7 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       pause: () => {
-        if (useNative()) {
+        if (isNative()) {
           if (get().isPlaying) nativePause()
           return
         }
@@ -787,7 +788,7 @@ export const usePlayerStore = create<PlayerState>()(
       next: () => {
         const state = get()
         if (state.queue.length === 0) return
-        if (useNative()) {
+        if (isNative()) {
           syncNativeMirror()
           nativeNext()
           return
@@ -834,7 +835,7 @@ export const usePlayerStore = create<PlayerState>()(
       previous: () => {
         const state = get()
         if (state.queue.length === 0) return
-        if (useNative()) {
+        if (isNative()) {
           syncNativeMirror()
           nativePrevious()
           return
@@ -877,7 +878,7 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       seekTo: (seconds) => {
-        if (useNative()) {
+        if (isNative()) {
           nativeSeekTo(seconds)
           set({ progress: seconds })
           return
@@ -888,7 +889,7 @@ export const usePlayerStore = create<PlayerState>()(
       setVolume: (volume) => {
         const newMuted = volume === 0
         set({ volume, muted: newMuted })
-        if (useNative()) {
+        if (isNative()) {
           nativeSetVolume(newMuted ? 0 : volume)
           return
         }
@@ -900,7 +901,7 @@ export const usePlayerStore = create<PlayerState>()(
         const { muted, volume } = get()
         const newMuted = !muted
         set({ muted: newMuted })
-        if (useNative()) {
+        if (isNative()) {
           nativeSetVolume(newMuted ? 0 : volume)
           return
         }
@@ -914,7 +915,7 @@ export const usePlayerStore = create<PlayerState>()(
         // 移动端原生引擎没有变速通道：这里只在桌面端真正下发给播放器。
         // UI 侧入口由 isPlaybackRateAvailable() 隐藏，所以移动端不会走到这里，
         // 但状态仍被记录（持久化），迁移到桌面端时立即生效
-        if (!useNative()) audioSetPlaybackRate(normalized)
+        if (!isNative()) audioSetPlaybackRate(normalized)
       },
 
       setSleepTimer: (minutes) => {
@@ -975,7 +976,7 @@ export const usePlayerStore = create<PlayerState>()(
         const { queue } = get()
         if (index >= 0 && index < queue.length) {
           set({ currentIndex: index, currentTrack: queue[index], progress: 0 })
-          if (useNative()) {
+          if (isNative()) {
             nativePlayAt(index)
           }
         }
@@ -1008,7 +1009,7 @@ export const usePlayerStore = create<PlayerState>()(
           })
           return
         }
-        if (useNative()) {
+        if (isNative()) {
           // 移动端原生引擎：进程被杀后服务可能已由 START_STICKY 自动续播，
           // 先与原生快照对账（若引擎在播则直接同步 UI），否则仅恢复元数据，
           // 用户点播放时 togglePlay 检测到 nativeBootstrapped=false 会从持久化进度续播
@@ -1233,7 +1234,7 @@ async function resolveUnresolvedNativeTrack(index: number): Promise<void> {
       return
     }
     usePlayerStore.setState({ resolvingTrackId: null })
-    if (useNative()) {
+    if (isNative()) {
       usePlayerStore.setState({ currentIndex: index, progress: 0 })
       nativeBootstrapPlay(0, true)
     }
@@ -1276,7 +1277,7 @@ if (isNativePlayerAvailable()) {
         // 完全没有这道判定：一条 3 秒提示音会被正常播完，ended 触发自动下一首，
         // 整条队列以每首约 3 秒的节奏跳空——正是「有进度、没声音、疯狂切歌」。
         // 这里同样停住并如实说明，且**不**把该曲移出队列（取址失败不是文件损坏）。
-        if (useNative() && typeof ev.duration === 'number') {
+        if (isNative() && typeof ev.duration === 'number') {
           const cur = usePlayerStore.getState()
           const track = cur.queue[cur.currentIndex]
           if (track && shouldTreatAsNoticeClip(track, ev.duration, isNetworkBackedTrack(track))) {

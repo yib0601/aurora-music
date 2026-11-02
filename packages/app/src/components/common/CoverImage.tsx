@@ -224,6 +224,9 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
     return () => {
       cancelled = true
     }
+    // 远端封面缓存查询：只依赖原始字段，不依赖 track 对象——对象在封面回填 / rehydrate 时会被换成
+    // 新引用，依赖整个对象会让本 effect 反复重跑（重复请求封面、清掉已解析结果）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, coverUrl, track?.onlineSource, track?.onlineId])
 
   useEffect(() => {
@@ -264,6 +267,9 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
       cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
     }
+    // 按需提取内嵌封面：只依赖原始字段，不依赖 track 对象——对象在封面回填 / rehydrate 时会被换成
+    // 新引用，依赖整个对象会让本 effect 反复重跑（重复请求封面、清掉已解析结果）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, needsExtraction, updateTrack])
 
   // 低清内嵌封面升级：内嵌封面短边过小时（铺满沉浸背景会明显糊），
@@ -287,6 +293,9 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
     return () => {
       cancelled = true
     }
+    // 低清封面升级：只依赖原始字段，不依赖 track 对象——对象在封面回填 / rehydrate 时会被换成
+    // 新引用，依赖整个对象会让本 effect 反复重跑（重复请求封面、清掉已解析结果）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, coverPath, track?.onlineUrl, updateTrack])
 
   const src = upgraded || coverPath || resolved

@@ -210,7 +210,7 @@ export async function scanInstalledPlugins(): Promise<InstalledPluginScan> {
   const plugins: InstalledPlugin[] = []
   const broken: InstalledPluginScan['broken'] = []
 
-  let entries: string[] = []
+  let entries: string[]
   try {
     const result = await Filesystem.readdir({ path: PLUGINS_DIR, directory: Directory.Data })
     entries = result.files.map((file) => file.name)

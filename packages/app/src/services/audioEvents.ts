@@ -6,9 +6,9 @@ import type { Track } from '@/types'
  */
 export interface AudioEventMap {
   play: { track: Track }
-  pause: {}
-  stop: {}
-  end: {}
+  pause: Record<string, never>
+  stop: Record<string, never>
+  end: Record<string, never>
   progress: { currentTime: number }
   duration: { duration: number }
   /**
@@ -26,8 +26,12 @@ export interface AudioEventMap {
 
 type EventHandler<T> = (data: T) => void
 
+// 内部按「任意入参」存放监听器：具体事件的数据类型由 on / emit 的泛型签名约束
+// （(data: never) => void 对任何具体事件的 handler 都是可赋值目标，读回时再断言）
+type StoredHandler = (data: never) => void
+
 class AudioEventEmitter {
-  private listeners: Map<string, Set<Function>> = new Map()
+  private listeners: Map<string, Set<StoredHandler>> = new Map()
 
   on<K extends keyof AudioEventMap>(event: K, handler: EventHandler<AudioEventMap[K]>): () => void {
     if (!this.listeners.has(event)) {
@@ -42,7 +46,7 @@ class AudioEventEmitter {
   }
 
   emit<K extends keyof AudioEventMap>(event: K, data: AudioEventMap[K]): void {
-    this.listeners.get(event)?.forEach((handler) => handler(data))
+    this.listeners.get(event)?.forEach((handler) => (handler as EventHandler<AudioEventMap[K]>)(data))
   }
 }
 

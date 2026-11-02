@@ -63,7 +63,6 @@ export function PlaylistPage() {
   const likedTracks = useLibraryStore((s) => s.likedTracks)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
-  const playTrack = usePlayerStore((s) => s.playTrack)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
   const playQueue = usePlayerStore((s) => s.playQueue)
 

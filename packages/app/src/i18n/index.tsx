@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 import { createAppTranslator, htmlLangOf, type AppTranslator, type Locale } from '@aurora/shared'
 import { currentLocale, resolveLocale, useLocaleStore } from '@/stores/localeStore'
 

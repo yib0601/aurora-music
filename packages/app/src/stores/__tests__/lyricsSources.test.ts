@@ -24,7 +24,7 @@
  * 让 store 拿到这份内存实现。桩只需 `getItem/setItem/removeItem` 三个方法 ——
  * 这是 zustand persist 实际会调的集合（`clear` 我们自己用，方便断言间隔离）。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 /**
  * 最小的 localStorage 桩：zustand persist 只会用到这几个方法。
@@ -78,16 +78,6 @@ async function freshStore(seed?: { state: unknown; version: number }) {
     .persist
   await persistApi?.rehydrate?.()
   return mod.useLibraryStore
-}
-
-/** 读回落盘快照（zustand persist 的格式是 `{ state, version }`） */
-function persisted(bag: Map<string, string>): { state: Record<string, unknown>; version: number } | null {
-  const raw = bag.get('aurora-library-state')
-  if (!raw) return null
-  const parsed = JSON.parse(raw) as { state?: Record<string, unknown>; version?: number }
-  // 兼容「没有包裹层」的写法
-  if (parsed.state) return { state: parsed.state, version: Number(parsed.version ?? 0) }
-  return { state: parsed as Record<string, unknown>, version: 0 }
 }
 
 describe('歌词源的增删改', () => {

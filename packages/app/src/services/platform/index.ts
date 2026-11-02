@@ -34,7 +34,6 @@ import {
   auroraProbeToResult,
   encodeFilePathToUrl,
   encodePathSegments,
-  isTrackEndpointKnownMissing,
   lxInspectionToProbe,
   parseSourceInput,
   probeAuroraService,

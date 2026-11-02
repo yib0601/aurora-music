@@ -13,6 +13,23 @@ pnpm --filter @aurora/app test      # 渲染层与移动端缓存落盘
 本地克隆优先，其次浅克隆到临时目录，出网受限则显式 skip；`LX_SCRIPT_DIR` 指定本地克隆，
 `LX_SCRIPT_CACHE` 指定缓存位置。
 
+## 静态检查（lint）
+
+```bash
+pnpm --filter @aurora/app lint   # 渲染层：eslint flat config，见 packages/app/eslint.config.js
+```
+
+目前只有 `@aurora/app` 有 lint（desktop / mobile / shared 没有，脚本也不存在）。
+规则基线**刻意放平**，不是最严配置：
+
+- `@typescript-eslint/no-explicit-any` **关闭**：存量代码与音源脚本、插件桥、IPC 之间大量
+  传递无类型数据，一次性收紧会牵动近两百处，那是独立的清理任务，不该混进「让 lint 跑起来」
+- `no-unused-vars` 放行 `_` 前缀：项目约定「确实不用的形参 / 变量 / 捕获错误」用下划线标记
+- hooks 两条规则全开：`rules-of-hooks` 抓条件调用，`exhaustive-deps` 抓漏依赖；少数
+  「故意只依赖原始字段、不依赖整个对象」的 effect 用行内 `eslint-disable-next-line` + 理由注释
+
+CI 的 `verify` job 已接入这一步（`--max-warnings 0`，warning 也算失败）。
+
 ## 测试与 fixture 的隐私约束
 
 本仓库**公开**。冒烟脚本 `packages/desktop/scripts/smoke-*.js` 不入库（`.gitignore` 已排除）——

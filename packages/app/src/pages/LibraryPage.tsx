@@ -156,6 +156,7 @@ function useContainerWidthOf<T extends HTMLElement>(ref: React.RefObject<T>): nu
   const observedRef = useRef<T | null>(null)
 
   // 无依赖数组：每次 render 后都执行，节点一旦出现即被订阅（幂等，靠 observedRef 去重）
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const el = ref.current
     if (!el || el === observedRef.current) return

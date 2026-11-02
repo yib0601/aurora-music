@@ -41,18 +41,6 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   return [h * 360, s * 100, l * 100]
 }
 
-function rgbToHex(r: number, g: number, b: number): string {
-  return '#' + [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')
-}
-
-function getLuminance(r: number, g: number, b: number): number {
-  const [rs, gs, bs] = [r, g, b].map((c) => {
-    c /= 255
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-  })
-  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs
-}
-
 export function extractColorsFromImage(imageData: ImageData): ExtractedColors {
   const pixels = imageData.data
   const colorBuckets: Map<string, { r: number; g: number; b: number; count: number; h: number; s: number; l: number }> = new Map()
@@ -160,7 +148,3 @@ export function rgbToCssVar(rgb: ColorRGB): string {
   return `${rgb.r} ${rgb.g} ${rgb.b}`
 }
 
-function getContrastColor(rgb: ColorRGB): string {
-  const lum = getLuminance(rgb.r, rgb.g, rgb.b)
-  return lum > 0.5 ? '#000000' : '#ffffff'
-}

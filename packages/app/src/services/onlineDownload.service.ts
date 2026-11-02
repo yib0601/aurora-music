@@ -1,4 +1,4 @@
-import { toErrorInfo, translateError, type TFunction } from '@aurora/shared'
+import { toErrorInfo, translateError } from '@aurora/shared'
 import { appTranslate } from '@/i18n'
 import { pickDownloadUrl } from '@/lib/onlineTrack'
 import type { Track, DownloadQuality, OnlineSourceConfig } from '@/types'

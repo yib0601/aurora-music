@@ -18,7 +18,7 @@ vi.mock('@capacitor/filesystem', () => ({
   Directory: { Data: 'DATA' },
   Encoding: { UTF8: 'utf8' },
   Filesystem: {
-    async mkdir({ path }: { path: string }) {
+    async mkdir({ path: _path }: { path: string }) {
       // 已存在时不抛（真实实现在 recursive 时也容忍已存在）
       return
     },
@@ -79,14 +79,13 @@ vi.mock('@capacitor/core', () => ({
 
 const {
   parseManifestText,
-  readInstallRecord,
   removeInstalledPlugin,
   scanInstalledPlugins,
   sha256OfBytes,
   writeInstalledPlugin,
 } = await import('../pluginStore')
 
-const { installFromUrl, performInstall, performUninstall, listCatalogEntries, resetInstallingFlagForTest } =
+const { installFromUrl, performUninstall, listCatalogEntries, resetInstallingFlagForTest } =
   await import('../pluginInstall')
 
 const shared = await import('@aurora/shared')

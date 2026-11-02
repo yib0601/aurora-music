@@ -51,19 +51,15 @@ import {
   fetchLxScript,
   inspectLxSource,
   inspectLxSourceInSandbox,
-  resolveLxSourceUrlInSandbox,
   installMobileLxHost,
-  resolveLxSourceUrl,
 } from './lxHost'
 import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, encodeFilePathToUrl } from '@aurora/shared'
 import {
   auroraError,
   auroraProbeToResult,
-  isTrackEndpointKnownMissing,
   lxInspectionToProbe,
   parseSourceInput,
   probeAuroraService,
-  resolveAuroraTrack,
   sourceSongIdOf,
   unavailableProbe,
 } from '@aurora/shared'

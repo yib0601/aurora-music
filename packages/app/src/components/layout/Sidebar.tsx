@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Library, Radio } from 'lucide-react'
 import { BrandMark } from '@/components/common/BrandMark'
-import { NavLink, useNavigate } from 'react-router-dom'
-import { cn, generateId } from '@/lib/utils'
+import { NavLink } from 'react-router-dom'
+import { cn } from '@/lib/utils'
 import { NAV_LABEL_KEYS, ROUTES, type NavItem } from '@/lib/routes'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
@@ -80,7 +80,6 @@ const navLinkClass = (isActive: boolean, spaced = false) =>
  */
 export function Sidebar() {
   const t = useT()
-  const navigate = useNavigate()
   const playlists = usePlaylistStore((s) => s.playlists)
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist)

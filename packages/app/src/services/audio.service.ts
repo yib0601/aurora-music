@@ -225,7 +225,7 @@ export function playTrack(track: Track, volume: number = 0.7, muted: boolean = f
   }
   // 清理旧 MediaElementSource 节点
   if (currentMediaSource) {
-    try { currentMediaSource.disconnect() } catch {}
+    try { currentMediaSource.disconnect() } catch { /* 旧节点可能已断开，忽略 */ }
     currentMediaSource = null
   }
   stopTick()
@@ -382,7 +382,7 @@ function connectAnalyser(howl: Howl, isOnline = false) {
         source = audioContext.createMediaElementSource(audioEl)
         ;(audioEl as any).__auroraSource = source
       }
-      try { source.disconnect() } catch {}
+      try { source.disconnect() } catch { /* 旧节点可能已断开，忽略 */ }
       source.connect(analyserNode)
       currentMediaSource = source
     } else {
@@ -449,7 +449,7 @@ export function stopPlayback(): void {
     nextHowl = null
   }
   if (currentMediaSource) {
-    try { currentMediaSource.disconnect() } catch {}
+    try { currentMediaSource.disconnect() } catch { /* 旧节点可能已断开，忽略 */ }
     currentMediaSource = null
   }
   stopTick()

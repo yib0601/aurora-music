@@ -118,6 +118,7 @@ export function PluginSettingsDialog({
     () => configsOfPlugin(entry, onlineSources, librarySources, configCapability),
     // configCapability 由 entry / supportsLibrarySources / storagePlugins 一起决定，
     // 三项都列进依赖，避免"名单变了但分段没重算"
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [entry, onlineSources, librarySources, supportsLibrarySources, storagePlugins]
   )
 

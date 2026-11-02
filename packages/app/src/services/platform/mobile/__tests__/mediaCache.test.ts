@@ -9,12 +9,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashCacheKey } from '@aurora/shared'
 
-interface MemFile {
-  size: number
-  mtime: number
-  content?: string
-}
-
 const state = vi.hoisted(() => ({
   files: new Map<string, { size: number; mtime: number; content?: string }>(),
   dirs: new Set<string>(),

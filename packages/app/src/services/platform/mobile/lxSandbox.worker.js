@@ -25,8 +25,6 @@
  * 所以 Worker 内的脚本请求一律 postMessage 回主线程执行。
  */
 
-/* global self, crypto, TextEncoder, TextDecoder, setTimeout, clearTimeout, Function */
-
 var EVENT_NAMES = { request: 'request', inited: 'inited', updateAlert: 'updateAlert' }
 
 /** 待主线程回应的请求：id → callback */

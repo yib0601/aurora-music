@@ -118,6 +118,9 @@ function TrackLyrics({ track, onLineClick, className, large }: { track: Track; o
     return () => {
       cancelled = true
     }
+    // 只依赖原始字段：track 对象在封面回填 / rehydrate 时会被换成新引用，依赖整个对象
+    // 会让歌词重新加载，一次失败的超时搜索就会把已经显示的歌词清成「暂无歌词」
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.id, track.title, track.artist, track.album, track.duration])
 
   if (lrc === null) {

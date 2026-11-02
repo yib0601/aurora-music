@@ -7,7 +7,7 @@
  * 靠肉眼听不出来，只能靠断言钉住。
  *
  * 移动端的边界也在这里钉住：原生桥没有变速通道，所以 playerStore 在
- * useNative() 为真时**不得**调用 audio.service 的 setPlaybackRate
+ * isNative() 为真时**不得**调用 audio.service 的 setPlaybackRate
  * （audio.service 在移动端根本不存在播放实例，调用是空转）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'

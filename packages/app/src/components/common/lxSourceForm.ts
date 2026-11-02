@@ -5,7 +5,6 @@ import {
   type AuroraError,
   type MessageKey,
   type SourceProbeResult,
-  type TFunction,
 } from '@aurora/shared'
 import { appTranslate } from '@/i18n'
 import { platform } from '@/services/platform'
