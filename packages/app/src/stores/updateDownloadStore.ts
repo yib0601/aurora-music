@@ -47,7 +47,7 @@ interface UpdateDownloadState {
   total: number | null
   /** 实时速度（字节/秒），主进程未提供时为 null */
   speed: number | null
-  /** 下载线路说明（如「系统代理 127.0.0.1:7897」/「直连」），仅桌面端会推送 */
+  /** 下载线路说明（「系统代理 <host:port>」或「直连」，端口取系统实际设置），仅桌面端会推送 */
   route: string | null
   /** 下载完成后的安装包路径（done 阶段） */
   filePath: string | null

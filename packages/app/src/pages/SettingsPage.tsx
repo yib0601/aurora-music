@@ -375,6 +375,10 @@ export function SettingsPage() {
 
   const theme = useLibraryStore((s) => s.theme)
   const setTheme = useLibraryStore((s) => s.setTheme)
+  // 音频焦点开关（桌面端专属）：值只落 libraryStore，主进程侧的同步由 App.tsx 的订阅
+  // 统一负责；本页在切换时额外确认一次平台回执，用于「不支持」提示。
+  const audioFocusEnabled = useLibraryStore((s) => s.audioFocusEnabled)
+  const setAudioFocusEnabled = useLibraryStore((s) => s.setAudioFocusEnabled)
 
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const downloadDir = useLibraryStore((s) => s.downloadDir)
@@ -503,6 +507,30 @@ export function SettingsPage() {
   const handleDeviceChange = (deviceId: string) => {
     setSelectedDeviceId(deviceId)
     setOutputDevice(deviceId)
+  }
+
+  /**
+   * 音频焦点开关：切到「开」时先问平台回执，只有平台真的接管了才写本地状态。
+   *
+   * 顺序刻意的：先平台后本地。反过来的话，不支持的环境会留下一个「已开启」的假状态
+   * ——用户以为互斥生效了，实际什么都没发生。返回 false 时开关保持原样（关），
+   * 再用 toast 说明原因，用户不会误以为是自己点错了。
+   *
+   * 关闭方向不校验回执：本地必须立刻落到「关」，否则开关看起来关掉了、
+   * 主进程却还在别的播放器出声时让位，状态两边打架。
+   */
+  const handleAudioFocusToggle = async (enabled: boolean) => {
+    if (!enabled) {
+      setAudioFocusEnabled(false)
+      await platform.setAudioFocusEnabled?.(false)
+      return
+    }
+    const supported = (await platform.setAudioFocusEnabled?.(true)) === true
+    if (!supported) {
+      toast(t('settings.general.audioFocus.unsupported'), { type: 'error', duration: 4000 })
+      return
+    }
+    setAudioFocusEnabled(true)
   }
 
   // 软件更新：手动检查新版本
@@ -776,6 +804,38 @@ export function SettingsPage() {
                   )
                 }
               />
+              {/*
+                音频焦点（与其他播放器互斥）：**桌面端专属**。
+                Web / 移动端没有系统级媒体会话可以仲裁（Web 只有浏览器标签页内的
+                navigator.mediaSession，拿不到别的播放器的状态），所以整行不渲染——
+                摆一个点了只会弹「不支持」的开关毫无价值。
+                开关状态落 libraryStore（persist 白名单已显式放行），主进程侧由
+                App.tsx 的订阅同步，本页只负责采集用户意图与回执提示。
+              */}
+              {desktop && (
+                <SettingRow
+                  label={t('settings.general.audioFocus.label')}
+                  hint={t('settings.general.audioFocus.hint')}
+                  control={
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={audioFocusEnabled}
+                      aria-label={t('settings.general.audioFocus.label')}
+                      onClick={() => handleAudioFocusToggle(!audioFocusEnabled)}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
+                        audioFocusEnabled ? 'bg-mint' : 'bg-white/[0.12]'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-mineradio ${
+                          audioFocusEnabled ? 'translate-x-[18px]' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  }
+                />
+              )}
             </SettingsSection>
 
             <SettingsSection id="library" title={libraryLabel}>

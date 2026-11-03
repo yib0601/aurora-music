@@ -7,6 +7,7 @@ import { loadPluginAvailability } from './ipc/pluginAvailability'
 import { installStorageProtocolDeps } from './ipc/storageProtocols'
 import { mainTranslate, onMainLocaleChange } from './i18n'
 import { attachEdgeSnap } from './edgeSnap'
+import { initAudioFocus, disposeAudioFocus, attachAudioFocusWindow } from './audioFocus/service'
 import { closeDatabase } from './ipc/database'
 import { getLibrarySource, proxyRemoteAudio } from './ipc/librarySource'
 import { installMainLogging, attachMainLogFile, closeMainLogging } from './logging'
@@ -533,6 +534,9 @@ if (!gotTheLock) {
     initMediaCache()
     const win = createWindow()
     createTray(win)
+    // 音频焦点（与其他播放器互斥）：开关状态由渲染层（设置页）持有并推给主进程，
+    // 这里只把服务挂到主窗口——「让位 / 续播」命令要下发给同一个窗口
+    initAudioFocus(win)
     // 渲染层确定语言后会经 i18n:set-locale 同步过来（用户可能选了「跟随系统」或指定语言，
     // 只有渲染层知道最终结果）。托盘提示与右键菜单是「构造期固化成快照」的元素，必须在
     // 语言变化时重建；其余元素（原生对话框、通知）每次取文案时自然跟随，无需订阅。
@@ -562,7 +566,14 @@ if (!gotTheLock) {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+      const win = createWindow()
+      // macOS：关窗不退出应用，重新打开会建新窗口。音频焦点服务仍持有旧引用，
+      // 不换窗口的话让位/续播命令会被静默丢弃（开关看起来正常，实际不生效）
+      attachAudioFocusWindow(win)
+    } else {
+      // 已有窗口（托盘唤回等）：确保服务指向当前窗口，防止引用陈旧
+      const [win] = BrowserWindow.getAllWindows()
+      if (win) attachAudioFocusWindow(win)
     }
   })
 
@@ -580,6 +591,9 @@ if (!gotTheLock) {
     tray?.destroy()
     tray = null
     globalShortcut.unregisterAll()
+    // 音频焦点先于其它清理：它要把被我们暂停的外部播放器还回去，
+    // 越晚做越可能因为窗口/D-Bus 已经拆掉而还不上
+    disposeAudioFocus()
     // 日志先关（写一条 closed 标记），再关数据库：数据库关闭失败会被记录到日志里，
     // 反过来就丢在退出路径上了。closeMainLogging 本身不做 I/O ——
     // 所有写入都是同步 appendFileSync，数据在函数返回时已交给内核，

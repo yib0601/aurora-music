@@ -173,6 +173,17 @@ interface LibraryState {
   downloadDir: string | null
   /** 默认下载音质：128 标准 / 320 高品质 / flac 无损（源不支持时按其默认地址下载） */
   downloadQuality: DownloadQuality
+  /**
+   * 桌面端「音频焦点 / 与其他播放器互斥」开关（默认关闭）。
+   *
+   * 默认关而不是默认开：它会让本应用**接管系统媒体会话**、去暂停用户正在听的其他
+   * 播放器，属于有外部副作用的开关，必须由用户显式打开。
+   * 只在本机落盘（persist 白名单显式放行，见 partialize —— 漏了会表现为
+   * 「打开后重启又变回关」，这类"忘记白名单"是 persist 最常见的回归）。
+   */
+  audioFocusEnabled: boolean
+  /** 写音频焦点开关；主进程侧的同步由 App.tsx 的订阅统一负责（本 store 不碰 IPC） */
+  setAudioFocusEnabled: (enabled: boolean) => void
 
   setTracks: (tracks: Track[], version?: number) => void
   setAlbums: (albums: Album[]) => void
@@ -277,6 +288,7 @@ export const useLibraryStore = create<LibraryState>()(
       lyricsSources: [],
       downloadDir: null,
       downloadQuality: 'flac',
+      audioFocusEnabled: false,
 
       setTracks: (tracks, version?: number) => {
         // 版本号保护：scan:complete 事件带的版本号比 getAllTracks 的大，
@@ -455,6 +467,7 @@ export const useLibraryStore = create<LibraryState>()(
       },
       setDownloadDir: (dir) => set({ downloadDir: dir || null }),
       setDownloadQuality: (quality) => set({ downloadQuality: quality }),
+      setAudioFocusEnabled: (enabled) => set({ audioFocusEnabled: enabled }),
       audioCacheLimitMB: defaultAudioCacheLimitMB(),
       setAudioCacheLimitMB: (mb) => set({ audioCacheLimitMB: Math.max(0, Math.floor(mb)) }),
       // 默认视为「未自定义」：容量按平台给，设置页显示「默认」
@@ -503,6 +516,9 @@ export const useLibraryStore = create<LibraryState>()(
         downloadQuality: state.downloadQuality,
         audioCacheLimitMB: state.audioCacheLimitMB,
         audioCacheLimitCustomMB: state.audioCacheLimitCustomMB,
+        // 音频焦点开关：必须显式放行。漏在白名单外不会报错，只会表现为
+        // 「打开后重启又变回关」，用户会以为是功能没生效
+        audioFocusEnabled: state.audioFocusEnabled,
       }),
       // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）

@@ -19,9 +19,10 @@ import { mainErrorText, mainTranslate } from '../i18n'
  * 下载线路的两条硬规则（都源于实测，改动前请先复测）：
  * 1. 走 Electron 的 net.fetch（Chromium 网络服务），不能用 Node 全局 fetch。
  *    Node 的 fetch 是 undici 直连，既不读系统代理也不认 gsettings：系统里明摆着
- *    配了 127.0.0.1:7897 的代理，它照样绕过去直连 GitHub。实测 GitHub release
- *    资产（8MB 采样）：Node fetch 直连 0.27MB/s，Chromium 栈经系统代理 1.1~1.6MB/s，
- *    78MB 的安装包从「五分钟起步」变成「一分钟左右」。
+ *    配了本机代理（Clash 类客户端的 mixed 入站端口，随客户端而变、此处不写死具体值），
+ *    它照样绕过去直连 GitHub。实测 GitHub release 资产（8MB 采样）：Node fetch
+ *    直连 0.27MB/s，Chromium 栈经系统代理 1.1~1.6MB/s，78MB 的安装包从
+ *    「五分钟起步」变成「一分钟左右」。
  * 2. 公共加速前缀（gh-proxy / ghfast）实测只有 35KB/s，比直连还慢，只能当最后兜底。
  *    所以不能「先官方直连、拿到响应头就一直忍着」，必须靠低速看门狗主动换源。
  */

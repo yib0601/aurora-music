@@ -470,6 +470,49 @@ function AppLayout() {
   // 在线曲目无本地 coverPath 时回退到远端 coverUrl
   useThemeColor(currentTrack?.coverPath || currentTrack?.coverUrl)
 
+  /**
+   * 音频焦点开关 → 主进程。
+   *
+   * 三个刻意的选择：
+   * 1. **启动也推一次**（不是只在变化时推）：持久化的设置与主进程状态必须一致。
+   *    少这一次，上次开着、这次关着的用户会让主进程继续在别的播放器出声时让位，
+   *    表现为「我明明关了互斥，它还是自己停」。
+   * 2. 用 `store.subscribe` 而不是 React 选择器订阅：AppLayout 刻意只订阅低频字段
+   *    （见上方性能注释），把开关引成渲染依赖会让每次切换都重渲染整个外壳。
+   * 3. 失败静默：平台不支持时设置页已经提示过一次，这里再弹一次只是噪音；
+   *    而 IPC 异常不该影响启动流程。
+   */
+  useEffect(() => {
+    const push = (enabled: boolean) => {
+      void platform.setAudioFocusEnabled?.(enabled)?.catch(() => {})
+    }
+    push(useLibraryStore.getState().audioFocusEnabled)
+    return useLibraryStore.subscribe((state, prev) => {
+      if (state.audioFocusEnabled === prev.audioFocusEnabled) return
+      push(state.audioFocusEnabled)
+    })
+  }, [])
+
+  /**
+   * 播放态 → 主进程（音频焦点的「本应用是否真的在出声」这一事实）。
+   *
+   * 主进程据此决定「我该不该占着焦点／该不该让位」，所以它必须是**实时**的：
+   * 少了上报，主进程只能拿 UI 意图猜，用户暂停后仍会被当成在播放，
+   * 别的应用一出声就出现双方反复互相压制的拉锯。
+   *
+   * 同样用 `store.subscribe` 而不是选择器：isPlaying 随每次播放/暂停变化，
+   * AppLayout 订阅它会把整个外壳拖进重渲染（PlayerBar 已自行订阅）。
+   */
+  useEffect(() => {
+    if (!platform.reportPlaybackState) return
+    // 启动先对齐一次：主进程的认知可能还停在上一进程退出时的状态
+    platform.reportPlaybackState(usePlayerStore.getState().isPlaying)
+    return usePlayerStore.subscribe((state, prev) => {
+      if (state.isPlaying === prev.isPlaying) return
+      platform.reportPlaybackState?.(state.isPlaying)
+    })
+  }, [])
+
   // 启动时检查软件更新：有新版本且本次会话未提示过时展示横幅
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   useEffect(() => {
@@ -630,6 +673,15 @@ function AppLayout() {
           switch (action) {
             case 'toggle-play':
               playerState.togglePlay()
+              break
+            // 'pause' / 'resume' 是**主进程音频焦点**下发的确定性动作（让位 / 续播），
+            // 刻意不复用 toggle-play：判定与下发之间隔着 IPC 往返，期间用户可能已经
+            // 自己点了播放/暂停，toggle 会把刚做的操作抵消回去（明明该续播却又暂停）。
+            case 'pause':
+              playerState.pause()
+              break
+            case 'resume':
+              playerState.play()
               break
             case 'next':
               playerState.next()

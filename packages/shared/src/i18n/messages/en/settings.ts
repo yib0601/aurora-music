@@ -31,6 +31,11 @@ const en: LocalizedOf<typeof settings> = {
       empty: 'No output device detected',
       system: 'System default',
     },
+    audioFocus: {
+      label: 'Exclusive with other players',
+      hint: 'Pauses other players while Aurora Music plays; steps aside when another app (one that supports system media controls) starts playing and resumes once it goes quiet',
+      unsupported: 'Not supported on this platform',
+    },
   },
   library: {
     scanDirs: {

@@ -350,6 +350,18 @@ const electronAPI = {
   updateMprisMetadata: (track: any, isPlaying: boolean) => {
     ipcRenderer.send('mpris:updateMetadata', track, isPlaying)
   },
+  // ─── 音频焦点（与其他播放器互斥）─────────────────────────────────────
+  // 「本应用此刻是否在出声」只有渲染层知道（Howl / 原生引擎都在那边），所以是单向上报：
+  // 高频、无需回执，用 send 而不是 invoke。
+  // 开关切换需要回执（平台不支持时前端要提示），走 invoke。
+  // 通道名与主进程 `audioFocus/types.ts` 的 AUDIO_FOCUS_CHANNELS 一一对应；
+  // 沙箱 preload 不能 require 相对路径模块，所以这里只能写字面量（与本文件
+  // LOG_CHANNELS 的处境相同，改动时两边一起改）。
+  setAudioFocusEnabled: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('audio-focus:enable', enabled),
+  reportPlaybackState: (isPlaying: boolean): void => {
+    ipcRenderer.send('audio-focus:ours', isPlaying)
+  },
   isMaximized: false,
 }
 

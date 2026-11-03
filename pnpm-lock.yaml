@@ -150,6 +150,9 @@ importers:
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
+      dbus-next:
+        specifier: ^0.9.2
+        version: 0.9.2
       iconv-lite:
         specifier: ^0.6.3
         version: 0.6.3

@@ -166,6 +166,23 @@ export interface PlatformExtension {
   onFolderMissing?: (cb: (e: { folder: string; removed: number }) => void) => () => void
   /** 系统媒体键事件订阅（桌面端来自 globalShortcut/MPRIS，移动端来自 mediaSession） */
   onMediaControl?: (cb: (action: string) => void) => () => void
+  /**
+   * 桌面端「音频焦点 / 与其他播放器互斥」开关。
+   *
+   * 回执语义是**平台是否真的支持**：主进程返回 false 表示这一端没有可用的焦点
+   * 实现（或在本机系统上接管失败），设置页据此提示「当前平台不支持」，
+   * 而不是假装开成功了 —— 假开关比没有开关更糟，用户会以为已经生效。
+   * Web / 移动端不实现（可选方法不存在 = 能力缺失），调用方走可选调用链降级。
+   */
+  setAudioFocusEnabled?: (enabled: boolean) => Promise<boolean>
+  /**
+   * 上报本应用当前是否**真的在出声**（高频、不等待回执）。
+   *
+   * 主进程靠它判断「本应用正在播放」这一事实：UI 的 isPlaying 只是意图，
+   * 加载失败 / 缓冲卡住 / 解码出错时与真正出声并不一致，拿意图当真相
+   * 会让本应用在根本没出声的情况下把别人的播放器停掉。
+   */
+  reportPlaybackState?: (isPlaying: boolean) => void
   /** 在线歌词搜索（按用户配置的歌词源依次尝试） */
   searchLyrics?: (
     query: string,
@@ -691,6 +708,29 @@ export function createDesktopPlatform(): Platform {
     onMediaControl(cb: (action: string) => void) {
       if (!api?.onMediaControl) return () => {}
       return api.onMediaControl(cb)
+    },
+    // 音频焦点：开关与播放态上报都只转发，仲裁、让位与续播全在主进程做。
+    // 两个方法**始终定义**（与上面的订阅方法同一写法）：preload 缺失时在这里
+    // 就地降级——开关回执 false（设置页据此提示不支持）、上报直接丢弃，
+    // 而不是让调用方每次先判 `typeof === 'function'` 再决定要不要相信结果。
+    async setAudioFocusEnabled(enabled: boolean): Promise<boolean> {
+      if (!api?.setAudioFocusEnabled) return false
+      try {
+        // 主进程的返回值就是「平台是否支持」，原样透传（只认严格 true）
+        return (await api.setAudioFocusEnabled(enabled)) === true
+      } catch {
+        // IPC 异常等价于「这一端没接管成功」：宁可让设置页提示不支持，
+        // 也不能让用户以为开关已经生效
+        return false
+      }
+    },
+    reportPlaybackState(isPlaying: boolean): void {
+      if (!api?.reportPlaybackState) return
+      try {
+        api.reportPlaybackState(isPlaying)
+      } catch {
+        // 高频通道（每次播放/暂停都发），失败只静默：不能因为上报异常打断播放
+      }
     },
     async searchLyrics(query, artist, album, duration, options) {
       if (!api?.searchLyrics) return null

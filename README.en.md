@@ -40,6 +40,7 @@
 The first screen is the **online library**: recommended playlists and charts served live by the music source you configure, played straight from the list without being added to your collection. **My Music** is your own scanned local / WebDAV collection — long-lived and playable offline. With no source configured, the online library shows a guided empty state while the local collection keeps working.
 
 - **Lyrics** — LRC synchronized lyrics (including word-level timestamps), provided by your music source; no separate lyrics source needed
+- **Audio focus (desktop)** — optional exclusive playback: pauses other players while Aurora Music plays, steps aside when another app (one that supports system media controls) starts playing, and resumes once it goes quiet
 - **Playlist import** — share links (resolved through your source) or plain text (handled locally, zero network requests), matched against your local library
 - **Appearance** — Liquid Glass aesthetics, dynamic cover glow background, dark / light / follow-system themes
 - **Languages** — Simplified Chinese and English, following the system by default and pin-able in Settings; the UI, Android notification controls, the desktop `.desktop` entry and deb metadata are all localized
