@@ -13,7 +13,7 @@
 
 ## Screenshots
 
-**Desktop** — online library / now playing / settings
+**Desktop** — online library / now playing / settings (plugins)
 
 <p align="center"><img src="./screenshots/hall.jpg" width="760" alt="Online library"></p>
 

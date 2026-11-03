@@ -13,7 +13,7 @@
 
 ## 截图
 
-**桌面端** — 音乐库 / 播放详情 / 设置（在线音源）
+**桌面端** — 音乐库 / 播放详情 / 设置（插件）
 
 <p align="center"><img src="./screenshots/hall.jpg" width="760" alt="音乐库"></p>
 
