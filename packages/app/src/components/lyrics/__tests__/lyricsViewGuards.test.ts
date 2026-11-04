@@ -86,3 +86,19 @@ describe('LyricsView：竞态与降级守卫（回归哨兵）', () => {
     expect(source).toMatch(/\.catch\(/)
   })
 })
+
+describe('LyricsView：切歌不闪错行 / 隐藏实例不烧帧（回归哨兵）', () => {
+  it('当前行与歌词数组绑定，数组不匹配时派生为「无当前行」', () => {
+    // 只存索引时，切歌那一帧旧索引会落到新歌的同一行号上，闪一下错误的高亮行
+    expect(source).toMatch(/activeState\.lyrics === lyrics \? activeState\.index : -1/)
+  })
+
+  it('帧循环在「行号变化**或**歌词数组引用变化」时都重写当前行状态', () => {
+    // 两首歌恰好停在同一行号时，只比行号会漏掉「换歌了、绑定还挂在旧数组上」
+    expect(source).toMatch(/activeLyricsRef\.current !== lines/)
+  })
+
+  it('active=false 的实例在帧循环里提前返回（详情页折叠的右栏不参与逐帧）', () => {
+    expect(source).toMatch(/if \(!activeRef\.current\) return/)
+  })
+})

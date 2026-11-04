@@ -441,14 +441,22 @@
 }
 
 /* ===== 浅色主题组件级覆盖（无法通过变量翻转的细节） ===== */
-/* 歌词高亮：白→蓝渐变在浅底不可见，翻转为深墨→青渐变。
+/* 歌词高亮：白→蓝的亮字在浅底上不可见，翻转为深墨色（已唱）→ 半透明墨（未唱）。
  * 发光同样走 drop-shadow（理由见下方 .lyric-active 处），浅底上改用同色相的弱光。 */
 html:not(.dark) .lyric-active {
-  filter: drop-shadow(0 0 10px rgba(0, 156, 136, 0.22)) drop-shadow(0 0 24px rgba(0, 132, 155, 0.14));
-  background: linear-gradient(180deg, #14161A 0%, #0E7A6E 55%, #0A6B80 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(0, 156, 136, 0.20)) drop-shadow(0 0 22px rgba(0, 132, 155, 0.12));
+}
+
+html:not(.dark) .lyric-word {
+  --lyric-lit: #14181C;
+  /* 未唱半边不能比相邻非当前行还淡：0.50 在浅底上约 3.3:1，而相邻行走 /45→.62、
+     /70→.85 分档（4.9~9:1），会出现「正在唱的一句反而是全屏最淡的正文」。
+     0.62 与 /45 分档同档（≈4.9:1），仍明显淡于已唱的 #14181C，填充感不丢。 */
+  --lyric-dim: rgba(20, 24, 28, 0.62);
+}
+
+html:not(.dark) .lyric-cursor {
+  color: #0E8C7D;
 }
 
 /* 通用滑块在浅底上翻转为深色（seek/volume 播放条已无可见滑块，不受影响） */
@@ -1763,9 +1771,9 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
   .card-affordance { transform: none; }
 }
 
-/* ===== 歌词排版与高亮（渐变文字 + 发光） =====
+/* ===== 歌词排版、当前行高亮与逐字填充（卡拉OK） =====
  *
- * 两条排版铁律，都由这里与 LyricsView 的类共同保证：
+ * 三条排版铁律，都由这里与 LyricsView 的类共同保证：
  *
  * 1. `.lyric-line` 负责折行均衡。中文歌词在右栏（净宽仅 256px）里必然折行，
  *    默认断行会留下极不平衡的两行——实测「當時無法為你寫的那首歌 卻是我永遠的遺憾當愛逝去」
@@ -1776,40 +1784,102 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
  *
  * 2. 段间距必须显著大于行内行距。折行后「同一句的两半」和「相邻两句」若间距接近，
  *    语义分组会彻底消失、整块糊成文字墙。行距固定 1.5（LyricsView 的 leading-[1.5]），
- *    段间距由那里的 space-y-* 给出：窄栏 28px（÷ 13px×1.5 ≈ 1.44 倍），
+ *    段间距由那里的 space-y-* 给出：窄栏 28px（÷ 14px×1.5 = 1.33 倍），
  *    宽栏 36px（÷ 16px×1.5 = 1.5 倍）。
  *
- * 高亮：非当前行按与当前行的距离分三级透明度（LyricsView 内联类），当前行靠
- * 字号 13 → 16px（+23%）、渐变字与双层发光跳出。窄栏不放大到 21px——右栏横向空间紧张，
- * 字号越大折行越多、块高在滚动中跳动越明显。
+ * 3. 当前行不做 transform: scale()。非整数缩放会让字形重新采样、边缘发虚；
+ *    14 → 17px（窄栏）/ 16 → 22px（宽栏）的字号跃升已足够把当前行拉出来，
+ *    而字号是整像素，始终按整数光栅化。
  *
- * 不用 Tailwind 任意属性写 [-webkit-background-clip:text]，
- * 在某些构建/运行时环境下会被忽略，导致渐变背景变成实心白块。
+ * ## 高亮：从「整行渐变字」升级为「逐字填充」
+ *
+ * 旧实现给当前行整块套一层竖向渐变 + 双层发光，信息量只有「哪一行」，唱到句中的
+ * 进度完全看不出来。现在当前行的文字由 `.lyric-word` 绘制：一个**硬停点**横向渐变，
+ * `--lp`（0..1）右边的部分是「未唱」，左边是「已唱」。
+ *
+ * ⚠️ 刷新频率与发光成本耦合：`.lyric-active` 的 drop-shadow 包着这些会变的字形，
+ * `--lp` 每写一次，该行就要重新栅格化并重算一次双层 drop-shadow。所以写入频率
+ * 受 LyricsView 的 KARAOKE_MIN_INTERVAL_MS（50ms）约束 —— 改小它会线性放大这份开销，
+ * 调参时必须同步评估低端机帧率。
+ *
+ * 为什么用 background-clip:text 而不是再叠一层亮字：
+ *   叠层要求两层排版完全一致，折行位置一旦差一个像素就会出重影；而 background-clip
+ *   只有一个文本层，折行、居中、字重全都天然对齐。代价是 `--lp` 每变一次该行字形
+ *   就要重新光栅化，所以 LyricsView 把刷新限到 20fps（见 KARAOKE_MIN_INTERVAL_MS）。
+ *
+ * 未写 `--lp` 时按 1 处理：无逐字轴、以及 JS 还没写第一帧时都应该是「整行点亮」。
+ * 暂停**不**回退成整行点亮——停在半句正好告诉用户「唱到这里停了」，那是有用的信息。
+ *
+ * ⚠️ 先写一条不带停点的兜底声明。它兜的是**解析期**风险：运行时若不认
+ * `calc(var(--lp) * 100%)` 这种停点写法，第二条声明会被整条丢弃，此时兜底仍给出
+ * 一整行实色亮字，不会出现「声明无效 + 文字填充色透明 = 当前行消失」。
+ * 它**不**兜「`--lp` 被写入非法值」：那时 background-image 在 computed-value 阶段
+ * 变成 none，而 -webkit-text-fill-color 仍是 transparent，整行会不可见。
+ * 这一路径当前不可达——`--lp` 只有 LyricsView 的帧循环写入
+ * （`progress.toFixed(3)`，值域 0..1）。若将来允许主题/插件写 `--lp`，
+ * 必须在写入侧校验，而不是指望这里的兜底声明。
  */
+
 .lyric-line {
   text-wrap: balance;
 }
 
-.lyric-active {
-  font-size: 16px;
-  font-weight: 600;
-  /* ⚠️ 发光必须用 drop-shadow，不能用 text-shadow。
-   * 字形填充被设成 transparent 之后（见下方 -webkit-text-fill-color），
-   * text-shadow 会从透明笔画**内部**透出来，把字照成一团光——放大实测笔画边缘全糊。
-   * drop-shadow 作用在合成后的字形轮廓上，光晕只落在字外，笔画保持锐利。
-   * 同理不加 transform: scale()：非整数缩放会让字形重新采样、边缘同样发虚，
-   * 而字号从 13 → 16 的跃升已经足够把当前行拉出来。 */
-  filter: drop-shadow(0 0 10px rgba(168, 246, 255, 0.34)) drop-shadow(0 0 26px rgba(143, 233, 255, 0.22));
-  background: linear-gradient(180deg, rgba(246,253,255,1) 0%, rgba(168,246,255,1) 55%, rgba(126,205,255,1) 100%);
+.lyric-word {
+  --lyric-lit: #F4FDFF;
+  /* 与浅色同理：0.55 比相邻非当前行的 /70 还淡，未唱半边会读作「这一行更次要」。
+     0.60 只比邻行淡一档，仍与已唱近白拉开足够差距。 */
+  --lyric-dim: rgba(255, 255, 255, 0.60);
+  background-image: linear-gradient(90deg, var(--lyric-lit) 0%, var(--lyric-lit) 100%);
+  background-image: linear-gradient(
+    90deg,
+    var(--lyric-lit) 0 calc(var(--lp, 1) * 100%),
+    var(--lyric-dim) calc(var(--lp, 1) * 100%) 100%
+  );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* 大字号模式（歌曲详情页宽栏）：放大当前行并加强发光，填充宽屏空间 */
+.lyric-active {
+  font-size: 17px;
+  font-weight: 600;
+  /* ⚠️ 发光必须用 drop-shadow，不能用 text-shadow。
+   * 字形填充被设成 transparent 之后（见上方 -webkit-text-fill-color），
+   * text-shadow 会从透明笔画**内部**透出来，把字照成一团光——放大实测笔画边缘全糊。
+   * drop-shadow 作用在合成后的字形轮廓上，光晕只落在字外，笔画保持锐利。
+   * 两层合成的是「柔白 + 青蓝」：单层要么偏灰要么像霓虹灯管。 */
+  filter: drop-shadow(0 0 10px rgba(168, 246, 255, 0.30)) drop-shadow(0 0 24px rgba(143, 233, 255, 0.18));
+}
+
+/* 大字号模式（歌曲详情页宽栏 / 移动端全屏页）：放大当前行，填充宽屏空间 */
 .lyric-active-lg {
-  font-size: 21px;
-  filter: drop-shadow(0 0 14px rgba(168, 246, 255, 0.36)) drop-shadow(0 0 32px rgba(143, 233, 255, 0.26));
+  font-size: 22px;
+}
+
+/* ===== 当前行游标（原行内声波图标的替代） =====
+ * 旧实现把声波图标放在当前行文字前面，而歌词是居中排版：图标一出现整行文字
+ * 右移约 10px、换行时再弹回去，每切一句两行都在抖。现在改成绝对定位在左内边距
+ * 里的一个游标，只动 transform（合成层），不参与任何文字排版。
+ *
+ * transform 由 LyricsView 按当前行的 offsetTop 写入，460ms 与滚动补间同长，
+ * 视觉上读作「标记跟着唱到的那一句走」。 */
+.lyric-cursor {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  color: #A8F6FF;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+  transition:
+    transform 460ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyric-cursor {
+    transition: none;
+  }
 }
 
 /* ===== 性能降级开关 =====

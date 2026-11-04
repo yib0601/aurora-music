@@ -36,7 +36,7 @@ import {
 import { useThemeColor } from '@/hooks/useThemeColor'
 import { useViewportMatch } from '@/hooks/useViewportMatch'
 import { useContainerWidth } from '@/hooks/useContainerWidth'
-import { resolveShellMode, LARGE_SCREEN_QUERY } from '@/lib/shellMode'
+import { resolveShellMode, LARGE_SCREEN_QUERY, WIDE_SHELL_MIN_WIDTH } from '@/lib/shellMode'
 import { syncSystemBars } from '@/services/systemBars'
 import { platform, setFolderPickerHandler } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
@@ -141,6 +141,10 @@ function AppLayout() {
   // 固定侧栏又被 `!mobile` 挡掉，两者同时消失 → 车机上导航入口归零。
   // 判据与阈值收敛到 lib/shellMode（宽 ≥1024 或宽高都 ≥520 即大屏）。
   const largeScreen = useViewportMatch(LARGE_SCREEN_QUERY)
+  // 右侧封面瓷砖的**渲染条件**（`hidden lg:block`）：与下面 aside 的 class 同一个
+  // 1024px 阈值（WIDE_SHELL_MIN_WIDTH 的注释写明二者同档）。瓷砖在窄视口里
+  // 只是 `display:none`、组件仍挂载，用它给歌词的 active 门控补上「这一份没在画」。
+  const asideVisible = useViewportMatch(`(min-width: ${WIDE_SHELL_MIN_WIDTH}px)`)
   const shellMode = resolveShellMode({ mobile, largeScreen })
   const shellWide = shellMode === 'wide'
   const showMobileNav = mobile && !shellWide
@@ -1241,7 +1245,14 @@ function AppLayout() {
                       净宽只剩 224px，中文歌词每行被压到 16 字、几乎句句折行 */}
                   <div className="flex-1 overflow-hidden flex flex-col min-h-0 pt-0 pb-6">
                     <div className="flex-1 min-h-0">
-                      <LyricsView onLineClick={(time) => usePlayerStore.getState().seekTo(time)} />
+                      {/* active：瓷砖进详情页只是宽度折叠（w-0 + overflow-hidden），组件仍
+                          挂载。不告知的话详情页上会有两份歌词同时逐帧写填充与滚动，
+                          而用户只看得到详情页那份。判定复用同一个 isSongDetail，
+                          与本 aside 的 w-72/w-0 切换同源，不会漂移。 */}
+                      <LyricsView
+                        active={!isSongDetail && asideVisible}
+                        onLineClick={(time) => usePlayerStore.getState().seekTo(time)}
+                      />
                     </div>
                   </div>
                 </div>

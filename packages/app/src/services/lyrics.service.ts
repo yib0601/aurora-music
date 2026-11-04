@@ -1,64 +1,146 @@
 import { hostContextOf, lyricsSourceViaPlugin } from '@aurora/shared'
-import type { LyricLine, LyricsSourceConfig } from '@/types'
+import type { LyricLine, LyricWord, LyricsSourceConfig } from '@/types'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 
-export function parseLRC(content: string): LyricLine[] {
-  const lines = content.split(/\r?\n/)
-  const result: LyricLine[] = []
+/**
+ * 时间标签的公共片段：`mm:ss` / `mm:ss.xxx`。
+ *
+ * 分隔符兼容 `.` 与 `:`（老播放器导出的 LRC 里 `[00:12:50]` 与 `[00:12.50]` 都存在），
+ * 分钟放宽到 1~3 位：现场版 / 播客动辄超过 99 分钟，原来的 `\d{2}` 会把整行当无标签行。
+ */
+const TIME_TAG_BODY = String.raw`(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?`
 
-  // 标准 LRC 方括号时间戳 [00:41.20]
-  const squareTagRegex = /\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]/g
-  // 逐字（卡拉OK）LRC 尖括号时间戳 <00:41.207>
-  const angleTagRegex = /<(\d{2}):(\d{2})(?:\.(\d{1,3}))?>/g
+/** 每次解析都新建正则：这两条带 `g`，复用会把 lastIndex 状态带进下一次解析 */
+function lyricTagRegex(open: string, close: string): RegExp {
+  return new RegExp(`${open}${TIME_TAG_BODY}${close}`, 'g')
+}
 
-  const toTime = (match: RegExpMatchArray) => {
-    const minutes = parseInt(match[1], 10)
-    const seconds = parseInt(match[2], 10)
-    const millisStr = match[3] || '0'
-    const millis = parseInt(millisStr.padEnd(3, '0').slice(0, 3), 10)
-    return minutes * 60 + seconds + millis / 1000
+function tagToSeconds(minute: string, second: string, fraction?: string): number {
+  // `.5` = 500ms、`.05` = 50ms：与 LRC 的「小数秒」语义对齐（右侧补零到三位）
+  const millis = fraction ? Number.parseInt(fraction.padEnd(3, '0').slice(0, 3), 10) : 0
+  return Number.parseInt(minute, 10) * 60 + Number.parseInt(second, 10) + millis / 1000
+}
+
+/**
+ * 从**已剥掉行级标签**的一行里解析逐字时间轴（增强 LRC：`<mm:ss.xxx>`）。
+ *
+ * 词元文本保留原始空格与标点，渲染时按顺序拼回去即可还原整行 —— 不做分词，
+ * 因为中文歌词的「词」边界在 LRC 里本来就没有语义，切错反而会让填充断在不该断的地方。
+ *
+ * 第一个尖括号之前若还有文字（`[00:12.00]La <00:12.50>la` 这种写法），
+ * 它没有自己的时间戳，归并进首个词元：那一小段会跟着第一个词一起点亮，
+ * 比单开一个时间未知的词元更接近原唱的听感。
+ */
+function parseWordTimeline(withoutLineTags: string, wordTag: RegExp): LyricWord[] | null {
+  const matches = [...withoutLineTags.matchAll(wordTag)]
+  if (matches.length === 0) return null
+
+  const words: LyricWord[] = []
+  const prefix = withoutLineTags.slice(0, matches[0].index ?? 0)
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i]
+    const from = (match.index ?? 0) + match[0].length
+    const to =
+      i + 1 < matches.length ? matches[i + 1].index ?? withoutLineTags.length : withoutLineTags.length
+    // 首个词元把行首无时间戳的残留文字并进来（保留其原有空白，不做启发式补空格）
+    const text = i === 0 ? prefix + withoutLineTags.slice(from, to) : withoutLineTags.slice(from, to)
+    words.push({ time: tagToSeconds(match[1], match[2], match[3]), text })
   }
+
+  // 纯空白词元（`<t>啊<t> <t>哦` 里的 `<t> `）并回前一个词的文本，而不是丢掉：
+  // line.text 里那个空格必须留在渲染结果里，否则当前行（按词元渲染）与相邻行
+  // （按整行渲染）的折行位置会不一致，切行时就地重排。
+  const merged: LyricWord[] = []
+  for (const word of words) {
+    if (word.text.trim().length === 0) {
+      const previous = merged[merged.length - 1]
+      if (previous) previous.text += word.text
+      continue
+    }
+    merged.push(word)
+  }
+  if (merged.length === 0) return null
+  merged[0].text = merged[0].text.replace(/^\s+/, '')
+  const last = merged[merged.length - 1]
+  last.text = last.text.replace(/\s+$/, '')
+  // 时间戳乱序（手写歌词常见）时钳成非降序：填充算法按相邻词元做区间，
+  // 负区间会让该词元一直停在 0 或 1，看起来像「漏唱一个字」
+  for (let i = 1; i < merged.length; i++) {
+    if (merged[i].time < merged[i - 1].time) merged[i].time = merged[i - 1].time
+  }
+  return merged
+}
+
+export function parseLRC(content: string): LyricLine[] {
+  const lineTag = lyricTagRegex(String.raw`\[`, String.raw`\]`)
+  const wordTag = lyricTagRegex('<', '>')
+  const result: LyricLine[] = []
 
   let hasAnyTimeTag = false
   const pendingNoTag: string[] = []
 
-  for (const line of lines) {
-    const text = line
-      .replace(squareTagRegex, '')
-      .replace(angleTagRegex, '')
-      .trim()
+  for (const rawLine of content.split(/\r?\n/)) {
+    // 元数据行（`[ti:歌名]` / `[ar:歌手]` / `[offset:500]`）不是歌词，也不该在
+    // 「整份文件都没有时间轴」时被当成纯文本歌词逐行显示出来。
+    if (/^\[[a-zA-Z]+:.*\]$/.test(rawLine.trim())) continue
+
+    const text = rawLine.replace(lineTag, '').replace(wordTag, '').trim()
     if (!text) continue
 
-    const squareMatches = [...line.matchAll(squareTagRegex)]
-    const angleMatches = [...line.matchAll(angleTagRegex)]
+    const lineTags = [...rawLine.matchAll(lineTag)]
+    const wordTags = [...rawLine.matchAll(wordTag)]
 
-    if (squareMatches.length === 0 && angleMatches.length === 0) {
+    if (lineTags.length === 0 && wordTags.length === 0) {
       // 无时间标签的行先暂存，待后续判断
       pendingNoTag.push(text)
       continue
     }
 
     hasAnyTimeTag = true
-    if (squareMatches.length > 0) {
+    if (lineTags.length > 0) {
+      // 逐字时间轴只在「单一行时间戳」时才归属明确。一行多时间戳（同一句复用在
+      // 多个时刻）时，尖括号里的绝对时间只会对其中一次播放正确，另一次必然错位，
+      // 所以这种行退化为纯行级：宁可没有卡拉OK效果，也不让副歌那句唱早/唱晚。
+      const words = lineTags.length === 1 ? parseWordTimeline(rawLine.replace(lineTag, ''), wordTag) : null
       // 行级时间戳：每个方括号标签生成一条（支持一行多时间戳）
-      for (const match of squareMatches) {
-        result.push({ time: toTime(match), text })
+      for (const match of lineTags) {
+        result.push(withWords(tagToSeconds(match[1], match[2], match[3]), text, words))
       }
     } else {
-      // 逐字歌词行：整行文字合并为一条完整歌词，取首个尖括号时间为行时间
-      result.push({ time: toTime(angleMatches[0]), text })
+      // 整行只有尖括号标签：首个词元的时间即行开始
+      const words = parseWordTimeline(rawLine, wordTag)
+      const start = words?.[0]?.time ?? tagToSeconds(wordTags[0][1], wordTags[0][2], wordTags[0][3])
+      result.push(withWords(start, text, words))
     }
   }
 
   // 如果整个歌词没有任何时间标签，作为纯文本歌词处理
   // 按行顺序分配时间，每行间隔 5 秒（仅用于滚动定位，无实际同步意义）
   if (!hasAnyTimeTag && pendingNoTag.length > 0) {
-    return pendingNoTag.map((text, idx) => ({ time: idx * 5, text }))
+    return pendingNoTag.map((text, idx) => ({ time: idx * 5, text, endTime: (idx + 1) * 5 }))
   }
 
   result.sort((a, b) => a.time - b.time)
+
+  // 回填行结束时刻：同时间的多条（原文 + 译文）属于一组，整组共用下一条的起始时间。
+  // 最后一行没有下一行，留 undefined 交给渲染层按窗口估计。
+  let groupStart = 0
+  while (groupStart < result.length) {
+    let groupEnd = groupStart + 1
+    while (groupEnd < result.length && result[groupEnd].time === result[groupStart].time) groupEnd++
+    const nextTime = groupEnd < result.length ? result[groupEnd].time : undefined
+    if (nextTime !== undefined) {
+      for (let i = groupStart; i < groupEnd; i++) result[i].endTime = nextTime
+    }
+    groupStart = groupEnd
+  }
+
   return result
+}
+
+function withWords(time: number, text: string, words: LyricWord[] | null): LyricLine {
+  return words ? { time, text, words } : { time, text }
 }
 
 export function findActiveLine(lines: LyricLine[], currentTime: number): number {
@@ -79,6 +161,24 @@ export function findActiveLine(lines: LyricLine[], currentTime: number): number 
   }
 
   return result
+}
+
+/**
+ * 一行歌词的起止时间窗，供「整行线性填充」与高亮过渡使用。
+ *
+ * 末行没有下一行可借用，回落到「最后一个词元的开始 + 1.2s」（有逐字轴时），
+ * 或「行首 + 6s」（普通 LRC）。窗口只影响填充速度，不参与滚动定位，
+ * 因此宁可估长一点，也不要让最后一句在没播完时突然被填满。
+ */
+export function lyricLineWindow(lines: LyricLine[], index: number): { start: number; end: number } {
+  const line = lines[index]
+  if (!line) return { start: 0, end: 0 }
+  const fallbackEnd =
+    line.words && line.words.length > 0
+      ? line.words[line.words.length - 1].time + 1.2
+      : line.time + 6
+  const end = line.endTime !== undefined ? line.endTime : fallbackEnd
+  return { start: line.time, end: end > line.time ? end : line.time + 1 }
 }
 
 export function formatLyricTime(seconds: number): string {

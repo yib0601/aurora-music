@@ -148,9 +148,27 @@ export interface Playlist {
   trackIds: string[]
 }
 
+/** 逐字（卡拉OK）时间轴里的一个词元：time 是该词开始被唱到的时刻 */
+export interface LyricWord {
+  time: number
+  text: string
+}
+
 export interface LyricLine {
   time: number
   text: string
+  /**
+   * 逐字时间轴。只有**增强 LRC**（`<mm:ss.xxx>` 尖括号标签）才带它；
+   * 普通 LRC 为 undefined，此时渲染层按整行做线性填充。
+   *
+   * 词元 text 里保留原有的空格与标点（不做分词），渲染时原样拼回去即可还原整行。
+   */
+  words?: LyricWord[]
+  /**
+   * 该行结束时刻（= 下一行的时间）。由 parseLRC 排序后统一回填，
+   * 用于「整行线性填充」与滚动/高亮的时长估算；最后一行恒为 undefined。
+   */
+  endTime?: number
 }
 
 export interface FileInfo {
