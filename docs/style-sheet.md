@@ -80,7 +80,7 @@
 
 | 主题 | 选择器 | 触发方式 |
 | --- | --- | --- |
-| 深色（默认） | `:root`（`globals.css:54`） | `<html>` 无 `.dark` 即为深色 |
+| 深色（CSS 基础块） | `:root`（`globals.css:54`） | `<html>` 无 `.dark` 即为深色 |
 | 浅色 | `html:not(.dark)`（`globals.css:269`） | `<html class="dark">` 被移除 |
 
 运行时切换在 `App.tsx` 完成，**双写两个钩子**（缺一会让 DS token 与项目主题脱节）：
@@ -90,7 +90,9 @@ document.documentElement.classList.toggle('dark', isDark)            // App.tsx�
 document.documentElement.setAttribute('data-ds-theme', isDark ? 'dark' : 'light')  // App.tsx：同上
 ```
 
-主题来源是 `libraryStore.theme`（`'light' | 'dark' | 'system'`，默认 `'dark'`），设置入口在 `SettingsPage.tsx`。
+主题来源是 `libraryStore.theme`（`'light' | 'dark' | 'system'`，默认 `'system'` 跟随系统 ——
+默认值与选项组顺序统一收在 `packages/app/src/lib/settingOptions.ts`：**默认档恒排最左**），
+设置入口在 `SettingsPage.tsx`；首屏脚本 `index.html` 的兜底默认值必须与之同源。
 
 ### 2.3 运行时注入的变量（不在 CSS 里）
 

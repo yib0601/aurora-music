@@ -67,8 +67,12 @@
         }
 
         // ---- 主题 ----
+        // 默认值必须与 libraryStore 的初值同源（DEFAULT_THEME = 跟随系统，见
+        // packages/app/src/lib/settingOptions.ts）：两边不一致时，新装用户的首屏
+        // 会先按深色画一遍、React 挂载后再翻成系统色，肉眼可见一次闪烁。
+        // <html> 上静态的 class="dark" 只作 JS 不可用时的兜底初值（应用是深色优先）。
         try {
-          var theme = 'dark'
+          var theme = 'system'
           var raw = localStorage.getItem('aurora-library-state')
           if (raw) {
             var parsed = JSON.parse(raw)
@@ -85,8 +89,14 @@
           var meta = document.querySelector('meta[name="theme-color"]')
           if (meta) meta.setAttribute('content', isDark ? '#0A0A0A' : '#F9F8F8')
         } catch (e) {
-          document.documentElement.classList.add('dark')
-          document.documentElement.setAttribute('data-ds-theme', 'dark')
+          // 存储不可用（隐私模式 / 坏 JSON）：同样回落到「跟随系统」，
+          // 与上面 try 分支和 App.tsx 的默认判定保持一条口径
+          var fallbackDark = false
+          try {
+            fallbackDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          } catch (e2) {}
+          document.documentElement.classList.toggle('dark', fallbackDark)
+          document.documentElement.setAttribute('data-ds-theme', fallbackDark ? 'dark' : 'light')
         }
       })()
     </script>

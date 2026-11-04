@@ -18,6 +18,12 @@ import {
   parseCacheLimitGbDraft,
 } from '@/lib/cacheLimit'
 import { NAV_LABEL_KEYS } from '@/lib/routes'
+import {
+  DOWNLOAD_QUALITY_OPTION_ORDER,
+  THEME_OPTION_ORDER,
+  type ThemePreference,
+} from '@/lib/settingOptions'
+import type { DownloadQuality } from '@/types'
 import { useLocale, useT } from '@/i18n'
 import { useLocaleStore } from '@/stores/localeStore'
 import { toast } from '@/components/common/Toast'
@@ -87,18 +93,20 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * 主题档位。`labelKey` 而不是 `label: string` 是刻意的：这是模块级常量数组，
- * 在这里求值文案会把语言冻结在模块加载那一刻（见 docs/i18n.md 硬规则 1）。
+ * 主题档位的文案与图标，按值索引。
+ *
+ * `labelKey` 而不是 `label: string` 是刻意的：这是模块级常量，在这里求值文案
+ * 会把语言冻结在模块加载那一刻（见 docs/i18n.md 硬规则 1）。
+ *
+ * **顺序不在这里定**：展示顺序由 `THEME_OPTION_ORDER` 给（默认档恒排最左，
+ * 见 lib/settingOptions 的顺序约定）。把顺序留在常量数组里的写法，会让"改默认值"
+ * 和"默认档摆哪一格"变成两处各改一次、且随时可以漂移的两件事。
  */
-const themeOptions: ReadonlyArray<{
-  value: 'dark' | 'light' | 'system'
-  labelKey: MessageKey
-  icon: typeof Moon
-}> = [
-  { value: 'dark', labelKey: 'settings.general.theme.dark', icon: Moon },
-  { value: 'light', labelKey: 'settings.general.theme.light', icon: Sun },
-  { value: 'system', labelKey: 'settings.general.theme.system', icon: Monitor },
-]
+const themeOptionMeta: Record<ThemePreference, { labelKey: MessageKey; icon: typeof Moon }> = {
+  dark: { labelKey: 'settings.general.theme.dark', icon: Moon },
+  light: { labelKey: 'settings.general.theme.light', icon: Sun },
+  system: { labelKey: 'settings.general.theme.system', icon: Monitor },
+}
 
 /**
  * 语言选项的名称规则：具体语言一律用**该语言自身**书写（简体中文 / English），
@@ -111,12 +119,16 @@ function languageOptionLabel(value: LanguagePreference, locale: Locale): string 
 
 /** 缓存容量合法区间与换算集中在 @/lib/cacheLimit：UI 只消费它的 GB 口径 */
 
-/** 下载音质档位：值对应歌源协议的 {quality} 占位符与 qualityUrls 键（文案键在渲染期取译文） */
-const downloadQualityOptions: ReadonlyArray<{ value: '128' | '320' | 'flac'; labelKey: MessageKey }> = [
-  { value: '128', labelKey: 'settings.storage.downloadQuality.standard' },
-  { value: '320', labelKey: 'settings.storage.downloadQuality.high' },
-  { value: 'flac', labelKey: 'settings.storage.downloadQuality.lossless' },
-]
+/**
+ * 下载音质档位的文案键，按值索引。
+ * 值对应歌源协议的 {quality} 占位符与 qualityUrls 键；顺序同样不进这里
+ * （见 `DOWNLOAD_QUALITY_OPTION_ORDER`，默认档恒排最左）。
+ */
+const downloadQualityLabelKey: Record<DownloadQuality, MessageKey> = {
+  '128': 'settings.storage.downloadQuality.standard',
+  '320': 'settings.storage.downloadQuality.high',
+  flac: 'settings.storage.downloadQuality.lossless',
+}
 
 /**
  * 设置分区表：左侧导航、分区标题、滚动锚点三处共用这一份 id/键，避免改一处漏两处。
@@ -717,26 +729,27 @@ export function SettingsPage() {
               <div className="px-3 pt-1">
                 <p className="font-text text-caption text-white/50 mb-2">{t('settings.general.theme.label')}</p>
                 <div className="flex gap-2">
-                  {themeOptions.map(({ value, labelKey, icon: Icon }) => (
-                    <button
-                      key={value}
-                      onClick={() => {
-                        setTheme(value)
-                        if (value === 'dark') document.documentElement.classList.add('dark')
-                        else if (value === 'light') document.documentElement.classList.remove('dark')
-                        else {
-                          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-                          document.documentElement.classList.toggle('dark', prefersDark)
-                        }
-                      }}
-                      className={`pill pill-md ${
-                        theme === value ? 'pill-mint' : 'pill-soft'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" strokeWidth={1.6} />
-                      {t(labelKey)}
-                    </button>
-                  ))}
+                  {THEME_OPTION_ORDER.map((value) => {
+                    const { labelKey, icon: Icon } = themeOptionMeta[value]
+                    return (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          setTheme(value)
+                          if (value === 'dark') document.documentElement.classList.add('dark')
+                          else if (value === 'light') document.documentElement.classList.remove('dark')
+                          else {
+                            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+                            document.documentElement.classList.toggle('dark', prefersDark)
+                          }
+                        }}
+                        className={`pill pill-md ${theme === value ? 'pill-mint' : 'pill-soft'}`}
+                      >
+                        <Icon className="h-4 w-4" strokeWidth={1.6} />
+                        {t(labelKey)}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               {/*
@@ -887,15 +900,13 @@ export function SettingsPage() {
                   {t('settings.storage.downloadQuality.label')}
                 </p>
                 <div className="flex gap-2">
-                  {downloadQualityOptions.map(({ value, labelKey }) => (
+                  {DOWNLOAD_QUALITY_OPTION_ORDER.map((value) => (
                     <button
                       key={value}
                       onClick={() => setDownloadQuality(value)}
-                      className={`pill pill-md ${
-                        downloadQuality === value ? 'pill-mint' : 'pill-soft'
-                      }`}
+                      className={`pill pill-md ${downloadQuality === value ? 'pill-mint' : 'pill-soft'}`}
                     >
-                      {t(labelKey)}
+                      {t(downloadQualityLabelKey[value])}
                     </button>
                   ))}
                 </div>

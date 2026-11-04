@@ -8,6 +8,11 @@ import {
   clearTrackEndpointCache,
 } from '@aurora/shared'
 import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig, LyricsSourceConfig } from '@/types'
+import {
+  DEFAULT_DOWNLOAD_QUALITY,
+  DEFAULT_THEME,
+  type ThemePreference,
+} from '@/lib/settingOptions'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
 import { configureAudioCache } from '@/services/audioCache.service'
@@ -132,7 +137,11 @@ interface LibraryState {
   /** 曲库歌曲排序字段与方向 */
   sortBy: SortField
   sortOrder: SortOrder
-  theme: 'light' | 'dark' | 'system'
+  /**
+   * 主题档位落库值。初值是 `DEFAULT_THEME`（跟随系统，见 lib/settingOptions）：
+   * 默认档同时是设置页最左那一格，两处共用同一个常量
+   */
+  theme: ThemePreference
   currentView: 'library' | 'liked' | 'recent' | 'playlists' | 'search' | 'settings'
   searchQuery: string
   searchResults: Track[]
@@ -203,7 +212,7 @@ interface LibraryState {
   setLibraryTab: (tab: LibraryTab) => void
   setSortBy: (field: SortField) => void
   setSortOrder: (order: SortOrder) => void
-  setTheme: (theme: 'light' | 'dark' | 'system') => void
+  setTheme: (theme: ThemePreference) => void
   setCurrentView: (view: LibraryState['currentView']) => void
   setSearchQuery: (query: string) => void
   setSearchResults: (results: Track[]) => void
@@ -277,7 +286,7 @@ export const useLibraryStore = create<LibraryState>()(
       libraryTab: 'songs',
       sortBy: 'default',
       sortOrder: 'asc',
-      theme: 'dark',
+      theme: DEFAULT_THEME,
       currentView: 'library',
       searchQuery: '',
       searchResults: [],
@@ -287,7 +296,7 @@ export const useLibraryStore = create<LibraryState>()(
       librarySources: [],
       lyricsSources: [],
       downloadDir: null,
-      downloadQuality: 'flac',
+      downloadQuality: DEFAULT_DOWNLOAD_QUALITY,
       audioFocusEnabled: false,
 
       setTracks: (tracks, version?: number) => {
