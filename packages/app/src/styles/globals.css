@@ -556,40 +556,22 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    * 链接都会浮出一个绿色方框，与整体玻璃材质冲突，视觉上像调试高亮。
    * 注意这里必须显式 `outline: none` 而不是删掉整条规则：直接删除会让 Chromium 的
    * 默认焦点框（蓝/白细线）重新出现，比原来的自定义环更突兀。
-   * 同时兜 :focus 与 :focus-visible 两态：Electron 里鼠标点击按钮同样可能命中
-   * :focus-visible（没有原生 chrome 的「只在键盘操作时」判定），只写后者会漏。
    * 可访问性反馈改由控件自身的 hover / active / 展开态承担。
-   * ⚠️ 这条只对现代引擎有效，老 WebView 的兜底见紧邻的下一块——两处必须成对存在。 */
-  :where(button, a, input, textarea, select, [role='button'], [tabindex]):focus,
-  :where(button, a, input, textarea, select, [role='button'], [tabindex]):focus-visible {
-    outline: none;
-    outline-offset: 0;
-  }
-
-  /* ===== 老 WebView 的焦点框兜底（车机橙色方框事故） =====
-   * 病灶与上面「按钮背景兜底」同源：CSS 对**选择器列表**是全有或全无，而上面那条把
-   * `:where()`（要 Chrome 88+）和 `:focus-visible`（要 Chrome 86+）都写进了列表。车机
-   * WebView 实测停在 Chrome 84–87 区间，解析不出其中之一即判定**整条选择器无效**，
-   * 于是连其中本有效的 `outline: none` 一起被丢弃。后果：点任何裸 <button> 都浮出 UA
-   * 默认焦点框——老 Chromium 在 Android 上画的是 `outline: auto` + `-webkit-focus-ring-color`，
-   * 落地成**橙色方框**（移动端播放页的上一首 / 下一首 / 喜欢都是裸 button，不带
-   * `focus:outline-none` 工具类，点一下就留一个橙色方框；车机只截到「下一首」那个）。
-   * 症状可复现：把产物 CSS 里「选择器列表含 `:where(` 」的规则整条剔除（等价于老引擎的
-   * 解析结果）后聚焦任一裸 button，计算出的 outline-style 是 `auto` 而不是 `none`。
    *
-   * 兜底写法两条约束：
-   *   1. 不含 `:where()`——否则整条规则又被丢弃；
-   *   2. **不能带 `:focus-visible`**——Chrome 84/85 不认识这个伪类，写进列表同样是
-   *      全有或全无地整条失效。`:focus` 天然覆盖 `:focus-visible` 的命中面（凡是
-   *      :focus-visible 的元素必定同时命中 :focus），所以只写 `:focus` 与上面那条等价。
+   * ⚠️ 写法是**单个 `:focus` 伪类**（CSS2 就有），不是 `:where(…)` / `:focus-visible`
+   * 组成的列表——这一条是两次车机事故换来的：
+   *   1. 2026-10 歌曲列表整片白块：preflight 的按钮复位把 `:where()` 写进选择器列表，
+   *      老车机 WebView（Chrome 84–87）解析不出 → 整条规则连有效的 `button` 一起丢弃；
+   *   2. 2026-11 车机橙色焦点框：本条规则原先写的是 `:where(…):focus,
+   *      :where(…):focus-visible`，同样整条失效，裸 <button> 点击后于是浮出 UA 默认
+   *      焦点框（Android 老 Chromium 画 `outline: auto` + `-webkit-focus-ring-color`）。
+   * CSS 对选择器列表是全有或全无，所以这里只保留**不依赖任何新语法的单伪类**：
+   * 老引擎一定解析得出，同时把 contenteditable、第三方控件、Radix 焦点哨兵这些
+   * 原先不在枚举列表里的元素也一起覆盖（不必再逐个补选择器）。
+   * `:focus` 天然包含 `:focus-visible` 的命中面（Electron 里鼠标点击按钮也可能命中
+   * 后者），一条即可，不写第二条。
    * 回归锁：scripts/verify-webview-compat.mjs（静态断言 + `--render` 聚焦探针）。 */
-  button:focus,
-  a:focus,
-  input:focus,
-  textarea:focus,
-  select:focus,
-  [role='button']:focus,
-  [tabindex]:focus {
+  :focus {
     outline: none;
     outline-offset: 0;
   }
@@ -845,8 +827,11 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     transform: translateY(4px);
     transition: opacity .2s, transform .25s var(--ease-mineradio), color .2s;
   }
+  /* 卡片上的「播放」浮层：鼠标悬停或键盘焦点落进卡片时浮出。
+   * 用 `:focus-within`（Chrome 60+）而不是 `:focus-visible`（86+）——车机老 WebView
+   * 不认后者，整条规则会被丢弃，卡片永远不显播放键（同类事故见焦点环那条注释）。 */
   .group:hover .card-affordance,
-  .group:focus-visible .card-affordance { opacity: 1; transform: translateY(0); }
+  .group:focus-within .card-affordance { opacity: 1; transform: translateY(0); }
   .playlist-card .media-card-image { transition: transform .35s var(--ease-mineradio); }
   .playlist-card:hover .media-card-image { transform: scale(1.035); }
   .now-playing-cover { box-shadow: 0 16px 36px rgba(0,0,0,.22), 0 0 0 1px rgb(var(--tw-white) / .08); }
@@ -892,9 +877,10 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    * 焦点不用品牌色是设计决定：mint 只表示「选中 / 正在播放 / 主行动」，
    * 聚焦只是短暂的操作位置提示，染成主色会与选中态混淆，也是对 mint 的过度消费。
    * 展开态（[data-state=open]）另算——它表达「这个下拉现在是开着的」，属于选中语义，
-   * 保留 mint 描边。 */
-  .inset-field:focus,
-  .inset-field:focus-visible {
+   * 保留 mint 描边。
+   * ⚠️ 只写 `:focus`，不写 `:focus-visible`：车机老 WebView（Chrome 84–87）不认后者，
+   * 写进同一个选择器列表会让**整条**聚焦反馈静默失效（同一类事故见焦点环那条注释）。 */
+  .inset-field:focus {
     background: rgb(var(--tw-white) / .08);
     border-color: rgb(var(--tw-white) / .18);
     outline: none;
@@ -907,9 +893,9 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
   /* 校验失败：只在出错时显形 */
   .inset-field.is-invalid { border-color: rgb(var(--tw-coral) / .55); }
 
-  /* 浅色主题下白描边翻转为深墨，同一档 alpha 在浅底上偏淡，提一档 */
-  html:not(.dark) .inset-field:focus,
-  html:not(.dark) .inset-field:focus-visible { border-color: rgb(var(--tw-white) / .26); }
+  /* 浅色主题下白描边翻转为深墨，同一档 alpha 在浅底上偏淡，提一档
+   * （同样只写 `:focus`，理由见上一条） */
+  html:not(.dark) .inset-field:focus { border-color: rgb(var(--tw-white) / .26); }
   html:not(.dark) .inset-field[data-state='open'] { border-color: rgb(var(--tw-mint) / .70); }
 
   /* 浮层（弹窗 / 下拉）里的控件再厚一档：卡片内可以极轻，

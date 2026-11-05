@@ -20,8 +20,10 @@
  *   全站「不画焦点环」那条规则的选择器列表同时含 `:where()` 与 `:focus-visible`，
  *   老引擎解析不出其中任一即整条丢弃，于是点击裸 <button> 会浮出 UA 默认焦点框
  *   （Android 老 Chromium 画 `outline: auto` + `-webkit-focus-ring-color`，落地成橙色方框）。
- *   同样补了不含这两个关键字的兜底，本脚本继续锁住：老引擎解析后，裸 <button> 聚焦
- *   不得落到 `outline-style: auto`。
+ *   现在它写成单伪类 `:focus`（CSS2 就有，且覆盖 `:focus-visible` 的命中面），
+ *   `.inset-field` 的聚焦反馈同理拆掉了 `:focus-visible` 伴侣。本脚本继续锁住：
+ *   老引擎解析后，button / a / [tabindex] / .inset-field 聚焦不得落到 `outline-style: auto`，
+ *   且输入框的聚焦描边必须还在。
  *
  *   node scripts/verify-webview-compat.mjs            静态断言（CI / pnpm verify:webview）
  *   node scripts/verify-webview-compat.mjs --render   额外用本机 Chrome 渲染对照复现
@@ -170,15 +172,17 @@ for (const needle of ['.row-hover', '.bg-mint\\/\\[0\\.07\\]']) {
   if (!strippedCss.includes(needle)) fail(`老引擎解析（丢弃含 :where 的规则）后丢了 ${needle}`)
 }
 
-// 断言：老引擎解析后，裸 <button> 的聚焦框仍被作者样式关掉。
+// 断言：老引擎解析后，聚焦框仍被作者样式关掉。
 // 判据只认「选择器列表里既无 :where() 也无 :focus-visible」的规则：这两个关键字在
 // 车机 WebView（Chrome 84–87）上任一出现都会让整条规则失效，兜底带着它们等于没兜。
+// 现行写法是单伪类 `:focus`（CSS2 就有，且天然覆盖 :focus-visible 的命中面），
+// 通吃所有元素类型；`button:focus` 这类枚举写法也认，但不作为首选。
 const legacyRules = topLevelRules(strippedCss)
 const focusKill = legacyRules.find(
   (r) =>
     !r.selector.includes(':where(') &&
     !r.selector.includes(':focus-visible') &&
-    r.selector.split(',').some((s) => /^(button|\*)?:focus$/.test(s.trim())) &&
+    r.selector.split(',').some((s) => /^(\*|button|a|input|textarea|select|\[[^\]]+\])?:focus$/.test(s.trim())) &&
     /outline:\s*none/.test(r.body)
 )
 if (focusKill) {
@@ -187,9 +191,17 @@ if (focusKill) {
   fail(
     '产物 CSS 里没有「老引擎可解析的 focus 焦点框复位」——\n' +
       '  车机旧 WebView 会因此给点击过的裸 <button> 画 UA 橙色焦点框（移动端播放页上一首 / 下一首 / 喜欢）。\n' +
-      '  兜底见 packages/app/src/styles/globals.css 的「老 WebView 的焦点框兜底」块。'
+      '  兜底见 packages/app/src/styles/globals.css 的「聚焦态不画焦点环」块（必须写成单伪类 `:focus`）。'
   )
 }
+
+// 断言：`.inset-field` 的聚焦反馈同样不能挂在 `:focus-visible` 上——车机上一旦整条
+// 被丢弃，输入框聚焦毫无提示。取 `.inset-field:focus` 单独成条（旧语法）为合格。
+const insetFocusOk = legacyRules.some(
+  (r) => !r.selector.includes(':where(') && !r.selector.includes(':focus-visible') && r.selector.split(',').some((s) => s.trim() === '.inset-field:focus')
+)
+if (insetFocusOk) ok('存在旧语法可解析的 .inset-field:focus（输入框聚焦反馈车机可用）')
+else fail('产物 CSS 里没有单独的 `.inset-field:focus` 规则——车机上输入框聚焦没有任何反馈')
 
 // ── 渲染对照（--render） ────────────────────────────────────────────────────
 if (wantRender) {
@@ -220,15 +232,23 @@ if (wantRender) {
     <span class="flex-1 min-w-0"><span class="block text-white/88">夏日漱石</span></span>
     <span class="w-12 text-right text-white/35">3:12</span></button></li>
 </ul>
-<!-- 焦点框探针：与移动端播放页上一首 / 下一首同形态的裸 <button>（无背景类、无 outline 工具类） -->
+<!-- 焦点探针：四种典型可聚焦元素。裸 <button> 对应移动端播放页的上一首 / 下一首 / 喜欢
+     （无背景类、无 outline 工具类）；<a> 与 [tabindex] 容器覆盖列表行、卡片、Radix 焦点哨兵；
+     .inset-field 输入框同时验「不画焦点框」与「聚焦反馈还在」两件事。 -->
 <div class="grid grid-cols-5 justify-items-center"><button id="bare" type="button" class="w-12 h-12 flex items-center justify-center rounded-full text-white/[0.88]">
   <svg width="23" height="23" viewBox="0 0 24 24"></svg></button></div>
+<a id="link" href="#probe-link">链接</a>
+<div id="tdiv" tabindex="0">tabindex 容器</div>
+<input id="field" class="inset-field" value="">
 <pre id="probe"></pre><pre id="focus-probe"></pre>
 <script>window.addEventListener('load',function(){
   var rows=[].map.call(document.querySelectorAll('ul button'),function(b){return getComputedStyle(b).backgroundColor})
   document.getElementById('probe').textContent='PROBE\\n'+rows.join('\\n')+'\\nPROBE'
-  var bare=document.getElementById('bare');bare.focus()
-  document.getElementById('focus-probe').textContent='FOCUSPROBE\\n'+getComputedStyle(bare).outlineStyle+'\\nFOCUSPROBE'
+  var out=['bare','link','tdiv','field'].map(function(id){
+    var el=document.getElementById(id);el.focus();var s=getComputedStyle(el)
+    return id+'='+(document.activeElement===el?'focused':'nofocus')+','+s.outlineStyle+','+s.borderTopColor
+  })
+  document.getElementById('focus-probe').textContent='FOCUSPROBE\\n'+out.join('\\n')+'\\nFOCUSPROBE'
 })</script></body></html>`
 
     for (const tag of ['modern', 'legacy']) {
@@ -257,14 +277,39 @@ if (wantRender) {
         fail(`${tag}：无背景类的行按钮落到了 ${plain} —— 车机上这就是那一整片白块`)
       }
 
-      // 聚焦框判据：`auto` = 落到了 UA 默认焦点框，车机上画出来就是那个橙色方框。
-      const outlineStyle = (dump.match(/FOCUSPROBE\n([\s\S]*?)\nFOCUSPROBE/)?.[1] || '').trim()
-      if (outlineStyle === 'none') {
-        ok(`${tag}：裸 button 聚焦后 outline-style 是 none（无 UA 焦点框）`)
-      } else if (outlineStyle) {
-        fail(`${tag}：裸 button 聚焦后 outline-style 是 ${outlineStyle} —— 车机上这就是那个橙色焦点框`)
-      } else {
+      // 聚焦判据：`auto` = 落到了 UA 默认焦点框（车机上画出来就是那个橙色方框）；
+      // `.inset-field` 另需确认聚焦反馈**还在**（border-color 被提亮，不是 transparent）。
+      const focusDump = (dump.match(/FOCUSPROBE\n([\s\S]*?)\nFOCUSPROBE/)?.[1] || '').trim()
+      const probeRows = focusDump
+        ? focusDump.split('\n').map((line) => {
+            const [id, rest] = line.split('=')
+            const [state, outlineStyle, borderColor] = (rest || '').split(',')
+            return { id, state, outlineStyle, borderColor }
+          })
+        : []
+      if (!probeRows.length) {
         fail(`${tag}：焦点探针没有输出（页面脚本没跑起来？）`)
+      } else {
+        let clean = true
+        for (const row of probeRows) {
+          if (row.state !== 'focused') {
+            fail(`${tag}：${row.id} 没能拿到焦点（探针本身没生效）`)
+            clean = false
+          }
+          if (row.outlineStyle !== 'none') {
+            fail(
+              `${tag}：${row.id} 聚焦后 outline-style 是 ${row.outlineStyle} —— 车机上这就是那个橙色焦点框`
+            )
+            clean = false
+          }
+          if (row.id === 'field' && /rgba\(0, 0, 0, 0\)|transparent/.test(row.borderColor)) {
+            fail(`${tag}：.inset-field 聚焦后描边仍是 transparent —— 车机上输入框聚焦没有任何反馈`)
+            clean = false
+          }
+        }
+        if (clean) {
+          ok(`${tag}：button / a / [tabindex] / .inset-field 聚焦后均无 UA 焦点框，输入框聚焦反馈在位`)
+        }
       }
     }
     info(`对照页留在 ${work.replace(ROOT + '/', '')}/，可直接用浏览器打开看渲染差异`)

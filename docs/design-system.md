@@ -339,11 +339,10 @@
 
 ### 4.5 焦点态不画环
 
-**规则**：全站不做焦点环。`globals.css` 用**成对的两条规则**统一关掉浏览器默认焦点框：
-现代引擎走 `:where(button, a, input, textarea, select, [role='button'], [tabindex]):focus, …:focus-visible
-{ outline: none }`，老 WebView（车机，Chrome 84–87）走一条不含 `:where()` / `:focus-visible` 的
-`button:focus, a:focus, … { outline: none }` 兜底；输入类控件（`.inset-field`、`Input`、内嵌
-textarea）的聚焦反馈只表现为**表面提亮一档 + 一层中性白描边**（`white/.18`，浅色主题 `.26`），不染 mint。
+**规则**：全站不做焦点环。`globals.css` 用**一条单伪类规则**统一关掉浏览器默认焦点框：
+`:focus { outline: none; outline-offset: 0 }`。输入类控件（`.inset-field`、`Input`、内嵌
+textarea）的聚焦反馈只表现为**表面提亮一档 + 一层中性白描边**（`white/.18`，浅色主题 `.26`），
+不染 mint。
 
 > **为什么**：曾用 2px mint 双层环（`outline-offset: 3px`）。它是全局 `:where()` 命中，
 > 意味着点击任何按钮、图标、链接、列表行都会在控件外圈浮出一个绿色方框——
@@ -352,13 +351,15 @@ textarea）的聚焦反馈只表现为**表面提亮一档 + 一层中性白描�
 >
 > **不要改成删除规则**：删掉 `outline: none` 后 Chromium 的默认焦点框会重新出现
 > （Electron 下同样命中），比自定义环更突兀。必须保留显式 `outline: none`。
-> 又因为 Electron 里鼠标点击按钮也可能命中 `:focus-visible`，两态都要兜。
 >
-> **两条必须成对存在**：CSS 对选择器列表是全有或全无，老车机 WebView 不认 `:where()`（88+）
-> 与 `:focus-visible`（86+），只留现代那条时整条规则连 `outline: none` 一起被丢弃——
-> 2026-11 就是这么在车机上漏出**橙色焦点方框**的（UA `outline: auto` + `-webkit-focus-ring-color`，
-> 移动端播放页上一首 / 下一首 / 喜欢都是裸 `<button>`，最先暴露）。兜底同样不能带这两个
-> 关键字；`:focus` 天然覆盖 `:focus-visible` 的命中面。回归锁：`pnpm verify:webview`。
+> **必须写成单伪类 `:focus`**，不要用 `:where(...)` 或 `:focus-visible`（更不要两者组列表）：
+> CSS 对选择器列表是全有或全无，老车机 WebView 不认 `:where()`（88+）与 `:focus-visible`（86+），
+> 列表里出现任一个关键字，**整条规则连 `outline: none` 一起被丢弃**——2026-11 就是这么在车机上
+> 漏出**橙色焦点方框**的（UA `outline: auto` + `-webkit-focus-ring-color`，移动端播放页上一首 /
+> 下一首 / 喜欢都是裸 `<button>`，最先暴露）。`:focus` 天然覆盖 `:focus-visible` 的命中面
+> （Electron 里鼠标点击也可能命中后者），一条即可；顺带把 contenteditable、第三方控件、
+> Radix 焦点哨兵这些不在枚举列表里的元素也一起兜住。同理，`.inset-field:focus` 等组件级
+> 聚焦反馈也不许挂 `:focus-visible`。回归锁：`pnpm verify:webview`。
 
 ---
 
