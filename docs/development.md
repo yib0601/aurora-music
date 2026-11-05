@@ -30,6 +30,26 @@ pnpm --filter @aurora/app lint   # 渲染层：eslint flat config，见 packages
 
 CI 的 `verify` job 已接入这一步（`--max-warnings 0`，warning 也算失败）。
 
+## 车机 WebView 兼容锁
+
+```bash
+pnpm --filter @aurora/app build                    # 断言读产物 CSS，必须先构建
+pnpm verify:webview                                # 静态断言（CI 已接入）
+node scripts/verify-webview-compat.mjs --render    # 额外用本机 Chrome 做渲染对照
+```
+
+车机 WebView 实测停在 Chrome 84–87 区间：`:where()` 要 88+，`:focus-visible` 要 86+，两者都有
+可能不认。而 CSS 对**选择器列表是全有或全无**——列表里有一个解析不出，整条规则连本来有效的
+选择器与声明一起被丢弃。这个坑已经踩过两次：
+
+- 裸 `<button>` 失去作者背景声明 → 落到 UA 默认底色，歌曲列表整片白块（`button, input[type=…]` 复位兜底）
+- 裸 `<button>` 失去 `outline: none` → 点击后浮出 UA 焦点框，Android 老 Chromium 画的是
+  `outline: auto` + `-webkit-focus-ring-color`，落地成**橙色方框**（移动端播放页上一首 / 下一首 / 喜欢）
+
+因此老引擎兜底的两条硬约束：**不含 `:where()`、不含 `:focus-visible`**（`:focus` 天然覆盖
+`:focus-visible` 的命中面，只写前者即可）。改动 `globals.css` 里任何一条「全站级」复位规则后，
+先跑这条锁再说。
+
 ## 测试与 fixture 的隐私约束
 
 本仓库**公开**。冒烟脚本 `packages/desktop/scripts/smoke-*.js` 不入库（`.gitignore` 已排除）——

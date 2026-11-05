@@ -558,9 +558,38 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    * 默认焦点框（蓝/白细线）重新出现，比原来的自定义环更突兀。
    * 同时兜 :focus 与 :focus-visible 两态：Electron 里鼠标点击按钮同样可能命中
    * :focus-visible（没有原生 chrome 的「只在键盘操作时」判定），只写后者会漏。
-   * 可访问性反馈改由控件自身的 hover / active / 展开态承担。 */
+   * 可访问性反馈改由控件自身的 hover / active / 展开态承担。
+   * ⚠️ 这条只对现代引擎有效，老 WebView 的兜底见紧邻的下一块——两处必须成对存在。 */
   :where(button, a, input, textarea, select, [role='button'], [tabindex]):focus,
   :where(button, a, input, textarea, select, [role='button'], [tabindex]):focus-visible {
+    outline: none;
+    outline-offset: 0;
+  }
+
+  /* ===== 老 WebView 的焦点框兜底（车机橙色方框事故） =====
+   * 病灶与上面「按钮背景兜底」同源：CSS 对**选择器列表**是全有或全无，而上面那条把
+   * `:where()`（要 Chrome 88+）和 `:focus-visible`（要 Chrome 86+）都写进了列表。车机
+   * WebView 实测停在 Chrome 84–87 区间，解析不出其中之一即判定**整条选择器无效**，
+   * 于是连其中本有效的 `outline: none` 一起被丢弃。后果：点任何裸 <button> 都浮出 UA
+   * 默认焦点框——老 Chromium 在 Android 上画的是 `outline: auto` + `-webkit-focus-ring-color`，
+   * 落地成**橙色方框**（移动端播放页的上一首 / 下一首 / 喜欢都是裸 button，不带
+   * `focus:outline-none` 工具类，点一下就留一个橙色方框；车机只截到「下一首」那个）。
+   * 症状可复现：把产物 CSS 里「选择器列表含 `:where(` 」的规则整条剔除（等价于老引擎的
+   * 解析结果）后聚焦任一裸 button，计算出的 outline-style 是 `auto` 而不是 `none`。
+   *
+   * 兜底写法两条约束：
+   *   1. 不含 `:where()`——否则整条规则又被丢弃；
+   *   2. **不能带 `:focus-visible`**——Chrome 84/85 不认识这个伪类，写进列表同样是
+   *      全有或全无地整条失效。`:focus` 天然覆盖 `:focus-visible` 的命中面（凡是
+   *      :focus-visible 的元素必定同时命中 :focus），所以只写 `:focus` 与上面那条等价。
+   * 回归锁：scripts/verify-webview-compat.mjs（静态断言 + `--render` 聚焦探针）。 */
+  button:focus,
+  a:focus,
+  input:focus,
+  textarea:focus,
+  select:focus,
+  [role='button']:focus,
+  [tabindex]:focus {
     outline: none;
     outline-offset: 0;
   }

@@ -86,6 +86,12 @@ jobs:
       - name: Build app bundle (vite)
         run: pnpm --filter @aurora/app build
 
+      # 车机 WebView（实测 Chrome 84–87）兼容锁。CSS 对选择器列表是全有或全无，
+      # `:where()` / `:focus-visible` 在车机上会让整条规则失效，已两次造成事故
+      # （歌曲列表整片白块、点击后浮出橙色焦点框）。断言读产物 CSS，必须排在 build 之后。
+      - name: Verify car head-unit WebView compat
+        run: pnpm verify:webview
+
       - name: Compile desktop main (tsc)
         run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
 
