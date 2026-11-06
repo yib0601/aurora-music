@@ -1512,6 +1512,21 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
   .track-row-grid {
     --track-cols: minmax(0, 1fr) 0 7rem 2.5rem 4rem 2.5rem;
   }
+  /* 最近播放（RecentPage）/ 收藏（LikedPage）这两张 <table> 与上面的网格共用同一套
+   * 档位阈值。它们原先用视口断点 `hidden md:table-cell` 决定列的去留，只知道
+   * 「视口 ≥768」，不知道容器其实只有一半。车机竖屏 800×1280 正是反例——视口 800
+   * 过了 md，容器却被侧栏 224 + 页面内边距 64 压到 512，四列硬塞成
+   * 标题 203 / 歌手 179 / 专辑 65 / 时长 64，专辑列连表头两个字都放不下。
+   * 表格改用档位后与网格表现一致：歌手列收起，信息下沉到标题下方第二行
+   * （.track-artist-inline 自带 `block md:hidden`，双类选择器压过 .md\:hidden）。
+   * ⚠️ 表格里可以直接 display:none：td 不是 grid item，不占轨道，不会像网格那样
+   * 把后继列整体左移一格。 */
+  .track-row-table .track-col-artist {
+    display: none;
+  }
+  .track-row-table .track-artist-inline {
+    display: block;
+  }
   .track-row-grid > .track-col-artist {
     visibility: hidden;
     padding-inline: 0;
@@ -1532,6 +1547,10 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
     visibility: hidden;
     padding-inline: 0;
     overflow: hidden;
+  }
+  /* 表格列表同档收起专辑列（理由见 779px 档的注释） */
+  .track-row-table .track-col-album {
+    display: none;
   }
 }
 

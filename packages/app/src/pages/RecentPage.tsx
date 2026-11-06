@@ -103,14 +103,20 @@ export function RecentPage() {
           </button>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
-            <table className="w-full font-text text-body">
+        // 容器宽度与视口宽度没有稳定关系（侧栏 + 页面内边距 + 右侧瓷砖一起决定），
+        // 而这张表的列去留原先按**视口**断点（hidden md:table-cell）判定：车机竖屏
+        // 800×1280 上视口 800 过了 md，容器却只剩 512，四列硬塞——专辑列窄到放下
+        // 表头都费劲，时长贴着屏幕右缘（用户实拍现场）。
+        // 故与曲库的歌曲行同源，改由 globals.css 的容器查询档位决定列的去留：
+        // 容器 <780 收起歌手列（信息下沉到标题下方第二行）、<568 连专辑列也收起。
+        <div className="track-list-container flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
+            <table className="track-row-table w-full font-text text-body">
               {/* 移动端空间宝贵，隐藏表头（列表语义已由双行布局表达） */}
               <thead className="hidden md:table-header-group">
                 <tr className="border-b border-white/[0.08]">
                   <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.title')}</th>
-                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.artist')}</th>
-                  <th className="text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.album')}</th>
+                  <th className="track-col-artist text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.artist')}</th>
+                  <th className="track-col-album text-left py-2.5 px-3 font-semibold text-white/50 text-caption">{t('common.label.album')}</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-white/50 text-caption w-16">{t('common.label.duration')}</th>
                 </tr>
               </thead>
@@ -145,13 +151,14 @@ export function RecentPage() {
                             </button>
                             <div className="min-w-0">
                               <span className="block font-semibold text-[14px] truncate text-white">{track.title}</span>
-                              {/* 移动端隐藏艺术家列，改为标题下方第二行展示 */}
-                              <span className="block md:hidden text-[12px] text-white/40 truncate mt-0.5">{track.artist}</span>
+                              {/* 移动端隐藏艺术家列，改为标题下方第二行展示；
+                                  宽屏但容器窄（车机竖屏、窄窗口）时同样由容器查询接管 */}
+                              <span className="track-artist-inline block md:hidden text-[12px] text-white/40 truncate mt-0.5">{track.artist}</span>
                             </div>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-white/50 truncate max-w-40 hidden md:table-cell">{track.artist}</td>
-                        <td className="py-2.5 px-3 text-white/50 truncate max-w-48 hidden md:table-cell">{track.album}</td>
+                        <td className="track-col-artist py-2.5 px-3 text-white/50 truncate max-w-40 hidden md:table-cell">{track.artist}</td>
+                        <td className="track-col-album py-2.5 px-3 text-white/50 truncate max-w-48 hidden md:table-cell">{track.album}</td>
                         <td className="py-2 pr-1.5 pl-1 md:py-2.5 md:px-3 text-right text-white/50 text-caption tabular-nums w-12 md:w-16">{formatTime(track.duration)}</td>
                       </tr>
                     </ContextMenuTrigger>
