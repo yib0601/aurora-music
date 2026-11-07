@@ -137,6 +137,11 @@ const electronAPI = {
   showItemInFolder: (trackId: string): Promise<boolean> =>
     ipcRenderer.invoke('shell:showItemInFolder', trackId),
   getTrack: (id: string): Promise<any | null> => ipcRenderer.invoke('tracks:get', id),
+  // 把主进程刚下载好的单个文件解析入库（「加密文件 → 按名重下」链路的收尾步骤）。
+  // 下载目录未必在用户的扫描目录里，缺这条通道的表现是「提示下载成功，曲库却找不到
+  // 这首歌」；入参是路径而非曲目对象，绝对路径与扩展名白名单由主进程把关。
+  importAudioFile: (filePath: string): Promise<any | null> =>
+    ipcRenderer.invoke('library:importFile', filePath),
   // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）；
   // fallback 为不在曲库的曲目（在线快照）的元信息兜底，见主进程 covers:ensure
   ensureCover: (id: string, fallback?: unknown): Promise<string | null> =>
@@ -341,6 +346,15 @@ const electronAPI = {
     const handler = (_event: unknown, payload: { folder: string; removed: number }) => callback(payload)
     ipcRenderer.on('scan:folder-missing', handler)
     return () => ipcRenderer.removeListener('scan:folder-missing', handler)
+  },
+  // 扫描到平台加密音频（QQ 音乐等「下载到本机」的密文，扩展名合法但内容不是音频
+  // 容器，解析必失败）：主进程在解析失败处判定后推 scan:encrypted，渲染层据此提示
+  // 「用音源重下一份明文副本」。缺这条桥接时渲染层的订阅会静默降级为空操作，
+  // 功能等于不存在且不报错（通道一致性由 ipc/__tests__/preloadApi.test.ts 把关）。
+  onEncryptedFile: (callback: (file: any) => void) => {
+    const handler = (_event: unknown, file: any) => callback(file)
+    ipcRenderer.on('scan:encrypted', handler)
+    return () => ipcRenderer.removeListener('scan:encrypted', handler)
   },
   onMediaControl: (callback: (action: string) => void) => {
     const handler = (_event: unknown, action: string) => callback(action)
