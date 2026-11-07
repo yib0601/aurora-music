@@ -13,6 +13,9 @@ export type {
   StorageFieldDef,
   StorageFieldKind,
   StoragePluginCapability,
+  // 加密音频识别结果（扫描时经 scan:encrypted 上报给渲染层）
+  EncryptedAudioFile,
+  EncryptedAudioFamily,
 } from '@aurora/shared'
 
 export interface Track {

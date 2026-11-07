@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Play,
   RefreshCw, ArrowUp, ArrowDown, ChevronLeft, Check, User, Disc3,
+  AlertTriangle, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -207,6 +208,11 @@ export function LibraryPage() {
   const setSortBy = useLibraryStore((s) => s.setSortBy)
   const sortOrder = useLibraryStore((s) => s.sortOrder)
   const setSortOrder = useLibraryStore((s) => s.setSortOrder)
+  // 扫描时识别出的加密音频（平台下载的密文）：永远进不了曲库，单独提示 + 重下入口
+  const encryptedFiles = useLibraryStore((s) => s.encryptedFiles)
+  const clearEncryptedFiles = useLibraryStore((s) => s.clearEncryptedFiles)
+  // 弹窗只有一份、挂在 App 层（扫描完成时自动弹），这里只负责打开它
+  const openEncryptedDialog = useLibraryStore((s) => s.openEncryptedDialog)
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false)
@@ -573,6 +579,35 @@ export function LibraryPage() {
         </div>
       }
     >
+      {/* 加密音频横幅：平台下载的密文（QQ 音乐 .mflac0/.mgg2 等）解析必失败、进不了曲库，
+          旧行为是完全静默——用户只会看到「扫了但一首没进来」。放在三元之外，
+          因为最典型的场景恰恰是「整个目录都是加密文件 → 曲库仍为空」 */}
+      {encryptedFiles.length > 0 && (
+        <div className="mb-4 md:mb-5 rounded-[12px] border border-amber-400/20 bg-amber-400/[0.06] px-3.5 py-3 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-400/80 mt-0.5" strokeWidth={1.6} />
+          <div className="min-w-0 flex-1">
+            <p className="font-text text-[13px] font-semibold text-white/85">
+              {t('library.encrypted.bannerTitle', { count: encryptedFiles.length })}
+            </p>
+            <p className="font-text text-[11px] text-white/45 leading-snug mt-1">
+              {t('library.encrypted.bannerHint')}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button className="pill pill-sm pill-mint" onClick={() => openEncryptedDialog()}>
+              {t('library.encrypted.bannerAction')}
+            </button>
+            <button
+              className="btn-icon"
+              title={t('library.encrypted.bannerDismiss')}
+              onClick={() => clearEncryptedFiles()}
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {tracks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="relative mb-6">

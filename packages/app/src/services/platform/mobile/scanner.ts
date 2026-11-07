@@ -1,5 +1,6 @@
 import { Filesystem, Directory } from '@capacitor/filesystem'
-import { encodeFilePathToUrl, auroraError } from '@aurora/shared'
+import { encodeFilePathToUrl, auroraError, parseEncryptedAudioName, isEncryptedAudioName } from '@aurora/shared'
+import type { EncryptedAudioFile } from '@aurora/shared'
 import * as mm from 'music-metadata-browser'
 import type { Track } from '@/types'
 import { MobileDatabase } from './database'
@@ -29,7 +30,9 @@ async function walkDir(dirPath: string, files: string[] = []): Promise<string[]>
       await walkDir(fullPath, files)
     } else if (entry.type === 'file') {
       const ext = entry.name.split('.').pop()?.toLowerCase()
-      if (ext && AUDIO_EXTENSIONS.has(`.${ext}`)) {
+      // 裸加密扩展名（`.mflac` / `.mgg` / `.qmcflac`）也要收：解析必然失败，
+      // 但正是那条失败路径才能把它上报成「加密音频」（见 encryptedFileOf）
+      if ((ext && AUDIO_EXTENSIONS.has(`.${ext}`)) || isEncryptedAudioName(entry.name)) {
         files.push(fullPath)
       }
     }
@@ -180,10 +183,49 @@ async function parseNewFile(filePath: string): Promise<ParsedFile | null> {
  */
 const SCAN_CONCURRENCY = 4
 
+/**
+ * 解析失败的文件里，认出「平台的加密下载」（QQ 音乐 mflac/mgg 等）。
+ *
+ * 与桌面端同一判据（shared/encryptedAudio），只在解析失败处调用：
+ * 这类文件扩展名合法、内容不是容器，唯一可靠线索是文件名里的平台标记。
+ * 返回 null 表示不是加密文件，维持旧行为——静默跳过。
+ */
+function encryptedFileOf(filePath: string): EncryptedAudioFile | null {
+  const parsed = parseEncryptedAudioName(filePath)
+  if (!parsed) return null
+  return {
+    path: filePath,
+    family: parsed.family,
+    token: parsed.token,
+    title: parsed.title,
+    artist: parsed.artist,
+  }
+}
+
+/**
+ * 把单个已落盘的文件解析入库（「加密文件 → 按名重下」链路的收尾步骤）。
+ *
+ * 下载目录未必在用户的扫描目录里，没有这条通道就会出现「提示下载成功、
+ * 曲库里却找不到这首歌」。封面走与扫描相同的策略：内嵌图落盘即用，
+ * 没有就留给 UI 的按需补齐（ensureCover / fetchOnlineCover）。
+ */
+export async function importAudioFile(filePath: string, db: MobileDatabase): Promise<Track | null> {
+  const entry = await parseNewFile(filePath)
+  if (!entry) return null
+  try {
+    await db.insertTrack(entry.track)
+  } catch (err) {
+    console.error('[Mobile] 写入曲目失败:', filePath, err)
+    return null
+  }
+  return entry.track
+}
+
 export async function scanFolder(
   rootPath: string,
   db: MobileDatabase,
-  onTrack?: (track: Track) => void
+  onTrack?: (track: Track) => void,
+  onEncryptedFile?: (file: EncryptedAudioFile) => void
 ): Promise<Track[]> {
   console.log('[Mobile] scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
@@ -342,6 +384,12 @@ export async function scanFolder(
         try {
           parsed[i] = await parseNewFile(files[i])
           needsInsert[i] = true
+          // 解析失败且文件名带平台加密标记：上报给 UI 供「按名重下」，
+          // 不进曲库（内容解不开，进了也播不了）。并发顺序无关紧要
+          if (!parsed[i]) {
+            const encrypted = encryptedFileOf(files[i])
+            if (encrypted) onEncryptedFile?.(encrypted)
+          }
         } finally {
           settled[i] = true
           release()

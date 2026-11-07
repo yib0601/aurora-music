@@ -31,6 +31,8 @@ import type {
   StorageFieldDef,
   StorageFieldKind,
   StoragePluginCapability,
+  EncryptedAudioFile,
+  EncryptedAudioFamily,
   // 诊断日志契约：形状由 shared 的 logging/ipcContract 定义，preload 与渲染层共用同一份，
   // app 内（平台层 / 服务层 / 设置页）从这里取即可，不必各自 import @aurora/shared
   LoggingRendererApi,
@@ -78,6 +80,9 @@ export type {
   StorageFieldDef,
   StorageFieldKind,
   StoragePluginCapability,
+  // 加密音频识别结果（扫描时由平台层上报，见 services/platform 的 onEncryptedAudioFound）
+  EncryptedAudioFile,
+  EncryptedAudioFamily,
 }
 
 export interface Track {

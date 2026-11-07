@@ -624,3 +624,76 @@ describe('移动端 scanFolder：专辑封面借用的并发等价性', () => {
     expect(byName.get('Music/b.mp3')).toBe(byName.get('Music/z.mp3'))
   })
 })
+/**
+ * 加密音频的识别与上报（`onEncryptedFile` 回调 + `importAudioFile`）。
+ *
+ * 判据本身在 shared/encryptedAudio 有单测，这里锁的是**移动端的接线**：
+ * 解析失败那一刻有没有真的把「这是平台加密文件」交出去、有没有误伤正常文件，
+ * 以及「重下完成 → 单文件入库」这条收尾通道是否可用（下载目录未必是扫描目录）。
+ */
+describe('移动端 scanFolder：加密音频识别与上报', () => {
+  const ENCRYPTED = '陈奕迅 - 十年 [mqms2].mflac0.flac'
+
+  it('密文文件被认出并上报，且不进曲库；正常文件照常入库', async () => {
+    state.files = [`Music/${ENCRYPTED}`, 'Music/ok.mp3']
+    state.failParse.add(ENCRYPTED)
+
+    const scanner = await loadScanner()
+    const hits: Array<{ path: string; family: string; token: string; title: string; artist: string }> = []
+    const out = await scanner.scanFolder(ROOT, dbDouble, undefined, (file) => hits.push(file))
+
+    expect(out.map((t) => t.path)).toEqual(['Music/ok.mp3'])
+    expect(state.inserted).toEqual(['Music/ok.mp3'])
+    expect(hits).toHaveLength(1)
+    expect(hits[0]).toMatchObject({
+      path: `Music/${ENCRYPTED}`,
+      family: 'qqmusic',
+      token: 'mflac0',
+      title: '十年',
+      artist: '陈奕迅',
+    })
+  })
+
+  it('解析失败但没有平台标记的文件不上报（不制造误报）', async () => {
+    state.files = ['Music/bad.flac']
+    state.failParse.add('bad.flac')
+
+    const scanner = await loadScanner()
+    const hits: unknown[] = []
+    await scanner.scanFolder(ROOT, dbDouble, undefined, (file) => hits.push(file))
+
+    expect(hits).toEqual([])
+  })
+
+  it('importAudioFile：单个已落盘文件解析入库并返回曲目', async () => {
+    const scanner = await loadScanner()
+    const track = await scanner.importAudioFile('Music/downloaded.mp3', dbDouble)
+
+    expect(track).toMatchObject({ path: 'Music/downloaded.mp3', title: '标题-downloaded.mp3' })
+    expect(state.inserted).toEqual(['Music/downloaded.mp3'])
+  })
+
+  it('importAudioFile：解析失败返回 null 且不写库', async () => {
+    state.failParse.add(ENCRYPTED)
+    const scanner = await loadScanner()
+
+    const track = await scanner.importAudioFile(`Music/${ENCRYPTED}`, dbDouble)
+
+    expect(track).toBeNull()
+    expect(state.inserted).toEqual([])
+  })
+})
+
+describe('移动端 scanFolder：裸加密扩展名', () => {
+  it('`.mflac`（PC 端命名，没有追加容器后缀）同样被收集并上报', async () => {
+    state.files = ['Music/陈奕迅 - 十年.mflac']
+    state.failParse.add('陈奕迅 - 十年.mflac')
+
+    const scanner = await loadScanner()
+    const hits: Array<{ token: string; title: string; artist: string }> = []
+    await scanner.scanFolder(ROOT, dbDouble, undefined, (file) => hits.push(file))
+
+    expect(hits).toHaveLength(1)
+    expect(hits[0]).toMatchObject({ family: 'qqmusic', token: 'mflac', title: '十年', artist: '陈奕迅' })
+  })
+})

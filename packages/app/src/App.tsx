@@ -13,6 +13,7 @@ import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { ToastHost, toast, dismissToast } from '@/components/common/Toast'
 import { RemoveTrackConfirmHost } from '@/components/common/TrackLibraryActions'
+import { EncryptedAudioDialog } from '@/components/EncryptedAudioDialog'
 import { describeStartupFailures, loadPluginStartupReport } from '@/components/common/pluginManage'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { MusicHallPage } from '@/pages/MusicHallPage'
@@ -55,7 +56,7 @@ import { cn, isMobile, isMobileUI } from '@/lib/utils'
 import { useOpenSongDetail } from '@/lib/navigation'
 import { HOME_ROUTE, KEEP_ALIVE_ROUTE, ROUTES, ROUTE_PATHS, isRoute } from '@/lib/routes'
 import { useT, appTranslate } from '@/i18n'
-import type { Track, FolderPickerOptions } from '@/types'
+import type { Track, FolderPickerOptions, EncryptedAudioFile } from '@/types'
 
 // 启动扫描守卫：StrictMode 开发模式下 effect 会双挂载，保证只触发一次扫描
 let initialScanTriggered = false
@@ -281,7 +282,19 @@ function AppLayout() {
       if (!isActive) return
       // 回到前台时与原生播放引擎对账：锁屏/后台期间 WebView 被冻结，
       // 锁屏控件触发的切歌/暂停等变化无法通过事件送达 JS，需主动拉取快照同步 UI
-      reconcileNativePlayback().catch(() => {})
+      reconcileNativePlayback().catch(() => {}).finally(() => {
+        // 后台期间车机 WebView 可能被系统停摆，回到前台偶发「声音恢复了、界面停在旧帧」。
+        // 只更新 React 状态不足以让合成器重新出帧：切一次合成层再还原，强制出一帧
+        // （单帧代价，只在回到前台时执行一次；失败不影响功能）。
+        try {
+          const root = document.documentElement
+          const prev = root.style.transform
+          root.style.transform = 'translateZ(0)'
+          requestAnimationFrame(() => { root.style.transform = prev })
+        } catch {
+          /* 重绘兜底失败不影响播放 */
+        }
+      })
       checkMediaPermissions().then((granted) => {
         if (cancelled) return
         if (granted && needsPermissionRef.current) {
@@ -461,6 +474,11 @@ function AppLayout() {
   const repeatMode = usePlayerStore((s) => s.repeatMode)
   const shuffleMode = usePlayerStore((s) => s.shuffleMode)
   const theme = useLibraryStore((s) => s.theme)
+  // 加密音频弹窗（扫描完成时自动打开、曲库页横幅也能打开）：全局唯一一份，
+  // 因此挂在 App 层而不是曲库页——用户可能正在别的页面时扫描完成
+  const encryptedDialogOpen = useLibraryStore((s) => s.encryptedDialogOpen)
+  const openEncryptedDialog = useLibraryStore((s) => s.openEncryptedDialog)
+  const closeEncryptedDialog = useLibraryStore((s) => s.closeEncryptedDialog)
   // 当前曲目的最新封面路径：playerStore.currentTrack 只是播放时的快照，
   // 封面可能在 UI 渲染时才异步提取/升级（CoverImage → libraryStore.updateTrack），
   // 取库中最新值才能把锁屏 artwork 补写给原生（见下方 mediaSession effect）
@@ -475,25 +493,35 @@ function AppLayout() {
   useThemeColor(currentTrack?.coverPath || currentTrack?.coverUrl)
 
   /**
-   * 音频焦点开关 → 主进程。
+   * 「其他应用播放声音时」的设置 → 会执行它的那一端。
+   *
+   * 两端执行方式不同，但用户只看到**一个**设置项（'pause' | 'continue'）：
+   *   · 桌面：'pause' = 打开互斥（轮询 + 抢占 + 让位），'continue' = 关掉服务（不干预）；
+   *     所以这里喂给主进程的是 enable 布尔值（'continue' 即不启用）。
+   *   · Android：原生引擎始终持有音频焦点，只由这一档决定「焦点丢失时要不要暂停」，
+   *     所以直接下发取值。
    *
    * 三个刻意的选择：
-   * 1. **启动也推一次**（不是只在变化时推）：持久化的设置与主进程状态必须一致。
-   *    少这一次，上次开着、这次关着的用户会让主进程继续在别的播放器出声时让位，
-   *    表现为「我明明关了互斥，它还是自己停」。
+   * 1. **启动也推一次**（不是只在变化时推）：持久化的设置与主进程/原生状态必须一致。
+   *    少这一次，上次选了继续播放的用户重启后仍会被让位/接通。
    * 2. 用 `store.subscribe` 而不是 React 选择器订阅：AppLayout 刻意只订阅低频字段
-   *    （见上方性能注释），把开关引成渲染依赖会让每次切换都重渲染整个外壳。
+   *    （见上方性能注释），把设置引成渲染依赖会让每次切换都重渲染整个外壳。
    * 3. 失败静默：平台不支持时设置页已经提示过一次，这里再弹一次只是噪音；
    *    而 IPC 异常不该影响启动流程。
    */
   useEffect(() => {
-    const push = (enabled: boolean) => {
-      void platform.setAudioFocusEnabled?.(enabled)?.catch(() => {})
+    const push = (behavior: 'pause' | 'continue') => {
+      // 桌面端暴露的是 setAudioFocusEnabled（移动端没有这个方法，能力缺失走另一条链）
+      if (platform.setAudioFocusEnabled) {
+        void platform.setAudioFocusEnabled(behavior === 'pause')?.catch(() => {})
+        return
+      }
+      void platform.setAudioFocusYieldBehavior?.(behavior)?.catch(() => {})
     }
-    push(useLibraryStore.getState().audioFocusEnabled)
+    push(useLibraryStore.getState().audioFocusYieldBehavior)
     return useLibraryStore.subscribe((state, prev) => {
-      if (state.audioFocusEnabled === prev.audioFocusEnabled) return
-      push(state.audioFocusEnabled)
+      if (state.audioFocusYieldBehavior === prev.audioFocusYieldBehavior) return
+      push(state.audioFocusYieldBehavior)
     })
   }, [])
 
@@ -602,6 +630,10 @@ function AppLayout() {
         platform.onTracksScanned((scannedTracks: Track[]) => {
           flushScannedTracks()
           useLibraryStore.getState().setTracks(scannedTracks, scanCompleteVersion++)
+          // 扫描结束（本轮的 scan:encrypted 已全部到达）：若扫到了尚未提示过的加密音频，
+          // 直接弹窗提示「扫描到加密歌曲，需要重新下载可播放的版本」。
+          // 每条只提示一次（store 里按 path 记账），避免每次重扫都弹
+          useLibraryStore.getState().promptEncryptedIfNew()
         })
       )
     }
@@ -632,6 +664,16 @@ function AppLayout() {
         platform.onFolderMissing(({ folder, removed }) => {
           console.warn(`[Scan] 目录已不存在，已从曲库清理 ${removed} 首曲目并移除该扫描目录:`, folder)
           useLibraryStore.getState().removeScanFolder(folder)
+        })
+      )
+    }
+    // 加密音频（QQ 音乐等平台下载的密文）解析必失败、永远进不了曲库。
+    // 收进 store 供曲库页展示「发现 N 个加密文件 → 用音源重下一份」的入口；
+    // 按 path 去重，每次启动/重扫重复上报同一批文件不会堆积
+    if (platform.onEncryptedAudioFound) {
+      unsubscribers.push(
+        platform.onEncryptedAudioFound((file: EncryptedAudioFile) => {
+          useLibraryStore.getState().addEncryptedFile(file)
         })
       )
     }
@@ -1305,6 +1347,13 @@ function AppLayout() {
           </div>
         </div>
       )}
+
+      {/* 加密音频提示弹窗：扫描到平台的加密下载（QQ 音乐 mflac/mgg 等）后自动弹出，
+          提示「需要重新下载一份可播放的版本」。不做解密，走的是用户自己的音源 */}
+      <EncryptedAudioDialog
+        open={encryptedDialogOpen}
+        onOpenChange={(open) => (open ? openEncryptedDialog() : closeEncryptedDialog())}
+      />
     </div>
   )
 }

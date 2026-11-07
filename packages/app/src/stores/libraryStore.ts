@@ -6,8 +6,11 @@ import {
   clearSearchCache,
   clearLxSourceCache,
   clearTrackEndpointCache,
+  DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR,
+  normalizeAudioFocusYieldBehavior,
 } from '@aurora/shared'
-import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig, LyricsSourceConfig } from '@/types'
+import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig, LyricsSourceConfig, EncryptedAudioFile } from '@/types'
+import type { AudioFocusYieldBehavior } from '@aurora/shared'
 import {
   DEFAULT_DOWNLOAD_QUALITY,
   DEFAULT_THEME,
@@ -183,16 +186,20 @@ interface LibraryState {
   /** 默认下载音质：128 标准 / 320 高品质 / flac 无损（源不支持时按其默认地址下载） */
   downloadQuality: DownloadQuality
   /**
-   * 桌面端「音频焦点 / 与其他播放器互斥」开关（默认关闭）。
+   * 「其他应用播放声音时」本应用怎么办：'pause' 暂停播放（默认）/ 'continue' 继续播放。
    *
-   * 默认关而不是默认开：它会让本应用**接管系统媒体会话**、去暂停用户正在听的其他
-   * 播放器，属于有外部副作用的开关，必须由用户显式打开。
+   * 一个值表达完整语义（早期把它拆成「互斥开关 + 行为选择」两行，设置页读起来像同一个
+   * 功能重复了一遍，且总开关关着时行为选择没有执行者）：
+   *   'pause'    = 参与互斥：本应用播放时暂停其他播放器；其他应用出声时让位，安静后自动续播。
+   *   'continue' = 不干预：不轮询、不暂停也不让位，两边各播各的。
+   * 桌面端由主进程执行（'continue' 等价于旧的「互斥开关关闭」：停轮询）；Android 端由
+   * 原生播放引擎的音频焦点回调执行（'continue' 即忽略焦点丢失）。
    * 只在本机落盘（persist 白名单显式放行，见 partialize —— 漏了会表现为
-   * 「打开后重启又变回关」，这类"忘记白名单"是 persist 最常见的回归）。
+   * 「选了继续播放，重启又变回暂停」）。
    */
-  audioFocusEnabled: boolean
-  /** 写音频焦点开关；主进程侧的同步由 App.tsx 的订阅统一负责（本 store 不碰 IPC） */
-  setAudioFocusEnabled: (enabled: boolean) => void
+  audioFocusYieldBehavior: AudioFocusYieldBehavior
+  /** 写该设置；主进程/原生侧的同步由 App.tsx 的订阅统一负责（本 store 不碰 IPC） */
+  setAudioFocusYieldBehavior: (behavior: AudioFocusYieldBehavior) => void
 
   setTracks: (tracks: Track[], version?: number) => void
   setAlbums: (albums: Album[]) => void
@@ -208,6 +215,42 @@ interface LibraryState {
   setPlaylists: (playlists: Playlist[]) => void
   addScanFolder: (path: string) => void
   removeScanFolder: (path: string) => void
+  /**
+   * 扫描时发现、但解析不出音频内容的**加密文件**（QQ 音乐等平台下载落盘的密文）。
+   *
+   * 它们是「待处理事项」而不是曲目：内容解不开，进不了曲库也播不了，
+   * 只作为 UI 的一条横幅 + 一个对话框存在。**刻意不落盘**（不在 partialize 白名单里）：
+   * 每次启动的后台扫描会重新上报一遍，存下来的旧列表只会与磁盘现实脱节
+   * （用户可能已经把文件删了或换了目录）。
+   */
+  encryptedFiles: EncryptedAudioFile[]
+  /** 追加一条加密文件上报（按 path 去重；扫描会反复上报同一批文件） */
+  addEncryptedFile: (file: EncryptedAudioFile) => void
+  /** 处理完（已重下 / 用户放弃）后从待处理列表移除 */
+  removeEncryptedFile: (path: string) => void
+  /** 清空整个待处理列表（用户点「忽略」） */
+  clearEncryptedFiles: () => void
+  /**
+   * 加密音频对话框的开关。放在 store 而不是曲库页的局部 state：
+   * 扫描完成时**自动弹窗**这条链路发生在 App 层（扫描事件订阅在那里），
+   * 曲库页横幅也要能打开同一个对话框，局部 state 表达不了「全局唯一一个弹窗」。
+   */
+  encryptedDialogOpen: boolean
+  openEncryptedDialog: () => void
+  closeEncryptedDialog: () => void
+  /**
+   * 本次会话内**已经提示过**的加密文件 path（内存态，不落盘）。
+   *
+   * 扫描是高频的（启动一次 + 手动重扫 + 文件变化触发的增量重扫都会重报同一批文件），
+   * 没有这份记录就会变成「每次重扫都弹一次窗」，用户只能被逼着关掉提示。
+   * 按 path 而不是按条数记账：用户忽略掉一批之后，新出现的那几首仍然该提示。
+   */
+  encryptedPromptedPaths: string[]
+  /**
+   * 扫描完成时调用：有**尚未提示过**的加密文件就打开对话框（每条只提示一次）。
+   * 由 App 层在 `scan:complete` 之后调用——那时本轮的 `scan:encrypted` 已经全部到达。
+   */
+  promptEncryptedIfNew: () => void
   setViewMode: (mode: ViewMode) => void
   setLibraryTab: (tab: LibraryTab) => void
   setSortBy: (field: SortField) => void
@@ -282,6 +325,9 @@ export const useLibraryStore = create<LibraryState>()(
       albums: [],
       playlists: [],
       scanFolders: [],
+      encryptedFiles: [],
+      encryptedDialogOpen: false,
+      encryptedPromptedPaths: [],
       viewMode: 'list',
       libraryTab: 'songs',
       sortBy: 'default',
@@ -297,7 +343,7 @@ export const useLibraryStore = create<LibraryState>()(
       lyricsSources: [],
       downloadDir: null,
       downloadQuality: DEFAULT_DOWNLOAD_QUALITY,
-      audioFocusEnabled: false,
+      audioFocusYieldBehavior: DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR,
 
       setTracks: (tracks, version?: number) => {
         // 版本号保护：scan:complete 事件带的版本号比 getAllTracks 的大，
@@ -380,6 +426,32 @@ export const useLibraryStore = create<LibraryState>()(
       },
       removeScanFolder: (path) => {
         set({ scanFolders: get().scanFolders.filter((p) => p !== path) })
+      },
+      addEncryptedFile: (file) => {
+        // 扫描会反复上报同一批文件（每次启动 + 每次手动重扫），按 path 去重；
+        // 识别结果用**新上报的**覆盖旧值：文件名被改过时 title/artist 会变
+        const rest = get().encryptedFiles.filter((f) => f.path !== file.path)
+        set({ encryptedFiles: [...rest, file] })
+      },
+      removeEncryptedFile: (path) => {
+        set({ encryptedFiles: get().encryptedFiles.filter((f) => f.path !== path) })
+      },
+      clearEncryptedFiles: () => set({ encryptedFiles: [] }),
+      // 对话框开关与「已提示」记账：都不落盘（见 interface 里的说明）。
+      // 忽略（清空列表）**不清** promptedPaths：用户明确表示不想处理这批文件，
+      // 下次扫描重报同一批时不该再弹一次；新文件仍会照常提示
+      openEncryptedDialog: () => set({ encryptedDialogOpen: true }),
+      closeEncryptedDialog: () => set({ encryptedDialogOpen: false }),
+      promptEncryptedIfNew: () => {
+        const { encryptedFiles, encryptedPromptedPaths, encryptedDialogOpen } = get()
+        if (encryptedDialogOpen) return
+        const prompted = new Set(encryptedPromptedPaths)
+        const fresh = encryptedFiles.filter((f) => !prompted.has(f.path))
+        if (fresh.length === 0) return
+        set({
+          encryptedDialogOpen: true,
+          encryptedPromptedPaths: [...encryptedPromptedPaths, ...fresh.map((f) => f.path)],
+        })
       },
       setViewMode: (mode) => set({ viewMode: mode }),
       setLibraryTab: (tab) => set({ libraryTab: tab }),
@@ -476,7 +548,9 @@ export const useLibraryStore = create<LibraryState>()(
       },
       setDownloadDir: (dir) => set({ downloadDir: dir || null }),
       setDownloadQuality: (quality) => set({ downloadQuality: quality }),
-      setAudioFocusEnabled: (enabled) => set({ audioFocusEnabled: enabled }),
+      // 归一化兜底：调用方（设置页/迁移）传坏值时回落到默认，不让状态里出现第三种取值
+      setAudioFocusYieldBehavior: (behavior) =>
+        set({ audioFocusYieldBehavior: normalizeAudioFocusYieldBehavior(behavior) }),
       audioCacheLimitMB: defaultAudioCacheLimitMB(),
       setAudioCacheLimitMB: (mb) => set({ audioCacheLimitMB: Math.max(0, Math.floor(mb)) }),
       // 默认视为「未自定义」：容量按平台给，设置页显示「默认」
@@ -525,10 +599,43 @@ export const useLibraryStore = create<LibraryState>()(
         downloadQuality: state.downloadQuality,
         audioCacheLimitMB: state.audioCacheLimitMB,
         audioCacheLimitCustomMB: state.audioCacheLimitCustomMB,
-        // 音频焦点开关：必须显式放行。漏在白名单外不会报错，只会表现为
-        // 「打开后重启又变回关」，用户会以为是功能没生效
-        audioFocusEnabled: state.audioFocusEnabled,
+        // 音频焦点设置：必须显式放行。漏在白名单外不会报错，只会表现为
+        // 「选了继续播放，重启又变回暂停」，用户会以为是功能没生效
+        audioFocusYieldBehavior: state.audioFocusYieldBehavior,
       }),
+      /**
+       * 水合时的归一化：持久化数据是**外部输入**（老版本、手改、迁移残留）。
+       * 坏值若原样进来，设置页会出现「两格都不亮」的第三态，而主进程/原生仍按默认执行。
+       * 与 setter 走同一个归一化函数，保证「写进去合法 ⇒ 读出来也合法」。
+       *
+       * 只在「存储里确实有数据」时被调用（缺字段的老数据也会走到这里，回落成默认档）。
+       */
+      merge: (persisted, current) => {
+        const incoming = (persisted ?? {}) as Partial<typeof current> & {
+          audioFocusYieldBehavior?: unknown
+          /** v15 前的旧字段：互斥开关（true=让位 / false=完全关闭），只用于迁移 */
+          audioFocusEnabled?: unknown
+        }
+        // 旧数据只有开关：开着的用户语义就是「让位」，关着的用户语义就是「不干预」，
+        // 正好一一映射到新取值；没有旧数据（全新安装）走 shared 的默认值。
+        // 用 merge 而不是 bump persist 版本，是为了不跟并行进行中的其它迁移抢版本号。
+        const legacyEnabled = incoming.audioFocusEnabled
+        const migrated =
+          incoming.audioFocusYieldBehavior === undefined
+            ? legacyEnabled === true
+              ? 'pause'
+              : legacyEnabled === false
+                ? 'continue'
+                : DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR
+            : normalizeAudioFocusYieldBehavior(incoming.audioFocusYieldBehavior)
+        // 旧字段不再进入状态（类型里已删除），避免水合后残留一个无人读取的键
+        const { audioFocusEnabled: _legacyEnabled, ...rest } = incoming
+        return {
+          ...current,
+          ...rest,
+          audioFocusYieldBehavior: migrated,
+        }
+      },
       // v1 用合并的 useBuiltinSources 字段；v2 拆为两个独立开关；
       // v3 移除内置源概念（网易云/QQ 开关删除，歌源全部由用户按协议配置）
       // v4 默认下载音质改为无损 FLAC：清除旧持久值，让新默认值生效

@@ -23,6 +23,7 @@ import type {
   StoragePluginMeta,
   StorageCredentialState,
 } from '@/types'
+import type { EncryptedAudioFile } from '@aurora/shared'
 import {
   createMobilePlatform as createMobilePlatformImpl,
   setFolderPickerHandler,
@@ -43,6 +44,7 @@ import {
   unavailableProbe,
 } from '@aurora/shared'
 import type {
+  AudioFocusYieldBehavior,
   PluginAuthState as PluginAuthStateInfo,
   PluginCatalogEntry,
   PluginInstallResult as PluginInstallResultInfo,
@@ -113,18 +115,21 @@ export interface PlatformExtension {
    * 曲目无内嵌封面时返回 null。
    *
    * - 桌面端：主进程按 Range 读远端文件头，或解析本地文件；返回**绝对路径**。
-   * - 移动端：只处理网络存储曲目（本地曲目在扫描阶段已落盘），返回
-   *   `Capacitor.convertFileSrc` 之后的地址；失败（远端不可达）抛错让 UI 退避重试。
+   * - 移动端：本机曲目读文件解析内嵌图、网络存储曲目 Range 读远端文件头，
+   *   返回 `Capacitor.convertFileSrc` 之后的地址；读失败（远端不可达 / 文件暂时
+   *   读不到）抛错让 UI 退避重试，只有"确认没有内嵌封面"才返回 null。
    *
-   * fallback：不在曲库的曲目（在线快照）的元信息兜底，主进程据此判定形态。
+   * fallback：尚未入库的曲目的元信息兜底（扫描窗口期的本机曲目带 path 才解析；
+   * 在线快照没有本地文件，交给 `fetchOnlineCover`）。
    */
   ensureCover?: (trackId: string, fallback?: Partial<Track>) => Promise<string | null>
   /**
-   * 在线补齐封面（桌面端）：文件无内嵌封面时，按标题/艺术家搜索用户配置的
-   * 在线歌源，下载匹配候选的封面并缓存，返回封面绝对路径。无匹配返回 null。
-   * options.sources 为渲染层持有的歌源配置（应用不内置源）。
-   * fallback：不在曲库的曲目（在线快照）的元信息兜底，主进程仅取标题/艺术家/
-   * 时长构造查询，地址类字段一律不信任。
+   * 在线补齐封面（两端都实现）：文件无内嵌封面时，按标题/艺术家搜索用户配置的
+   * 在线歌源，下载匹配候选的封面并缓存，返回封面地址。无匹配返回 null。
+   * options.sources 为渲染层持有的歌源配置（应用不内置源）——
+   * 缺了这条链，本地文件不带内嵌封面的曲目在移动端会永久空图。
+   * fallback：不在曲库的曲目（在线快照）的元信息兜底，主进程/渲染层仅取标题/
+   * 艺术家/时长构造查询，地址类字段一律不信任。
    */
   fetchOnlineCover?: (
     trackId: string,
@@ -164,6 +169,24 @@ export interface PlatformExtension {
   onScanError?: (cb: (e: { folder: string; message: string }) => void) => () => void
   /** 扫描时发现目录已从磁盘删除（主进程/移动端已清理其曲目），UI 据此移除目录条目 */
   onFolderMissing?: (cb: (e: { folder: string; removed: number }) => void) => () => void
+  /**
+   * 扫描时发现的**加密音频**（QQ 音乐等平台下载落盘的密文，如 `.mflac0.flac`）。
+   *
+   * 这类文件的扩展名合法、内容不是音频容器，解析必失败 → 永远进不了曲库。
+   * 旧行为是静默丢弃，用户只看到「扫了但一首没进来」。单独上报后，
+   * UI 才能提供「用音源重下一份明文副本」的出路。
+   *
+   * Web 端不实现（File System Access 的目录扫描走另一条链路，没有解析失败上报点）。
+   */
+  onEncryptedAudioFound?: (cb: (file: EncryptedAudioFile) => void) => () => void
+  /**
+   * 把单个已落盘的音频文件解析并入库，返回曲目记录（解析失败返回 null）。
+   *
+   * 供「加密音频 → 按名重下」链路收尾：下载目录未必在用户的扫描目录里，
+   * 没有这条通道就会出现「提示下载成功、曲库里却找不到」。
+   * 桌面端主进程会校验绝对路径 + 音频扩展名；移动端走本地 scanner。
+   */
+  importAudioFile?: (filePath: string) => Promise<Track | null>
   /** 系统媒体键事件订阅（桌面端来自 globalShortcut/MPRIS，移动端来自 mediaSession） */
   onMediaControl?: (cb: (action: string) => void) => () => void
   /**
@@ -175,6 +198,15 @@ export interface PlatformExtension {
    * Web / 移动端不实现（可选方法不存在 = 能力缺失），调用方走可选调用链降级。
    */
   setAudioFocusEnabled?: (enabled: boolean) => Promise<boolean>
+  /**
+   * 「其他应用播放声音时本应用怎么办」（'pause' 暂停 / 'continue' 继续播放）——
+   * **移动端专用**（桌面端没有这个方法：桌面用上面的 setAudioFocusEnabled 表达同一件事，
+   * 'continue' 即不启用互斥服务）。
+   *
+   * Android 的原生播放引擎始终持有系统音频焦点，只能选择「焦点丢失时要不要暂停」，
+   * 所以这里下发的是行为取值而不是开关。Web 端不实现（方法不存在 = 能力缺失）。
+   */
+  setAudioFocusYieldBehavior?: (behavior: AudioFocusYieldBehavior) => Promise<boolean>
   /**
    * 上报本应用当前是否**真的在出声**（高频、不等待回执）。
    *
@@ -704,6 +736,15 @@ export function createDesktopPlatform(): Platform {
     onFolderMissing(cb: (e: { folder: string; removed: number }) => void) {
       if (!api?.onFolderMissing) return () => {}
       return api.onFolderMissing(cb)
+    },
+    // 加密音频上报：主进程在解析失败处判定（文件名带平台标记）后推 scan:encrypted
+    onEncryptedAudioFound(cb: (file: EncryptedAudioFile) => void) {
+      if (!api?.onEncryptedFile) return () => {}
+      return api.onEncryptedFile(cb)
+    },
+    async importAudioFile(filePath: string) {
+      if (!api?.importAudioFile) return null
+      return api.importAudioFile(filePath)
     },
     onMediaControl(cb: (action: string) => void) {
       if (!api?.onMediaControl) return () => {}

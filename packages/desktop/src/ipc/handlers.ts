@@ -5,7 +5,7 @@ import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import { app } from 'electron'
 import { getAllTracks, getTrackById, initDatabase, deleteTracksByFolder, clearCoverPaths } from './database'
-import { scanFolder, ensureCover, fetchOnlineCover } from './scanner'
+import { scanFolder, ensureCover, fetchOnlineCover, importAudioFile } from './scanner'
 import {
   syncLibrarySources,
   scanLibrarySource,
@@ -45,8 +45,10 @@ import {
   sanitizeFileName,
   audioExtFrom,
   embedCoverIntoAudio,
+  sniffAudioContainer,
   detectImageMime,
   fetchWithTimeout,
+  isAudioFileName,
   listStoragePluginMeta,
   // 在线发现走插件门面：与 search / resolveTrack 同一条路，装来的插件自动可用
   hostContextOf,
@@ -219,9 +221,19 @@ async function runScan(folderPath: string): Promise<Track[]> {
     }
     allowedRoots.add(path.resolve(folderPath))
     // 渐进式扫描：每解析完一首立即推送到渲染进程，UI 端追加显示而非等全部完成
-    await scanFolder(folderPath, userData, (track) => {
-      sendToRenderer('track:scanned', track)
-    })
+    await scanFolder(
+      folderPath,
+      userData,
+      (track) => {
+        sendToRenderer('track:scanned', track)
+      },
+      // 加密文件（QQ 音乐等平台下载的密文）解析必失败、永远不会进曲库。
+      // 单独上报给渲染层，让用户决定「用音源重下一份」——旧行为是静默丢弃，
+      // 用户只看到「扫了但一首没进来」，完全猜不到原因
+      (encrypted) => {
+        sendToRenderer('scan:encrypted', encrypted)
+      }
+    )
     const allTracks = getAllTracks()
     sendToRenderer('scan:complete', allTracks)
     // 自动更新：监听扫描目录，文件增删后防抖触发增量重扫（经串行队列，
@@ -754,9 +766,12 @@ export function registerIpcHandlers() {
             const coverData = new Uint8Array(await coverResp.arrayBuffer())
             if (coverData.length >= 100) {
               const fileData = new Uint8Array(await fs.promises.readFile(savePath))
+              // 容器以真实字节为准、嗅探不出来才回退扩展名：扩展名来自 Content-Type 推断，
+              // 与内容不符时按错容器写标签会静默丢封面，甚至给 FLAC 贴上 ID3v2 头
+              const container = sniffAudioContainer(fileData) ?? path.extname(savePath)
               const embedded = embedCoverIntoAudio(
                 fileData,
-                path.extname(savePath),
+                container,
                 { title: track.title, artist: track.artist, album: track.album },
                 { data: coverData, mime: detectImageMime(coverData) }
               )
@@ -770,4 +785,17 @@ export function registerIpcHandlers() {
       return { savedPath: savePath }
     }
   )
+
+  // 把主进程刚下载好的单个文件解析入库（「加密文件 → 按名重下」链路的收尾步骤）。
+  //
+  // 为什么需要这条通道：下载目录未必在用户的扫描目录里，没有它就会出现
+  // 「提示下载成功，曲库却找不到这首歌」。入参是**路径**而不是曲目对象，
+  // 因此必须自己把关：只接受绝对路径 + 音频扩展名的真实文件，
+  // 避免这条通道被当成「把任意文件塞进曲库」的入口。
+  ipcMain.handle('library:importFile', async (_event, filePath: string): Promise<Track | null> => {
+    if (typeof filePath !== 'string' || !filePath) return null
+    if (!path.isAbsolute(filePath)) return null
+    if (!isAudioFileName(filePath)) return null
+    return importAudioFile(filePath, app.getPath('userData'))
+  })
 }

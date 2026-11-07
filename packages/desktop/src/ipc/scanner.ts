@@ -7,8 +7,8 @@ import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
 import { registerCoverFile } from './mediaCache'
 import { isUsableCoverFile } from './coverFile'
-import { auroraError, searchOnlineTracks, fetchWithTimeout, isTimeoutError, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate } from '@aurora/shared'
-import type { OnlineSearchOptions } from '@aurora/shared'
+import { auroraError, searchOnlineTracks, fetchWithTimeout, isTimeoutError, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate, PLACEHOLDER_ARTISTS, parseEncryptedAudioName, isEncryptedAudioName } from '@aurora/shared'
+import type { OnlineSearchOptions, EncryptedAudioFile } from '@aurora/shared'
 
 /** 在线封面下载超时：封面是可选增强，等太久不如放着让下次重试 */
 const COVER_TIMEOUT_MS = 15000
@@ -30,7 +30,10 @@ async function walkDir(dir: string, files: string[] = []): Promise<string[]> {
       await walkDir(fullPath, files)
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase()
-      if (AUDIO_EXTENSIONS.has(ext)) {
+      // 平台的加密下载也可能是**裸加密扩展名**（PC 端 `.mflac` / `.mgg` / `.qmcflac`，
+      // 没有安卓端那种追加的容器后缀）：这类文件同样要收进来，否则解析失败无从上报，
+      // 用户看到的仍然是「一首都没进来」
+      if (AUDIO_EXTENSIONS.has(ext) || isEncryptedAudioName(entry.name)) {
         files.push(fullPath)
       }
     }
@@ -178,14 +181,55 @@ async function processFile(
 const PARSE_CONCURRENCY = 8
 
 /**
+ * 解析失败的文件里，认出「平台的加密下载」。
+ *
+ * 只在解析失败处判定：这类文件的扩展名合法（`.flac`）、内容不是音频容器，
+ * 唯一可靠的线索是文件名里的平台标记（`[mqms2]` / `.mflac0` 等）。
+ * 返回 null 表示不是加密文件（真损坏 / 冷门编码），维持旧行为——静默跳过不打扰用户。
+ */
+function encryptedFileOf(filePath: string, size?: number): EncryptedAudioFile | null {
+  const parsed = parseEncryptedAudioName(path.basename(filePath))
+  if (!parsed) return null
+  return {
+    path: filePath,
+    size,
+    family: parsed.family,
+    token: parsed.token,
+    title: parsed.title,
+    artist: parsed.artist,
+  }
+}
+
+/**
+ * 把单个已落盘的音频文件解析并入库，返回曲目记录（解析失败返回 null）。
+ *
+ * 存在的理由：「加密文件 → 用音源重下一份」链路下载完成后，新文件落在下载目录里，
+ * 而下载目录**未必**是用户的扫描目录。没有这条通道的话，用户会看到「下载成功」
+ * 却在曲库里找不到那首歌，只能自己去设置页再加一个扫描目录。
+ */
+export async function importAudioFile(filePath: string, userData: string): Promise<Track | null> {
+  const stat = await fs.promises.stat(filePath).catch(() => null)
+  if (!stat || !stat.isFile()) return null
+  // 复用扫描的解析逻辑（含「艺术家 - 歌名」文件名兜底与 GBK 标题修正），
+  // 传空 Map 表示「库里没有这个 path 的旧记录」，即全新解析
+  const track = await processFile(filePath, stat, userData, new Map())
+  if (track) insertTracks([track])
+  return track
+}
+
+/**
  * 扫描指定目录，返回本次扫描到的全部曲目。
  * @param onTrack 可选回调：每解析完一首立即触发，用于渐进式刷新 UI
  *   （注意：并发批次内回调顺序非顺序，但 UI 端 addTracks 是去重追加，乱序无影响）
+ * @param onEncryptedFile 可选回调：解析失败且文件名带平台加密标记时触发。
+ *   这类文件**不会**进曲库（内容解不开，进了也播不了），只上报给 UI，
+ *   由用户决定「用音源重下一份」还是忽略
  */
 export async function scanFolder(
   rootPath: string,
   userData: string,
-  onTrack?: (track: Track) => void
+  onTrack?: (track: Track) => void,
+  onEncryptedFile?: (file: EncryptedAudioFile) => void
 ): Promise<Track[]> {
   console.log('scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
@@ -233,7 +277,13 @@ export async function scanFolder(
     for (let j = 0; j < results.length; j++) {
       const track = results[j]
       const stat = stats[j]
-      if (!track || !stat) continue
+      if (!stat) continue
+      if (!track) {
+        // 解析失败：可能是平台的加密下载。认出来就上报，认不出来维持旧行为（跳过）
+        const encrypted = encryptedFileOf(batch[j], stat.size)
+        if (encrypted) onEncryptedFile?.(encrypted)
+        continue
+      }
       tracks.push(track)
       // 立即通知 UI 追加显示（渐进式刷新），不等全部扫描完
       if (onTrack) onTrack(track)
@@ -281,16 +331,15 @@ export async function ensureCover(track: Track, userData: string): Promise<strin
   }
 }
 
-// 落库哨兵值：与 shared/coverMatch 的 PLACEHOLDER_ARTISTS 同一组取值，
-// 本地化会让匹配失效（另见下方 fetchOnlineCover 的查询词清洗）
-const META_PLACEHOLDERS = new Set(['未知艺术家', '未知专辑', '未知歌曲']) // i18n-exempt: 参与匹配的领域数据
-
 /**
  * 在线补齐封面：文件无内嵌封面时的兜底。
  * 用「艺术家 + 标题」搜索用户配置的在线歌源，取标题匹配、歌手门禁通过的候选
  * 封面下载并落盘缓存（见 shared/coverMatch：歌手不符或带版本标记的一律不选，
  * 宁可无图也不贴错封面）。无匹配返回 null；网络/下载失败抛错
  * （渲染层按"失败可重试"处理，不会当作无封面缓存）。
+ *
+ * 查询词清洗用 shared 的 `PLACEHOLDER_ARTISTS`（与移动端同一份）：本地再抄一份
+ * 字面量，两端对「合辑 / 群星」这类占位歌手的处理迟早走散。
  */
 export async function fetchOnlineCover(
   track: Track,
@@ -300,8 +349,8 @@ export async function fetchOnlineCover(
   // 同 ensureCover：悬空路径不早退，否则在线兜底会被一个已删的缓存文件拦住
   if (isUsableCoverFile(track.coverPath)) return track.coverPath!
   if (track.coverPath) updateTrack(track.id, { coverPath: undefined })
-  const rawArtist = META_PLACEHOLDERS.has(track.artist) ? '' : track.artist
-  const rawTitle = META_PLACEHOLDERS.has(track.title) ? '' : track.title
+  const rawArtist = PLACEHOLDER_ARTISTS.has(track.artist) ? '' : track.artist
+  const rawTitle = PLACEHOLDER_ARTISTS.has(track.title) ? '' : track.title
   // 查询词清洗：第一艺术家 + 去演唱者后缀的标题，并统一转简体（歌源多以简体索引）
   const artist = firstArtistOf(rawArtist)
   const title = cleanTitleForQuery(rawTitle, rawArtist)
