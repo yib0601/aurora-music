@@ -20,7 +20,7 @@ describe('缓存容量档位换算', () => {
   it('区间与档位常量：预设档位全部落在合法区间内', () => {
     expect(CACHE_LIMIT_MIN_GB).toBe(0.5)
     expect(CACHE_LIMIT_MAX_GB).toBe(100)
-    expect(GB_PRESETS).toEqual([1, 2, 5, 10, 50])
+    expect(GB_PRESETS).toEqual([1, 5, 20])
     for (const gb of GB_PRESETS) {
       expect(gb).toBeGreaterThanOrEqual(CACHE_LIMIT_MIN_GB)
       expect(gb).toBeLessThanOrEqual(CACHE_LIMIT_MAX_GB)

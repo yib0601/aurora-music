@@ -21,8 +21,15 @@ export const CACHE_LIMIT_MIN_GB = 0.5
 /** 自定义档位上界：100 GB 已是本机磁盘量级，再大等同于不限制，引导用户选「不限制」档 */
 export const CACHE_LIMIT_MAX_GB = 100
 
-/** 一档一档的常用容量，覆盖「小内存手机 / 桌面 / 免维护」三类诉求 */
-export const GB_PRESETS: readonly number[] = [1, 2, 5, 10, 50]
+/**
+ * 预设档位：只留三档 + 「不限制」，覆盖「小内存手机 / 桌面 / 大容量免操心」三类诉求。
+ *
+ * 档位刻意稀少：胶囊一行排得下才是「一眼可选」，原先 1/2/5/10/50 五档会在
+ * 常规窗口宽度下折成两行，5 GB 与 10 GB 这类相邻档也没给出足够大的跨度，
+ * 用户仍要停下来比一比。现在 1 → 5 → 20 每档约 4 倍跨度，
+ * 中间值（2 / 10 / 50）走输入框自填，不再占胶囊。
+ */
+export const GB_PRESETS: readonly number[] = [1, 5, 20]
 
 /** MB → GB（保留原始精度，仅做除法，展示格式化交给 formatCacheLimit） */
 export function mbToGb(mb: number): number {
