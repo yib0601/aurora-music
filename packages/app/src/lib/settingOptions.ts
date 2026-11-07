@@ -1,3 +1,4 @@
+import type { AudioFocusYieldBehavior } from '@aurora/shared'
 import type { DownloadQuality } from '@/types'
 
 /**
@@ -42,3 +43,12 @@ export const DEFAULT_DOWNLOAD_QUALITY: DownloadQuality = 'flac'
 
 /** 下载音质档位展示顺序：默认（无损 FLAC）在最左，其余保持标准 → 高品质的原顺序 */
 export const DOWNLOAD_QUALITY_OPTION_ORDER: readonly DownloadQuality[] = ['flac', '128', '320']
+
+/**
+ * 「其他应用播放声音时」档位顺序：默认（暂停本应用 = 让位）在最左。
+ *
+ * 默认值本身在 `@aurora/shared` 的 `DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR`：
+ * 它是跨端契约（桌面主进程 / Android 原生引擎都按它归一化），不能只住在前端常量里。
+ * 这里只负责「展示顺序」，并由 settingOptions.test.ts 钉住「首项 === 默认值」。
+ */
+export const AUDIO_FOCUS_YIELD_OPTION_ORDER: readonly AudioFocusYieldBehavior[] = ['pause', 'continue']

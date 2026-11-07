@@ -1,14 +1,12 @@
 /**
- * 「音频焦点 / 与其他播放器互斥」开关的**持久化**回归。
+ * 「其他应用播放声音时：暂停播放 / 继续播放」设置的**持久化与迁移**回归。
  *
- * 这条链路最容易出的错不是逻辑，而是「忘写进 partialize 白名单」：
- * 落盘时被静默裁掉 → 用户打开开关、重启后又变回关，而且没有任何报错。
- * 设置项本身只是库里的一个布尔值，所以这里钉的是：
- *   1. 默认关闭（接管系统媒体会话属于有外部副作用的开关，必须显式打开）；
- *   2. setter 能改；
- *   3. 真的写进了 `aurora-library-state`（白名单放行）；
- *   4. 水合能读回 true（重启后仍然开着）；
- *   5. 老版本数据（没有这个字段）升级后回落成 false，且迁移不清掉已存的值。
+ * 这条链路最容易出的错不是逻辑，而是两件事：
+ *   1. 「忘写进 partialize 白名单」：落盘时被静默裁掉 → 用户选了继续播放、重启又变回暂停，
+ *      而且没有任何报错；
+ *   2. 「旧字段迁移错方向」：v15 把原来的「互斥开关 + 行为选择」两行合并成一个两档设置，
+ *      老数据里只有布尔开关（`audioFocusEnabled`）。开着 → 暂停播放、关着 → 继续播放，
+ *      映射错了会让用户升级后行为反转（尤其「一直关着」的用户突然开始被让位）。
  *
  * localStorage 桩必须挂在 **window** 上（zustand 5 的默认 storage 是
  * `createJSONStorage(() => window.localStorage)`），理由与 lyricsSources.test.ts 相同。
@@ -57,43 +55,90 @@ function persistedState(bag: Map<string, string>): Record<string, unknown> {
   return (JSON.parse(raw as string) as { state: Record<string, unknown> }).state
 }
 
-describe('音频焦点开关的默认值与写入', () => {
-  it('默认关闭（不能默认接管系统媒体会话）', async () => {
+describe('默认值与写入', () => {
+  it('全新安装默认「暂停播放」（= 参与互斥，功能默认生效）', async () => {
     const { store } = await freshStore()
-    expect(store.getState().audioFocusEnabled).toBe(false)
+    expect(store.getState().audioFocusYieldBehavior).toBe('pause')
   })
 
-  it('setter 单向写入，重复写同一值无副作用', async () => {
+  it('setter 写入；非法值一律回落 pause', async () => {
     const { store } = await freshStore()
-    store.getState().setAudioFocusEnabled(true)
-    expect(store.getState().audioFocusEnabled).toBe(true)
-    store.getState().setAudioFocusEnabled(true)
-    expect(store.getState().audioFocusEnabled).toBe(true)
-    store.getState().setAudioFocusEnabled(false)
-    expect(store.getState().audioFocusEnabled).toBe(false)
+    store.getState().setAudioFocusYieldBehavior('continue')
+    expect(store.getState().audioFocusYieldBehavior).toBe('continue')
+    // 运行时兜底：调用方传坏值不得把状态写成第三态（设置页会两格都不亮）
+    store.getState().setAudioFocusYieldBehavior('bogus' as never)
+    expect(store.getState().audioFocusYieldBehavior).toBe('pause')
   })
 })
 
-describe('音频焦点开关的持久化', () => {
-  it('开启后落盘（partialize 白名单放行）', async () => {
+describe('持久化', () => {
+  it('「继续播放」落盘（partialize 白名单放行），且不再写出旧开关字段', async () => {
     const { store, bag } = await freshStore()
-    store.getState().setAudioFocusEnabled(true)
-    expect(persistedState(bag).audioFocusEnabled).toBe(true)
+    store.getState().setAudioFocusYieldBehavior('continue')
+    const persisted = persistedState(bag)
+    expect(persisted.audioFocusYieldBehavior).toBe('continue')
+    expect(persisted).not.toHaveProperty('audioFocusEnabled')
   })
 
-  it('重启（重新水合）后仍是开', async () => {
+  it('重启（重新水合）后仍是「继续播放」', async () => {
+    const { store } = await freshStore({
+      state: { audioFocusYieldBehavior: 'continue' },
+      version: 14,
+    })
+    expect(store.getState().audioFocusYieldBehavior).toBe('continue')
+  })
+
+  it('持久化里的坏值 → 水合时归一化为 pause（设置页不出现两格都不亮）', async () => {
+    const { store } = await freshStore({
+      state: { audioFocusYieldBehavior: 'sideways' },
+      version: 14,
+    })
+    expect(store.getState().audioFocusYieldBehavior).toBe('pause')
+  })
+})
+
+/**
+ * v15 迁移：旧的「互斥开关」布尔值要一一映射到新取值，
+ * 不能让「一直关着开关」的用户升级后突然开始被让位。
+ */
+describe('旧数据（audioFocusEnabled 布尔开关）迁移', () => {
+  it('旧开关开着 → 暂停播放', async () => {
     const { store } = await freshStore({ state: { audioFocusEnabled: true }, version: 14 })
-    expect(store.getState().audioFocusEnabled).toBe(true)
+    expect(store.getState().audioFocusYieldBehavior).toBe('pause')
   })
 
-  it('老数据没有该字段 → 升级后为关（不误开有外部副作用的开关）', async () => {
+  it('旧开关关着 → 继续播放（保留用户「不干预」的意图）', async () => {
+    const { store } = await freshStore({ state: { audioFocusEnabled: false }, version: 14 })
+    expect(store.getState().audioFocusYieldBehavior).toBe('continue')
+  })
+
+  it('更老的数据（两个字段都没有）→ 默认暂停播放', async () => {
     const { store } = await freshStore({ state: { theme: 'light' }, version: 13 })
-    expect(store.getState().audioFocusEnabled).toBe(false)
+    expect(store.getState().audioFocusYieldBehavior).toBe('pause')
     expect(store.getState().theme).toBe('light')
   })
 
-  it('老数据里已有该字段时，迁移不得丢掉它', async () => {
-    const { store } = await freshStore({ state: { audioFocusEnabled: true }, version: 13 })
-    expect(store.getState().audioFocusEnabled).toBe(true)
+  it('同时存在新值与时旧开关时，以新值为准（不覆盖用户后来的选择）', async () => {
+    const { store } = await freshStore({
+      state: { audioFocusEnabled: true, audioFocusYieldBehavior: 'continue' },
+      version: 14,
+    })
+    expect(store.getState().audioFocusYieldBehavior).toBe('continue')
+  })
+})
+
+/**
+ * 自定义 merge 的回归锁：归一化/迁移只该动这一个字段，不能顺手吞掉别的持久化状态。
+ * likedTrackIds 还要走 onRehydrateStorage 复活成 Set（那条路在 merge 之后执行）。
+ */
+describe('merge 的边界', () => {
+  it('不影响其它持久化字段与 likes 的水合', async () => {
+    const { store } = await freshStore({
+      state: { theme: 'light', likedTrackIds: ['t1', 't2'], audioFocusYieldBehavior: 'continue' },
+      version: 14,
+    })
+    expect(store.getState().theme).toBe('light')
+    expect(store.getState().audioFocusYieldBehavior).toBe('continue')
+    expect([...store.getState().likedTracks].sort()).toEqual(['t1', 't2'])
   })
 })

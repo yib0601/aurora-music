@@ -24,6 +24,7 @@ import java.net.URLEncoder
  *   - playQueue(opts): 设置队列并从指定位置播放
  *   - syncQueue(opts): 仅同步队列/循环/随机镜像（不打断播放）
  *   - pause()/resume()/seekTo()/setVolume()/next()/previous()/playAt()/stopEngine()
+ *   - setAudioFocusBehavior(opts): 设置「其他应用播放声音时」= 暂停（默认）/ 继续播放
  *   - updateArtwork(opts): 补写当前曲目锁屏封面（封面异步就绪后调用）
  *   - getState(): 查询播放快照
  *   - addListener("playbackevent", cb): 监听播放状态事件（同步 UI）
@@ -206,6 +207,26 @@ class MediaSessionPlugin : Plugin() {
     fun setVolume(call: PluginCall) {
         val volume = call.getDouble("volume", 0.7) ?: 0.7
         MediaPlaybackService.instance?.setVolume(volume)
+        call.resolve()
+    }
+
+    /**
+     * 设置「其他应用播放声音时」的行为
+     * opts: { behavior: 'pause' | 'continue' }，默认 pause，非法值由原生归一化为 pause。
+     *
+     * 服务在跑时走实例方法：能立刻把「正被焦点中断的暂停」续上；
+     * 服务没启动也必须落盘，否则用户在播放前改的设置会被静默丢弃、
+     * 下次起播又回到 pause。
+     */
+    @PluginMethod
+    fun setAudioFocusBehavior(call: PluginCall) {
+        val behavior = call.getString("behavior", "pause") ?: "pause"
+        val svc = MediaPlaybackService.instance
+        if (svc != null) {
+            svc.setAudioFocusBehavior(behavior)
+        } else {
+            MediaPlaybackService.applyAudioFocusBehavior(context, behavior)
+        }
         call.resolve()
     }
 

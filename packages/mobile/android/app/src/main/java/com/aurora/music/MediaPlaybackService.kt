@@ -89,6 +89,62 @@ class MediaPlaybackService : Service() {
         /** 播放状态事件回调（MediaSessionPlugin 在 load 时注册，转发给 JS） */
         @Volatile
         var playbackEventCallback: ((Map<String, Any>) -> Unit)? = null
+
+        // ─── 「其他应用播放声音时」策略 ─────────────────────────────
+        // 设置值：pause（默认，被抢焦点就暂停）/ continue（继续播，用户自担风险）。
+        // 刻意用**独立**的 SharedPreferences 文件：播放快照那份额外会被
+        // clearSavedState() 整份 clear()，设置写进去会被「停止播放」顺手抹掉。
+        private const val SETTINGS_PREFS = "aurora_settings"
+        private const val KEY_AUDIO_FOCUS_BEHAVIOR = "audio_focus_behavior"
+        const val AUDIO_FOCUS_PAUSE = "pause"
+        const val AUDIO_FOCUS_CONTINUE = "continue"
+
+        /**
+         * 归一化：契约只认 pause / continue，其余（null、空串、旧版本脏值、拼写错误）
+         * 一律回落到 pause。默认侧必须是「被打断就暂停」——那才是不会让用户莫名其妙
+         * 「歌还在走但没声音」的一边。
+         */
+        private fun normalizeAudioFocusBehavior(raw: String?): String =
+            if (raw == AUDIO_FOCUS_CONTINUE) AUDIO_FOCUS_CONTINUE else AUDIO_FOCUS_PAUSE
+
+        /**
+         * 当前生效的焦点策略。
+         * @Volatile 必要：写入来自 JS 线程/主线程，读取发生在 AudioManager 派发焦点事件的
+         * 那个线程上（不是主线程），没有可见性保证的话可能一直读到旧值。
+         */
+        @Volatile
+        private var audioFocusBehavior: String = AUDIO_FOCUS_PAUSE
+
+        /**
+         * 从独立设置文件读回策略（onCreate 调用）。
+         * 读失败按默认 pause 处理：设置丢了只影响「被打断时是否暂停」，不能让播放本身出错。
+         */
+        fun loadAudioFocusBehavior(context: Context): String {
+            val raw = try {
+                context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_AUDIO_FOCUS_BEHAVIOR, AUDIO_FOCUS_PAUSE)
+            } catch (_: Throwable) {
+                null
+            }
+            val behavior = normalizeAudioFocusBehavior(raw)
+            audioFocusBehavior = behavior
+            return behavior
+        }
+
+        /**
+         * 写设置并立即更新内存值。服务未启动时也要落盘——否则用户在服务起来之前改的
+         * 设置会在下次播放时静默回退成默认值。
+         */
+        fun applyAudioFocusBehavior(context: Context, behavior: String) {
+            val normalized = normalizeAudioFocusBehavior(behavior)
+            audioFocusBehavior = normalized
+            try {
+                context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_AUDIO_FOCUS_BEHAVIOR, normalized)
+                    .apply()
+            } catch (_: Throwable) {}
+        }
     }
 
     private var mediaSession: MediaSessionCompat? = null
@@ -101,6 +157,24 @@ class MediaPlaybackService : Service() {
     // 封面解码/下载属 IO，放独立线程，避免卡主线程。
     private val artworkThread = HandlerThread("aurora-artwork").apply { start() }
     private val artworkHandler = Handler(artworkThread.looper)
+
+    // ─── 播放快照落盘（异步）────────────────────────────────────
+    // 整队列的 JSON 序列化不能压在主线程上：车机队列动辄几百上千首，而这个快照
+    // 每 10 秒（看门狗）以及每次起播/暂停/seek/切歌都会刷新一次。
+    private val stateThread = HandlerThread("aurora-state").apply { start() }
+    private val stateHandler = Handler(stateThread.looper)
+    /** 待落盘的最新快照（由 saveState 在调用线程抓取，见其注释） */
+    @Volatile private var pendingSnapshot: PlaybackSnapshot? = null
+    @Volatile private var saveScheduled = false
+    private data class PlaybackSnapshot(
+        val items: List<QueueItem>,
+        val index: Int,
+        val positionMs: Long,
+        val playing: Boolean,
+        val shuffle: String,
+        val repeat: String,
+        val volume: Float,
+    )
     /** 已解码封面缓存（仅主线程访问），key 为封面来源或 `embedded:<音频路径>` */
     private val artworkCache = LruCache<String, Bitmap>(8)
     /** 当前曲目封面，随 metadata 一起下发给系统 */
@@ -133,6 +207,23 @@ class MediaPlaybackService : Service() {
     private var audioManager: AudioManager? = null
     private var focusRequest: AudioFocusRequest? = null
     private var hasAudioFocus = false
+    /** 是否因为被系统/其他应用抢走音频焦点而暂停（焦点回来后据此自动续播） */
+    private var pausedByFocusLoss = false
+
+    // ─── 网络流自愈 ─────────────────────────────────────────────
+    /**
+     * 在线直链是网络流，一次瞬时抖动（车机切网 / 省电 / 对端断流）不代表这首不能播。
+     * 之前 onError 直接放弃，用户看到的就是「播到一半没声，按一下切歌才恢复」。
+     */
+    private val maxNetworkRetries = 2
+    private val retryBaseDelayMs = 1_500L
+    /** 当前曲目已重试过几次（换曲或成功播放后清零） */
+    private var networkRetryCount = 0
+    /** 网络流「缓冲停滞」自愈次数（成功推进后清零），避免死网络下无限重建播放器 */
+    private val maxStallRecoveries = 2
+    private var stallRecoveries = 0
+    /** 待执行的延迟重试：换曲 / 暂停 / 停止时必须取消，否则会把已停掉的播放重新拉起来 */
+    private var retryRunnable: Runnable? = null
 
     // ─── 播放状态持久化 ─────────────────────────────────────────
     // Honor 等厂商深度灭屏时可能直接杀掉整个进程（前台服务一起死）。
@@ -143,11 +234,59 @@ class MediaPlaybackService : Service() {
         getSharedPreferences("aurora_playback_state", Context.MODE_PRIVATE)
     }
 
-    /** 保存当前队列/索引/进度/模式快照（失败静默，不影响播放） */
+    /**
+     * 保存当前队列/索引/进度/模式快照（失败静默，不影响播放）。
+     *
+     * ⚠️ **不要在这里直接序列化整条队列**：这个函数被看门狗每 10 秒一次、外加每次
+     * 起播/暂停/seek/切歌都会调用，而它原本在调用线程上把整个队列转 JSON 再写
+     * SharedPreferences —— 车机队列大时这就是主线程上一份持续性的卡顿源（界面一顿一顿，
+     * 严重时 ANR）。现在调用线程只抓一份轻量快照，序列化与写盘全部交给 aurora-state 线程。
+     */
     private fun saveState() {
+        val snapshot = try {
+            PlaybackSnapshot(
+                items = queue.toList(),
+                index = currentIndex,
+                positionMs = currentPositionMs(),
+                playing = try { player?.isPlaying ?: false } catch (_: Throwable) { false },
+                shuffle = shuffleMode,
+                repeat = repeatMode,
+                volume = currentVolume,
+            )
+        } catch (_: Throwable) {
+            return
+        }
+        pendingSnapshot = snapshot
+        // 已经排了一份就够了：它执行时会把最新的那份取走（见 drainStateWrites）
+        if (saveScheduled) return
+        saveScheduled = true
+        stateHandler.post { drainStateWrites() }
+    }
+
+    /** 把排队中的快照逐个写掉；执行期间新来的快照会再被这个循环取走 */
+    private fun drainStateWrites() {
+        while (true) {
+            try {
+                while (true) {
+                    val snapshot = pendingSnapshot ?: break
+                    pendingSnapshot = null
+                    writeState(snapshot)
+                }
+            } catch (_: Throwable) {
+                // 写盘失败只丢这一份快照，不影响播放
+            }
+            saveScheduled = false
+            // 竞态兜底：清标志那一瞬间刚好有新快照进来时，对方看到 saveScheduled=true
+            // 不会再排队，这里必须自己再接一轮，否则最后一份快照会一直悬着
+            if (pendingSnapshot == null) return
+            saveScheduled = true
+        }
+    }
+
+    private fun writeState(snapshot: PlaybackSnapshot) {
         try {
             val arr = JSONArray()
-            for (item in queue) {
+            for (item in snapshot.items) {
                 arr.put(
                     org.json.JSONObject()
                         .put("path", item.path)
@@ -158,21 +297,21 @@ class MediaPlaybackService : Service() {
                         .put("durationMs", item.durationMs)
                 )
             }
-            val posMs = currentPositionMs()
-            val playing = try { player?.isPlaying ?: false } catch (_: Throwable) { false }
             prefs.edit()
                 .putString("queue", arr.toString())
-                .putInt("index", currentIndex)
-                .putLong("position", posMs)
-                .putBoolean("playing", playing)
-                .putString("shuffle", shuffleMode)
-                .putString("repeat", repeatMode)
-                .putFloat("volume", currentVolume)
+                .putInt("index", snapshot.index)
+                .putLong("position", snapshot.positionMs)
+                .putBoolean("playing", snapshot.playing)
+                .putString("shuffle", snapshot.shuffle)
+                .putString("repeat", snapshot.repeat)
+                .putFloat("volume", snapshot.volume)
                 .apply()
         } catch (_: Throwable) {}
     }
 
     private fun clearSavedState() {
+        // 先掐掉排队中的快照，否则它会在这次 clear 之后把旧状态又写回去
+        pendingSnapshot = null
         try { prefs.edit().clear().apply() } catch (_: Throwable) {}
     }
 
@@ -250,17 +389,29 @@ class MediaPlaybackService : Service() {
                     val dur = playerDurationMs.toInt()
                     if (pos >= 0) {
                         if (playing && pos == lastWatchPositionMs) {
-                            // 连续 2 次（约 20s）停滞才判定卡死，避免缓冲场景误跳
+                            // 连续 2 次（约 20s）停滞才判定"卡住"，避免正常缓冲被误判
                             stallTicks++
-                            if (stallTicks >= 2 && !completionForced) {
-                                Log.w(TAG, "watchdog: 进度停滞于 ${pos}ms，强制推进") 
+                            if (stallTicks >= 2) {
                                 stallTicks = 0
                                 lastWatchPositionMs = -2
-                                completionForced = true
-                                mainHandler.post { handleCompletion() }
+                                val stalledItem = queue.getOrNull(currentIndex)
+                                if (stalledItem != null && isRemote(stalledItem.path) &&
+                                    stallRecoveries < maxStallRecoveries
+                                ) {
+                                    // 网络流停滞多半是缓冲断了：带原位置重试当前曲，
+                                    // 而不是一律跳下一首（跳曲会丢歌，且弱网下会连续跳过整条队列）
+                                    stallRecoveries++
+                                    Log.w(TAG, "watchdog: 网络流停滞于 ${pos}ms，重试当前曲（第 ${stallRecoveries} 次）")
+                                    val resumeAt = pos.toLong()
+                                    mainHandler.post { startCurrent(true, resumeAt, isRetry = true) }
+                                } else if (!completionForced) {
+                                    Log.w(TAG, "watchdog: 进度停滞于 ${pos}ms，强制推进")
+                                    completionForced = true
+                                    mainHandler.post { handleCompletion() }
+                                }
                             }
                         } else if (!playing && dur > 0 && pos in (dur - 2000)..dur && !completionForced) {
-                            Log.w(TAG, "watchdog: 已到结尾但 onCompletion 未触发，强制推进") 
+                            Log.w(TAG, "watchdog: 已到结尾但 onCompletion 未触发，强制推进")
                             stallTicks = 0
                             lastWatchPositionMs = -2
                             completionForced = true
@@ -296,6 +447,8 @@ class MediaPlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // 先读回用户设置：进程被 START_STICKY 重建后内存值归零，不读回来会静默退回 pause
+        loadAudioFocusBehavior(this)
         createNotificationChannel()
 
         val filter = IntentFilter().apply {
@@ -355,6 +508,7 @@ class MediaPlaybackService : Service() {
         shuffle: String,
         repeat: String,
     ) {
+        cancelScheduledRetry()
         queue.clear()
         queue.addAll(items)
         shuffleMode = shuffle
@@ -380,6 +534,9 @@ class MediaPlaybackService : Service() {
     }
 
     fun resume() {
+        cancelScheduledRetry()
+        // 播放已经恢复（用户点播放 / GAIN 后续播）：不再欠任何一次「焦点回来后续播」
+        pausedByFocusLoss = false
         val p = player ?: run {
             // 引擎未初始化（如服务被重建）：尝试从头播放当前曲目
             if (currentIndex >= 0) startCurrent(true, 0)
@@ -397,6 +554,9 @@ class MediaPlaybackService : Service() {
     }
 
     fun pause() {
+        cancelScheduledRetry()
+        // 用户主动暂停：焦点回来时不应该自动续播
+        pausedByFocusLoss = false
         val p = player ?: return
         if (p.isPlaying) {
             try {
@@ -423,6 +583,25 @@ class MediaPlaybackService : Service() {
     fun setVolume(volume: Double) {
         currentVolume = volume.toFloat().coerceIn(0f, 1f)
         try { player?.setVolume(currentVolume, currentVolume) } catch (_: Throwable) {}
+    }
+
+    /**
+     * 切换「其他应用播放声音时」的策略（MediaSessionPlugin 桥接 JS 设置）。
+     *
+     * 从 pause 切到 continue 时顺手把被焦点中断的那次暂停补上：用户刚把策略改成
+     * 「继续播」，不该还得再点一次播放键。
+     *
+     * 但**只补临时丢失那一次**（`hasAudioFocus` 仍为 true）：永久丢失时焦点已经被
+     * 对方拿走、我们也在 LOSS 分支里放弃了焦点，这时起播会重新申请焦点、反向把对方
+     * 按停 —— 与用户选「继续播放」的意图正好相反。
+     */
+    fun setAudioFocusBehavior(behavior: String) {
+        val normalized = normalizeAudioFocusBehavior(behavior)
+        applyAudioFocusBehavior(this, normalized)
+        if (normalized == AUDIO_FOCUS_CONTINUE && pausedByFocusLoss && hasAudioFocus) {
+            pausedByFocusLoss = false
+            resume()
+        }
     }
 
     fun next() {
@@ -474,6 +653,8 @@ class MediaPlaybackService : Service() {
     /** 停止播放并清理引擎（保留队列，用户可再点播放恢复） */
     fun stopEngine() {
         Log.i(TAG, "stopEngine")
+        cancelScheduledRetry()
+        pausedByFocusLoss = false
         releasePlayer()
         releasePlaybackResources()
         updateSessionState(false)
@@ -494,12 +675,28 @@ class MediaPlaybackService : Service() {
 
     // ─── 引擎内部 ───────────────────────────────────────────────
 
-    private fun startCurrent(autoplay: Boolean, positionMs: Long) {
+    /**
+     * @param isRetry 由自愈路径（错误重试 / 停滞重试）发起的重启：
+     *   不清零重试预算、也不取消自身，否则重试会无限循环。
+     */
+    private fun startCurrent(autoplay: Boolean, positionMs: Long, isRetry: Boolean = false) {
         val item = queue.getOrNull(currentIndex) ?: run {
             Log.w(TAG, "startCurrent: 队列为空或索引越界 index=$currentIndex size=${queue.size}") 
             return
         }
-        Log.i(TAG, "startCurrent: index=$currentIndex title=${item.title} autoplay=$autoplay pos=$positionMs")
+        Log.i(TAG, "startCurrent: index=$currentIndex title=${item.title} autoplay=$autoplay pos=$positionMs retry=$isRetry")
+        if (!isRetry) {
+            // 换了曲目（或用户显式起播）：上一曲的「焦点回来后自动续播」意图作废，
+            // 否则迟到的 GAIN 会把一首已经自然放完（或已切走）的歌重新拉起来
+            pausedByFocusLoss = false
+            // 取消上一曲遗留的重试，并给满重试预算。
+            // ⚠️ completionForced 也必须在这里复位——之前只在看门狗里置 true、从不置回，
+            // 结果整个服务生命周期里只可能被强制推进一次，之后再卡就不会再自愈。
+            cancelScheduledRetry()
+            networkRetryCount = 0
+            stallRecoveries = 0
+            completionForced = false
+        }
         // 未取址的在线曲目：JS 下发队列时 path 还是空的（移动端惰性取址，地址要在
         // 播到它时按 id 现取）。绝不能把空串当本地路径交给 MediaPlayer——
         // resolvePath("") 会拼出 /storage/emulated/0/（一个目录），setDataSource 必然
@@ -622,6 +819,19 @@ class MediaPlaybackService : Service() {
 
     private fun handleError(what: Int, extra: Int) {
         Log.e(TAG, "handleError: what=$what extra=$extra index=$currentIndex")
+        val item = queue.getOrNull(currentIndex)
+        // 网络流错误先原地重试：一次瞬时抖动不该把整首歌判死。
+        // 只有重试预算用尽才上报 error —— JS 侧对在线曲目的处理是「停住 + 提示」，
+        // 不会自动跳下一首，所以这里的自愈是唯一的恢复机会。
+        if (item != null && isRemote(item.path) && networkRetryCount < maxNetworkRetries) {
+            networkRetryCount++
+            val attempt = networkRetryCount
+            releasePlayer()
+            updateSessionState(false)
+            Log.w(TAG, "handleError: 网络流错误，${retryBaseDelayMs * attempt}ms 后重试（第 $attempt / $maxNetworkRetries 次）")
+            scheduleRetry(retryBaseDelayMs * attempt) { startCurrent(true, 0, isRetry = true) }
+            return
+        }
         releasePlayer()
         releasePlaybackResources()
         emitEvent("error", mapOf(
@@ -630,6 +840,22 @@ class MediaPlaybackService : Service() {
             "extra" to extra,
         ))
         updateSessionState(false)
+    }
+
+    /** 延迟重试：同一时刻只保留一个（换曲/暂停/停止会取消），避免重试风暴把引擎打满 */
+    private fun scheduleRetry(delayMs: Long, action: () -> Unit) {
+        cancelScheduledRetry()
+        val runnable = Runnable {
+            retryRunnable = null
+            try { action() } catch (_: Throwable) {}
+        }
+        retryRunnable = runnable
+        mainHandler.postDelayed(runnable, delayMs)
+    }
+
+    private fun cancelScheduledRetry() {
+        retryRunnable?.let { mainHandler.removeCallbacks(it) }
+        retryRunnable = null
     }
 
     private fun computeNextIndex(fromCompletion: Boolean): Int {
@@ -735,6 +961,12 @@ class MediaPlaybackService : Service() {
      * 音频焦点让系统（尤其 Honor 电源管理）把本 app 识别为活跃媒体应用。
      */
     private fun acquirePlaybackResources() {
+        acquireWakeLock()
+        requestAudioFocusIfNeeded()
+    }
+
+    /** 只在播放期间持有：这是"CPU 别睡"的保证，与音频焦点是两件事 */
+    private fun acquireWakeLock() {
         val lock = wakeLock
         if (lock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -745,7 +977,15 @@ class MediaPlaybackService : Service() {
         } else if (!lock.isHeld) {
             lock.acquire()
         }
+    }
 
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Throwable) {}
+    }
+
+    private fun requestAudioFocusIfNeeded() {
         if (hasAudioFocus) return
         if (audioManager == null) {
             audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -759,39 +999,122 @@ class MediaPlaybackService : Service() {
                     .build()
                 val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(attrs)
-                    .setOnAudioFocusChangeListener { focusChange ->
-                        Log.i(TAG, "音频焦点变化: $focusChange (isPlaying=${try { player?.isPlaying } catch (_: Throwable) { false }})") 
-                    }
+                    .setOnAudioFocusChangeListener { focusChange -> onAudioFocusChange(focusChange) }
                     .build()
                 focusRequest = req
                 am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             } else {
                 @Suppress("DEPRECATION")
-                am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                am.requestAudioFocus(
+                    { focusChange -> onAudioFocusChange(focusChange) },
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
+                ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             }
             hasAudioFocus = granted
         } catch (_: Throwable) {}
     }
 
+    /**
+     * 音频焦点变化。
+     *
+     * 之前这里**只打日志**：别的应用或系统播报把焦点抢走后，我们仍继续"播放"
+     * （进度在走、声音被系统静音 / 输出被切走），车机上看到的就是
+     * 「歌播到一半突然没声、像卡死了」，按一下切歌重新申请焦点才恢复。
+     * 正确语义：被打断就暂停；焦点回来、且不是用户自己按的暂停，才续播。
+     *
+     * 例外是用户把「其他应用播放声音时」设成了 continue：这时焦点丢失/临时丢失
+     * 只记录不中断。代价是焦点已经不在我们手上，系统可能把我们静音或把输出路由
+     * 到别处（车机上就是「进度还在走、但没声音」）——这是用户显式选择的产品决定，
+     * 风险由用户自担，代码不再替他兜底。CAN_DUCK / GAIN 两种语义不受该设置影响。
+     *
+     * **永久丢失（LOSS）与临时丢失（LOSS_TRANSIENT）必须分开处理**：永久丢失时系统
+     * 不会再派 GAIN，所以既不能指望自动续播，也不能留着 hasAudioFocus=true——
+     * 那会让用户下次手动播放时 requestAudioFocusIfNeeded() 直接短路，整段播放都没有焦点。
+     */
+    private fun onAudioFocusChange(focusChange: Int) {
+        Log.i(TAG, "音频焦点变化: $focusChange (isPlaying=${try { player?.isPlaying } catch (_: Throwable) { false }}, behavior=$audioFocusBehavior)")
+        when (focusChange) {
+            // 永久丢失：另一音乐 App 拿到 GAIN，焦点不会还回来
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                // 先清掉可能残留的 duck（CAN_DUCK 之后紧跟永久丢失时没有 GAIN 来复原）
+                applyDuck(false)
+                // 焦点确实没了：放弃并清标记，否则 hasAudioFocus 卡在 true（见函数注释）
+                abandonAudioFocus()
+                if (audioFocusBehavior == AUDIO_FOCUS_CONTINUE) {
+                    Log.i(TAG, "焦点被永久抢占但设置为 continue：不暂停")
+                } else {
+                    pauseForFocusLoss()
+                }
+            }
+            // 临时丢失：不放弃焦点，系统随后会派 GAIN，据 pausedByFocusLoss 自动续播
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                applyDuck(false)
+                if (audioFocusBehavior == AUDIO_FOCUS_CONTINUE) {
+                    Log.i(TAG, "焦点临时丢失但设置为 continue：不暂停")
+                } else {
+                    pauseForFocusLoss()
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> applyDuck(true)
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                applyDuck(false)
+                if (pausedByFocusLoss) {
+                    pausedByFocusLoss = false
+                    resume()
+                }
+            }
+        }
+    }
+
+    /**
+     * 被抢焦点（仅临时丢失路径会走到这里）：停播放器，但**不**放弃焦点
+     * （放弃后系统不会再派 GAIN，自动续播就没了）。
+     */
+    private fun pauseForFocusLoss() {
+        // 排队的网络重试必须掐掉：否则它到点会把刚因焦点暂停的歌重新拉起来
+        // （与 pause() / stopEngine() 的同一约束）
+        cancelScheduledRetry()
+        val p = player ?: return
+        if (!p.isPlaying) return
+        pausedByFocusLoss = true
+        try {
+            p.pause()
+            releaseWakeLock()
+            emitEvent("pause", mapOf("position" to (p.currentPosition / 1000.0)))
+            updateSessionState(false)
+            saveState()
+        } catch (_: Throwable) {}
+    }
+
+    /** 导航播报一类（CAN_DUCK）：压低音量继续播，而不是停掉 */
+    private fun applyDuck(ducked: Boolean) {
+        try {
+            val v = if (ducked) currentVolume * 0.3f else currentVolume
+            player?.setVolume(v, v)
+        } catch (_: Throwable) {}
+    }
+
     /** 暂停/停止：释放 WakeLock 与音频焦点 */
     private fun releasePlaybackResources() {
+        releaseWakeLock()
+        abandonAudioFocus()
+    }
+
+    private fun abandonAudioFocus() {
+        if (!hasAudioFocus) return
         try {
-            wakeLock?.let { if (it.isHeld) it.release() }
-        } catch (_: Throwable) {}
-        if (hasAudioFocus) {
-            try {
-                val am = audioManager
-                if (am != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        focusRequest?.let { am.abandonAudioFocusRequest(it) }
-                    } else {
-                        @Suppress("DEPRECATION")
-                        am.abandonAudioFocus(null)
-                    }
+            val am = audioManager
+            if (am != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    focusRequest?.let { am.abandonAudioFocusRequest(it) }
+                } else {
+                    @Suppress("DEPRECATION")
+                    am.abandonAudioFocus(null)
                 }
-            } catch (_: Throwable) {}
-            hasAudioFocus = false
-        }
+            }
+        } catch (_: Throwable) {}
+        hasAudioFocus = false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -1064,8 +1387,10 @@ class MediaPlaybackService : Service() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(playbackWatchdog)
+        cancelScheduledRetry()
         try { unregisterReceiver(mediaButtonReceiver) } catch (_: Throwable) {}
         artworkThread.quitSafely()
+        stateThread.quitSafely()
         releasePlayer()
         releasePlaybackResources()
         mediaSession?.isActive = false

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { LANGUAGE_PREFERENCES } from '@aurora/shared'
+import { DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR, LANGUAGE_PREFERENCES } from '@aurora/shared'
 import {
+  AUDIO_FOCUS_YIELD_OPTION_ORDER,
   DEFAULT_DOWNLOAD_QUALITY,
   DEFAULT_THEME,
   DOWNLOAD_QUALITY_OPTION_ORDER,
@@ -36,6 +37,13 @@ describe('设置项默认值与展示顺序', () => {
 
     expect([...DOWNLOAD_QUALITY_OPTION_ORDER].sort()).toEqual(['128', '320', 'flac'])
     expect(new Set(DOWNLOAD_QUALITY_OPTION_ORDER).size).toBe(DOWNLOAD_QUALITY_OPTION_ORDER.length)
+  })
+
+  it('音频焦点「其他应用播放声音时」：默认「暂停播放」，且排在选项组最左', () => {
+    // 默认值住在 shared（跨端契约），顺序数组在前端：两边漏一边都会让首格与默认值错位
+    expect(DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR).toBe('pause')
+    expect(AUDIO_FOCUS_YIELD_OPTION_ORDER[0]).toBe(DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR)
+    expect([...AUDIO_FOCUS_YIELD_OPTION_ORDER].sort()).toEqual(['continue', 'pause'])
   })
 
   it('语言：默认「跟随系统」同样是顺序数组的首项', () => {

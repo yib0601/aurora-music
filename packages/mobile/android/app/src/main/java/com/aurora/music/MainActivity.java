@@ -1,7 +1,9 @@
 package com.aurora.music;
 
 import android.os.Bundle;
+import android.webkit.WebView;
 
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -22,5 +24,34 @@ public class MainActivity extends BridgeActivity {
         // （没有 keyring 等价物时，这是唯一不引第三方库的加密手段）。
         registerPlugin(SecureStoragePlugin.class);
         super.onCreate(savedInstanceState);
+    }
+
+    /**
+     * 回到前台时补一次重绘。
+     *
+     * 车机上的 WebView 在后台被系统停摆后，回来常表现为「声音恢复了、界面停在旧帧」：
+     * 音频走的是 MediaPlaybackService 里的原生 MediaPlayer（不依赖 WebView，
+     * 所以媒体键还能切歌），挂掉的只有界面这一侧。Capacitor 的 onResume 只恢复
+     * 定时器，不保证合成器重新出帧，这里显式 resumeTimers + 连续两次 invalidate
+     * （当帧一次、下一帧再一次）把合成器推起来。失败不影响音频。
+     */
+    @Override
+    public void onResume() {
+        super.onResume();
+        Bridge bridge = getBridge();
+        if (bridge == null) {
+            return;
+        }
+        WebView webView = bridge.getWebView();
+        if (webView == null) {
+            return;
+        }
+        try {
+            webView.resumeTimers();
+            webView.invalidate();
+            webView.post(() -> webView.invalidate());
+        } catch (Throwable ignored) {
+            // 重绘兜底失败不影响播放（音频在原生服务里）
+        }
     }
 }

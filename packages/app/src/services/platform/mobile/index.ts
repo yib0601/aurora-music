@@ -27,6 +27,7 @@ import type {
 import { MobileDatabase } from './database'
 import {
   scanFolder as mobileScanFolder,
+  importAudioFile as mobileImportAudioFile,
   readLyricsFile,
   saveLyricsFile,
 } from './scanner'
@@ -39,7 +40,7 @@ import {
   toplistDetailViaPlugin,
 } from '@aurora/shared'
 import type { PluginGateway } from '../index'
-import type { OnlineSourceConfig } from '@aurora/shared'
+import type { AudioFocusYieldBehavior, OnlineSourceConfig, EncryptedAudioFile } from '@aurora/shared'
 import {
   clearMobileMediaCache,
   configureMobileMediaCache,
@@ -53,7 +54,14 @@ import {
   inspectLxSourceInSandbox,
   installMobileLxHost,
 } from './lxHost'
-import { sanitizeFileName, inferAudioExtFromUrl, embedCoverIntoAudio, detectImageMime, encodeFilePathToUrl } from '@aurora/shared'
+import {
+  sanitizeFileName,
+  inferAudioExtFromUrl,
+  embedCoverIntoAudio,
+  detectImageMime,
+  encodeFilePathToUrl,
+  sniffAudioContainer,
+} from '@aurora/shared'
 import {
   auroraError,
   auroraProbeToResult,
@@ -85,6 +93,9 @@ import {
 } from './storage'
 import { currentLocale } from '@/stores/localeStore'
 import { APP_VERSION } from '@/services/update.service'
+import { base64ToUint8Array, uint8ArrayToBase64 } from './base64'
+import { ensureEmbeddedCoverForTrack, ensureOnlineCoverForTrack } from './localCover'
+import { nativeSetAudioFocusBehavior } from '@/services/mediaSession'
 
 // WebView 的原生 fetch 受 CORS 约束，而用户配置的歌源/歌词源普遍不带
 // Access-Control-Allow-Origin，在线搜索会全部失败。注入基于原生 HTTP 的
@@ -125,22 +136,6 @@ class NoopWindowControls implements WindowControls {
   async isMaximized() {
     return false
   }
-}
-
-function uint8ArrayToBase64(data: Uint8Array): string {
-  let bin = ''
-  const chunk = 0x8000
-  for (let i = 0; i < data.length; i += chunk) {
-    bin += String.fromCharCode.apply(null, data.subarray(i, i + chunk) as any)
-  }
-  return btoa(bin)
-}
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  const bin = atob(b64)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
 }
 
 /**
@@ -194,7 +189,18 @@ async function embedCoverIntoDownloaded(
   const fileRes = await fetch(Capacitor.convertFileSrc(encodeFilePathToUrl(abs)))
   if (!fileRes.ok) throw auroraError('runtime.error.downloadFileReadFailed', { status: fileRes.status })
   const fileData = new Uint8Array(await fileRes.arrayBuffer())
-  if (fileData.length > 100 * 1024 * 1024) return
+  if (fileData.length > 100 * 1024 * 1024) {
+    console.warn('[Mobile] 文件超过 100MB，跳过封面嵌入:', savePath) // i18n-exempt: 开发者日志，不进界面
+    return
+  }
+
+  // 容器以**真实字节**为准：落盘扩展名来自源地址推断（推不出来回落 .mp3），
+  // 与实际内容不符时按错容器写标签会静默丢封面，甚至破坏音频
+  const container = sniffAudioContainer(fileData)
+  if (!container) {
+    console.warn('[Mobile] 音频容器不在封面嵌入支持范围，跳过:', savePath) // i18n-exempt: 开发者日志，不进界面
+    return
+  }
 
   const coverResp = await CapacitorHttp.get({
     url: track.coverUrl!,
@@ -204,18 +210,26 @@ async function embedCoverIntoDownloaded(
     },
     responseType: 'blob',
   })
-  if (coverResp.status < 200 || coverResp.status >= 300 || typeof coverResp.data !== 'string') return
+  if (coverResp.status < 200 || coverResp.status >= 300 || typeof coverResp.data !== 'string') {
+    console.warn('[Mobile] 封面下载失败，跳过嵌入:', savePath, coverResp.status) // i18n-exempt: 开发者日志，不进界面
+    return
+  }
   const coverData = base64ToUint8Array(coverResp.data)
-  if (coverData.length < 100) return
+  if (coverData.length < 100) {
+    console.warn('[Mobile] 封面内容过小，跳过嵌入:', savePath, coverData.length) // i18n-exempt: 开发者日志，不进界面
+    return
+  }
 
-  const ext = savePath.slice(savePath.lastIndexOf('.'))
   const embedded = embedCoverIntoAudio(
     fileData,
-    ext,
+    container,
     { title: track.title, artist: track.artist, album: track.album },
     { data: coverData, mime: detectImageMime(coverData) }
   )
-  if (!embedded) return
+  if (!embedded) {
+    console.warn('[Mobile] 嵌入封面失败（容器解析不通过），保留原文件:', savePath) // i18n-exempt: 开发者日志，不进界面
+    return
+  }
   await Filesystem.writeFile({
     path: savePath,
     directory: Directory.ExternalStorage,
@@ -232,12 +246,14 @@ type ScanErrorCb = (e: { folder: string; message: string }) => void
 type MediaControlCb = (action: string) => void
 type TrackScannedCb = (track: Track) => void
 type FolderMissingCb = (e: { folder: string; removed: number }) => void
+type EncryptedFileCb = (file: EncryptedAudioFile) => void
 
 const scanCompleteCbs = new Set<ScanCompleteCb>()
 const scanErrorCbs = new Set<ScanErrorCb>()
 const mediaControlCbs = new Set<MediaControlCb>()
 const trackScannedCbs = new Set<TrackScannedCb>()
 const folderMissingCbs = new Set<FolderMissingCb>()
+const encryptedFileCbs = new Set<EncryptedFileCb>()
 
 function emitScanComplete(tracks: Track[]) {
   scanCompleteCbs.forEach((cb) => cb(tracks))
@@ -250,6 +266,9 @@ function emitTrackScanned(track: Track) {
 }
 function emitFolderMissing(e: { folder: string; removed: number }) {
   folderMissingCbs.forEach((cb) => cb(e))
+}
+function emitEncryptedFile(file: EncryptedAudioFile) {
+  encryptedFileCbs.forEach((cb) => cb(file))
 }
 
 /**
@@ -300,9 +319,18 @@ async function runScan(folderPath: string): Promise<Track[]> {
       throw auroraError('runtime.error.scanFolderMissing')
     }
     // 渐进式扫描：每解析完一首立即通知 UI 追加显示
-    await mobileScanFolder(folderPath, db, (track) => {
-      emitTrackScanned(track)
-    })
+    await mobileScanFolder(
+      folderPath,
+      db,
+      (track) => {
+        emitTrackScanned(track)
+      },
+      // 加密文件（平台下载的密文）解析必失败、永远进不了曲库：单独上报，
+      // 由 UI 提供「用音源重下一份」。旧行为是静默丢弃
+      (file) => {
+        emitEncryptedFile(file)
+      }
+    )
     // 与桌面端对齐：扫描完成后从数据库读取全库再 emit，
     // 避免多次扫描不同目录时只 emit 本次结果导致前一次曲目被覆盖丢失
     const allTracks = await db.getAllTracks()
@@ -353,16 +381,30 @@ export function createMobilePlatform(): PlatformInterface & {
   onTrackScanned: (cb: (track: Track) => void) => () => void
   onScanError: (cb: ScanErrorCb) => () => void
   onFolderMissing: (cb: FolderMissingCb) => () => void
+  onEncryptedFile: (cb: EncryptedFileCb) => () => void
   onMediaControl: (cb: MediaControlCb) => () => void
+  // 音频焦点：Android 没有「互斥」总开关，只有「丢了焦点要不要暂停」这一档，
+  // 由原生播放引擎在 onAudioFocusChange 里执行（见 MediaPlaybackService.kt）
+  setAudioFocusYieldBehavior: (behavior: AudioFocusYieldBehavior) => Promise<boolean>
   scanFolder: (folderPath: string) => Promise<Track[]>
+  // 单文件解析入库：「加密文件 → 按名重下」链路的收尾步骤，
+  // 与桌面端 `library:importFile` 同一契约（下载目录未必在扫描目录里）
+  importAudioFile: (filePath: string) => Promise<Track | null>
   getAllTracks: () => Promise<Track[]>
   removeFolder: (folderPath: string) => Promise<Track[]>
   // 单曲移除（只删记录 + 封面缓存，不删音频文件）。
   // 这里**不声明 revealTrack**：移动端没有文件管理器桥，能力缺失用「方法不存在」表达
   // （与 LoggingGateway.reveal 同一套约定），UI 据此隐藏「在文件夹中显示」。
   removeTrack: (trackId: string) => Promise<Track[]>
-  // 按需补齐内嵌封面（网络存储曲目）：与桌面端同一契约，见 storage.ts 的 ensureStorageCover
-  ensureCover: (trackId: string) => Promise<string | null>
+  // 按需补齐内嵌封面：本机曲目读文件解析、网络存储曲目 Range 读远端，
+  // 与桌面端 `covers:ensure` 同一契约（见 localCover.ts / storage.ts）
+  ensureCover: (trackId: string, fallback?: Partial<Track>) => Promise<string | null>
+  // 在线封面兜底：与桌面端 `covers:fetchOnline` 同一契约（见 localCover.ts）
+  fetchOnlineCover: (
+    trackId: string,
+    options?: OnlineSearchOptions,
+    fallback?: Partial<Track>
+  ) => Promise<string | null>
   // 在线音乐（推荐歌单 / 榜单）：渲染层直调共享执行器（原生 fetch 不受 CORS 限制）
   musicHall: {
     recommendPlaylists(
@@ -936,6 +978,10 @@ export function createMobilePlatform(): PlatformInterface & {
         } catch (err) {
           console.warn('[Mobile] 封面嵌入失败（不影响下载）:', err)
         }
+      } else {
+        // 「下载的歌没封面」最常见的就是这一种：源根本没给（或给的不是 http(s)）封面地址。
+        // 以前这里完全静默，事后无法区分"没地址"和"下了但没嵌成功"。
+        console.warn('[Mobile] 曲目没有可用的封面地址，下载后不嵌封面:', savePath) // i18n-exempt: 开发者日志，不进界面
       }
       // 返回完整路径，便于提示与后续扫描定位。
       // 不能硬编码 `/storage/emulated/0/` 前缀：多用户/工作资料（/storage/emulated/10/）
@@ -999,17 +1045,79 @@ export function createMobilePlatform(): PlatformInterface & {
      *
      * 移动端与桌面端的差别只在**在哪儿执行**：桌面端在主进程解析后写库；
      * 移动端没有第二层进程，所以这里自己读库、自己写库 —— 只更新 store 是不够的，
-     * 否则每次冷启动都要为同一首歌再 Range 读一遍同一张封面。
+     * 否则每次冷启动都要为同一首歌再解析一遍同一张封面。
      *
-     * 本地曲目不走这条路：它们在扫描阶段（`scanner.ts`）就已经把封面落了盘，
-     * 这里返回 null 让渲染层按"无封面"处理，不做重复解析。
+     * 三条分派：
+     * - 网络存储曲目（`sourceId`）→ `ensureStorageCoverForTrack`（Range 读远端文件头）；
+     * - 本机曲目 → `ensureEmbeddedCoverForTrack`（读本地文件解析内嵌图）。
+     *   旧实现这里直接返回 null，理由是"扫描阶段已落盘"—— 但扫描对已入库记录是
+     *   原样复用，下载时封面没嵌进去的歌就永久没有封面（见 localCover.ts 顶部说明）；
+     * - 曲目尚未入库（扫描窗口期 / 在线快照）→ 用 `fallback` 里的路径兜一次，
+     *   没有路径就返回 null，交给 `<CoverImage>` 的在线歌源兜底。
+     *
+     * 传输层失败一律抛错（故意不吞）：渲染层据此退避重试，而不是把
+     * "NAS 暂时不可达 / 文件暂时读不到"记成"这首没有封面"。
      */
-    async ensureCover(trackId: string) {
+    async ensureCover(trackId: string, fallback?: Partial<Track>) {
       if (!isValidTrackId(trackId)) return null
       await ensureDbInited()
-      // 传输层失败会让 ensureStorageCoverForTrack 抛错：故意不吞，渲染层据此退避重试，
-      // 而不是把"NAS 暂时不可达"记成"这首没有封面"
-      return ensureStorageCoverForTrack(trackId, { db })
+      const track = await db.getTrackById(trackId)
+      if (track) {
+        if (track.sourceId) return ensureStorageCoverForTrack(trackId, { db })
+        return ensureEmbeddedCoverForTrack(track, db)
+      }
+      // 未入库：只有带 path 的**本机**快照才有文件可解析。
+      // 网络存储快照（sourceId / remoteUrl，path 是 `webdav:<id>/…` 这类远端坐标）
+      // 不能当本机文件读，也不能在这里补封面 —— 交给在线兜底，避免每首歌触发
+      // 三次退避重试（8 秒级）去打一个必然失败的读路径。
+      if (fallback && (fallback.sourceId || fallback.remoteUrl)) return null
+      if (typeof fallback?.path !== 'string' || !fallback.path) return null
+      return ensureEmbeddedCoverForTrack(
+        {
+          id: trackId,
+          path: fallback.path,
+          title: typeof fallback.title === 'string' ? fallback.title : '',
+          artist: typeof fallback.artist === 'string' ? fallback.artist : '',
+          album: typeof fallback.album === 'string' ? fallback.album : '',
+          duration: typeof fallback.duration === 'number' ? fallback.duration : 0,
+          playCount: 0,
+          liked: false,
+          addedAt: 0,
+        } as Track,
+        db
+      )
+    },
+
+    /**
+     * 在线封面兜底（与桌面端 `covers:fetchOnline` 同一契约）：内嵌图确认没有时，
+     * 按「标题 + 艺术家」搜用户配置的歌源，取版本/时长对得上的候选封面下载缓存。
+     *
+     * 缺了这条兜底，移动端「我的音乐」里凡是文件不带内嵌封面的曲目（绝大多数是
+     * 从在线歌源下载进来的）就永远空图 —— 桌面端有这条链，所以同一个文件那端正常。
+     */
+    async fetchOnlineCover(trackId: string, options?: OnlineSearchOptions, fallback?: Partial<Track>) {
+      if (!isValidTrackId(trackId)) return null
+      await ensureDbInited()
+      const track = await db.getTrackById(trackId)
+      if (track) return ensureOnlineCoverForTrack(track, options, db)
+      // 在线曲目不进曲库（最近播放 / 队列只存元数据快照），按 id 查不到：
+      // 用渲染层下传的快照兜底，但只取元信息字段，地址类字段一律不信任
+      if (!fallback || typeof fallback.title !== 'string' || !fallback.title) return null
+      return ensureOnlineCoverForTrack(
+        {
+          id: trackId,
+          path: typeof fallback.path === 'string' ? fallback.path : '',
+          title: fallback.title,
+          artist: typeof fallback.artist === 'string' ? fallback.artist : '',
+          album: typeof fallback.album === 'string' ? fallback.album : '',
+          duration: typeof fallback.duration === 'number' ? fallback.duration : 0,
+          playCount: 0,
+          liked: false,
+          addedAt: 0,
+        } as Track,
+        options,
+        db
+      )
     },
 
     // ─── 媒体缓存：音频 / 封面 / 歌词（实现在 ./mediaCache.ts）───
@@ -1085,6 +1193,11 @@ export function createMobilePlatform(): PlatformInterface & {
       return enqueueScan(folderPath)
     },
 
+    async importAudioFile(filePath: string) {
+      await ensureDbInited()
+      return mobileImportAudioFile(filePath, db)
+    },
+
     onTracksScanned(cb: ScanCompleteCb) {
       scanCompleteCbs.add(cb)
       return () => scanCompleteCbs.delete(cb)
@@ -1103,6 +1216,25 @@ export function createMobilePlatform(): PlatformInterface & {
     onFolderMissing(cb: FolderMissingCb) {
       folderMissingCbs.add(cb)
       return () => folderMissingCbs.delete(cb)
+    },
+
+    onEncryptedFile(cb: EncryptedFileCb) {
+      encryptedFileCbs.add(cb)
+      return () => encryptedFileCbs.delete(cb)
+    },
+
+    /**
+     * 「其他应用播放声音时」的行为 → 原生播放引擎。
+     *
+     * Android 的音频焦点由系统统一仲裁：本应用丢焦点时原生侧默认会暂停自己
+     * （见 MediaPlaybackService.onAudioFocusChange）。用户选「继续播放」时把策略
+     * 下发下去，原生就不再因焦点丢失而暂停本应用。
+     * 永远 resolve true：这一档在 Android 上没有「平台不支持」的情形（对比桌面端
+     * 需要探测 MPRIS/SMTC 通道），设置页不该为它弹「当前平台不支持」。
+     */
+    async setAudioFocusYieldBehavior(behavior) {
+      nativeSetAudioFocusBehavior(behavior)
+      return true
     },
 
     onMediaControl(cb: MediaControlCb) {

@@ -69,6 +69,13 @@ interface NativePlayerPlugin {
   playAt(opts: { index: number }): Promise<void>
   stopEngine(): Promise<void>
   updateArtwork(opts: { cover: string }): Promise<void>
+  /**
+   * 其他应用出声时本应用怎么办（'pause' | 'continue'）。
+   *
+   * **可选**：老版本 APK 没有这个方法（车机 OTA 升级往往滞后于 JS 包），
+   * 调用方按可选链路降级，不能因为原生缺通道就抛错打断设置页。
+   */
+  setAudioFocusBehavior?(opts: { behavior: string }): Promise<void>
   getState(): Promise<{ index: number; isPlaying: boolean; position: number; duration: number }>
   addListener(
     eventName: 'playbackevent',
@@ -185,6 +192,17 @@ export function nativeSeekTo(positionSec: number): void {
 
 export function nativeSetVolume(volume: number): void {
   getPlugin()?.setVolume({ volume }).catch(() => {})
+}
+
+/**
+ * 下发「其他应用播放声音时」的行为给原生播放引擎。
+ *
+ * 原生侧（MediaPlaybackService）在丢了音频焦点时默认会暂停自己；用户选「继续播放」
+ * 后原生不再暂停。服务可能还没启动（冷启后还没播过歌），原生插件会把设置先落盘、
+ * 等服务起来再生效——所以这里不等待、也不判断实例是否存在。
+ */
+export function nativeSetAudioFocusBehavior(behavior: 'pause' | 'continue'): void {
+  getPlugin()?.setAudioFocusBehavior?.({ behavior })?.catch(() => {})
 }
 
 export function nativeNext(): void {

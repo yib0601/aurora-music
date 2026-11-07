@@ -19,6 +19,7 @@ import {
 } from '@/lib/cacheLimit'
 import { NAV_LABEL_KEYS } from '@/lib/routes'
 import {
+  AUDIO_FOCUS_YIELD_OPTION_ORDER,
   DOWNLOAD_QUALITY_OPTION_ORDER,
   THEME_OPTION_ORDER,
   type ThemePreference,
@@ -41,7 +42,7 @@ import {
   LOCALE_LABELS,
   SYSTEM_LANGUAGE_LABELS,
 } from '@aurora/shared'
-import type { LanguagePreference, Locale, MessageKey } from '@aurora/shared'
+import type { AudioFocusYieldBehavior, LanguagePreference, Locale, MessageKey } from '@aurora/shared'
 
 /**
  * 打开外部链接。
@@ -128,6 +129,15 @@ const downloadQualityLabelKey: Record<DownloadQuality, MessageKey> = {
   '128': 'settings.storage.downloadQuality.standard',
   '320': 'settings.storage.downloadQuality.high',
   flac: 'settings.storage.downloadQuality.lossless',
+}
+
+/**
+ * 「其他应用播放声音时」两档的文案键。
+ * 取值域来自 `@aurora/shared`（跨端契约），顺序与默认值来自 settingOptions。
+ */
+const audioFocusLabelKey: Record<AudioFocusYieldBehavior, MessageKey> = {
+  pause: 'settings.general.audioFocus.behavior.pause',
+  continue: 'settings.general.audioFocus.behavior.continue',
 }
 
 /**
@@ -387,10 +397,11 @@ export function SettingsPage() {
 
   const theme = useLibraryStore((s) => s.theme)
   const setTheme = useLibraryStore((s) => s.setTheme)
-  // 音频焦点开关（桌面端专属）：值只落 libraryStore，主进程侧的同步由 App.tsx 的订阅
-  // 统一负责；本页在切换时额外确认一次平台回执，用于「不支持」提示。
-  const audioFocusEnabled = useLibraryStore((s) => s.audioFocusEnabled)
-  const setAudioFocusEnabled = useLibraryStore((s) => s.setAudioFocusEnabled)
+  // 音频焦点（「其他应用播放声音时」的处置）：值只落 libraryStore，主进程/原生侧的
+  // 同步由 App.tsx 的订阅统一负责；本页只采集用户意图，并在桌面端切换「暂停播放」时
+  // 额外确认一次平台回执，用于「不支持」提示。
+  const audioFocusBehavior = useLibraryStore((s) => s.audioFocusYieldBehavior)
+  const setAudioFocusBehavior = useLibraryStore((s) => s.setAudioFocusYieldBehavior)
 
   const scanFolders = useLibraryStore((s) => s.scanFolders)
   const downloadDir = useLibraryStore((s) => s.downloadDir)
@@ -522,27 +533,23 @@ export function SettingsPage() {
   }
 
   /**
-   * 音频焦点开关：切到「开」时先问平台回执，只有平台真的接管了才写本地状态。
+   * 「其他应用播放声音时」的切换。
    *
-   * 顺序刻意的：先平台后本地。反过来的话，不支持的环境会留下一个「已开启」的假状态
-   * ——用户以为互斥生效了，实际什么都没发生。返回 false 时开关保持原样（关），
-   * 再用 toast 说明原因，用户不会误以为是自己点错了。
-   *
-   * 关闭方向不校验回执：本地必须立刻落到「关」，否则开关看起来关掉了、
-   * 主进程却还在别的播放器出声时让位，状态两边打架。
+   * 桌面端切到「暂停播放」要主进程真正接管（轮询 + 抢占 + 让位），所以先拿一次平台回执：
+   * 不支持的环境（provider 为 none）保持原选择并用 toast 说明原因，避免留下一个
+   * 「选了暂停、实际什么都不发生」的假状态。「继续播放」方向不校验：它的语义就是
+   * 「什么都不做」，本地立刻落到该值即可。
+   * Android 不经过这条校验（原生引擎总支持这一档），直接由 App.tsx 下发。
    */
-  const handleAudioFocusToggle = async (enabled: boolean) => {
-    if (!enabled) {
-      setAudioFocusEnabled(false)
-      await platform.setAudioFocusEnabled?.(false)
-      return
+  const handleAudioFocusChange = async (behavior: AudioFocusYieldBehavior) => {
+    if (behavior === 'pause' && desktop) {
+      const supported = (await platform.setAudioFocusEnabled?.(true)) === true
+      if (!supported) {
+        toast(t('settings.general.audioFocus.unsupported'), { type: 'error', duration: 4000 })
+        return
+      }
     }
-    const supported = (await platform.setAudioFocusEnabled?.(true)) === true
-    if (!supported) {
-      toast(t('settings.general.audioFocus.unsupported'), { type: 'error', duration: 4000 })
-      return
-    }
-    setAudioFocusEnabled(true)
+    setAudioFocusBehavior(behavior)
   }
 
   // 软件更新：手动检查新版本
@@ -818,36 +825,48 @@ export function SettingsPage() {
                 }
               />
               {/*
-                音频焦点（与其他播放器互斥）：**桌面端专属**。
-                Web / 移动端没有系统级媒体会话可以仲裁（Web 只有浏览器标签页内的
-                navigator.mediaSession，拿不到别的播放器的状态），所以整行不渲染——
-                摆一个点了只会弹「不支持」的开关毫无价值。
-                开关状态落 libraryStore（persist 白名单已显式放行），主进程侧由
-                App.tsx 的订阅同步，本页只负责采集用户意图与回执提示。
+                「其他应用播放声音时」：**一个设置项表达完整语义**——两档就是用户能选的
+                全部（不再有独立的「互斥开关」：拆成「开关 + 行为」两行时，总开关关着
+                下面那行没有执行者，读起来像同一个功能重复了一遍）。
+                桌面端与 Android 同一行、同一组文案，但执行方式不同：桌面 'pause' =
+                主进程互斥服务开启、'continue' = 服务关闭；Android 始终持有系统焦点，
+                只是按这档决定「焦点丢失时要不要暂停」。
+                Web 端整行不渲染：浏览器拿不到别的播放器的状态，摆一个点了没反应的
+                设置项毫无价值。
+                用整行块而不是 SettingRow 的右侧控件：两枚中文胶囊加上说明文字，
+                在窄屏上塞进右列会挤成一列竖排。
               */}
-              {desktop && (
-                <SettingRow
-                  label={t('settings.general.audioFocus.label')}
-                  hint={t('settings.general.audioFocus.hint')}
-                  control={
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={audioFocusEnabled}
-                      aria-label={t('settings.general.audioFocus.label')}
-                      onClick={() => handleAudioFocusToggle(!audioFocusEnabled)}
-                      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 ease-mineradio ${
-                        audioFocusEnabled ? 'bg-mint' : 'bg-white/[0.12]'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-mineradio ${
-                          audioFocusEnabled ? 'translate-x-[18px]' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  }
-                />
+              {(desktop || isMobile()) && (
+                <div className="inset-row px-3 py-3">
+                  <p className="font-text text-caption-strong text-white/85">
+                    {t('settings.general.audioFocus.behavior.label')}
+                  </p>
+                  <p className="font-text text-caption text-white/50 mt-1 leading-[1.5]">
+                    {/*
+                      两句 hint 分开：桌面端对方安静后一定会自动续播；Android 只有「临时丢失
+                      焦点」会自愈，被另一个音乐 App 永久抢占后系统不再还焦点，必须手动点播放。
+                      复用同一句就会在手机上承诺一个做不到的行为。
+                    */}
+                    {t(
+                      isMobile()
+                        ? 'settings.general.audioFocus.behavior.hintMobile'
+                        : 'settings.general.audioFocus.behavior.hint'
+                    )}
+                  </p>
+                  <div className="flex gap-2 mt-2">
+                    {AUDIO_FOCUS_YIELD_OPTION_ORDER.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={audioFocusBehavior === value}
+                        onClick={() => handleAudioFocusChange(value)}
+                        className={`pill pill-md ${audioFocusBehavior === value ? 'pill-mint' : 'pill-soft'}`}
+                      >
+                        {t(audioFocusLabelKey[value])}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </SettingsSection>
 
