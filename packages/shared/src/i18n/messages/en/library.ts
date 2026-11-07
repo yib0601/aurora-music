@@ -137,6 +137,45 @@ const en: LocalizedOf<typeof library> = {
       'These songs exist in more than one source, so the list shows a single copy (local files first). Nothing was deleted — playlists and likes still reference every copy:',
     introBadge: 'This song exists in more than one copy, so the list shows a single one. Nothing was deleted:',
   },
+  /**
+   * Encrypted audio (ciphertext downloaded by music platforms such as QQ Music):
+   * detection + "re-download a playable copy from your own source".
+   *
+   * Wording deliberately avoids "decrypt": the app does not unlock these files —
+   * it re-downloads a playable copy through the user's own source.
+   */
+  encrypted: {
+    bannerTitle: '{count} encrypted audio files found',
+    bannerHint: 'These are encrypted downloads from music platforms (such as QQ Music). Their contents are not standard audio, so they cannot be played. You can download a playable copy of each one from your own source by song name.',
+    bannerAction: 'Review',
+    bannerDismiss: 'Ignore',
+    dialogTitle: '{count} encrypted songs found',
+    dialogDesc: 'These files were downloaded and encrypted by a music platform, so they cannot be played directly. Re-download playable copies by song name from your own source? Nothing is decrypted — this is an ordinary search-and-download.',
+    dialogEmpty: 'Nothing to review',
+    start: 'Re-download all',
+    starting: 'Working…',
+    cancel: 'Cancel',
+    later: 'Later',
+    progress: 'Processed {done}/{total}',
+    noSource: 'No usable source yet — add one in Settings → Sources, then try again',
+    unsupported: 'This platform does not support in-app downloads',
+    matched: 'Matched: {artist} - {title}',
+    importedFailed: 'Downloaded, but not added to the library (the file is in your download folder — rescan that folder)',
+    statusPending: 'Pending',
+    statusRunning: 'Downloading…',
+    statusDone: 'Re-downloaded',
+    statusNoMatch: 'No match',
+    statusNoAddress: 'No download address',
+    statusFailed: 'Failed',
+    summary: 'Done: {done} · no match: {missed} · failed: {failed}',
+    family: {
+      qqmusic: 'QQ Music',
+      netease: 'NetEase Cloud Music',
+      kugou: 'Kugou Music',
+      kuwo: 'Kuwo Music',
+      xiami: 'Xiami Music',
+    },
+  },
   error: {
     parseFailed: 'Could not parse the playlist: {reason}',
     readDirFailed: 'Could not read this folder — check storage permissions',

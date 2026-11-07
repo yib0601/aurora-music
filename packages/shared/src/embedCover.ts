@@ -31,6 +31,60 @@ export function detectImageMime(data: Uint8Array): string {
   return 'image/jpeg'
 }
 
+/** 可嵌入封面的音频容器（取值与 `embedCoverIntoAudio` 的分支一一对应） */
+export type AudioContainer = '.mp3' | '.flac' | '.m4a'
+
+/**
+ * 按魔数判断音频容器（**不看扩展名**）。
+ *
+ * 为什么必须有这一层：下载在线歌曲时，落盘文件名里的扩展名来自源地址推断
+ * （`inferAudioExtFromUrl`，推不出来直接回落 `.mp3`），而源给的直链经常没有扩展名，
+ * 或扩展名与真实内容不符（flac / m4a 内容存成 .mp3）。拿错扩展名去嵌封面，
+ * 轻则 `embedCoverIntoAudio` 返回 null（封面静默丢失，用户侧就是「下载的歌没封面」），
+ * 重则按错误容器写标签破坏音频（例如给 FLAC 前面贴一个 ID3v2 头）。
+ *
+ * 判据顺序：`ftyp`（M4A/MP4）→ `fLaC` → `ID3`（带标签的 MP3）→ MPEG 帧同步。
+ * 带 ID3v2 标签时还要看**标签体之后**的真实容器：FLAC / M4A 被贴一个 ID3 头
+ * 虽然非标准但确实存在，只看开头 3 字节会把它误判成 MP3（随后拿 MP3 的写法去改它）。
+ * 不认识的容器（Ogg / Opus / WAV 等）返回 null —— 它们本来也不在支持列表里，
+ * 调用方据此跳过嵌入，而不是往不支持的容器上硬写。
+ */
+export function sniffAudioContainer(data: Uint8Array): AudioContainer | null {
+  const isFtyp = (offset: number): boolean =>
+    data.length >= offset + 8 &&
+    data[offset + 4] === 0x66 &&
+    data[offset + 5] === 0x74 &&
+    data[offset + 6] === 0x79 &&
+    data[offset + 7] === 0x70
+  const isFlac = (offset: number): boolean =>
+    data.length >= offset + 4 &&
+    data[offset] === 0x66 &&
+    data[offset + 1] === 0x4c &&
+    data[offset + 2] === 0x61 &&
+    data[offset + 3] === 0x43
+
+  // M4A/MP4：首 4 字节是 box 长度，第 4~7 字节才是 `ftyp`
+  if (isFtyp(0)) return '.m4a'
+  if (isFlac(0)) return '.flac'
+  if (data.length >= 3 && data[0] === 0x49 && data[1] === 0x44 && data[2] === 0x33) {
+    // 跳过已有的 ID3v2 标签（v2.4 带 footer 时额外 10 字节）再看真实容器
+    const tagEnd = 10 + readSyncsafe(data, 6) + ((data[5] & 0x10) !== 0 ? 10 : 0)
+    if (tagEnd > 0 && tagEnd < data.length) {
+      if (isFlac(tagEnd)) return '.flac'
+      if (isFtyp(tagEnd)) return '.m4a'
+    }
+    return '.mp3'
+  }
+  // MPEG Audio 帧同步：11 位全 1。⚠️ ADTS(AAC) 的帧头是 0xFF 0xF1/0xF9，前 11 位
+  // 同样是全 1，唯一的区分点是 **layer 位**（MPEG 里 00 是保留值，ADTS 恒为 00）。
+  // 不排除它就会把 AAC 裸流当 MP3，前置一个 ID3v2 头 —— 那是把能播的文件改坏。
+  if (data.length >= 2 && data[0] === 0xff && (data[1] & 0xe0) === 0xe0) {
+    const layer = (data[1] >> 1) & 0x03
+    return layer === 0 ? null : '.mp3'
+  }
+  return null
+}
+
 // ---------- 基础字节操作 ----------
 
 function concat(...parts: Uint8Array[]): Uint8Array {

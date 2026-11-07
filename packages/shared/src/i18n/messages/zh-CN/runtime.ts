@@ -87,6 +87,16 @@ const runtime = {
     sourceCapabilityMissing: '该存储插件不支持此操作：{capability}',
     sourceReadFailed: '读取远端文件失败：HTTP {status}',
     sourceNoDirectUrl: '该存储协议无法直接取址播放',
+    /**
+     * 在线封面兜底（移动端）的失败结论。
+     *
+     * 与桌面端 `desktop.error.source.cover*` 同语义、不同键：那套由主进程用自己的
+     * 字典渲染，移动端这层跑在渲染进程里用 app 字典，键名混用会让日志里出现
+     * 「移动端报了一句 desktop.xxx」的错位。
+     */
+    coverTimeout: '封面下载超时（{ms}ms）',
+    coverHttpStatus: '封面下载失败：HTTP {status}',
+    coverInvalid: '封面下载失败：内容不是有效图片',
   },
 }
 

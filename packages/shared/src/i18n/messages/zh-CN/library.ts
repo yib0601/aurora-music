@@ -156,6 +156,45 @@ const library = {
       '以下歌曲在多个来源中存在副本，列表只展示一份（本机文件优先）。记录没有删除，歌单/收藏引用仍有效：',
     introBadge: '这首歌曲存在多个副本，列表只展示一份。记录没有删除：',
   },
+  /**
+   * 加密音频（QQ 音乐等平台下载落盘的密文）：识别 + 「用音源重下一份」。
+   *
+   * 措辞刻意不出现「解密」：应用不做解锁（那既踩版权红线，对新方案也未必可行），
+   * 走的是用户自己音源的重下链路。用户看到的原因是「文件是平台加密的、播不了」，
+   * 看到的出路是「换一份能播的」。
+   */
+  encrypted: {
+    bannerTitle: '发现 {count} 个加密音频文件',
+    bannerHint: '这些是音乐平台（如 QQ 音乐）下载的加密文件，内容不是标准音频，无法播放。可以用你自己的音源按歌名重新下载一份可播放的副本。',
+    bannerAction: '处理',
+    bannerDismiss: '忽略',
+    dialogTitle: '扫描到 {count} 首加密歌曲',
+    dialogDesc: '这些文件来自音乐平台的加密下载，应用无法直接播放。需要用你自己的音源按歌名重新下载一份可播放的副本吗？（不涉及解密，走的是普通的搜索下载）',
+    dialogEmpty: '没有待处理的加密文件',
+    start: '全部重新下载',
+    starting: '正在处理…',
+    cancel: '取消',
+    later: '稍后',
+    progress: '已处理 {done}/{total}',
+    noSource: '还没有可用的音源：请先在「设置 → 音源」里配置一个，再回来重下',
+    unsupported: '当前平台不支持内置下载',
+    matched: '命中：{artist} - {title}',
+    importedFailed: '已下载，但没进曲库（文件在下载目录，重扫该目录即可）',
+    statusPending: '待处理',
+    statusRunning: '正在下载…',
+    statusDone: '已重下',
+    statusNoMatch: '未匹配到',
+    statusNoAddress: '取不到下载地址',
+    statusFailed: '失败',
+    summary: '完成 {done} 首，未匹配 {missed} 首，失败 {failed} 首',
+    family: {
+      qqmusic: 'QQ 音乐',
+      netease: '网易云音乐',
+      kugou: '酷狗音乐',
+      kuwo: '酷我音乐',
+      xiami: '虾米音乐',
+    },
+  },
   /** 域内错误兜底文案：抛出侧给键、显示侧按当前语言渲染 */
   error: {
     /** `{reason}` 是音源侧的原始原因（未配置接口/超时/HTTP 状态），原样透出不吞信息 */

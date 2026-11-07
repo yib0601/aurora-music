@@ -32,9 +32,15 @@ const en: LocalizedOf<typeof settings> = {
       system: 'System default',
     },
     audioFocus: {
-      label: 'Exclusive with other players',
-      hint: 'Pauses other players while Aurora Music plays; steps aside when another app (one that supports system media controls) starts playing and resumes once it goes quiet',
       unsupported: 'Not supported on this platform',
+      behavior: {
+        label: 'When another app plays',
+        hint: '“Pause playback”: pauses other players while Aurora Music plays; when another app starts playing, Aurora Music yields and resumes once it goes quiet. “Keep playing”: does not interfere — both play side by side',
+        hintMobile:
+          '“Pause playback”: pauses Aurora Music when another app starts and usually resumes when it finishes (a permanent takeover requires pressing play again). “Keep playing”: does not interrupt playback (both sounds overlap, and some devices or head units may mute or lower Aurora Music’s volume)',
+        pause: 'Pause playback',
+        continue: 'Keep playing',
+      },
     },
   },
   library: {

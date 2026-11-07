@@ -52,6 +52,9 @@ const en: LocalizedOf<typeof runtime> = {
     sourceCapabilityMissing: 'This storage plugin does not support this action: {capability}',
     sourceReadFailed: 'Failed to read the remote file: HTTP {status}',
     sourceNoDirectUrl: 'This storage protocol cannot be streamed directly by URL',
+    coverTimeout: 'Cover download timed out ({ms} ms)',
+    coverHttpStatus: 'Failed to download the cover: HTTP {status}',
+    coverInvalid: 'Failed to download the cover: the content is not a valid image',
   },
 }
 

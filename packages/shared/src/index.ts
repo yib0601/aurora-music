@@ -108,9 +108,22 @@ export {
   decodeFileUrlToPath,
   encodePathSegments,
 } from './fileUrl'
-export { embedCoverIntoAudio, detectImageMime } from './embedCover'
-export type { EmbedMeta, EmbedCover } from './embedCover'
+export { embedCoverIntoAudio, detectImageMime, sniffAudioContainer } from './embedCover'
+export type { EmbedMeta, EmbedCover, AudioContainer } from './embedCover'
+export {
+  detectEncryptedAudioName,
+  isEncryptedAudioName,
+  parseEncryptedAudioName,
+  encryptedAudioSearchQuery,
+} from './encryptedAudio'
+export type { EncryptedAudioFile, EncryptedAudioFamily } from './encryptedAudio'
 export { fetchWithTimeout, setCustomFetch, TimeoutError, isTimeoutError } from './fetchWithTimeout'
+// 音频焦点：其他应用出声时「暂停 / 继续播放」的跨端契约（桌面互斥状态机 + Android 原生引擎共用）
+export {
+  DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR,
+  normalizeAudioFocusYieldBehavior,
+} from './audioFocus'
+export type { AudioFocusYieldBehavior } from './audioFocus'
 export {
   normalizeName,
   parsePlaylistText,
@@ -145,6 +158,7 @@ export {
   titleMatches,
   artistMatches,
   pickCoverCandidate,
+  PLACEHOLDER_ARTISTS,
 } from './coverMatch'
 export type { CoverMatchTarget } from './coverMatch'
 export type { PlaylistCapableSource, ResolvePlaylistOptions } from './playlistResolver'
