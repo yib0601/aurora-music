@@ -93,7 +93,8 @@ function requestOnlineCover(trackId: string, fallback?: CoverTrack): Promise<str
   if (running) return running
 
   const task = withCoverSlot(() => {
-    // 无实现（移动端/Web）或未配置歌源时静默跳过
+    // 无实现（Web 端）或未配置歌源时静默跳过：移动端已实现，缺这条链的话
+    // 本地文件不带内嵌封面的曲目在手机上是永久空图（扫描对已入库记录原样复用）
     const sources = useLibraryStore.getState().onlineSources
     if (!platform.fetchOnlineCover || !sources || sources.length === 0) {
       return Promise.resolve(null)
@@ -119,9 +120,11 @@ function requestOnlineCover(trackId: string, fallback?: CoverTrack): Promise<str
 
 /** 仅取封面相关字段，便于传入 playerStore 队列项等 Track 副本；
  *  元信息字段（可选）供不在曲库的曲目（在线快照）下传主进程做封面兜底查询，
- *  主进程对它们做运行时校验，缺标题即视为无效快照 */
+ *  主进程对它们做运行时校验，缺标题即视为无效快照。
+ *  `path` / `sourceId` / `remoteUrl` 也在此列：drop 掉它们会让"未入库但带文件的快照"
+ *  无法按需提取内嵌封面（能力端据此分派本地文件 / 网络存储 / 在线快照三条路）。 */
 type CoverTrack = Pick<Track, 'id' | 'coverPath' | 'coverUrl' | 'onlineUrl' | 'onlineId' | 'onlineSource'> &
-  Partial<Pick<Track, 'title' | 'artist' | 'album' | 'duration'>>
+  Partial<Pick<Track, 'title' | 'artist' | 'album' | 'duration' | 'path' | 'sourceId' | 'remoteUrl'>>
 
 /**
  * 远端封面（在线曲目的 coverUrl）的本地缓存地址。
