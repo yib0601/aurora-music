@@ -45,6 +45,16 @@ import { guardedFetchOf } from '@aurora/shared'
 const DEFAULT_TIMEOUT_MS = 20000
 
 /**
+ * 探测的兜底超时（比常规调用宽）：脚本源探测是**连续两段**动作 ——
+ * 先按链接下载脚本（`fetchLxScript` 默认 15s），再在沙箱里首次执行等 inited
+ * （桌面宿主 `scriptTimeoutMs` 10s），两段都吃同一次探测的预算。
+ * 用常规 20s 卡它，慢网下会出现「下载刚好完成、脚本还没来得及跑完」被误报成
+ * 插件超时；这里按两段之和给足，与改造前设置页走 `lx:inspect` 的实际预算一致。
+ * 探测是用户手动触发的单次动作（不在聚合循环里），宽一点不拖累其它请求。
+ */
+const PROBE_TIMEOUT_MS = 40000
+
+/**
  * 插件的网络实现：**已安装插件受其清单 `hosts` 白名单约束**。
  *
  * 内置插件的请求目标由我们审过，直接给全局 fetch（Node 内置实现 **不带 Origin**，
@@ -177,7 +187,7 @@ export function registerPluginIpc(): void {
     }
     const cfg = requireConfig(config)
     try {
-      return await withTimeout(() => plugin.probe!(cfg, buildContext(plugin, cfg) as never))
+      return await withTimeout(() => plugin.probe!(cfg, buildContext(plugin, cfg) as never), PROBE_TIMEOUT_MS)
     } catch (err) {
       // 探测结论直接上屏：失败也返回结构化结果，而不是抛给渲染层
       return { ok: false, kind: 'aurora', capabilities: [], error: mainErrorText(err) }

@@ -23,8 +23,9 @@ import type {
   ResolvedAudio,
   SourcePlugin,
 } from './types'
-import { inspectLxSource, searchLxSource } from '../lxHost'
-import type { LxHostDeps } from '../lxHost'
+import { fetchLxScript, inspectLxSource, searchLxSource } from '../lxHost'
+import type { LxHostDeps, LxScriptSource } from '../lxHost'
+import { auroraError } from '../i18n/errors'
 import { resolveLxScript, resolveLxTrack, searchLxSourceForAggregate } from '../lxResolver'
 import { lxInspectionToProbe } from '../sourceProbe'
 
@@ -97,9 +98,42 @@ export const lxPlugin: SourcePlugin = {
     return { ok: true }
   },
 
-  async probe(config: OnlineSourceConfig): Promise<SourceProbeResult> {
-    // 脚本要拉下来在宿主里跑一遍才能问出能力；源码不写进配置，只在本次探测中存在
-    const inspection = await inspectLxSource(config)
+  /**
+   * 探测：脚本要**先在宿主里跑一遍**才能问出能力，所以先得有源码。
+   *
+   * 设置页表单按设计只传链接（脚本源码不落库），因此「按 sourceUrl 现拉」是探测本身的
+   * 一环，不是调用方的准备工作。插件化重构时漏掉了这一步，`probe` 直接拿只有链接的
+   * 配置去 `inspectLxSource`，而它在没有 `script` 时返回 `core.error.lxScriptEmpty`
+   * —— 桌面端「测试」于是对任何 lx 链接都报「脚本内容为空」，哪怕链接本身能正常下载。
+   *
+   * 拉取失败（超时 / HTTP 状态 / 空内容 / 过大）原样透出原因：那是用户唯一能自查的线索，
+   * 抹平成「脚本内容为空」等于把「链接填错」和「网络不通」判成同一件事。
+   * 已有内联源码时（移动端适配层先拉好再塞进来）不重复下载。
+   */
+  async probe(config: OnlineSourceConfig, ctx: PluginContext): Promise<SourceProbeResult> {
+    let script = String((config as LxScriptSource).script || '')
+    if (!script.trim()) {
+      if (!config.sourceUrl) {
+        return {
+          ok: false,
+          kind: 'lx',
+          capabilities: [],
+          error: auroraError('core.error.lxSourceNoScript', { name: config.name }).message,
+        }
+      }
+      try {
+        script = await fetchLxScript(config.sourceUrl)
+      } catch (err) {
+        return {
+          ok: false,
+          kind: 'lx',
+          capabilities: [],
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
+    }
+    // 宿主从 ctx 取（依赖已由 `requires` 声明），缺失时回落到模块级注册的宿主
+    const inspection = await inspectLxSource({ ...config, script }, asLxHostDeps(ctx))
     return lxInspectionToProbe(inspection)
   },
 
