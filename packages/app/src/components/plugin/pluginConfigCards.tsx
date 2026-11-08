@@ -8,12 +8,24 @@ import { platform } from '@/services/platform'
 import { NAV_LABEL_KEYS } from '@/lib/routes'
 import { compactEndpointUrl } from '@/lib/endpointPreview'
 import { LxScriptProbe, type LxProbeState } from '@/components/common/LxSourceProbe'
-import { checkLxScriptLink, renderError } from '@/components/common/lxSourceForm'
+import {
+  checkLxScriptLink,
+  lxPlatformChoices,
+  lxPlatformLabelKey,
+  reconcileLxPlatform,
+  renderError,
+} from '@/components/common/lxSourceForm'
 import { formKindOf, type PluginFormKind } from '@/components/common/pluginForm'
 import { newConfigOwner, newSourceEnabled } from '@/components/common/pluginConfig'
 import type { StorageCredentialState, StorageFieldDef, StoragePluginMeta } from '@/types'
 import { buildAuroraEndpoints, checkSourceForm, storageStringField } from '@aurora/shared'
-import type { AuroraEndpoints, LibrarySourceConfig, OnlineSourceConfig, PluginCatalogEntry } from '@aurora/shared'
+import type {
+  AuroraEndpoints,
+  LibrarySourceConfig,
+  OnlineSourceConfig,
+  PluginCatalogEntry,
+  SourceProbeResult,
+} from '@aurora/shared'
 
 /**
  * 插件配置的**表单件**：音源卡片 / 音源新增弹窗 / 存储卡片 / 存储新增弹窗。
@@ -40,6 +52,57 @@ import type { AuroraEndpoints, LibrarySourceConfig, OnlineSourceConfig, PluginCa
 export type LibrarySourceStatus = { loading?: boolean; ok?: boolean; message?: string }
 
 /**
+ * 洛雪脚本源的「限定平台」选择器（新增弹窗与卡片编辑态共用）。
+ *
+ * 为什么要有这一项：洛雪自定义脚本大多**只做取址、不做搜索**（脚本里只有
+ * `musicUrl` 动作）。这种脚本要参与播放，软件得先知道「这条曲目属于哪个平台」——
+ * 正常情况下**按曲目已有的播放地址自动识别**（`inferPlatformFromUrl`），不需要用户配置。
+ * 这一项只是兜底：音源返回的是自己的中转地址、域名认不出平台时，用它把范围限定到某个平台。
+ * 留空 = 自动识别（默认，也就是「只当普通音源参与取址」）。
+ *
+ * 候选项来自探测结论（整张平台表，判定口径见 lxSourceForm 的 lxPlatformChoices）；
+ * 还没探测过时只能看到已保存的那一项 —— 不能让用户因为没点「测试」而以为值丢了。
+ */
+const lxSelectCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70 cursor-pointer'
+
+function LxPlatformField({
+  result,
+  value,
+  onChange,
+}: {
+  /** 当前会话的探测结论；没有（未探测/探测失败）时只展示已保存值 */
+  result?: SourceProbeResult
+  value?: string
+  onChange: (platform: string | undefined) => void
+}) {
+  const t = useT()
+  const choices = lxPlatformChoices(result)
+  // 已保存但不在当前选项里的平台：补一条临时选项，否则 <select> 会静默回落到
+  // 「不参与取址」，看起来像配置被清掉了（值本身没丢，只是没得选）
+  const orphan = value && !choices.some((choice) => choice.key === value) ? value : undefined
+  return (
+    <div className="mt-2">
+      <p className="font-text text-caption text-white/50 mb-1">{t('sources.form.lxPlatformLabel')}</p>
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value || undefined)}
+        className={lxSelectCls}
+      >
+        {/* 空值走「不参与取址」：落库时写 undefined，不写空串（空串会被当成一个平台标识） */}
+        <option value="">{t('sources.form.lxPlatformNone')}</option>
+        {choices.map((choice) => (
+          <option key={choice.key} value={choice.key}>
+            {t(choice.labelKey)}
+          </option>
+        ))}
+        {orphan && <option value={orphan}>{t(lxPlatformLabelKey(orphan))}</option>}
+      </select>
+      <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.lxPlatformHint')}</p>
+    </div>
+  )
+}
+
+/**
  * 单个音源配置卡片：默认只展示名称 + 能力徽章 + 启用开关；点编辑展开草稿表单，
  * 校验通过后点保存才写入 store。
  *
@@ -63,7 +126,9 @@ export function SourceConfigCard({
   onRemove: () => void
 }) {
   const t = useT()
-  const { name, sourceUrl, playlistUrl, endpoints, headers, enabled } = source
+  // 注意别名：文件顶部还导入了平台适配器 `platform`（probeSource 走它），
+  // 直接解构同名字段会把这个 import 遮蔽掉。
+  const { name, sourceUrl, playlistUrl, endpoints, headers, enabled, platform: claimedPlatform } = source
   const hasHeaders = headers != null && Object.keys(headers).length > 0
   const isLx = formKind === 'script'
   const isPlaylist = formKind === 'playlist'
@@ -81,6 +146,8 @@ export function SourceConfigCard({
   const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(endpoints)
   // 洛雪形态的探测结果：只活在本次会话，不写进配置（配置里只留脚本链接）
   const [lxProbe, setLxProbe] = useState<LxProbeState>({ loading: false })
+  // 「认领平台」草稿：初值取已保存值，编辑中点保存才写回；未探测时也能显示它（见 LxPlatformField）
+  const [platformDraft, setPlatformDraft] = useState<string | undefined>(claimedPlatform)
 
   // 形态与校验都收在 checkSourceForm：链接自身决定形态，不需要用户选
   const linkText = linkDraft.trim()
@@ -118,7 +185,20 @@ export function SourceConfigCard({
     setParsedHeaders(headers)
     setShowHeaders(hasHeaders)
     setLxProbe({ loading: false })
+    setPlatformDraft(claimedPlatform)
     setEditing(true)
+  }
+
+  /**
+   * 洛雪探测结论的回写口：除了存结论，还要校正「认领平台」。
+   *
+   * 换了一条脚本后，新脚本支持的平台表可能不再含原来的平台 —— 那种认领永远匹配不到
+   * 曲目（不会报错，只会静默失效），所以探测成功且旧平台不在新表里时回落空值；
+   * 未探测/探测失败时保留原值（用户可能只是点开编辑、还没点测试）。
+   */
+  const handleLxProbeChange = (state: LxProbeState) => {
+    setLxProbe(state)
+    setPlatformDraft((prev) => reconcileLxPlatform(prev, state.result))
   }
 
   // 测试连接：GET 根路径取端点自描述 + 用 /health 验密钥，只读不写配置（仅服务地址形态可探）
@@ -174,11 +254,13 @@ export function SourceConfigCard({
       return
     }
     if (isLx) {
-      // 洛雪形态：只存那条脚本链接与请求头，脚本源码不落库（运行时按链接现拉）
+      // 洛雪形态：只存那条脚本链接、请求头与「认领平台」，脚本源码不落库（运行时按链接现拉）
       onUpdate({
         name: displayName,
         sourceUrl: linkText,
         headers: parsedHeaders,
+        // 留空 = 不参与取址（只当普通源）；清空必须写 undefined，不能写空串
+        platform: platformDraft,
         playlistUrl: undefined,
         endpoints: undefined,
       })
@@ -232,9 +314,20 @@ export function SourceConfigCard({
             {/* 能力徽章：形态决定说法。歌单形态的源不参与搜索，写成「搜索」就是错的 */}
             <span className="flex items-center gap-1 flex-shrink-0">
               {isLx ? (
-                <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
-                  {t('sources.capability.lxScript')}
-                </span>
+                <>
+                  <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
+                    {t('sources.capability.lxScript')}
+                  </span>
+                  {/* 认领了平台才多说一句：这类脚本大多只能取址，标出它认领谁，
+                      用户才知道「其他源搜到的这个平台的歌会走它」 */}
+                  {claimedPlatform && (
+                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/55">
+                      {t('sources.form.lxPlatformBadge', {
+                        platform: t(lxPlatformLabelKey(claimedPlatform)),
+                      })}
+                    </span>
+                  )}
+                </>
               ) : isPlaylist ? (
                 sourceUrl.trim() && (
                   <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
@@ -319,12 +412,16 @@ export function SourceConfigCard({
                 instanceId={`lx-card-${name}-${sourceUrl}`}
                 probe={lxProbe}
                 onUrlChange={setLinkDraft}
-                onProbeChange={setLxProbe}
+                onProbeChange={handleLxProbeChange}
                 invalid={Boolean(lxLinkError)}
                 error={lxLinkError}
                 compact
               />
               <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.scriptHint')}</p>
+              {/* 探测成功后才给选，或已有保存值（此时即便没探测也要能看见、能改） */}
+              {(lxProbe.ok && lxProbe.result) || platformDraft ? (
+                <LxPlatformField result={lxProbe.result} value={platformDraft} onChange={setPlatformDraft} />
+              ) : null}
             </div>
           ) : (
             <>
@@ -509,6 +606,8 @@ export function SourceConfigAddDialog({
   const [probe, setProbe] = useState<{ loading: boolean; ok?: boolean; message?: string }>({ loading: false })
   const [probeEndpoints, setProbeEndpoints] = useState<Partial<AuroraEndpoints> | undefined>(undefined)
   const [lxProbe, setLxProbe] = useState<LxProbeState>({ loading: false })
+  // 新源的「认领平台」：默认留空（只当普通源），探测成功后由用户选
+  const [lxPlatform, setLxPlatform] = useState<string | undefined>(undefined)
 
   const linkText = linkDraft.trim()
   const aurora = checkSourceForm({ kind: 'music', link: linkDraft, playlistUrl, headersInvalid })
@@ -533,6 +632,16 @@ export function SourceConfigAddDialog({
     setProbe({ loading: false })
     setProbeEndpoints(undefined)
     setLxProbe({ loading: false })
+    setLxPlatform(undefined)
+  }
+
+  /**
+   * 探测结论回写：顺带校正「认领平台」——换脚本后旧平台可能不在新平台表里，
+   * 那种认领永远匹配不到曲目（静默失效），所以探测成功且不在新表里时回落空值。
+   */
+  const handleLxProbeChange = (state: LxProbeState) => {
+    setLxProbe(state)
+    setLxPlatform((prev) => reconcileLxPlatform(prev, state.result))
   }
 
   const handleProbe = async () => {
@@ -604,6 +713,8 @@ export function SourceConfigAddDialog({
         name: displayName,
         sourceUrl: linkText,
         headers,
+        // 没选就不写这个字段（不是写空串）：字段缺席 = 不认领任何平台
+        ...(lxPlatform ? { platform: lxPlatform } : {}),
         enabled,
       })
       resetForm()
@@ -694,13 +805,17 @@ export function SourceConfigAddDialog({
                 instanceId="lx-add-dialog"
                 probe={lxProbe}
                 onUrlChange={setLinkDraft}
-                onProbeChange={setLxProbe}
+                onProbeChange={handleLxProbeChange}
                 invalid={Boolean(lxLinkError)}
                 error={lxLinkError}
               />
               {!lxLinkError && (
                 <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.scriptHint')}</p>
               )}
+              {/* 探测成功后才出现：平台表来自脚本自报，没探测就无从列出候选 */}
+              {(lxProbe.ok && lxProbe.result) || lxPlatform ? (
+                <LxPlatformField result={lxProbe.result} value={lxPlatform} onChange={setLxPlatform} />
+              ) : null}
             </div>
           ) : (
             <>

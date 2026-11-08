@@ -135,7 +135,16 @@ export const lxPlugin: SourcePlugin = {
       quality,
       deps: asLxHostDeps(ctx),
     })
-    if (!outcome.url) return null
+    if (outcome.url === null) {
+      // 失败必须留痕：调用方按约定拿 null 静默回落，没有这行日志时
+      // 「脚本源永远取不到地址」只能靠逐层打点才能定位（曾因此误判为脚本的问题）。
+      // reason 是结构化错误码（如 lxHostNotReady / lxMetaMissing），带上平台便于对账。
+      ctx?.log?.(`脚本取址失败: ${outcome.reason}`, {
+        platform: ref?.platform,
+        source: config?.id,
+      }) // i18n-exempt: 开发者日志，不进界面
+      return null
+    }
     return { url: outcome.url, quality: outcome.quality }
   },
 }

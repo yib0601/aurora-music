@@ -1,4 +1,5 @@
 import {
+  LX_PLATFORM_LABEL_KEYS,
   auroraError,
   translateError,
   type AppTranslator,
@@ -83,6 +84,58 @@ export function lxPlatformRows(result: SourceProbeResult | undefined): LxPlatfor
     searchable: cap.searchable,
     qualityCount: cap.qualityCount || 0,
   }))
+}
+
+/** 「取址平台」下拉的一个候选项：标识 + 展示名文案键（同 LxPlatformRow 的取值纪律） */
+export interface LxPlatformChoice {
+  key: string
+  labelKey: MessageKey
+}
+
+/**
+ * 可作为「认领平台」的候选项：探测到的平台表原样转过来。
+ *
+ * 为什么不按 `actions.includes('musicUrl')` 再筛一遍：播放入口的能力在 shared 侧是
+ * `LxPlatformCapability.actions`，但探测结论翻译成 `SourceCapability` 时只保留
+ * key / 展示名 / 是否可搜索 / 音质档数（见 shared/src/sourceProbe.ts 的
+ * lxInspectionToProbe），取址动作在那一层就被丢弃了；本文件也拿不到原始 actions。
+ * 洛雪脚本里一个平台条目存在的意义就是提供 musicUrl（宿主取址只走这个动作），
+ * 所以平台表 == 可认领的取址目标。要按动作精确过滤，得先在翻译层补一个字段。
+ *
+ * 未探测 / 探测失败时返回空数组：调用方据此决定「不给用户选」。
+ */
+export function lxPlatformChoices(result: SourceProbeResult | undefined): LxPlatformChoice[] {
+  // 失败结论里的 capabilities 是诊断信息，不能当选项卖：只有探测通过才让用户选
+  if (!result?.ok) return []
+  return lxPlatformRows(result).map(({ key, labelKey }) => ({ key, labelKey }))
+}
+
+/**
+ * 平台标识 → 展示名文案键。
+ *
+ * 已知平台查 LX_PLATFORM_LABEL_KEYS；脚本自报的未知标识没有对应键，
+ * 原样透出（t() 缺键会回退成键名本身），不在这里拼中文名。
+ */
+export function lxPlatformLabelKey(platform: string): MessageKey {
+  return LX_PLATFORM_LABEL_KEYS[platform] ?? (platform as MessageKey)
+}
+
+/**
+ * 探测结论变化后校正已选平台：只有「探测成功且新平台表里没这个平台」才回落空值。
+ *
+ * 三种情形分开处理，是因为语义不同：
+ *   1. 没选过 → 保持空（用户仍可只把它当搜索源用）；
+ *   2. 还没探测 / 探测失败 → 保留原有值。用户只是点开编辑、还没点「测试」，
+ *      不能因为一次失败的探测就把已保存的认领关系清掉；
+ *   3. 探测成功 → 脚本换了平台支持就跟着变，旧认领在新表里不存在即失效（回落空值），
+ *      否则会存一个永远匹配不到曲目的平台。
+ */
+export function reconcileLxPlatform(
+  current: string | undefined,
+  result: SourceProbeResult | undefined
+): string | undefined {
+  if (!current || !result?.ok) return current
+  return lxPlatformChoices(result).some((choice) => choice.key === current) ? current : undefined
 }
 
 /** 探测失败时的可读文案：源自报的错误优先，其余按通用加载失败呈现（t 由调用方按语言注入） */

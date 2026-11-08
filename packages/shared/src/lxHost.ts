@@ -25,6 +25,7 @@
 import LZString from 'lz-string'
 import { mapWithConcurrency } from './concurrency'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
+import type { FetchLike } from './fetchWithTimeout'
 import { auroraError, describeError, toErrorInfo } from './i18n/errors'
 // 能力登记：`setLxHostDeps` 要与能力表**同一时刻**更新（见该函数注释）。
 // `hostCapabilities` 零依赖，不会引入环。
@@ -903,6 +904,27 @@ export async function resolveLxSourceUrl(
 /** 脚本源码体积上限（MB）：脚本不该比这更大，超了多半是拉到了网页而不是脚本 */
 const LX_SCRIPT_MAX_MB = 4
 
+/**
+ * 脚本源码拉取专用的 fetch 实现注入点（桌面端注册 Electron 的 net.fetch）。
+ *
+ * 为什么只给「脚本拉取」开这个口子，而不是全局替换主进程的 fetch：
+ * 主进程还有大量其它 HTTP 调用（搜索、榜单、插件、更新下载……），它们各自依赖
+ * Node 原生 fetch 的 cookie / redirect / 请求头语义；把全局实现换掉等于同时改动
+ * 这些链路的行为，blast radius 不可控。而洛雪脚本拉取只有取一个文本文件这一种
+ * 语义，换实现的影响面是可穷举的 —— 因此按调用点收口，不做进程级开关。
+ *
+ * 桌面端为什么必须换：Node 全局 fetch（undici）是直连，既不读系统代理也不认
+ * gsettings，用户配了代理时 raw.githubusercontent.com 这类地址会直连超时
+ * （设置页「测试」20s 后报 lxScriptTimeout）；net.fetch 走 Chromium 网络栈，读系统代理。
+ * 移动端没有这个诉求，不注入，fetchWithTimeout 自然回落到原行为。
+ */
+let lxScriptFetch: FetchLike | null = null
+
+/** 注册 / 清除脚本拉取的底层 fetch 实现；传 null 复原为默认实现 */
+export function setLxScriptFetch(fn: FetchLike | null): void {
+  lxScriptFetch = fn
+}
+
 /** 拉取远程脚本源码（用户填脚本链接时用）；失败抛结构化错误，文案由显示端按语言渲染 */
 export async function fetchLxScript(url: string, timeoutMs = 15000): Promise<string> {
   let resp: Response
@@ -916,7 +938,9 @@ export async function fetchLxScript(url: string, timeoutMs = 15000): Promise<str
           Accept: '*/*',
         },
       },
-      timeoutMs
+      timeoutMs,
+      // 未注入时为 null，fetchWithTimeout 按「customFetch → 全局 fetch」回落
+      lxScriptFetch
     )
   } catch (err) {
     // 响应头阶段的失败此前裸抛：用户看到的是底层 fetch 的英文 AbortError，

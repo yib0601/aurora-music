@@ -31,6 +31,7 @@ export {
   LX_PLATFORM_LABEL_KEYS,
   clearLxSourceCache,
   fetchLxScript,
+  setLxScriptFetch,
   inspectLxSource,
   lxQualityFor,
   normalizeLxQuality,
@@ -125,6 +126,7 @@ export {
 } from './encryptedAudio'
 export type { EncryptedAudioFile, EncryptedAudioFamily } from './encryptedAudio'
 export { fetchWithTimeout, setCustomFetch, TimeoutError, isTimeoutError } from './fetchWithTimeout'
+export type { FetchLike } from './fetchWithTimeout'
 // 音频焦点：其他应用出声时「暂停 / 继续播放」的跨端契约（桌面互斥状态机 + Android 原生引擎共用）
 export {
   DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR,
@@ -315,6 +317,12 @@ export {
   // 单曲取址的统一编排（跨端共用）
   resolveTrackAudioViaPlugin,
   trackRefFor,
+  // 跨源脚本取址：脚本源按平台认领，别的源搜到的曲目先问它要直链（失败静默回落）
+  scriptSourcesForTrack,
+  hasScriptSourceCandidate,
+  resolveTrackAudioAcrossScriptSources,
+  clearScriptSourceMemo,
+  inferPlatformFromUrl,
   // 宿主能力注册表：插件「需要宿主给什么」的登记与判定（与 health 的「坏没坏」是两件事）
   HOST_CAPABILITY_VERSION,
   clearHostCapabilitiesForTest,
@@ -345,6 +353,10 @@ export type {
   HostCapabilityId,
   ManifestDependencyInput,
   PluginAvailability,
+  // 跨源脚本取址的候选形状（执行回调由两端各自注入）
+  ScriptSourcePick,
+  ScriptSourcePickInput,
+  ScriptSourceResolution,
 } from './plugin'
 
 // ─── 存储插件层（曲库来源形态的注册表与契约） ─────────────────────

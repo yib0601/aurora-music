@@ -411,9 +411,15 @@ export const useLibraryStore = create<LibraryState>()(
         })
       },
       addRecentPlayed: (track, lastPlayedAt, playCount) => {
-        // 记录只留元数据快照：剥离会过期的在线播放地址与源给的定位令牌，
+        // 记录只留元数据快照：剥离会过期的在线播放地址、实际档位声明与源给的定位令牌，
         // 播放时按元信息重新搜索取址（见 playlistIO.service 的 ensurePlayableTrack）
-        const { onlineUrl: _omitUrl, onlineQualityUrls: _omitQuality, trackRef: _omitRef, ...meta } = track
+        const {
+          onlineUrl: _omitUrl,
+          onlineQualityUrls: _omitQuality,
+          onlineQuality: _omitTier,
+          trackRef: _omitRef,
+          ...meta
+        } = track
         const record: Track = { ...meta, lastPlayedAt, playCount } as Track
         const rest = get().recentPlayedTracks.filter((t) => t.id !== record.id)
         set({ recentPlayedTracks: [record, ...rest].slice(0, MAX_RECENT_PLAYED) })
@@ -591,6 +597,9 @@ export const useLibraryStore = create<LibraryState>()(
           // kind 是只读兼容层：老数据仍有该字段，原样带出以免降级
           ...(s.kind ? { kind: s.kind } : {}),
           ...(s.headers ? { headers: s.headers } : {}),
+          // 「认领平台」必须显式放行：漏在白名单外不会报错，只会表现为
+          // 「设置页选了平台，重启后又变回只参与搜索」，认领关系静默失效
+          ...(s.platform ? { platform: s.platform } : {}),
           ...(s.playlistUrl ? { playlistUrl: s.playlistUrl } : {}),
           ...(s.endpoints ? { endpoints: s.endpoints } : {}),
         })),

@@ -39,6 +39,7 @@ import {
   parseSourceInput,
   probeAuroraService,
   pluginIdOf,
+  resolveTrackAudioAcrossScriptSources,
   sourceSongIdOf,
   trackRefFor,
   unavailableProbe,
@@ -652,12 +653,19 @@ export function createDesktopPlatform(): Platform {
           source,
           token,
           quality
-        )) as { url?: string; qualityUrls?: Record<string, string>; coverUrl?: string } | null
+        )) as {
+          url?: string
+          quality?: string
+          qualityUrls?: Record<string, string>
+          coverUrl?: string
+        } | null
         if (!resolved?.url || !/^https?:\/\//i.test(resolved.url)) return null
         // 只回填副本：直链会过期，不落盘、不写库（持久化时 onlineUrl 本就剥离）
         return {
           ...track,
           onlineUrl: resolved.url,
+          // 插件自报的实际档位：请求 flac 却只拿到 m4a 时，这是「降级提示」的唯一依据
+          ...(resolved.quality ? { onlineQuality: resolved.quality } : {}),
           ...(resolved.qualityUrls ? { onlineQualityUrls: resolved.qualityUrls } : {}),
           ...(resolved.coverUrl ? { coverUrl: resolved.coverUrl } : {}),
         }
@@ -665,6 +673,55 @@ export function createDesktopPlatform(): Platform {
         // 取址失败要静默回落按名搜索，不打断播放
         console.warn('[音源] 取址失败:', source.id, err)
         return null
+      }
+    },
+
+    /**
+     * 跨源脚本取址：把其它源搜到的曲目交给「认领了该平台」的脚本源现取直链。
+     *
+     * 为什么需要：洛雪自定义脚本多数只实现 `musicUrl`、不实现 `search`（pdone 的 16 条
+     * 里 15 条如此）。用户可以配一条 aurora 音源负责搜索、再配一条脚本并给它指定平台，
+     * 搜到的曲目播放/下载时优先用脚本取址 —— 否则那条脚本在应用里永远没有用武之地。
+     *
+     * 与 `resolveTrackAudio` 的分工：那个只认曲目**自带的**凭据（它属于谁就找谁）；
+     * 这里做的是**跨源**偏好，候选筛选与失败记忆都在 shared（两端同源），
+     * 本方法只负责「怎么在桌面端执行插件」——渲染进程直连会被上游 CORS 拦，
+     * 所以必须转发主进程的 `plugin:resolveTrack` 通道。
+     */
+    async resolveScriptTrackAudio(track: Track): Promise<Track | null> {
+      const gateway = api?.plugins
+      if (!gateway?.resolveTrack) return null
+
+      const { sources, quality } = await loadLibraryState()
+      const hit = await resolveTrackAudioAcrossScriptSources(
+        sources,
+        track,
+        async (pick) => {
+          const resolved = await gateway.resolveTrack(
+            pluginIdOf(pick.source),
+            pick.source,
+            pick.ref,
+            quality
+          )
+          if (!resolved?.url) return null
+          return {
+            url: resolved.url,
+            ...(resolved.quality ? { quality: resolved.quality } : {}),
+            ...(resolved.qualityUrls ? { qualityUrls: resolved.qualityUrls } : {}),
+            ...(resolved.coverUrl ? { coverUrl: resolved.coverUrl } : {}),
+          }
+        },
+        (message) => console.warn('[音源] 跨源取址:', message)
+      )
+      if (!hit) return null
+
+      // 与 resolveTrackAudio 同一份回填口径：只改副本，不落盘、不写库
+      return {
+        ...track,
+        onlineUrl: hit.resolution.url,
+        ...(hit.resolution.quality ? { onlineQuality: hit.resolution.quality } : {}),
+        ...(hit.resolution.qualityUrls ? { onlineQualityUrls: hit.resolution.qualityUrls } : {}),
+        ...(hit.resolution.coverUrl ? { coverUrl: hit.resolution.coverUrl } : {}),
       }
     },
 

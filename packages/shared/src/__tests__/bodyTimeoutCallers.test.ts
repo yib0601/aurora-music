@@ -131,11 +131,14 @@ describe('上游发完响应头停住 body：调用点上屏的是带源名的�
       sourceUrl: `${base()}/music?q={query}`,
       enabled: true,
     }
+    // 预算取自 `musicSource.ts` 的 SEARCH_TIMEOUT_MS（20s：音源服务冷启动实测可到 13s，
+    // 10s 会把「冷」误判成「坏」）。等待窗口必须比它宽，否则测的是「预算多大」而不是
+    // 「超时被映射成带源名的结构化错误」——后者才是本用例的不变量。
     const err = await rejectionOf(
-      expectSettles('在线搜索调用点', searchMusicSource(source, '青花瓷'), 15000)
+      expectSettles('在线搜索调用点', searchMusicSource(source, '青花瓷'), 25000)
     )
-    expectCode(err, 'core.error.sourceTimeout', { name: '我的音源', ms: 10000 })
-  }, 20000)
+    expectCode(err, 'core.error.sourceTimeout', { name: '我的音源', ms: 20000 })
+  }, 30000)
 
   it('在线音乐读取（musicHall）：读体超时与「不是 JSON」必须分流，报超时', async () => {
     const source = { id: 'h-1', name: '我的音源', sourceUrl: base() }

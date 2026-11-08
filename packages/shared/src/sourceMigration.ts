@@ -105,6 +105,10 @@ export function migrateOnlineSources(sources: unknown): OnlineSourceConfig[] {
         enabled: s.enabled !== false,
       }
       if (s.headers && typeof s.headers === 'object') lx.headers = s.headers
+      // 「取址平台」是脚本源的业务设置（别的源搜到的该平台曲目交给这条脚本取直链），
+      // 与端点地址无关但属于源配置：迁移必须原样带过去，否则用户升级后设置凭空消失，
+      // 表现为「脚本装了却不参与播放」（见 docs/music-sources.md）。
+      if (typeof s.platform === 'string' && s.platform.trim()) lx.platform = s.platform.trim()
       out.push(lx)
       continue
     }

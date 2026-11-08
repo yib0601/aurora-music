@@ -20,6 +20,7 @@ import { toast } from '@/components/common/Toast'
 import { appTranslate } from '@/i18n'
 import { shouldTreatAsNoticeClip } from '@/lib/audioGuard'
 import { normalizePlaybackRate } from '@/lib/playbackRate'
+import { needsScriptResolve } from '@/lib/scriptSourceResolve'
 import { needsStorageResolve } from '@/lib/storageTrack'
 import { sleepEndsAtFromNow, sleepRemainingMs } from '@/lib/sleepTimer'
 import {
@@ -137,8 +138,9 @@ const initialState = {
 function stripOnlineUrl(track: Track | null): Track | null {
   if (!track || !track.onlineUrl) return track
   // 源给的定位令牌与直链同命运：令牌依赖上游、重启后未必有效，
-  // 交由播放时的按需取址重建，因此这里随 onlineUrl 一起剥离
-  const { onlineUrl: _url, trackRef: _ref, ...rest } = track
+  // 交由播放时的按需取址重建，因此这里随 onlineUrl 一起剥离。
+  // onlineQuality 同样描述「这一次取址」，地址剥了它就没有意义，一并剥离。
+  const { onlineUrl: _url, trackRef: _ref, onlineQuality: _quality, ...rest } = track
   return rest as Track
 }
 
@@ -268,7 +270,9 @@ function confirmResolved(ready: Track): boolean {
  * 取址失败不阻断：返回原曲目，交给播放器按原有语义处理（无地址即不播放）。
  */
 async function resolveBeforePlay(track: Track): Promise<Track> {
-  if (hasPlayableSrc(track)) return track
+  // 有地址且没有脚本源认领这个平台：无需取址（与 hasResolvableGap 同一份判据，
+  // 否则会出现「闸门放行但这里又退出」的错位，表现为脚本偏好永不生效）
+  if (hasPlayableSrc(track) && !needsScriptResolve(track)) return track
   try {
     const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
     return (await ensurePlayableTrack(track)) || track
@@ -289,9 +293,13 @@ async function resolveBeforePlay(track: Track): Promise<Track> {
  *
  * 判据与 resolveBeforePlay 同一份：本地曲目（path 有值）与已取到地址的在线曲目
  * 都短路，零开销不变；**没有地址的一律视作有待取址**，不再要求自带定位令牌。
+ *
+ * 例外是「跨源脚本取址」：曲目已有地址、但有脚本源认领了它的平台时，这次播放仍要
+ * 先向脚本要直链（用户的配置意图），所以也进取址闸门。判据是同步的（见
+ * `lib/scriptSourceResolve`），不破坏上面的点击顺序约定。
  */
 function hasResolvableGap(track: Track): boolean {
-  return !hasPlayableSrc(track)
+  return !hasPlayableSrc(track) || needsScriptResolve(track)
 }
 
 /** 取址 → 播放（自动续播路径共用）：取址失败就按原样交给播放器，保持既有语义 */

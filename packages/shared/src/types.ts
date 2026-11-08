@@ -107,6 +107,22 @@ export interface OnlineSourceConfig {
   }
   /** 附加请求头（如鉴权 Token、Referer、User-Agent），同名头覆盖默认值 */
   headers?: Record<string, string>
+  /**
+   * 脚本源的「限定取址平台」（洛雪平台标识：tx / kw / kg / wy / mg / git / local）。
+   *
+   * 洛雪用户脚本大多只实现 `musicUrl`（没有 `search`），因此不会出现在搜索结果里，
+   * 要参与取址就得先知道「这条曲目属于哪个平台」。**默认不需要填**：平台归属由数据
+   * 推断 —— 曲目自带的 `trackRef.platform` 优先，其次按已有播放地址的域名
+   * （`plugin/trackAudio.ts` 的 `inferPlatformFromUrl`，如 `*.qqmusic.qq.com` → `tx`）。
+   *
+   * 本字段只是兜底：音源返回自己的中转地址、域名认不出平台时，用它把这条脚本源
+   * 限定到某个平台。填了就必须与曲目推断出的平台一致，否则不会拿这个 id 去试。
+   * 播放 / 下载时的编排见 `plugin/trackAudio.ts` 的 `scriptSourcesForTrack` /
+   * `resolveTrackAudioAcrossScriptSources`，失败静默回落原地址。
+   *
+   * 留空 = 自动识别（老配置的语义不变：只参与搜索、不参与取址）。
+   */
+  platform?: string
   enabled: boolean
 }
 

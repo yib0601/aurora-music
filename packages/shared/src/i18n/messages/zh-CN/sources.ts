@@ -98,7 +98,14 @@ const sources = {
     defaultName: '新音源',
     defaultNameLx: '新洛雪源',
     scriptLabel: '脚本链接',
-    scriptHint: '脚本提供取址能力；没有搜索接口的脚本，需要另配一条 Aurora 音源用于搜索',
+    scriptHint:
+      '脚本负责取址；洛雪脚本大多只做取址、没有搜索接口。搜索仍由其他音源负责，搜到的曲目在播放 / 下载时会优先交给这条脚本取直链，取不到自动回落原地址',
+    /** 「认领平台」：限定这个洛雪脚本只服务哪个平台（可选，默认按曲目地址自动识别） */
+    lxPlatformLabel: '限定平台（可选）',
+    lxPlatformNone: '自动识别（按曲目地址）',
+    lxPlatformHint:
+      '默认按曲目的播放地址自动识别平台，一般无需设置；只有当音源返回的是自己的中转地址、识别不出平台时才需要在这里指明',
+    lxPlatformBadge: '取址：{platform}',
     sourceLabel: '音源地址',
     sourceDetectedWithKey: '已识别为服务地址，密钥已提取；搜索与歌单接口自动生成',
     sourceDetected: '已识别为服务地址；搜索与歌单接口自动生成，密钥可写在链接里',

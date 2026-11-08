@@ -73,7 +73,13 @@ const en: LocalizedOf<typeof sources> = {
     defaultNameLx: 'New LX source',
     scriptLabel: 'Script link',
     scriptHint:
-      'The script resolves track URLs. A script without a search API needs a separate Aurora source for searching.',
+      'The script resolves track URLs. Most LX scripts only resolve and have no search API: search still comes from other sources, and playing or downloading a found track asks this script for a direct link first, falling back to the original address when it cannot resolve.',
+    /** Claimed platform: restrict this LX script to one platform (optional; auto-detected by default) */
+    lxPlatformLabel: 'Limit to platform (optional)',
+    lxPlatformNone: 'Auto-detect (from track address)',
+    lxPlatformHint:
+      'The platform is detected automatically from the track address, so this is usually unnecessary; set it only when the source returns its own relay addresses and detection cannot tell.',
+    lxPlatformBadge: 'Resolves: {platform}',
     sourceLabel: 'Source address',
     sourceDetectedWithKey:
       'Recognized as a service address; the key was extracted and the search and playlist endpoints are generated automatically',

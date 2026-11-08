@@ -53,7 +53,15 @@
 
 import { encodeErrorInfo } from './i18n/errors'
 
-type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+/**
+ * fetch 实现的形状（可注入的底层实现）。
+ *
+ * 导出是为了让「只给某一条链路换底层实现」的注入点有公共类型可写：
+ * 洛雪脚本拉取在桌面端必须走 Electron 的 net.fetch（Chromium 网络栈，读系统代理），
+ * 而全局 setCustomFetch 是进程级开关，语义不同（见下方 customFetch 与
+ * lxHost.ts 的 setLxScriptFetch）。两者共用同一形状，调用方不必各自复制一份。
+ */
+export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 /**
  * 请求超时错误：可判定的 name + **结构化 message**。
@@ -375,10 +383,21 @@ function withBodyTimeout(resp: Response, ctx: {
   return wrapped
 }
 
+/**
+ * 发请求并施加「响应头 + 读体停滞」两段超时预算。
+ *
+ * @param impl 本次调用专用的底层实现。优先级：显式 impl > setCustomFetch 注入 >
+ *   全局 fetch。**为什么要有这个参数**：setCustomFetch 是进程级开关，适合「整个
+ *   运行时的网络栈都该换掉」的场景（移动端注入原生 HTTP）；而桌面端只有洛雪脚本
+ *   拉取需要 Electron 的 net.fetch（Chromium 网络栈读系统代理），其它请求仍该留在
+ *   Node 原生 fetch 上 —— 换全局会同时改掉 cookie / redirect / 请求头语义，
+ *   影响面不可控。省略（undefined/null）时行为与历史版本完全一致。
+ */
 export async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit = {},
-  timeoutMs = 10000
+  timeoutMs = 10000,
+  impl?: FetchLike | null
 ): Promise<Response> {
   const controller = new AbortController()
   // 调用方自带的取消信号（如页面卸载）原样透传给底层实现，且不计入「超时」判定
@@ -400,7 +419,7 @@ export async function fetchWithTimeout(
     external?.removeEventListener('abort', onExternalAbort)
   }
 
-  const impl = customFetch ?? fetch
+  const doFetch = impl ?? customFetch ?? fetch
   // 未处理的拒绝兜底：调用方带的 signal 中止时，race 抢先抛出，底层 promise 的
   // 拒绝就没人接了（Chrome 会打 unhandledrejection）。这里挂一个空处理器吞掉。
   const guard = (p: Promise<Response>) => {
@@ -411,7 +430,7 @@ export async function fetchWithTimeout(
     // 自定义实现（原生 HTTP 层）可能不支持 AbortSignal，
     // 用 signal 竞速兜底，保证超时语义不丢失
     const race = Promise.race([
-      guard(impl(input, { ...init, signal: controller.signal })),
+      guard(doFetch(input, { ...init, signal: controller.signal })),
       new Promise<never>((_, reject) => {
         const onAbort = () => reject(controller.signal.reason ?? new TimeoutError(timeoutMs))
         if (controller.signal.aborted) onAbort()

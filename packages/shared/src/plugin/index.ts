@@ -98,8 +98,21 @@ export {
 export {
   resolveTrackAudioViaPlugin,
   trackRefFor,
+  // 跨源脚本取址：脚本源按 `platform` 认领其它源搜到的曲目（洛雪脚本多为「仅取址」）
+  scriptSourcesForTrack,
+  hasScriptSourceCandidate,
+  resolveTrackAudioAcrossScriptSources,
+  clearScriptSourceMemo,
+  // 「曲目属于哪个平台」由播放地址推断，脚本源不认领平台也能对上号
+  inferPlatformFromUrl,
 } from './trackAudio'
-export type { TrackResolution, TrackResolutionInput } from './trackAudio'
+export type {
+  TrackResolution,
+  TrackResolutionInput,
+  ScriptSourcePick,
+  ScriptSourcePickInput,
+  ScriptSourceResolution,
+} from './trackAudio'
 export { auroraPlugin, AURORA_PLUGIN_CAPABILITIES } from './auroraPlugin'
 export { lxPlugin, LX_PLUGIN_CAPABILITIES } from './lxPlugin'
 export { qishuiPlugin, qishuiCoverUrl, extractSessionId } from './qishuiPlugin'

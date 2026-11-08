@@ -12,7 +12,7 @@
  * 业务语义（搜索聚合、取址编排）在 @aurora/shared，不在这里。
  */
 
-import { ipcMain } from 'electron'
+import { ipcMain, net } from 'electron'
 import vm from 'node:vm'
 import { createHash, createCipheriv, publicEncrypt, randomBytes as nodeRandomBytes, constants as nodeCryptoConstants } from 'crypto'
 import { deflate as zlibDeflate, inflate as zlibInflate } from 'zlib'
@@ -27,6 +27,7 @@ import {
   resolveLxSourceUrl,
   searchLxSource,
   setLxHostDeps,
+  setLxScriptFetch,
   setLxScriptProvider,
   toLxMusicInfo,
 } from '@aurora/shared'
@@ -277,8 +278,33 @@ export function createNodeLxUtils(): LxHostDeps['utils'] {
   }
 }
 
+/**
+ * 把 shared 侧 FetchLike 的入参收敛成 net.fetch 接受的形式。
+ *
+ * 洛雪脚本链接只有一种来源：设置页里用户填的 http(s) 字符串（`lx:fetchScript` 与
+ * `ensureScript` 都已校验），所以这里不存在 Request / URL 对象形态。不做 `as any`
+ * 一把转：真收到别的形态说明调用点变了，应当显式失败而不是把未知对象透传给 Electron。
+ */
+function toNetFetchInput(input: unknown): Parameters<typeof net.fetch>[0] {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.href
+  throw new TypeError('[Lx] 脚本拉取只接受字符串形式的链接') // i18n-exempt: 内部不变量，不进界面
+}
+
 /** 组装主进程版宿主依赖（模块加载时注册一次；脚本执行不再穿参） */
 export function installLxHostDeps(): void {
+  // 脚本源码拉取改走 Electron 的 net.fetch（Chromium 网络栈），而不是 Node 全局 fetch。
+  // 两者差在代理：Node 的 fetch 是 undici 直连，既不读系统代理也不认 gsettings，
+  // 用户配了 Clash 之类本机代理时，raw.githubusercontent.com 这种地址会一路直连到
+  // 20s 超时（设置页「测试」报 core.error.lxScriptTimeout）；net.fetch 走 Chromium
+  // 网络栈，能吃到系统代理。同一结论在 updater.ts / pluginStore.ts 已按实测写下先例。
+  //
+  // 只注册给脚本拉取这一个漏斗，不动全局 fetch：主进程还有搜索 / 榜单 / 插件等
+  // 大量 HTTP 调用，换全局实现会改变它们的 cookie / redirect / 请求头语义。
+  // net.fetch 依赖 app ready 之后的网络服务；本函数由 registerLxSourceIpc() 调用，
+  // 而后者只在 app.whenReady() 之后执行，时机满足。
+  setLxScriptFetch((input, init) => net.fetch(toNetFetchInput(input), init))
+
   const deps: LxHostDeps = {
     request: createNodeLxRequest(),
     env: 'desktop',

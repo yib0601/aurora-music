@@ -35,6 +35,7 @@ import { searchOnlineTracks, searchLyrics } from './online'
 import {
   hostContextOf,
   resolveTrackAudioViaPlugin,
+  resolveTrackAudioAcrossScriptSources,
   recommendViaPlugin,
   toplistsViaPlugin,
   toplistDetailViaPlugin,
@@ -721,12 +722,54 @@ export function createMobilePlatform(): PlatformInterface & {
         return {
           ...track,
           onlineUrl: resolved.url,
+          // 插件自报的实际档位：请求 flac 却只拿到 m4a 时，这是「降级提示」的唯一依据
+          ...(resolved.quality ? { onlineQuality: resolved.quality } : {}),
           ...(resolved.qualityUrls ? { onlineQualityUrls: resolved.qualityUrls } : {}),
           ...(resolved.coverUrl ? { coverUrl: resolved.coverUrl } : {}),
         }
       } catch (err) {
         // 取址失败要静默回落按名搜索，不打断播放
         console.warn('[音源] 移动端取址失败:', ref?.sourceId || track?.onlineId, err)
+        return null
+      }
+    },
+
+    /**
+     * 跨源脚本取址：其它源搜到的曲目交给「认领了该平台」的脚本源现取直链。
+     *
+     * 与桌面端同一份策略（候选筛选、失败记忆、地址校验都在 shared），差别只在执行：
+     * 移动端插件注册表就在本进程，直接调共享编排即可（fetch 已换成 CapacitorHttp，
+     * 不受 WebView CORS 限制）。
+     */
+    async resolveScriptTrackAudio(track: Track): Promise<Track | null> {
+      try {
+        const { useLibraryStore } = await import('@/stores/libraryStore')
+        const state = useLibraryStore.getState()
+        const quality = state.downloadQuality || 'flac'
+        const hit = await resolveTrackAudioAcrossScriptSources(
+          state.onlineSources,
+          track,
+          (pick) =>
+            resolveTrackAudioViaPlugin(
+              pick.source,
+              { trackRef: pick.ref, onlineSource: pick.source.id },
+              hostContextOf(pick.source),
+              quality
+            ),
+          (message) => console.warn('[音源] 跨源取址:', message)
+        )
+        if (!hit) return null
+        return {
+          ...track,
+          onlineUrl: hit.resolution.url,
+          ...(hit.resolution.quality ? { onlineQuality: hit.resolution.quality } : {}),
+          ...(hit.resolution.qualityUrls
+            ? { onlineQualityUrls: hit.resolution.qualityUrls }
+            : {}),
+          ...(hit.resolution.coverUrl ? { coverUrl: hit.resolution.coverUrl } : {}),
+        }
+      } catch (err) {
+        console.warn('[音源] 移动端跨源取址失败:', err)
         return null
       }
     },

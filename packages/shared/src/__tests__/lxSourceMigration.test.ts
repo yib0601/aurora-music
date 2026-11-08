@@ -53,6 +53,15 @@ describe('migrateOnlineSources（洛雪脚本源）', () => {
     expect(out[0]).not.toHaveProperty('apiKey')
   })
 
+  it('取址平台原样带过去（用户设置不能因迁移丢失）', () => {
+    const [s] = migrateOnlineSources([{ ...LX_SOURCE, platform: ' kw ' }])
+    // 首尾空白去掉：平台标识是对照值，带空格会让候选筛选认不出
+    expect(s.platform).toBe('kw')
+    // 未设置时不出这个键（可选字段不写空串，避免与「已设置但为空」混淆）
+    const [none] = migrateOnlineSources([LX_SOURCE])
+    expect(none).not.toHaveProperty('platform')
+  })
+
   it('脚本链接不含占位符时不会被当成服务地址去派生 aurora 端点', () => {
     // 前提对照：单看链接，parseSourceInput 会把它判成「服务地址」（裸链接形态）
     expect(parseSourceInput(LX_URL)?.kind).toBe('service')

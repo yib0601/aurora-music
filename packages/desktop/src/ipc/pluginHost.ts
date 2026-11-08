@@ -19,6 +19,7 @@ import { ipcMain } from 'electron'
 import {
   auroraError,
   getPlugin,
+  hostContextOf,
   isPluginEnabled,
   listPlugins,
   type OnlineSourceConfig,
@@ -68,7 +69,14 @@ function pluginFetchOf(
 /**
  * 装配插件执行上下文。
  *
- * `fetch` 见 `pluginFetchOf()`：内置插件用全局实现，已安装插件包主机白名单。
+ * 基础形状取 shared 的 `hostContextOf()`（`headers` / `log` / **`scriptHost`**），
+ * 本函数只覆盖两端不同的部分：`fetch` 见 `pluginFetchOf()`（内置插件用全局实现，
+ * 已安装插件包主机白名单）、`credential` 只存在于桌面端。
+ *
+ * ⚠️ `scriptHost` 必须由这里注入，不能省：它来自 `script.host` 能力注册表，
+ * 洛雪脚本源的取址/搜索全靠它（`lxPlugin` 把 `ctx.scriptHost` 窄化成 `LxHostDeps`）。
+ * 少这一项时插件层拿到 undefined，`resolveLxTrack` 判成「宿主未装配」返回 null ——
+ * 表现为**脚本源永远取不到地址，且没有任何报错**（渲染层只会看到静默回落）。
  */
 function buildContext(
   plugin: SourcePlugin,
@@ -76,8 +84,8 @@ function buildContext(
 ): Record<string, unknown> | never {
   const credential = plugin.id ? readCredentialOf(plugin.id) : null
   return {
+    ...hostContextOf(config),
     fetch: pluginFetchOf(plugin.id, config),
-    headers: config?.headers,
     credential,
   }
 }

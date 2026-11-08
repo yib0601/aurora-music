@@ -98,6 +98,26 @@ A 与 B **不是二选一**：一份清单可以同时带声明式端点与脚�
 「声明式负责搜索、脚本负责取址」（洛雪脚本绝大多数只实现 `musicUrl`）。
 合并规则是**声明式优先**（同名能力下声明式更可预测，不执行代码），脚本补空缺。
 
+这条分工在应用里是**打通**的：别的源搜到的曲目播放/下载时先请脚本源取址
+（`shared/src/plugin/trackAudio.ts` 的 `scriptSourcesForTrack` /
+`resolveTrackAudioAcrossScriptSources`），失败静默回落原地址。
+
+曲目属于哪个平台由**数据**决定，不靠脚本源预先配置：先看曲目自带的 `trackRef.platform`，
+再看已有播放地址的域名（`inferPlatformFromUrl`，按洛雪平台标识 `tx`/`kw`/`kg`/`wy`/`mg`），
+两者都没有时才回落到可选的 `OnlineSourceConfig.platform`。所以换一家音源服务、
+换一个平台的曲库，同一个脚本源照样能对上号；「限定平台」只用于域名认不出的中转地址。
+
+### 上下文装配的硬约束（`ctx.scriptHost`）
+
+插件的执行上下文由 `shared/src/plugin/executor.ts` 的 `hostContextOf()` 定义：`fetch` /
+`headers` / `log` / **`scriptHost`**。各端**必须**以它为基底再覆盖自己不同的部分
+（桌面端的 `ipc/pluginHost.ts` 额外覆盖 `fetch` 白名单与 `credential`）。
+
+漏掉 `scriptHost` 时不会有任何报错：声明了 `requires: [{ id: 'script.host' }]` 的插件拿到
+`undefined`，`resolveLxTrack` 判成「宿主未装配」返回 `null`，调用方按约定静默回落 ——
+表现为「脚本源装了、探测也通过，但播放永远走原始地址」。这个失败只在
+`lxPlugin.resolveTrack` 的 `ctx.log`（脚本取址失败: <reason>）里留痕，排查时先看它。
+
 ## 3. 清单格式
 
 一份清单是一个 JSON 文件，`format` 字段固定为 `aurora-plugin/1`。完整字段表见
