@@ -101,11 +101,17 @@ cd packages/mobile/android && ./gradlew assembleRelease
 Web 层改动必须先 `build:app` 再 `cap sync`，否则打进 APK 的是上一次的前端产物 ——
 `pnpm build:android` 就是把这两步串在一起，让这条依赖没机会被跳过。
 
-应用图标、启动图与 web favicon 都由 `packages/desktop/resources/icon*.svg` 派生，统一交给
+应用图标、启动画面图形与 web favicon 都由 `packages/desktop/resources/icon*.svg` 派生，统一交给
 `scripts/generate-icons.sh` 生成（`pnpm verify:brand` 校验一致性，CI 的 android job 已接入）。
-换品牌图形时改 SVG 后重跑一次即可，不要单独去改 `res/drawable*/splash.png` 或 mipmap：
-启动图曾长期停留在 Capacitor 模板的白底占位图上，根因就是那次「替换全平台图标」漏掉了
-这一组派生资源，而当时没有任何东西会提示漏了。
+换品牌图形时改 SVG 后重跑一次即可，不要单独去改 `res/drawable*/splash_logo.png` 或 mipmap：
+这些派生资源一旦各管各的，漏一处没有任何东西会提示（车机开屏就曾长期停在 Capacitor 模板的
+白底占位图上）。
+
+Android 启动画面由 `res/drawable/splash.xml` 的 layer-list 拼出来——纯色底 + 居中的正方形
+`splash_logo.png`，**不是整屏位图**：整屏 png 会被按窗口尺寸拉伸，而位图宽高比固定、屏幕宽高比
+不固定（车机竖屏实测 0.69，10 寸车机常见 800x1280 / 1280x800），图里的牌子会被横着拉宽约
+1.3 倍。图形边长由 `generate-icons.sh` 的 `SPLASH_LOGO_DP` 决定（192dp，与 Android 12 系统启动
+画面的图标尺寸一致），要调大小就改它再重跑脚本。
 
 ## 多语言开发
 

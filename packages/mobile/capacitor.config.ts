@@ -22,6 +22,13 @@ const config: CapacitorConfig = {
       // 启动图 → 窗口背景 → 主界面若不同色，冷启动会看到三层色块跳变
       backgroundColor: '#0A0A0A',
       showSpinner: false,
+      // 启动画面本身是 res/drawable/splash.xml（layer-list：纯色底 + 居中正方形
+      // 图形），插件按名字 splash（本项默认值）找它。两件事别动：
+      //   · androidScaleType 保持默认 FIT_XY —— layer-list 需要铺满窗口，换成
+      //     CENTER_INSIDE 之类会让纯色底一起缩掉，反而露出系统窗口底色；
+      //   · 别把 splash 换回整屏位图 —— 位图宽高比固定、屏幕宽高比不固定，
+      //     图里的牌子会被拉伸（车机竖屏上就是这么被拉宽 ~1.3 倍的）。
+      androidSplashResourceName: 'splash',
     },
     StatusBar: {
       // Style 描述的是**图标颜色**，不是背景明暗：

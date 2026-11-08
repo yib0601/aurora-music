@@ -4,10 +4,10 @@
 #   bash scripts/generate-icons.sh          生成全部派生资源
 #   bash scripts/generate-icons.sh --check  只校验派生资源是否与 SVG 源同代（CI / 发布前用）
 #
-# 为什么启动图也归这里管：res/drawable*/splash.png 曾是 Capacitor 模板自带的白底
-# 占位图，2026-09 那次「替换全平台图标」只覆盖了 mipmap 与桌面图标，车机开屏
-# 因此长期停在旧图上且没有任何提示。凡是「从品牌 SVG 派生的位图」都收口到本
-# 脚本，`--check` 就是防止下次再漏一处的闸门（CI 的 android job 会跑它）。
+# 为什么开屏图形也归这里管：res/drawable-*/splash_logo.png 是启动画面里那块品
+# 牌图形，与 mipmap、桌面图标一样都是从品牌 SVG 派生的位图。派生资源各自为政
+# 过一次（车机开屏长期停在 Capacitor 模板白底图上，全靠人肉发现），所以统一收
+# 口到本脚本，`--check` 就是防止下次再漏一处的闸门（CI 的 android job 会跑它）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,18 +24,20 @@ SVG_FULL="$RES/icon-full.svg"    # 全幅版：Android 自适应图标前景
 #   packages/mobile/capacitor.config.ts                         (SplashScreen.backgroundColor)
 SPLASH_BG='#0A0A0A'
 
-# Capacitor 模板约定的 11 张启动图规格：横竖各 5 档密度 + 无方向限定的兜底张。
-# 车机是横屏大屏，实际命中的是 land-* 与 drawable/ 兜底那两张。
-declare -A SPLASH_PORT=( [mdpi]='320x480' [hdpi]='480x800' [xhdpi]='720x1280' [xxhdpi]='960x1600' [xxxhdpi]='1280x1920' )
-declare -A SPLASH_LAND=( [mdpi]='480x320' [hdpi]='800x480' [xhdpi]='1280x720' [xxhdpi]='1600x960' [xxxhdpi]='1920x1280' )
-SPLASH_FALLBACK='480x320'
+# 启动画面里的品牌图形：正方形，边长 192dp —— 与 Android 12 系统启动画面
+# （windowSplashScreenAnimatedIcon 可见区 192dp）同尺寸；车机 hdpi 落在 800~1280px
+# 宽的竖屏上约占 29%~22%。
+#
+# 只出正方形、只出这一块图形，不出口「整屏位图」：整屏 png 会被框架按窗口尺寸
+# 拉伸，位图宽高比固定（10:16）而车机屏宽高比五花八门（竖屏实测 0.69），牌子就
+# 被横着拉宽约 1.3 倍（2026-11 车机实拍 280x208 的图形，本该 1:1）。窗口背景改
+# 由 res/drawable/splash.xml 的 layer-list 拼：纯色底 + 居中本图，layer-list 每层
+# 按自己的尺寸绘制，与屏幕宽高比再无关系。
+SPLASH_LOGO_DP=192
+declare -A SPLASH_LOGO=( [mdpi]=192 [hdpi]=288 [xhdpi]=384 [xxhdpi]=576 [xxxhdpi]=768 )
 
 declare -A ICON_SIZE=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
 DENSITIES=(mdpi hdpi xhdpi xxhdpi xxxhdpi)
-
-# 启动图里品牌图形占屏幕短边的比例：过大像壁纸、过小显空。30% 与 Android 12
-# 系统启动画面（288dp 图标 / 短边约 720dp）的观感一致。
-SPLASH_ICON_PCT=30
 
 CHECK=0
 [[ "${1:-}" == "--check" ]] && CHECK=1
@@ -47,48 +49,57 @@ info() { printf '  %s\n' "$1"; }
 
 rel() { printf '%s' "${1#"$ROOT"/}"; }
 
-# 启动图几何：短边（无论横竖）的 30%，取偶数边长，避免奇偶缩放产生半像素模糊。
-splash_geom() { # $1 = WxH → 打印 "W H ICON"
-  local wh=$1 w=${1%x*} h=${1#*x}
-  local short=$(( w < h ? w : h ))
-  echo "$w $h $(( short * SPLASH_ICON_PCT / 100 / 2 * 2 ))"
-}
-
 # ─────────────────────────── 校验模式 ───────────────────────────
 if [[ $CHECK -eq 1 ]]; then
   command -v identify >/dev/null || { echo "需要 ImageMagick（identify）"; exit 1; }
 
   echo "== 品牌资源校验 =="
 
-  # 1) 启动图：尺寸 + 底色。旧模板图是白底（均值≈1.0），新图是 #0A0A0A 深底
-  #    （均值≈0.05），用均值判据即可在不做像素格式解析的前提下把旧图挡在门外。
-  check_splash() {
-    local out=$1 wh=$2
-    local -a geom
-    read -r -a geom <<<"$(splash_geom "$wh")"
-    local w=${geom[0]} h=${geom[1]}
-    if [[ ! -f "$out" ]]; then fail "缺少 $(rel "$out")"; return; fi
-    local dims mean
-    dims=$(identify -format '%wx%h' "$out")
-    if [[ "$dims" != "$wh" ]]; then
-      fail "$(rel "$out") 尺寸 $dims，期望 $wh"
-      return
-    fi
-    mean=$(identify -format '%[fx:mean]' "$out")
-    if ! awk -v m="$mean" 'BEGIN{exit !(m < 0.35)}'; then
-      fail "$(rel "$out") 底色偏亮（均值 $mean）——疑似仍是 Capacitor 模板白底旧图"
-      return
-    fi
-    pass "$(rel "$out") ${w}x${h}"
-  }
+  # 1) 启动画面：窗口背景 splash.xml（layer-list）+ 各密度正方形图形 splash_logo.png。
+  #    这两样是「开屏不随屏幕宽高比变形」的唯一保证：图形在 layer-list 里走
+  #    <bitmap gravity="center">，按自身像素居中绘制、不参与窗口尺寸缩放；谁要是
+  #    又塞回整屏 png 当窗口背景，图形立刻重新被拉伸，所以下面几条都硬卡。
+  splash_xml="$ANDROID_RES/drawable/splash.xml"
+  if [[ ! -f "$splash_xml" ]]; then
+    fail "缺少 $(rel "$splash_xml")"
+  else
+    xml_ok=1
+    grep -q '@color/aurora_window_bg' "$splash_xml" \
+      || { fail "$(rel "$splash_xml") 未引用 @color/aurora_window_bg（底色须与窗口同源）"; xml_ok=0; }
+    grep -q '@drawable/splash_logo' "$splash_xml" \
+      || { fail "$(rel "$splash_xml") 未引用 @drawable/splash_logo"; xml_ok=0; }
+    grep -q 'android:gravity="center"' "$splash_xml" \
+      || { fail "$(rel "$splash_xml") 图形未居中（缺 android:gravity=\"center\"）"; xml_ok=0; }
+    [[ $xml_ok -eq 1 ]] && pass "$(rel "$splash_xml") layer-list"
+  fi
 
+  leftover=$(find "$ANDROID_RES" -name 'splash.png' | sort)
+  if [[ -n "$leftover" ]]; then
+    fail "res 下仍有整屏启动图（会被按窗口尺寸拉伸，改用 drawable/splash.xml）：$(echo "$leftover" | tr '\n' ' ')"
+  fi
+
+  #    图形本身：正方形 + 尺寸对着密度档位 + 不是 Capacitor 模板白底图
+  #    （白底均值≈1.0，品牌图是深底 + 亮带，均值明显更低）。
+  check_splash_logo() {
+    local out=$1 size=$2
+    if [[ ! -f "$out" ]]; then fail "缺少 $(rel "$out")"; return; fi
+    local dims
+    dims=$(identify -format '%wx%h' "$out")
+    if [[ "$dims" != "${size}x${size}" ]]; then
+      fail "$(rel "$out") 尺寸 $dims，期望正方形 ${size}x${size}"
+      return
+    fi
+    local mean
+    mean=$(identify -format '%[fx:mean]' "$out")
+    if awk -v m="$mean" 'BEGIN{exit !(m > 0.8)}'; then
+      fail "$(rel "$out") 近似纯白——疑为 Capacitor 模板图形"
+      return
+    fi
+    pass "$(rel "$out") ${size}x${size}"
+  }
   for d in "${DENSITIES[@]}"; do
-    check_splash "$ANDROID_RES/drawable-port-$d/splash.png" "${SPLASH_PORT[$d]}"
+    check_splash_logo "$ANDROID_RES/drawable-$d/splash_logo.png" "${SPLASH_LOGO[$d]}"
   done
-  for d in "${DENSITIES[@]}"; do
-    check_splash "$ANDROID_RES/drawable-land-$d/splash.png" "${SPLASH_LAND[$d]}"
-  done
-  check_splash "$ANDROID_RES/drawable/splash.png" "$SPLASH_FALLBACK"
 
   # 2) Android 自适应图标：尺寸 + 非白底（模板默认图标是白底绿机器人）
   check_mipmap() {
@@ -197,23 +208,14 @@ done
 # adaptive icon 背景色 = 夜空底色
 sed -i 's|#FFFFFF|#0A1128|' "$ANDROID_RES/values/ic_launcher_background.xml"
 
-echo "== Android 启动图 =="
-gen_splash() { # $1 = 目标文件, $2 = WxH
-  local out=$1 wh=$2
-  local -a geom
-  read -r -a geom <<<"$(splash_geom "$wh")"
-  local w=${geom[0]} h=${geom[1]} icon=${geom[2]}
-  # 底色铺满 + 品牌图形居中：与窗口背景同色，冷启动到首帧之间看不到色块跳变。
-  # PNG24（无 alpha）体积更小，启动时解码更快。
-  IM -background "$SPLASH_BG" "$SVG_ROUND" \
-    -resize "${icon}x${icon}" -gravity center -extent "${w}x${h}" PNG24:"$out"
-}
+echo "== Android 启动画面图形 =="
+# 正方形、保留 alpha：圆角外露出的透明角由 drawable/splash.xml 的纯色底层补上。
 for d in "${DENSITIES[@]}"; do
-  gen_splash "$ANDROID_RES/drawable-port-$d/splash.png" "${SPLASH_PORT[$d]}"
-  gen_splash "$ANDROID_RES/drawable-land-$d/splash.png" "${SPLASH_LAND[$d]}"
-  echo "  $d: port ${SPLASH_PORT[$d]} / land ${SPLASH_LAND[$d]}"
+  size=${SPLASH_LOGO[$d]}
+  mkdir -p "$ANDROID_RES/drawable-$d"
+  IM -background none "$SVG_ROUND" -resize "${size}x${size}" PNG32:"$ANDROID_RES/drawable-$d/splash_logo.png"
+  echo "  $d: ${size}px"
 done
-gen_splash "$ANDROID_RES/drawable/splash.png" "$SPLASH_FALLBACK"
 
 echo "== Web favicon =="
 mkdir -p "$APP_PUBLIC"
