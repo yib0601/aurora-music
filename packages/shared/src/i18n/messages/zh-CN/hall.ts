@@ -66,6 +66,11 @@ const hall = {
     savedWithSource: '下载完成\n已保存到：{path}\n音源：{name}',
     setDefaultDir: '设为默认下载目录',
     defaultDirSaved: '后续下载将直接保存到「{dir}」，可在「设置 → 下载」中修改',
+    /**
+     * 降级说明：追加在「下载完成」成功提示的末尾（另起一行）。
+     * 语气是如实告知而非报错——文件确实下载成功了，只是档位比用户选的低。
+     */
+    downgraded: '音质未达所选档位：你选择的是{requested}，实际下载为{actual}',
   },
 }
 

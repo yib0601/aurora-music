@@ -94,6 +94,8 @@ const settings = {
       standard: '标准 128k',
       high: '高品质 320k',
       lossless: '无损 FLAC',
+      /** 档位展示名：下载完成提示里「实际档位」的有损兜底说法（有损但判不出具体码率） */
+      lossy: '有损（档位未知）',
     },
     downloadDir: {
       label: '下载目录',

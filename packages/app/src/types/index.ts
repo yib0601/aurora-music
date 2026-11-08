@@ -120,6 +120,18 @@ export interface Track {
   coverUrl?: string
   /** 多音质地址（源提供时才有；键为音质档位 128 / 320 / flac），下载时按音质设置挑选 */
   onlineQualityUrls?: Partial<Record<DownloadQuality, string>>
+  /**
+   * 这条音频的**实际档位**原始声明（源提供的 quality 原样保存，可能是 "320" /
+   * "flac" / "flac24bit" / 空，兜底源还会给认不出的值）。
+   *
+   * 为什么要存：源经常在请求 flac 时给出 C400 的 m4a（有损），却把多音质地址留空或
+   * 只给低档 —— 光看 `onlineUrl` 的扩展名只能说「有损」，说不出档位，降级提示就无从
+   * 判断。这里只原样携带，归一与比较统一交给 shared 的 `inferAudioTier`。
+   *
+   * 生命周期与 `onlineUrl` 一致（它是这次取址的属性，直链过期后不再成立），
+   * 持久化时一起剥离（见 playerStore.stripOnlineUrl / libraryStore.addRecentPlayed）。
+   */
+  onlineQuality?: string
   /** 来源标识（源配置的 id） */
   onlineSource?: string
   /** 来源展示名（源配置的 name） */
@@ -285,6 +297,16 @@ export interface PlatformInterface {
    * 只读：不写库、不落盘。
    */
   resolveTrackAudio(track: Track): Promise<Track | null>
+  /**
+   * 跨源脚本取址（可选能力）：脚本源声明了自己认领的平台（`OnlineSourceConfig.platform`）时，
+   * 把**别的源**搜到的同平台曲目交给它按源内 id 现取直链，回填副本的 `onlineUrl`。
+   *
+   * 为什么需要它：洛雪自定义脚本大多只实现 `musicUrl`、不实现 `search`，所以「搜歌」仍由
+   * 常规音源服务负责，脚本只在播放/下载时提供更优（或唯一可用）的直链。
+   * 失败一律返回 null 且不抛错，调用方回落曲目原有地址 —— 缺这条能力的环境（web / 未知环境）
+   * 不实现该方法即可，调用方据「方法是否存在」跳过。
+   */
+  resolveScriptTrackAudio?(track: Track): Promise<Track | null>
   database: DatabaseAdapter
   windowControls: WindowControls
 }

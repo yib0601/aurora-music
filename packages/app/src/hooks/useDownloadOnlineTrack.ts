@@ -49,6 +49,12 @@ export function useDownloadOnlineTrack() {
       await runOnlineDownload(track, {
         // 动态导入 playlistIO：它与 stores 互相引用，静态引入会拉进详情页首屏包
         resolveTrack: async (t) => (await import('@/services/playlistIO.service')).ensurePlayableTrack(t),
+        // 所选档位没满足时再取一次址：reResolve 会忽略曲目上已有的低档地址，
+        // 先按 id 重取、再按名搜索，且只接受不低于设置档位的候选（详见 EnsurePlayableTrackOptions）
+        attemptRequestedQuality: async (target) => {
+          const { ensurePlayableTrack } = await import('@/services/playlistIO.service')
+          return ensurePlayableTrack(target, { reResolve: true })
+        },
         downloadFile: (payload, headers, downloadDir) => downloadFile(payload, headers, downloadDir),
         config: () => {
           const s = useLibraryStore.getState()

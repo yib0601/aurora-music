@@ -147,3 +147,206 @@ describe('runOnlineDownload', () => {
     expect(calls.notify[0][1].type).toBe('error')
   })
 })
+// ─── 音质：优先满足所选档位 + 降级提示 ────────────────────────────
+// 线上实测形态：请求 flac 时 audioUrl 常是 C400 的 m4a（服务端声明 quality:"320"），
+// qualityUrls 只有 128 或为空。用户设了 flac 却下到 m4a，且界面完全没有提示。
+
+describe('runOnlineDownload 音质档位', () => {
+  /** 兜底源给的低档地址：声明 320，但只有 m4a 文件 */
+  const lossyNow = (partial: Partial<Track> = {}) =>
+    track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/C400.m4a',
+      onlineQuality: '320',
+      ...partial,
+    })
+
+  it('audioUrl 是 flac、qualityUrls 只有 128 → 直接下 flac，不做降级提示', async () => {
+    const resolved = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/x.flac',
+      onlineQualityUrls: { '128': 'https://cdn/x-128.m4a' },
+    })
+    const attempt = vi.fn(async () => null)
+    const { deps, calls } = makeDeps({
+      resolveTrack: vi.fn(async () => resolved),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: attempt,
+    })
+
+    expect(await runOnlineDownload(track({ onlineSource: 'src-1' }), deps)).toBe('saved')
+    expect(calls.files[0].audioUrl).toBe('https://cdn/x.flac')
+    // 已满足所选档位：不必再取址，也不能提示降级
+    expect(attempt).not.toHaveBeenCalled()
+    expect(calls.notify[0][0]).not.toContain('音质未达所选档位')
+  })
+
+  it('再取址成功升档 → 用更高档的地址下载，且不提示降级', async () => {
+    const upgraded = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/x.flac',
+      onlineQuality: 'flac',
+    })
+    const { deps, calls } = makeDeps({
+      resolveTrack: vi.fn(async () => lossyNow()),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: vi.fn(async () => upgraded),
+    })
+
+    expect(await runOnlineDownload(track({ onlineSource: 'src-1' }), deps)).toBe('saved')
+    expect(calls.files[0].audioUrl).toBe('https://cdn/x.flac')
+    expect(calls.notify[0][0]).toContain('下载完成')
+    expect(calls.notify[0][0]).not.toContain('音质未达所选档位')
+  })
+
+  it('再取址失败仍降级 → 照原候选下载，成功提示里追加降级说明（类型仍是 success）', async () => {
+    const { deps, calls } = makeDeps({
+      resolveTrack: vi.fn(async () => lossyNow()),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: vi.fn(async () => null),
+    })
+
+    expect(await runOnlineDownload(track({ onlineSource: 'src-1' }), deps)).toBe('saved')
+    expect(calls.files[0].audioUrl).toBe('https://cdn/C400.m4a')
+    const [message, options] = calls.notify[0]
+    expect(message).toContain('下载完成')
+    expect(message).toContain('音质未达所选档位')
+    // {requested} / {actual} 都渲染成了档位展示名（不是占位符原文）
+    expect(message).toContain('无损 FLAC')
+    expect(message).toContain('高品质 320k')
+    expect(message).not.toContain('{requested}')
+    expect(message).not.toContain('{actual}')
+    expect(options?.type ?? 'success').toBe('success')
+  })
+
+  it('再取址返回更差的档位 → 不替换，仍用原候选并提示降级', async () => {
+    const worse = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/x-128.m4a',
+      onlineQualityUrls: { '128': 'https://cdn/x-128.m4a' },
+    })
+    const { deps, calls } = makeDeps({
+      // 原始候选已是 320：再取址拿回 128 属于「更差」，必须丢弃
+      resolveTrack: vi.fn(async () => lossyNow()),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: vi.fn(async () => worse),
+    })
+
+    await runOnlineDownload(track({ onlineSource: 'src-1' }), deps)
+    expect(calls.files[0].audioUrl).toBe('https://cdn/C400.m4a')
+    expect(calls.notify[0][0]).toContain('音质未达所选档位')
+  })
+
+  it('再取址抛错 → 不影响下载，按原候选下载并提示降级', async () => {
+    const { deps, calls } = makeDeps({
+      resolveTrack: vi.fn(async () => lossyNow()),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: vi.fn(async () => {
+        throw new Error('网络请求失败')
+      }),
+    })
+
+    expect(await runOnlineDownload(track({ onlineSource: 'src-1' }), deps)).toBe('saved')
+    expect(calls.files[0].audioUrl).toBe('https://cdn/C400.m4a')
+    expect(calls.notify[0][0]).toContain('音质未达所选档位')
+  })
+
+  it('请求 320 只有 128 → 判降级并提示；请求 128 下载 128 → 不提示', async () => {
+    const only128 = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/x-128.m4a',
+      onlineQualityUrls: { '128': 'https://cdn/x-128.m4a' },
+    })
+    const ask320 = makeDeps({
+      resolveTrack: vi.fn(async () => only128),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: '320' as const }),
+    })
+    await runOnlineDownload(track({ onlineSource: 'src-1' }), ask320.deps)
+    expect(ask320.calls.files[0].audioUrl).toBe('https://cdn/x-128.m4a')
+    expect(ask320.calls.notify[0][0]).toContain('音质未达所选档位')
+
+    const ask128 = makeDeps({
+      resolveTrack: vi.fn(async () => only128),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: '128' as const }),
+    })
+    await runOnlineDownload(track({ onlineSource: 'src-1' }), ask128.deps)
+    expect(ask128.calls.files[0].audioUrl).toBe('https://cdn/x-128.m4a')
+    expect(ask128.calls.notify[0][0]).not.toContain('音质未达所选档位')
+  })
+
+  it('源切换文案与降级说明共存：两句都在（不互相吞掉）', async () => {
+    const other = track({
+      onlineSource: 'src-9',
+      onlineSourceName: 'OTHER',
+      onlineUrl: 'https://cdn/C400.m4a',
+      onlineQuality: '320',
+    })
+    const { deps, calls } = makeDeps({
+      resolveTrack: vi.fn(async () => other),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: vi.fn(async () => null),
+    })
+
+    await runOnlineDownload(track({ onlineSource: 'src-1', onlineSourceName: 'MY' }), deps)
+    expect(calls.notify[0][0]).toContain('音源：OTHER')
+    expect(calls.notify[0][0]).toContain('音质未达所选档位')
+  })
+})
+
+describe('runOnlineDownload 部分提升（128 → 320）', () => {
+  it('再取址只升到 320 也替换：不追求满分升档，但拿到更高就用，并如实提示仍降级', async () => {
+    const only128 = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/x-128.m4a',
+      onlineQualityUrls: { '128': 'https://cdn/x-128.m4a' },
+    })
+    const partial320 = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/C400.m4a',
+      onlineQuality: '320',
+    })
+    const { deps, calls } = makeDeps({
+      resolveTrack: vi.fn(async () => only128),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: vi.fn(async () => partial320),
+    })
+
+    await runOnlineDownload(track({ onlineSource: 'src-1' }), deps)
+
+    // 320 > 128：tierRank 更高就替换（不必等到 flac）
+    expect(calls.files[0].audioUrl).toBe('https://cdn/C400.m4a')
+    // 相对所选档位仍偏低，提示照旧
+    expect(calls.notify[0][0]).toContain('音质未达所选档位')
+    expect(calls.notify[0][0]).toContain('高品质 320k')
+  })
+
+  it('再取址返回同档（320 → 320 的另一条）不替换：避免把稳定的原候选换成未知来源', async () => {
+    const already320 = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/orig.mp3',
+      onlineQuality: '320',
+    })
+    const sameTier = track({
+      onlineSource: 'src-1',
+      onlineSourceName: 'MY',
+      onlineUrl: 'https://cdn/other.mp3',
+      onlineQuality: '320',
+    })
+    const { deps, calls } = makeDeps({
+      resolveTrack: vi.fn(async () => already320),
+      config: () => ({ sources: [SOURCE], downloadDir: '/home/yibin/Music', quality: 'flac' as const }),
+      attemptRequestedQuality: vi.fn(async () => sameTier),
+    })
+
+    await runOnlineDownload(track({ onlineSource: 'src-1' }), deps)
+    expect(calls.files[0].audioUrl).toBe('https://cdn/orig.mp3')
+  })
+})

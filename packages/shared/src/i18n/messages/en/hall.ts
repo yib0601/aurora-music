@@ -54,6 +54,8 @@ const en: LocalizedOf<typeof hall> = {
     setDefaultDir: 'Set as default download folder',
     defaultDirSaved:
       'Future downloads will be saved directly to "{dir}". You can change this in Settings → Downloads.',
+    /** Appended as a new line to the success toast; the file did download, just not at the chosen tier */
+    downgraded: 'Quality lower than selected: you chose {requested}, downloaded {actual}',
   },
 }
 

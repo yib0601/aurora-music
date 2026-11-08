@@ -102,7 +102,14 @@ export {
   musicHallEndpointOf,
 } from './musicHall'
 export type { ToplistDetail } from './musicHall'
-export { sanitizeFileName, inferAudioExtFromUrl } from './downloadUtils'
+export {
+  sanitizeFileName,
+  inferAudioExtFromUrl,
+  inferAudioTier,
+  tierRank,
+  isDowngraded,
+} from './downloadUtils'
+export type { AudioTier } from './downloadUtils'
 export {
   encodeFilePathToUrl,
   decodeFileUrlToPath,

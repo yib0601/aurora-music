@@ -118,10 +118,12 @@ export const usePlaylistStore = create<PlaylistState>()(
         playlists: state.playlists,
         currentPlaylistId: state.currentPlaylistId,
         showQueuePanel: state.showQueuePanel,
-        // 在线播放地址会过期：落盘时剥离，播放时按需重新搜索
+        // 在线播放地址会过期：落盘时剥离，播放时按需重新搜索。
+        // onlineQuality 描述的是「那一次取址拿到的档位」，地址剥了它就不成立（否则
+        // 下次取址若源没回 quality，残留的旧档位会让降级判断按错误档位走）。
         importedTracks: Object.fromEntries(
           Object.entries(state.importedTracks).map(([id, t]) => {
-            const { onlineUrl: _omit, ...rest } = t
+            const { onlineUrl: _omit, onlineQuality: _omitQuality, ...rest } = t
             return [id, rest as Track]
           })
         ),

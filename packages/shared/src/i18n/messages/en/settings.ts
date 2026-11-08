@@ -63,6 +63,8 @@ const en: LocalizedOf<typeof settings> = {
       standard: 'Standard 128k',
       high: 'High 320k',
       lossless: 'Lossless FLAC',
+      /** Display name for a lossy tier whose bitrate cannot be inferred */
+      lossy: 'Lossy (unknown bitrate)',
     },
     downloadDir: {
       label: 'Download folder',

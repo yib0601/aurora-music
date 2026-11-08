@@ -1,7 +1,26 @@
-import { toErrorInfo, translateError } from '@aurora/shared'
+import { toErrorInfo, translateError, isDowngraded, tierRank, type AudioTier } from '@aurora/shared'
 import { appTranslate } from '@/i18n'
-import { pickDownloadUrl } from '@/lib/onlineTrack'
+import { pickDownloadCandidate } from '@/lib/onlineTrack'
 import type { Track, DownloadQuality, OnlineSourceConfig } from '@/types'
+
+/**
+ * 档位展示名：设置页已有 128 / 320 / flac 三个标签就复用，只补一个有损兜底说法。
+ *
+ * `unknown` 实际不会进入降级提示（见 shared 的 isDowngraded：判不出档位就不算降级），
+ * 这里归到有损说法纯属防御。
+ */
+function tierLabelOf(tier: AudioTier, t: ReturnType<typeof appTranslate>): string {
+  switch (tier) {
+    case 'flac':
+      return t('settings.storage.downloadQuality.lossless')
+    case '320':
+      return t('settings.storage.downloadQuality.high')
+    case '128':
+      return t('settings.storage.downloadQuality.standard')
+    default:
+      return t('settings.storage.downloadQuality.lossy')
+  }
+}
 
 /**
  * 「用户主动中止」的判据：既不算失败、也不报错。
@@ -31,6 +50,14 @@ export type OnlineDownloadOutcome = 'saved' | 'no-source' | 'cancelled' | 'faile
 export interface OnlineDownloadDeps {
   /** 按需取址（同 ensurePlayableTrack）；取不到返回 null */
   resolveTrack: (track: Track) => Promise<Track | null>
+  /**
+   * 「按用户所选档位再取一次址」（可选）：入参是**已经取过址、带元信息的那条曲目**
+   * （它可能自带一条低档 onlineUrl），返回档位更高的新候选；没升上去返回 null。
+   *
+   * 实现在 useDownloadOnlineTrack 里，走 `ensurePlayableTrack(track, { reResolve: true })`：
+   * 跳过「已有地址就早退」，按 id 重取 + 按名搜索，且只接受不低于设置档位的候选。
+   */
+  attemptRequestedQuality?: (track: Track, quality: DownloadQuality) => Promise<Track | null>
   /** 实际下载，返回保存路径 */
   downloadFile: (
     payload: { audioUrl: string; title: string; artist?: string; album?: string; coverUrl?: string },
@@ -77,6 +104,29 @@ export async function runOnlineDownload(track: Track, deps: OnlineDownloadDeps):
   }
 
   const { sources, downloadDir, quality } = deps.config()
+
+  // 先挑候选：既拿到地址，也拿到这条地址的**实际档位**（降级提示与再取址都依赖它）。
+  // 只按 qualityUrls 挑是旧实现的缺陷：无损链接被放在 audioUrl 时会静默下到低档。
+  let candidate = pickDownloadCandidate(resolved, quality)
+
+  // 所选档位没满足：按用户档位再取一次址（按 id 重取 + 按名搜索），
+  // **只有档位真的更高才替换**——再取址拿回同样或更差的地址就保留原候选，
+  // 免得本来能下的低档也没了。
+  if (isDowngraded(candidate.tier, quality) && deps.attemptRequestedQuality) {
+    try {
+      const upgraded = await deps.attemptRequestedQuality(resolved, quality)
+      if (upgraded?.onlineUrl) {
+        const upgradedCandidate = pickDownloadCandidate(upgraded, quality)
+        if (tierRank(upgradedCandidate.tier) > tierRank(candidate.tier)) {
+          resolved = upgraded
+          candidate = upgradedCandidate
+        }
+      }
+    } catch {
+      // 升档尝试失败不算下载失败：照原候选下，并在完成提示里注明档位
+    }
+  }
+
   const source = sources.find((s) => s.id === resolved.onlineSource)
   const sourceSwitched =
     !!track.onlineSourceName &&
@@ -87,7 +137,7 @@ export async function runOnlineDownload(track: Track, deps: OnlineDownloadDeps):
     const { savedPath } = await deps.downloadFile(
       // 带上专辑与封面地址：下载完成后封面随文件嵌入（源直链的音频大多无内嵌封面）
       {
-        audioUrl: pickDownloadUrl(resolved, quality),
+        audioUrl: candidate.url,
         title: resolved.title,
         artist: resolved.artist,
         album: resolved.album,
@@ -103,14 +153,23 @@ export async function runOnlineDownload(track: Track, deps: OnlineDownloadDeps):
       ? t('hall.download.savedWithSource', { path: savedPath, name: resolved.onlineSourceName ?? '' })
       : t('hall.download.saved', { path: savedPath })
 
+    // 档位仍低于所选：在成功提示末尾另起一行如实标注（弹窗类型仍是 success —— 文件确实下好了）。
+    // 单独一行而不是塞进主句：主句的语序与标点各语言不同，塞进去迟早翻车。
+    const finalMessage = isDowngraded(candidate.tier, quality)
+      ? `${savedMessage}\n${t('hall.download.downgraded', {
+          requested: tierLabelOf(quality, t),
+          actual: tierLabelOf(candidate.tier, t),
+        })}`
+      : savedMessage
+
     if (downloadDir || !deps.isDesktop) {
-      deps.notify(savedMessage)
+      deps.notify(finalMessage)
     } else {
       // 桌面端本次走了保存对话框：提供「设为默认下载目录」操作，点击后不再每次询问。
       // 移动端没有这个快捷入口——移动端的下载目录是手机存储内的相对路径，
       // 从绝对保存路径反推会存成绝对路径，配置统一走「设置 → 下载 → 默认下载目录」。
       const dir = savedPath.replace(/[\\/][^\\/]*$/, '')
-      deps.notify(savedMessage, {
+      deps.notify(finalMessage, {
         action: {
           label: t('hall.download.setDefaultDir'),
           onClick: () => {

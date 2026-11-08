@@ -1,4 +1,11 @@
-import { MAX_FILENAME_BYTES, inferAudioExtFromUrl, sanitizeFileName } from '../downloadUtils'
+import {
+  MAX_FILENAME_BYTES,
+  inferAudioExtFromUrl,
+  inferAudioTier,
+  isDowngraded,
+  sanitizeFileName,
+  tierRank,
+} from '../downloadUtils'
 
 /** 按 UTF-8 计算字节数 */
 const bytesOf = (text: string): number => new TextEncoder().encode(text).length
@@ -236,5 +243,125 @@ describe('inferAudioExtFromUrl 回归', () => {
   it('未知扩展名回退 .mp3', () => {
     expect(inferAudioExtFromUrl('https://a.com/b/c.txt')).toBe('.mp3')
     expect(inferAudioExtFromUrl('not a url')).toBe('.mp3')
+  })
+})
+
+// ─── 音质档位推断 ────────────────────────────────────────────────
+// 这些用例对应线上实测形态：请求 flac 时 audioUrl 常常是 C400 的 m4a（有损，
+// 服务端声明 quality:"320"），qualityUrls 只有 128 甚至为空。
+
+describe('inferAudioTier 多音质地址优先', () => {
+  it('qualityUrls 里取最高档的键', () => {
+    expect(inferAudioTier({ qualityUrls: { '128': 'u128', '320': 'u320', flac: 'uflac' } })).toBe('flac')
+    expect(inferAudioTier({ qualityUrls: { '128': 'u128', '320': 'u320' } })).toBe('320')
+    expect(inferAudioTier({ qualityUrls: { '128': 'u128' } })).toBe('128')
+  })
+
+  it('qualityUrls 只有空值时不被当成有档位', () => {
+    expect(inferAudioTier({ qualityUrls: { '128': '' }, url: 'https://a/x.flac' })).toBe('flac')
+  })
+
+  it('qualityUrls 优先于 declared 与 URL 扩展名（源自己分过的档最可信）', () => {
+    expect(
+      inferAudioTier({ qualityUrls: { '320': 'u320' }, declared: 'flac', url: 'https://a/x.flac' })
+    ).toBe('320')
+  })
+})
+
+describe('inferAudioTier 源声明归一', () => {
+  it.each([
+    ['flac', 'flac'],
+    ['flac24bit', 'flac'],
+    ['hires', 'flac'],
+    ['320', '320'],
+    ['256', '320'],
+    ['128', '128'],
+  ])('声明 %s 归一为 %s', (declared, expected) => {
+    expect(inferAudioTier({ declared, url: 'https://a/x.mp3' })).toBe(expected)
+  })
+
+  it('大小写与空白不影响归一', () => {
+    expect(inferAudioTier({ declared: ' FLAC ' })).toBe('flac')
+    expect(inferAudioTier({ declared: 'HiRes' })).toBe('flac')
+  })
+
+  it('认不出的声明被忽略，继续看 URL 扩展名', () => {
+    expect(inferAudioTier({ declared: 'unknown', url: 'https://a/x.m4a' })).toBe('lossy')
+    expect(inferAudioTier({ declared: '', url: 'https://a/x.flac' })).toBe('flac')
+  })
+
+  it('declared 优先于 URL 扩展名', () => {
+    // 服务端把 320 的地址套在 .flac 扩展名下（或反之）时，以源声明为准
+    expect(inferAudioTier({ declared: '320', url: 'https://a/x.flac' })).toBe('320')
+  })
+})
+
+describe('inferAudioTier URL 扩展名兜底', () => {
+  it('.flac 视作无损', () => {
+    expect(inferAudioTier({ url: 'https://a/b/x.FLAC' })).toBe('flac')
+    expect(inferAudioTier({ url: 'https://a/b/x.flac?token=1#t' })).toBe('flac')
+  })
+
+  it.each(['mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav'])(
+    '.%s 是有损但判不出档位 → lossy',
+    (ext) => {
+      expect(inferAudioTier({ url: `https://a/b/x.${ext}` })).toBe('lossy')
+    }
+  )
+
+  it('看不出扩展名 → unknown', () => {
+    expect(inferAudioTier({})).toBe('unknown')
+    expect(inferAudioTier({ url: '' })).toBe('unknown')
+    expect(inferAudioTier({ url: 'https://a/b/audio' })).toBe('unknown')
+    expect(inferAudioTier({ url: 'https://a/b/x.txt' })).toBe('unknown')
+    expect(inferAudioTier({ url: 'not a url' })).toBe('unknown')
+  })
+
+  it('非 URL 字符串也能按扩展名判定（解析失败走字符串切分）', () => {
+    expect(inferAudioTier({ url: '/data/x.m4a?x=1' })).toBe('lossy')
+    expect(inferAudioTier({ url: '/data/x.flac' })).toBe('flac')
+  })
+})
+
+describe('tierRank 档位高低', () => {
+  it('flac > 320 > 128/lossy > unknown', () => {
+    expect(tierRank('flac')).toBe(3)
+    expect(tierRank('320')).toBe(2)
+    expect(tierRank('128')).toBe(1)
+    expect(tierRank('lossy')).toBe(1)
+    expect(tierRank('unknown')).toBe(0)
+  })
+
+  it('单调性：档位越高 rank 越大', () => {
+    expect(tierRank('flac')).toBeGreaterThan(tierRank('320'))
+    expect(tierRank('320')).toBeGreaterThan(tierRank('128'))
+    expect(tierRank('128')).toBeGreaterThanOrEqual(tierRank('lossy'))
+    expect(tierRank('lossy')).toBeGreaterThan(tierRank('unknown'))
+  })
+})
+
+describe('isDowngraded 降级判定', () => {
+  it('请求 flac：320 / 128 / lossy 都算降级（m4a 的 AAC 也算）', () => {
+    expect(isDowngraded('flac', 'flac')).toBe(false)
+    expect(isDowngraded('320', 'flac')).toBe(true)
+    expect(isDowngraded('128', 'flac')).toBe(true)
+    expect(isDowngraded('lossy', 'flac')).toBe(true)
+  })
+
+  it('请求 320：只有 128 算降级', () => {
+    expect(isDowngraded('flac', '320')).toBe(false)
+    expect(isDowngraded('320', '320')).toBe(false)
+    expect(isDowngraded('128', '320')).toBe(true)
+  })
+
+  it('请求 128：没有更低档，永不降级', () => {
+    expect(isDowngraded('128', '128')).toBe(false)
+    expect(isDowngraded('unknown', '128')).toBe(false)
+    expect(isDowngraded('lossy', '128')).toBe(false)
+  })
+
+  it('unknown 一律不算降级（判不出来就别提示）', () => {
+    expect(isDowngraded('unknown', 'flac')).toBe(false)
+    expect(isDowngraded('unknown', '320')).toBe(false)
   })
 })

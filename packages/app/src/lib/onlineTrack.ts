@@ -1,3 +1,4 @@
+import { inferAudioTier, type AudioTier } from '@aurora/shared'
 import type { Track, DownloadQuality } from '@/types'
 
 /**
@@ -14,15 +15,99 @@ const QUALITY_FALLBACK: Record<DownloadQuality, DownloadQuality[]> = {
   flac: ['flac', '320', '128'],
 }
 
-/** 按下载音质设置挑选下载地址：源未提供多音质地址时直接用默认地址 */
-export function pickDownloadUrl(track: Track, preferred: DownloadQuality): string {
+/** 多音质地址的合法键（运行时数据来自服务端 JSON，不能信类型） */
+const QUALITY_KEYS: readonly DownloadQuality[] = ['128', '320', 'flac']
+
+/** 下载候选：地址 + 这条地址的实际档位 */
+export interface DownloadCandidate {
+  url: string
+  tier: AudioTier
+}
+
+/**
+ * 挑选下载候选所需的字段（结构类型，`Track` 天然满足）。
+ *
+ * 放宽成结构类型是为了让**搜索结果**（`OnlineTrackSearchResult`，字段名是
+ * audioUrl / qualityUrls / audioQuality）也能直接走同一口径：下载器与取址闸门
+ * 必须用同一个判据，否则会出现「闸门按 A 判、下载按 B 挑」的错位。
+ */
+export interface DownloadCandidateInput {
+  onlineUrl?: string
+  onlineQualityUrls?: Partial<Record<DownloadQuality, string>>
+  onlineQuality?: string
+}
+
+/** 排序用的中间结构：`fromAudioUrl` 只用于同档位内的先后（多音质地址优先） */
+interface RankedCandidate extends DownloadCandidate {
+  fromAudioUrl: boolean
+}
+
+/**
+ * 挑选下载候选（地址 + 档位），**优先满足所选档位**。
+ *
+ * 为什么不能只认 `qualityUrls`：真实音源（music.lighthouses.top 实测）在请求 flac 时
+ * 常常把**兜底源的有损地址**放在 `audioUrl`（C400 的 m4a / M500 的 mp3），而
+ * `qualityUrls` 只有本地低档甚至为空；反过来也有服务端把无损链接放 `audioUrl`、
+ * 只把本地低档放进 `qualityUrls` 的情况。只看其中一边，都会静默下到错误档位。
+ *
+ * 排序口径：
+ * 1. 先按 `QUALITY_FALLBACK[preferred]` 链的命中顺序（首选档位最前，链尾最后）；
+ * 2. 同一档位内多音质地址优先于 `audioUrl`（源按档位分过的地址比兜底地址可信）；
+ * 3. 链外档位（`lossy` / `unknown`，实际只可能是 `audioUrl`）一律排最后。
+ *
+ * 档位推断统一交给共享模块的 `inferAudioTier`（多音质地址键 → 源声明 → 扩展名）。
+ * 注意返回的 tier 是「**这条候选实际会被用到的档位**」：它优先看 qualityUrls 的键
+ * （下载器确实会挑那条地址），而不是单看 audioUrl 的扩展名。
+ */
+export function pickDownloadCandidate(
+  track: DownloadCandidateInput,
+  preferred: DownloadQuality
+): DownloadCandidate {
+  const chain = QUALITY_FALLBACK[preferred]
+  const chainIndex = (tier: AudioTier): number => {
+    const index = chain.indexOf(tier as DownloadQuality)
+    return index < 0 ? Number.POSITIVE_INFINITY : index
+  }
+
+  const candidates: RankedCandidate[] = []
   const urls = track.onlineQualityUrls
   if (urls) {
-    for (const q of QUALITY_FALLBACK[preferred]) {
-      if (urls[q]) return urls[q]!
+    for (const quality of QUALITY_KEYS) {
+      const url = urls[quality]
+      if (url) candidates.push({ url, tier: quality, fromAudioUrl: false })
     }
   }
-  return track.onlineUrl!
+  if (track.onlineUrl) {
+    candidates.push({
+      url: track.onlineUrl,
+      tier: inferAudioTier({ declared: track.onlineQuality, url: track.onlineUrl }),
+      fromAudioUrl: true,
+    })
+  }
+
+  if (candidates.length === 0) return { url: track.onlineUrl ?? '', tier: 'unknown' }
+
+  candidates.sort((a, b) => {
+    const rankA = chainIndex(a.tier)
+    const rankB = chainIndex(b.tier)
+    if (rankA !== rankB) return rankA - rankB
+    // 同档位：链内多音质地址优先；链外（只有 audioUrl 一种来源）按 audioUrl 优先兜底
+    const inChain = Number.isFinite(rankA)
+    return inChain
+      ? Number(a.fromAudioUrl) - Number(b.fromAudioUrl)
+      : Number(b.fromAudioUrl) - Number(a.fromAudioUrl)
+  })
+
+  const best = candidates[0]
+  return { url: best.url, tier: best.tier }
+}
+
+/**
+ * 按下载音质设置挑选下载地址（`pickDownloadCandidate` 的薄包装，保留既有调用点）。
+ * 需要档位（降级判断 / 提示）时用 `pickDownloadCandidate`。
+ */
+export function pickDownloadUrl(track: Track, preferred: DownloadQuality): string {
+  return pickDownloadCandidate(track, preferred).url
 }
 
 /**
