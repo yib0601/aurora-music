@@ -130,7 +130,6 @@ const LocalResultRow = memo(function LocalResultRow({
             <CoverImage
               track={track}
               className="w-full h-full object-cover product-shadow"
-              fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.6} />}
             />
           </div>
           <div className="flex-1 min-w-0">

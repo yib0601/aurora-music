@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, type ComponentType, type CSSProperties, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Heart, Play, Plus, ListPlus, ListEnd, Disc3, Cloud, MoreHorizontal, Info, FolderOpen, Trash2 } from 'lucide-react'
+import { Heart, Play, Plus, ListPlus, ListEnd, Cloud, MoreHorizontal, Info, FolderOpen, Trash2 } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -317,7 +317,6 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
               <CoverImage
                 track={track}
                 className="w-full h-full object-cover product-shadow"
-                fallback={<Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
               />
             </button>
             <div className="min-w-0">

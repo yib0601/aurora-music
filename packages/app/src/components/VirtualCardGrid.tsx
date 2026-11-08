@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Heart, Play, Plus, ListPlus, ListEnd, Music as MusicIcon, FolderOpen, Trash2 } from 'lucide-react'
+import { Heart, Play, Plus, ListPlus, ListEnd, FolderOpen, Trash2 } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -104,7 +104,6 @@ export const TrackCard = memo(function TrackCard({
               track={track}
               alt={track.title}
               className="media-card-image w-full h-full object-cover"
-              fallback={<MusicIcon className="h-8 w-8 text-white/20" strokeWidth={1.5} />}
             />
             <button
               type="button"

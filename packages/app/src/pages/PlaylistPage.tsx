@@ -282,7 +282,6 @@ export function PlaylistPage() {
                       <CoverImage
                         track={track}
                         className="w-full h-full object-cover"
-                        fallback={<Music2 className="h-4 w-4 text-white/40" strokeWidth={1.6} />}
                       />
                     </div>
                     <div className="min-w-0">

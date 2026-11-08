@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Music2, ListMusic, Loader2 } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, ListMusic, Loader2 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
 import { useT } from '@/i18n'
 import { useOpenSongDetail } from '@/lib/navigation'
@@ -158,7 +158,6 @@ function CompactBar({
             track={currentTrack}
             alt={currentTrack?.title}
             className="w-full h-full object-cover"
-            fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
           />
         </div>
         <div className="min-w-0 flex flex-col gap-px">
@@ -349,7 +348,6 @@ function FullBar({
               track={currentTrack}
               alt={currentTrack?.title}
               className="w-full h-full object-cover"
-              fallback={<Music2 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
             />
           </button>
           <button

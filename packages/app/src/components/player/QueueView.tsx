@@ -94,7 +94,6 @@ export function QueueView() {
                   <CoverImage
                     track={track}
                     className="w-full h-full object-cover"
-                    fallback={<Music2 className="h-3.5 w-3.5 opacity-40" strokeWidth={1.5} />}
                   />
                 </button>
                 <button

@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react'
-import { Music2, ShieldAlert } from 'lucide-react'
+import { ShieldAlert } from 'lucide-react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { App as CapApp } from '@capacitor/app'
 import { TitleBar, hasDesktopTitleBar } from '@/components/layout/TitleBar'
@@ -1012,7 +1012,8 @@ function AppLayout() {
               只一次性光栅化缓存，逐帧仅合成，成本低于玻璃 backdrop-filter（实测不影响滚动）。
               封面原图约 600px，放大到窗口尺寸仅有轻微双线性柔化，轮廓清晰 */}
           <div className="absolute inset-0 opacity-55">
-            <CoverImage track={currentTrack} alt="" className="w-full h-full object-cover" />
+            {/* 无封面时不画「首字占位」：窗口尺寸的巨字会变成一坨色块，这里保持透明让氛围光兜底 */}
+            <CoverImage track={currentTrack} alt="" className="w-full h-full object-cover" fallback={null} />
           </div>
           <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/50 to-background/95" />
           <div
@@ -1268,7 +1269,6 @@ function AppLayout() {
                         track={currentTrack}
                         alt={currentTrack?.title}
                         className="w-full h-full object-cover"
-                        fallback={<Music2 aria-hidden className="h-10 w-10 text-white/30" strokeWidth={1.25} />}
                       />
                     </button>
 

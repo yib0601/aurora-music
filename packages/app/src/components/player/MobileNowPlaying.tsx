@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
-  ChevronDown, Heart, ListMusic, Music2, Loader2,
+  ChevronDown, Heart, ListMusic, Loader2,
 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
 import { useT } from '@/i18n'
@@ -189,7 +189,6 @@ export function MobileNowPlaying({ open, onClose }: Props) {
               track={currentTrack}
               alt={currentTrack?.title || ''}
               className="w-full h-full object-cover"
-              fallback={<Music2 className="h-16 w-16 text-mint/35" strokeWidth={1} />}
             />
           </div>
         </div>

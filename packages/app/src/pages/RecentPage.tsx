@@ -146,7 +146,6 @@ export function RecentPage() {
                               <CoverImage
                                 track={track}
                                 className="w-full h-full object-cover product-shadow"
-                                fallback={<Clock className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
                               />
                             </button>
                             <div className="min-w-0">

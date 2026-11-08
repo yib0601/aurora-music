@@ -4,6 +4,7 @@ import { platform } from '@/services/platform'
 import { resolveCachedCoverSrc } from '@/services/audioCache.service'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
+import { CoverPlaceholder } from '@/components/common/CoverPlaceholder'
 
 /**
  * 封面懒加载组件。
@@ -167,7 +168,12 @@ export function resetCoverCache(): void {
 
 export interface CoverImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   track?: CoverTrack | null
-  /** 无封面（或图片加载失败）时渲染的占位内容 */
+  /**
+   * 无封面（或图片加载失败）时渲染的占位内容。
+   *
+   * 不传时用 `CoverPlaceholder`（歌名首字 + 稳定渐变）；语义化的占位（歌单用用户图标、
+   * 喜欢页用心形）仍由调用点自己传。
+   */
   fallback?: ReactNode
 }
 
@@ -195,7 +201,7 @@ function syncPlayerStoreCover(track: CoverTrack, coverPath: string | undefined):
   })
 }
 
-export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: CoverImageProps) {
+export function CoverImage({ track, fallback, alt = '', ...imgProps }: CoverImageProps) {
   const updateTrack = useLibraryStore((s) => s.updateTrack)
   const [resolved, setResolved] = useState<string | null>(null)
   const [upgraded, setUpgraded] = useState<string | null>(null)
@@ -306,8 +312,14 @@ export function CoverImage({ track, fallback = null, alt = '', ...imgProps }: Co
   const remoteSrc = !src && track?.coverUrl && /^https?:\/\//i.test(track.coverUrl) ? track.coverUrl : null
   // 远端封面命中本地缓存后用缓存地址；否则本次仍读远端地址
   const finalSrc = src ? platform.getCoverSrc(src) : cachedRemote || remoteSrc
-  // 封面文件缺失/损坏时回退到占位图，而不是留一个碎图或空框
-  if (!finalSrc || failed) return <>{fallback}</>
+  // 封面文件缺失/损坏时回退到占位图，而不是留一个碎图或空框。
+  // 没显式给占位内容（undefined）时用「歌名首字 + 稳定渐变」——歌源里没有专辑的条目
+  // （UGC 翻唱/搬运）会成片出现，统一音符图标会被误读成加载失败；
+  // 显式传 null / 其它节点则照旧（沉浸背景要透明，歌单/喜欢页要语义图标）。
+  if (!finalSrc || failed) {
+    if (fallback !== undefined) return <>{fallback}</>
+    return <>{track ? <CoverPlaceholder title={track.title} artist={track.artist} /> : null}</>
+  }
 
   return (
     <img

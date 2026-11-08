@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play, Pause, Heart, Plus, ListEnd, ListMusic, Music2, ArrowLeft,
   BarChart3, Clock, Calendar, Tag, HardDrive, Layers, History, MoreHorizontal,
-  Disc3, Radio, Folder, Cloud, ChevronDown, Download, Loader2, FolderOpen, Trash2, type LucideIcon,
+  Radio, Folder, Cloud, ChevronDown, Download, Loader2, FolderOpen, Trash2, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LyricsView } from '@/components/lyrics/LyricsView'
@@ -151,16 +151,7 @@ function VinylCover({ track, spinning }: { track: Track; spinning: boolean }) {
       <div className={cn('vinyl-disc relative aspect-square rounded-full', spinning && 'is-playing')}>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-[62%] aspect-square rounded-full overflow-hidden ring-1 ring-white/[0.08] bg-[#0b0c0f]">
-            <CoverImage
-              track={track}
-              alt={track.title}
-              className="w-full h-full object-cover"
-              fallback={
-                <div className="w-full h-full flex items-center justify-center">
-                  <Music2 className="h-14 w-14 text-white/25" strokeWidth={1} />
-                </div>
-              }
-            />
+            <CoverImage track={track} alt={track.title} className="w-full h-full object-cover" />
           </div>
         </div>
       </div>
@@ -608,7 +599,6 @@ export function SongDetailPage() {
                       <CoverImage
                         track={albumTrack}
                         className="w-full h-full object-cover product-shadow"
-                        fallback={<Disc3 className="h-4 w-4 text-white/30" strokeWidth={1.5} />}
                       />
                     </button>
                     <button
