@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { AudioLines, Music2 } from 'lucide-react'
+import { Music2 } from 'lucide-react'
 import type { LyricLine } from '@/types'
 import {
   findActiveLine,
@@ -32,12 +32,11 @@ import { useT } from '@/i18n'
  * 与 usePlaybackProgress 的关系：同一个思路（外推 + 命令式写），但那边服务的是
  * 进度条滑块与时间文本，还需要 seek 锁定；歌词只需要「读时间」，不重复造那套锁定逻辑。
  *
- * ## 切行不再有横向抖动
+ * ## 歌词区不做任何附加标记
  *
- * 旧实现把声波图标放在当前行文字**前面**（inline），而歌词是居中排版：图标一出现，
- * 整行文字被挤得右移约 10px，换行时再退回去——每切一句，两行文字都抖一下。
- * 现在声波标记改成一条**跟随当前行的游标**（绝对定位在左内边距里，只动 transform），
- * 文字排版与图标完全解耦。
+ * 当前行只靠样式区分（放大 + 加粗 + 发光，逐字填充），不渲染任何图标或游标：
+ * 歌词是居中排版，任何贴在行上的附加元素都会挤动文字；而挂在行外的游标在宽栏里
+ * 会离文字很远，看上去像一团浮在背景上的残影。两者都不要。
  */
 
 interface LyricsViewProps {
@@ -105,7 +104,6 @@ export function LyricsView({
   const t = useT()
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const scrollerRef = useRef<HTMLDivElement>(null)
-  const cursorRef = useRef<HTMLDivElement>(null)
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([])
 
   const [lyrics, setLyrics] = useState<LyricLine[]>([])
@@ -320,23 +318,14 @@ export function LyricsView({
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  // ===== 切行时的收尾：定位游标、采集卡拉OK目标、居中滚动 =====
+  // ===== 切行时的收尾：采集卡拉OK目标、居中滚动 =====
   useEffect(() => {
     const scroller = scrollerRef.current
     const lineEl = lineRefs.current[activeIdx]
-    const cursor = cursorRef.current
 
     if (!scroller || !lineEl) {
       karaokeRef.current = null
-      if (cursor) cursor.style.opacity = '0'
       return
-    }
-
-    // 游标：只写 transform（合成层），永远不参与文字排版
-    if (cursor) {
-      const centerY = lineEl.offsetTop + lineEl.offsetHeight / 2
-      cursor.style.transform = `translate3d(0, ${Math.round(centerY)}px, 0) translateY(-50%)`
-      cursor.style.opacity = '1'
     }
 
     // 采集当前行的填充目标。span 是本次渲染才挂上的，必须在这个 effect（DOM 已提交）里取
@@ -371,7 +360,7 @@ export function LyricsView({
     scrollAnimRef.current = { from: scroller.scrollTop, to: clamped, startAt: performance.now() }
   }, [activeIdx, lyrics])
 
-  // 换歌词（切歌）：回到顶部，清掉上一首的游标与填充目标。
+  // 换歌词（切歌）：回到顶部，清掉上一首的填充目标。
   // 这个 effect 必须与上面的切行 effect 分开：同一首歌词内部切行不能把滚动位置清零。
   useEffect(() => {
     activeIdxRef.current = -1
@@ -381,7 +370,6 @@ export function LyricsView({
     scrollAnimRef.current = null
     const scroller = scrollerRef.current
     if (scroller) scroller.scrollTop = 0
-    if (cursorRef.current) cursorRef.current.style.opacity = '0'
   }, [lyrics])
 
   // 手动滚动意图：一段时间内不自动居中。只认 wheel / touchmove，
@@ -402,17 +390,11 @@ export function LyricsView({
     // 空态时不渲染 scroll 容器，所以要在歌词到位后重新挂监听
   }, [lyrics.length])
 
-  // 尺寸变化（窗口缩放 / 侧栏折叠 / 移动端旋转）：行高与容器高都变，游标与居中都作废
+  // 尺寸变化（窗口缩放 / 侧栏折叠 / 移动端旋转）：行高与容器高都变，居中目标作废
   useEffect(() => {
     const scroller = scrollerRef.current
     if (!scroller || lyrics.length === 0) return
     const reposition = () => {
-      const lineEl = lineRefs.current[activeIdxRef.current]
-      const cursor = cursorRef.current
-      if (lineEl && cursor) {
-        const centerY = lineEl.offsetTop + lineEl.offsetHeight / 2
-        cursor.style.transform = `translate3d(0, ${Math.round(centerY)}px, 0) translateY(-50%)`
-      }
       const activeLine = lineRefs.current[activeIdxRef.current]
       if (!activeLine || performance.now() < userScrollUntilRef.current) return
       const target = activeLine.offsetTop + activeLine.offsetHeight / 2 - scroller.clientHeight / 2
@@ -476,11 +458,6 @@ export function LyricsView({
             'before:block before:h-16 before:content-[""] after:block after:h-1/2 after:content-[""]'
           )}
         >
-          {/* 当前行游标：绝对定位在左内边距里，只动 transform，永不参与文字排版 */}
-          <div ref={cursorRef} className="lyric-cursor" aria-hidden>
-            <AudioLines className="h-[13px] w-[13px]" strokeWidth={2.2} />
-          </div>
-
           {lyrics.map((line, idx) => {
             const isActive = idx === activeIdx
             const distance = Math.abs(idx - activeIdx)

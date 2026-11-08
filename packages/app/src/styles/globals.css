@@ -455,10 +455,6 @@ html:not(.dark) .lyric-word {
   --lyric-dim: rgba(20, 24, 28, 0.62);
 }
 
-html:not(.dark) .lyric-cursor {
-  color: #0E8C7D;
-}
-
 /* 通用滑块在浅底上翻转为深色（seek/volume 播放条已无可见滑块，不受影响） */
 html:not(.dark) input[type='range']::-webkit-slider-thumb {
   background: radial-gradient(circle at 34% 28%, #2A2E35 0, #16181D 28%, rgba(22,24,29,.86) 74%);
@@ -1888,32 +1884,6 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
 /* 大字号模式（歌曲详情页宽栏 / 移动端全屏页）：放大当前行，填充宽屏空间 */
 .lyric-active-lg {
   font-size: 22px;
-}
-
-/* ===== 当前行游标（原行内声波图标的替代） =====
- * 旧实现把声波图标放在当前行文字前面，而歌词是居中排版：图标一出现整行文字
- * 右移约 10px、换行时再弹回去，每切一句两行都在抖。现在改成绝对定位在左内边距
- * 里的一个游标，只动 transform（合成层），不参与任何文字排版。
- *
- * transform 由 LyricsView 按当前行的 offsetTop 写入，460ms 与滚动补间同长，
- * 视觉上读作「标记跟着唱到的那一句走」。 */
-.lyric-cursor {
-  position: absolute;
-  top: 0;
-  left: 2px;
-  color: #A8F6FF;
-  opacity: 0;
-  pointer-events: none;
-  will-change: transform;
-  transition:
-    transform 460ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 200ms ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lyric-cursor {
-    transition: none;
-  }
 }
 
 /* ===== 性能降级开关 =====
