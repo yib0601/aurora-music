@@ -125,7 +125,10 @@ export function pluginConfigSurfaces(
   capability: PluginConfigCapability = {}
 ): PluginConfigSurface[] {
   const surfaces: PluginConfigSurface[] = []
-  if (entry.domain === 'source') surfaces.push('sources')
+  // 自带内置源的插件（聚合搜索）没有「源配置」这件事：它的源就是插件本身，
+  // 开关是插件列表里的启停。给它一个空音源分区 + 「添加」按钮，
+  // 用户会照着填一条永远不生效的源。
+  if (entry.domain === 'source' && !entry.builtinSource) surfaces.push('sources')
   if (entry.domain === 'storage' && storageConfigurable(entry.id, capability.storage)) surfaces.push('storage')
   if (declares(entry, 'auth')) surfaces.push('auth')
   return surfaces

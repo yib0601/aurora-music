@@ -24,7 +24,7 @@ import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { useDisplayTracks } from '@/hooks/useDisplayTracks'
 import { useT } from '@/i18n'
 import { messageOf } from '@/stores/musicHallStore'
-import { searchEndpointOf } from '@aurora/shared'
+import { isSearchableSource } from '@aurora/shared'
 import type { Track, OnlineTrackSearchResult, Playlist } from '@/types'
 
 /** 行 DOM 注册：键盘高亮移动时把目标行滚动到可视区 */
@@ -377,9 +377,11 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const onlineSources = useLibraryStore((s) => s.onlineSources)
   // 默认下载音质：搜索时替换源地址 {quality} 占位符，下载时挑选多音质地址
   const downloadQuality = useLibraryStore((s) => s.downloadQuality)
-  // 已启用的源（空数组 = 用户尚未配置任何源，搜索页需给出引导）
+  // 能参与搜索的源（空数组 = 用户尚未配置任何源，搜索页需给出引导）。
+  // 判据必须是**插件能力**而不是协议端点：只配了洛雪脚本时端点解析是空的，
+  // 但脚本参与了搜索（内置聚合搜索会兜底），按端点算会直接把搜索整个跳过。
   const enabledSourceCount = useMemo(
-    () => onlineSources.filter((s) => s.enabled && searchEndpointOf(s)).length,
+    () => onlineSources.filter((s) => s.enabled && isSearchableSource(s)).length,
     [onlineSources]
   )
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>()

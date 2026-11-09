@@ -2,7 +2,7 @@ import type { Track, Playlist } from '@/types'
 import { platform } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
-import { scoreOnlineResult, matchTracksByPaths, searchEndpointOf, isDowngraded, tierRank, type AudioTier } from '@aurora/shared'
+import { scoreOnlineResult, matchTracksByPaths, isSearchableSource, isDowngraded, tierRank, type AudioTier } from '@aurora/shared'
 import { needsStorageResolve } from '@/lib/storageTrack'
 import { pickDownloadCandidate, type DownloadCandidateInput } from '@/lib/onlineTrack'
 import type { OnlineTrackSearchResult } from '@/types'
@@ -192,7 +192,9 @@ export async function ensurePlayableTrack(
       return viaSource
     }
   }
-  if (!onlineSources.some((s) => s.enabled && searchEndpointOf(s))) {
+  // 判据与搜索面板同一口径（插件能力判定）：只看协议端点会把「只配了脚本源」当成没源可搜，
+  // 那样连按名补齐都不会跑，内置聚合搜索的兜底也就永远轮不到。
+  if (!onlineSources.some((s) => s.enabled && isSearchableSource(s))) {
     // 没有可搜索的源：reResolve 已拿到的按 id 候选就是唯一兜底。
     // 不能直接丢——它可能仍低于请求档位，但「128→320」这种部分提升对用户仍是改善，
     // 是否替换由调用方（runOnlineDownload）按 tierRank 判断。

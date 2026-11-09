@@ -12,7 +12,7 @@ import {
   matchTracksByNames,
   dedupeTracksForDisplay,
   scoreOnlineResult,
-  searchEndpointOf,
+  isSearchableSource,
 } from '@aurora/shared'
 import type { Track, ParsedSong, OnlineTrackSearchResult } from '@/types'
 
@@ -152,7 +152,9 @@ export function usePlaylistImport() {
       setProgress([0, pending.length])
 
       const lib = useLibraryStore.getState()
-      const hasSource = lib.onlineSources.some((s) => s.enabled && searchEndpointOf(s))
+      // 判据同搜索页：能搜索的源由**插件能力**决定，只配了脚本时端点解析是空的，
+      // 但内置聚合搜索会兜底（搜到的曲目带 trackRef，播放时由脚本现取直链）。
+      const hasSource = lib.onlineSources.some((s) => s.enabled && isSearchableSource(s))
       let cursor = 0
 
       const worker = async () => {

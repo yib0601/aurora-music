@@ -70,6 +70,13 @@ describe('pluginConfigSurfaces：可配置面由域与 auth 能力共同决定',
     expect(pluginConfigSurfaces(entry({ domain: 'lyrics', capabilities: ['lyrics'] }))).toEqual([])
   })
 
+  it('自带内置源的插件没有 sources 面（它的开关就是插件启停）', () => {
+    // 聚合搜索：给它一个空音源分区 + 「添加」按钮，用户会照着填一条永远不生效的源。
+    const builtin = entry({ id: 'aggregate-search', domain: 'source', capabilities: ['search'], builtinSource: true })
+    expect(pluginConfigSurfaces(builtin)).toEqual([])
+    expect(hasPluginConfig(builtin)).toBe(false)
+  })
+
   it('capabilities 不是数组（脏数据）时不抛错，也不假装有 auth 面', () => {
     // 防回归：目录条目来自外部清单，运行时可能缺字段；这里若直接 .includes 会整页崩。
     const malformed = entry({ capabilities: undefined as unknown as string[] })
