@@ -71,6 +71,7 @@ export { lxInspectionToProbe, auroraProbeToResult, unavailableProbe } from './so
 export {
   searchOnlineTracks,
   searchMusicSource,
+  isSearchableSource,
   isSuspiciousAudio,
   correctSuspiciousAudioSources,
   clearSearchCache,

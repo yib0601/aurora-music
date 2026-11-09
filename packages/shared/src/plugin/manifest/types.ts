@@ -556,6 +556,13 @@ export interface PluginCatalogEntry {
   /** 是否可卸载（内置插件不可） */
   removable: boolean
   /**
+   * 插件**自带内置源**（当前只有「聚合搜索」）：它不需要用户在设置里建音源条目。
+   *
+   * 只是投影：判定「有没有可配置的音源」由渲染层（`pluginConfigSurfaces`）读这一位，
+   * 决定要不要给这个插件一个空的「音源」分区。执行侧完全不看它。
+   */
+  builtinSource?: true
+  /**
    * 用户是否启用该插件。
    *
    * 与 `removable` 是**两个正交的维度**，不要合成一个：

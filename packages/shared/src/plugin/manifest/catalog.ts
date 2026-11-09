@@ -95,6 +95,8 @@ function sourceEntries(): PluginCatalogEntry[] {
       capabilities: [...plugin.capabilities],
       provenance: 'builtin' as const,
       removable: false,
+      // 自带内置源（聚合搜索）：投影出去，让渲染层不给它一个空的「音源」分区
+      ...(plugin.builtinSource ? { builtinSource: true as const } : {}),
       // 停用的内置插件**仍然留在目录里**（它只是不执行）：用户得有个地方把它打开，
       // 从列表里藏掉等于让开关本身消失。
       enabled: isPluginEnabled(plugin.id),

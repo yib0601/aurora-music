@@ -581,7 +581,7 @@ export async function probeAuroraService(
  * 它比 `OnlineSourceConfig` 更窄（可能只有 sourceUrl + kind），
  * 不适合反过来依赖插件层的完整配置类型。
  */
-function isProtocolSource(source: SourceEndpointInput | null | undefined): boolean {
+export function isProtocolSource(source: SourceEndpointInput | null | undefined): boolean {
   if (!source) return true // 没给源时按协议默认处理，交由后续解析判定
   const pluginId = typeof (source as { pluginId?: string }).pluginId === 'string'
     ? String((source as { pluginId?: string }).pluginId)

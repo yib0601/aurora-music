@@ -249,3 +249,96 @@ describe('resolveTrackAudioAcrossScriptSources 取址编排', () => {
     expect(hit?.resolution.url).toBe('https://cdn.example.invalid/a.mp3')
   })
 })
+
+/**
+ * 曲目数据里**显式标注**的平台（`trackRef.meta.platform`）。
+ *
+ * 这条路径是给内置聚合搜索用的：它搜出来的曲目没有任何播放地址，域名无从推断，
+ * 但平台是它自己搜出来的。没有这条，那些曲目永远交不到脚本手里。
+ */
+describe('曲目数据显式标注平台', () => {
+  /** 通用脚本（没认领平台）+ 认领了 kw 的脚本 */
+  const general = scriptSource({ id: 'src-general', platform: undefined })
+  const kuwoOnly = scriptSource({ id: 'src-kw', platform: 'kw' })
+
+  it('meta.platform 决定平台归属：认领别的平台的脚本被跳过，通用脚本接住', () => {
+    const picks = scriptSourcesForTrack([general, kuwoOnly], {
+      trackRef: {
+        sourceId: 'builtin-aggregate-search',
+        platform: '',
+        meta: { platform: 'tx', songmid: 'tx-mid' },
+      },
+      onlineSource: 'builtin-aggregate-search',
+      onlineId: 'tx-mid',
+    })
+    expect(picks.map((p) => p.source.id)).toEqual(['src-general'])
+    expect(picks[0].ref.platform).toBe('tx')
+  })
+
+  it('meta.platform 与脚本认领一致时照样匹配', () => {
+    const picks = scriptSourcesForTrack([kuwoOnly], {
+      trackRef: { sourceId: 'builtin-aggregate-search', platform: '', meta: { platform: 'kw', songmid: 'kw-1' } },
+      onlineSource: 'builtin-aggregate-search',
+      onlineId: 'kw-1',
+    })
+    expect(picks.map((p) => p.source.id)).toEqual(['src-kw'])
+  })
+
+  it('认不出的平台标识被忽略，回落到脚本自己的认领（不乱喂 id）', () => {
+    const picks = scriptSourcesForTrack([general], {
+      trackRef: { sourceId: 'builtin-aggregate-search', platform: '', meta: { platform: 'xx', songmid: '1' } },
+      onlineSource: 'builtin-aggregate-search',
+      onlineId: '1',
+    })
+    // 通用脚本没有认领、显式平台又认不出 → 猜不出平台，不能瞎试
+    expect(picks).toEqual([])
+  })
+
+  it('meta 里的平台定位字段原样带给脚本（酷狗认 hash、咪咕认 copyrightId）', () => {
+    const picks = scriptSourcesForTrack([general], {
+      trackRef: {
+        sourceId: 'builtin-aggregate-search',
+        platform: '',
+        meta: { platform: 'kg', songmid: 'kg-1', hash: 'HASH-1', copyrightId: 'CR-1' },
+      },
+      onlineSource: 'builtin-aggregate-search',
+      onlineId: 'kg-1',
+    })
+    expect(picks).toHaveLength(1)
+    expect(picks[0].ref.meta).toMatchObject({
+      songmid: 'kg-1',
+      hash: 'HASH-1',
+      copyrightId: 'CR-1',
+    })
+  })
+})
+
+/**
+ * 交给脚本的定位 id。
+ *
+ * `onlineId` 是**应用侧**的条目 id（可能带来源前缀），`meta.songmid` 才是源给的
+ * 平台内定位。拿错了脚本会按一个不存在的 mid 取址，表现为「搜得到、点了播不了」。
+ */
+describe('交给脚本的定位 id', () => {
+  it('meta.songmid 优先于带平台前缀的条目 id', () => {
+    const picks = scriptSourcesForTrack([scriptSource({ id: 'src-general' })], {
+      trackRef: {
+        sourceId: 'builtin-aggregate-search',
+        platform: '',
+        meta: { platform: 'tx', songmid: '0039MnYb0qxYhV' },
+      },
+      onlineSource: 'builtin-aggregate-search',
+      onlineId: 'tx:0039MnYb0qxYhV',
+    })
+    expect(picks[0].ref.meta.songmid).toBe('0039MnYb0qxYhV')
+    expect(picks[0].ref.meta.id).toBe('0039MnYb0qxYhV')
+  })
+
+  it('没有 meta.songmid 时回落到条目 id（剥掉历史形态的来源前缀）', () => {
+    const picks = scriptSourcesForTrack([scriptSource({ id: 'src-general' })], {
+      onlineSource: 'src-old',
+      onlineId: 'src-old-12345',
+    })
+    expect(picks[0].ref.meta.songmid).toBe('12345')
+  })
+})

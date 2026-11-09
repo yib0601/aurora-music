@@ -31,6 +31,8 @@ interface SourcePlugin {
   readonly displayNameKey: MessageKey
   readonly version: string
   readonly capabilities: readonly PluginCapability[]
+  /** 自带内置源（聚合搜索）：插件自己就是一条源，用户不需要在设置里再建一条 */
+  readonly builtinSource?: true
 
   /** 以下全部可选：不存在 = 不支持，调用方据此降级，不做形态判断 */
   probe?(config, ctx): Promise<SourceProbeResult>

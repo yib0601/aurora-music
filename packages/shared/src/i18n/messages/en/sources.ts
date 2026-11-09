@@ -189,6 +189,10 @@ const en: LocalizedOf<typeof sources> = {
     builtin: 'Built-in',
     /** 内置歌词兜底插件的说明（domain=lyrics） */
     builtinLyricsDesc: 'Built-in lyrics fallback: fetches from the open LRCLIB API when no user lyrics source matches. Can be disabled',
+    /** Built-in aggregate search plugin (domain=source, ships its own source) */
+    aggregateSearchName: 'Aggregate search',
+    aggregateSearchDesc:
+      'Built-in search fallback: when none of your configured sources returns anything, the app queries QQ Music, Kuwo, Netease, Kugou and Migu in parallel; playback URLs still come from your resolve scripts. Can be disabled',
     unsupportedHere: 'This device does not support this protocol (desktop only)',
     listEmpty: 'No third-party plugins installed yet',
     listBroken: '{count} plugin file(s) could not be read',

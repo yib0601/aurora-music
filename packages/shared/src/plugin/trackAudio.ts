@@ -189,14 +189,20 @@ export function clearScriptSourceMemo(): void {
  * 只有歌名歌手的曲目交给跨源取址没有意义（脚本的 musicUrl 基本都按 id 取）。
  */
 function scriptIdOf(input: ScriptSourcePickInput): string {
+  // 数据自带的 `meta.songmid` 最可信：它是**源自己**给的平台内定位，而 `onlineId`
+  // 是应用侧的条目 id（内置聚合搜索的条目 id 带 `平台:` 前缀，拿去当 songmid 会让
+  // 脚本按一个不存在的 mid 取址）。有它就先用它。
+  const meta = (input?.trackRef?.meta || {}) as Record<string, unknown>
+  const declared = meta.songmid
+  if (typeof declared === 'string' && declared.trim()) return declared.trim()
+
   const fromOnline = sourceSongIdOf(
     String(input?.onlineSource || '').trim(),
     input?.onlineId
   )
   if (fromOnline) return fromOnline
 
-  const meta = (input?.trackRef?.meta || {}) as Record<string, unknown>
-  for (const field of ['songmid', 'id', 'hash', 'mid', 'rid']) {
+  for (const field of ['id', 'hash', 'mid', 'rid']) {
     const value = meta[field]
     if (typeof value === 'string' && value.trim()) return value.trim()
     if (typeof value === 'number' && Number.isFinite(value)) return String(value)
@@ -214,6 +220,15 @@ function scriptIdOf(input: ScriptSourcePickInput): string {
  */
 function scriptMetaFor(id: string, input: ScriptSourcePickInput): Record<string, unknown> {
   const meta: Record<string, unknown> = {}
+  // 先整体带上曲目数据里已有的定位字段（`hash`、`albumId`、`copyrightId`…）：
+  // 内置聚合搜索搜出来的曲目只有元信息、没有任何播放地址，脚本要的是**平台自己的**
+  // 定位字段（酷狗认 `hash`、咪咕认 `copyrightId`），重新拼一份只会把它们丢掉。
+  // 后面写通用字段时按需覆盖，所以顺序必须是「先带、后写」。
+  const carried = (input?.trackRef?.meta || {}) as Record<string, unknown>
+  for (const [key, value] of Object.entries(carried)) {
+    if (value === undefined || value === null) continue
+    meta[key] = value
+  }
   if (id) {
     meta.songmid = id
     meta.id = id
@@ -280,13 +295,27 @@ export function inferPlatformFromUrl(url?: string | null): string {
 }
 
 /**
+ * 曲目数据里**显式标注**的平台（`trackRef.meta.platform`）。
+ *
+ * 白名单照旧（只认洛雪那五个标识）：别的字符串说明数据有问题，
+ * 拿去喂脚本只会换回一次必然失败的请求。
+ */
+function explicitPlatformOf(input: ScriptSourcePickInput): string {
+  const meta = (input?.trackRef?.meta || {}) as Record<string, unknown>
+  const raw = typeof meta.platform === 'string' ? meta.platform.trim() : ''
+  if (!raw) return ''
+  return PLATFORM_URL_HINTS.some(([platform]) => platform === raw) ? raw : ''
+}
+
+/**
  * 找出这条曲目可以交给哪些脚本源取址。
  *
- * 平台归属按两路来源确定，**优先用数据推断**：
- * 1. 曲目自带 `trackRef.platform`（脚本源的曲目，本来就知道平台）；
- * 2. 曲目已有播放地址 → 按域名推断（`inferPlatformFromUrl`），这也是「不用给脚本源
+ * 平台归属按三路来源确定，**优先用数据自带的说法**：
+ * 0. 曲目数据显式标注的平台（`trackRef.meta.platform`，内置聚合搜索就是这条路：
+ *    它搜出来的曲目没有任何播放地址，域名无从推断，但平台是它自己搜出来的）；
+ * 1. 曲目已有播放地址 → 按域名推断（`inferPlatformFromUrl`），这也是「不用给脚本源
  *    手工选平台」的原因；
- * 3. 两路都拿不到 → 回落到脚本源自己的认领设置（`OnlineSourceConfig.platform`）。
+ * 2. 两路都拿不到 → 回落到脚本源自己的认领设置（`OnlineSourceConfig.platform`）。
  *
  * 匹配规则：脚本认领了平台就必须与曲目的平台一致（认领 kw 的脚本不该拿 QQ 的 id 去试）；
  * 脚本没认领则视为「通用脚本」，按推断出的平台取址。
@@ -295,7 +324,7 @@ export function inferPlatformFromUrl(url?: string | null): string {
  * - 曲目自带 `trackRef.platform`：它已经属于某条脚本源，走常规取址即可，
  *   再跨源去问第二家是错配（同一平台的另一脚本不该覆盖用户选中的源）；
  * - 取不到源内 id：没有可交给脚本的定位（见 `scriptIdOf`）；
- * - 曲目就来自该源 / 源停用 / 既推断不出平台、源也没认领平台（猜不出平台就不能瞎喂 id）。
+ * - 曲目就来自该源 / 源停用 / 既推不出平台、源也没认领平台（猜不出平台就不能瞎喂 id）。
  */
 export function scriptSourcesForTrack(
   sources: OnlineSourceConfig[] | null | undefined,
@@ -308,7 +337,7 @@ export function scriptSourcesForTrack(
   if (!id) return []
 
   const fromSourceId = String(input?.onlineSource || '').trim()
-  const targetPlatform = inferPlatformFromUrl(input?.onlineUrl)
+  const targetPlatform = explicitPlatformOf(input) || inferPlatformFromUrl(input?.onlineUrl)
   const meta = scriptMetaFor(id, input)
   const picks: ScriptSourcePick[] = []
   for (const source of sources || []) {

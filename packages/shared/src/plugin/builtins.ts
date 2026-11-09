@@ -25,6 +25,7 @@ import { auroraPlugin } from './auroraPlugin'
 import { lxPlugin } from './lxPlugin'
 import { qishuiPlugin } from './qishuiPlugin'
 import { lrclibPlugin } from './lrclibPlugin'
+import { aggregateSearchPlugin } from './aggregateSearch'
 
 /**
  * 内置插件清单（按注册顺序，UI 列出的顺序即此顺序）。
@@ -35,7 +36,10 @@ export function builtinPlugins() {
   // 顺序即 UI 列出的顺序：音源类在前，歌词类在后。
   // `lrclibPlugin` 是**歌词域**（domain: 'lyrics'）—— 它不参与搜索/取址，
   // 只在所有用户源落空时兜底。把它放最后，是因为用户找歌词源时会先看上面那些。
-  return [auroraPlugin, lxPlugin, qishuiPlugin, lrclibPlugin]
+  // `aggregateSearchPlugin` 是**搜索兜底**：它自带内置源（不对应任何用户配置），
+  // 只在配置的音源一条结果都给不出时被 `musicSource` 调用。放在音源类之后、
+  // 歌词兜底之前 —— 同属"兜底"语义的两块挨在一起看。
+  return [auroraPlugin, lxPlugin, qishuiPlugin, aggregateSearchPlugin, lrclibPlugin]
 }
 
 let registered = false

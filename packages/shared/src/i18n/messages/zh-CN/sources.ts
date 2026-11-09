@@ -248,6 +248,10 @@ const sources = {
     builtin: '内置',
     /** 内置歌词兜底插件的说明（domain=lyrics） */
     builtinLyricsDesc: '内置歌词兜底：所有用户歌词源未命中时，从 LRCLIB 开放接口取词。可停用',
+    /** 内置聚合搜索插件（domain=source，自带内置源） */
+    aggregateSearchName: '聚合搜索',
+    aggregateSearchDesc:
+      '内置搜索兜底：所配音源一条结果都给不出时，软件并发查询 QQ 音乐、酷我、网易云、酷狗、咪咕；曲目地址仍由你配的取址脚本现取。可停用',
     /**
      * 卡片上的「这一端用不了」说明。
      *

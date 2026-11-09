@@ -231,6 +231,16 @@ export interface SourcePlugin {
    */
   readonly requires?: readonly CapabilityRequirement[]
 
+  /**
+   * **自带内置音源**：插件自己就是一条源，用户不需要（也不该）在设置里再建一条。
+   *
+   * 与 `capabilities` 正交：那个说「我能做什么」，这个说「我的源从哪来」。
+   * 判据只有一处用途 —— 配置面判定（app 的 `pluginConfigSurfaces`）据此不再给它
+   * 一个空的「音源」分区：内置源的开关就是插件自身的启停，多一个「添加音源」按钮
+   * 只会让人以为自己还得配点什么。
+   */
+  readonly builtinSource?: true
+
   // ─── 只读能力 ───────────────────────────────────────────────
 
   /** 探测：连通性 / 鉴权 / 可用能力，返回形态无关的结论 */

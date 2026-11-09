@@ -1,5 +1,5 @@
 import type { DownloadQuality, OnlineSourceConfig, OnlineSearchOptions, OnlineTrackSearchResult } from './types'
-import { searchEndpointOf } from './auroraPreset'
+import { isProtocolSource, searchEndpointOf } from './auroraPreset'
 import { fetchWithTimeout, isTimeoutError } from './fetchWithTimeout'
 import { auroraError, toErrorInfo } from './i18n/errors'
 import {
@@ -10,6 +10,10 @@ import {
   searchViaPlugin,
   sourceCacheKeyOf as pluginSourceCacheKeyOf,
 } from './plugin/executor'
+import { hasScriptSourceCandidate } from './plugin/trackAudio'
+import { getPlugin } from './plugin/registry'
+import { AGGREGATE_SEARCH_PLUGIN_ID, builtinAggregateSource } from './plugin/aggregateSearch'
+import { isPluginEnabled } from './plugin/availability'
 
 // 统一默认请求头（部分接口对 UA 敏感），可被源配置的 headers 覆盖
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -264,6 +268,45 @@ export function isSearchableSource(source: OnlineSourceConfig | null | undefined
   return canSearchSource(source)
 }
 
+/**
+ * 音源在结果里的优先级：**不需要你填搜索地址的源在前，自己填服务地址的协议源在后**。
+ *
+ * 用户自建协议源（`searchEndpointOf` 非空，地址模板由用户在源上填）按约定只做兜底：
+ * 别家音源能搜到的同一条录音，优先用别家的地址（脚本源能给的档位往往更高、自建服务
+ * 可能只有单一档）。判定落在「端点是不是用户提供的」上，而不是插件 id —— 新增的平台
+ * 插件与脚本源自然落在前一档，自建/清单协议源落在后一档。
+ */
+export function sourcePriorityRank(source: OnlineSourceConfig): number {
+  // 两个条件缺一不可：属于协议源插件（端点派生只对它有定义），且真的派生出了搜索端点。
+  // 只看端点会把「脚本源填了脚本链接」也当成协议源（服务地址形态同样能拼出 /aurora?query=）。
+  return isProtocolSource(source) && searchEndpointOf(source) ? 1 : 0
+}
+
+/**
+ * 按音源优先级稳定排序搜索结果：先按源优先级，再按音源配置顺序，最后保持源内排名。
+ *
+ * 只改顺序不改内容：去重、取址、音质校正都已在各自的源里完成；下游（搜索面板的
+ * 分组顺序、取址时「同分取先出现者」的判定、歌单导入/加密补档的择优）都按这个顺序取。
+ */
+export function orderBySourcePriority(
+  results: OnlineTrackSearchResult[],
+  sources: OnlineSourceConfig[]
+): OnlineTrackSearchResult[] {
+  if (results.length < 2) return results
+  const rankOf = new Map(sources.map((s) => [s.id, sourcePriorityRank(s)]))
+  const orderOf = new Map(sources.map((s, i) => [s.id, i]))
+  return results
+    .map((result, index) => ({ result, index }))
+    .sort((a, b) => {
+      const rankDiff = (rankOf.get(a.result.source) ?? 0) - (rankOf.get(b.result.source) ?? 0)
+      if (rankDiff !== 0) return rankDiff
+      const orderDiff = (orderOf.get(a.result.source) ?? 0) - (orderOf.get(b.result.source) ?? 0)
+      if (orderDiff !== 0) return orderDiff
+      return a.index - b.index
+    })
+    .map((entry) => entry.result)
+}
+
 /** 单源搜索的缓存键（含插件 id，不同插件共用地址也不串味） */
 export function sourceCacheKeyOf(source: OnlineSourceConfig): string {
   return pluginSourceCacheKeyOf(source)
@@ -325,6 +368,77 @@ function searchSourceCached(
 }
 
 /**
+ * 这条源是不是**脚本源**（播放时按平台现取地址）。
+ *
+ * 先看插件声明（`script.host` 宿主依赖），再回落到协议形态字段：内置插件与声明式
+ * 插件对这件事的说法不同，但「能跑脚本」的判据只有一个 —— 这一层不该出现第二份名单。
+ */
+function isScriptSource(source: OnlineSourceConfig): boolean {
+  const plugin = getPlugin(pluginIdOf(source))
+  if (plugin?.requires?.some((req) => req.id === 'script.host')) return true
+  return String(source.kind || '').trim() === 'lx'
+}
+
+/**
+ * 兜底搜索：配置的音源一条结果都给不出时，交给内置「聚合搜索」再搜一次。
+ *
+ * ## 为什么是这个触发条件
+ *
+ * 「音源没有搜索能力」在运行期**无法静态判定**：洛雪脚本的 search 能力藏在脚本里
+ * （协议允许 `search`/`musicSearch`，实测多数脚本只实现 `musicUrl`），配置里看不出来。
+ * 而「跑完一轮一条结果都没有」正是这件事的**可观测后果** —— 用结果判定，比让用户
+ * 先去插件面板确认「这条脚本会不会搜」靠谱得多，也不会给正常搜索加任何延迟。
+ *
+ * ## 为什么过滤掉播不了的条目
+ *
+ * 本插件只补搜索、不补取址：曲目地址要由用户配的脚本在播放时现取。
+ * 没有一个脚本源认领得到（`hasScriptSourceCandidate` 同步判定），这些条目就只是
+ * 「点了播不了」的诱饵 —— 宁可继续回「没找到」。
+ */
+async function searchBuiltinFallback(
+  query: string,
+  quality: DownloadQuality | undefined,
+  sources: OnlineSourceConfig[]
+): Promise<OnlineTrackSearchResult[]> {
+  // 插件被用户关掉就不跑：兜底也要尊重启停开关，否则用户在设置里关了个寂寞
+  if (!isPluginEnabled(AGGREGATE_SEARCH_PLUGIN_ID)) return []
+
+  // 只把结果交给**脚本源**：脚本是唯一能在播放时按平台现取地址的形态
+  // （协议形态的源只认自己协议里的 id，喂它别家的 songmid 必然取不到）。
+  // 判据看插件声明的宿主依赖，而不是硬编码 'lx'：将来多一种脚本形态不用改这里。
+  const scriptSources = sources.filter((s) => s.enabled && isScriptSource(s))
+  if (scriptSources.length === 0) return []
+
+  const fallback = builtinAggregateSource()
+  const check = await preflightViaPlugin(fallback, hostContextOf(fallback))
+  if (!check.ok) {
+    console.warn(`[歌源] 内置聚合搜索不可用：${check.reason || '前置检查未通过'}`)
+    return []
+  }
+
+  let hits: OnlineTrackSearchResult[]
+  try {
+    hits = await searchSourceCached(fallback, query, quality)
+  } catch (err) {
+    console.warn('[歌源] 内置聚合搜索失败:', err)
+    return []
+  }
+
+  return hits.filter((hit) =>
+    hasScriptSourceCandidate(scriptSources, {
+      ...(hit.trackRef ? { trackRef: hit.trackRef } : {}),
+      onlineSource: hit.source,
+      onlineId: hit.songmid || hit.id,
+      onlineUrl: hit.audioUrl,
+      title: hit.title,
+      artist: hit.artist,
+      album: hit.album,
+      duration: hit.duration,
+    })
+  )
+}
+
+/**
  * 聚合在线搜索：并发调用所有启用的源
  * - 单源失败不影响其他源；全部失败时抛错，前端展示直白的中文网络错误提示
  * - 请求音质非 128 时，另有 128 档用于可疑音源校正（见 correctSuspiciousAudioSources）
@@ -382,21 +496,26 @@ export async function searchOnlineTracks(
       console.warn(`[歌源] 「${sources[i].name}」搜索失败:`, r.reason)
     }
   }
-  if (allFailed) {
+  // 兜底：一条结果都没有（典型：只配了只有取址能力的洛雪脚本）→ 内置聚合搜索
+  if (results.length === 0) {
+    results.push(...(await searchBuiltinFallback(trimmed, quality, sources)))
+  }
+  if (allFailed && results.length === 0) {
     throw auroraError('core.error.allSourcesFailed')
   }
 
-  if (!qualityMatters) return results
+  // 结果顺序＝优先级：其它音源在前，自建协议源兜底（面板分组、取址择优都按此顺序）
+  if (!qualityMatters) return orderBySourcePriority(results, sources)
 
   // 第一层：大多数源在主档响应里已回填 128 档地址，就地校正，零额外往返
   const inPlace = correctSuspiciousFromOwnBaseline(results)
-  if (!hasSuspicious(inPlace)) return inPlace
+  if (!hasSuspicious(inPlace)) return orderBySourcePriority(inPlace, sources)
 
   // 第二层：仍有就地校正不了的可疑项（主档没回填 128 档）→ 补拉 128 基线档。
   // 失败静默忽略，此时保留就地校正的结果即可（比串行版严格不差）
   // 洛雪源条目 audioUrl 为空串、不带音质声明，既不可能是可疑项，补拉基线对它也无意义，故排除在外。
   const auroraSources = sources.filter((s) => s.kind !== 'lx')
-  if (auroraSources.length === 0) return inPlace
+  if (auroraSources.length === 0) return orderBySourcePriority(inPlace, sources)
   const baselineSettled = await Promise.all(
     auroraSources.map((s) =>
       searchSourceCached(s, trimmed, '128').then(
@@ -407,8 +526,8 @@ export async function searchOnlineTracks(
   )
   const baseline: OnlineTrackSearchResult[] = []
   for (const r of baselineSettled) if (r.status === 'fulfilled') baseline.push(...r.value)
-  if (baseline.length === 0) return inPlace
+  if (baseline.length === 0) return orderBySourcePriority(inPlace, sources)
 
   // 补拉到的基线档对「就地没修好的」那批继续兜底，最终口径与串行版一致
-  return correctSuspiciousAudioSources(inPlace, baseline)
+  return orderBySourcePriority(correctSuspiciousAudioSources(inPlace, baseline), sources)
 }
