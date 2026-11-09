@@ -3,7 +3,8 @@ import { Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil
 import { BrandMark } from '@/components/common/BrandMark'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { NAV_LABEL_KEYS, ROUTES, type NavItem } from '@/lib/routes'
+import { NAV_LABEL_KEYS, ROUTES, visibleNavItems, type NavItem } from '@/lib/routes'
+import { useHallAvailable } from '@/hooks/useHallAvailability'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -32,9 +33,13 @@ import {
  * 主导航表（扁平，无分组标题）。路径一律取 `@/lib/routes` 的常量；
  * 形状与移动端抽屉（MobileNav）共用 NavItem。
  *
- * 顺序即产品优先级：**音乐库（在线）排第一位**，它是冷启动主屏（HOME_ROUTE），
+ * 顺序即产品优先级：**音乐库（在线）排第一位**，它是冷启动主屏的首选（`homeRoute`），
  * 导航首位与主屏保持一致，用户按「第一位 = 首屏」的直觉操作不会错位。
  * 我的音乐（本地曲库）紧随其后。
+ *
+ * 这张表是**全量**表：没有可用音源时「音乐库」这一项要藏起来（点进去只有引导空态），
+ * 过滤统一走 `visibleNavItems`，判定口径见 `lib/hallAvailability.ts`。
+ * 不要在渲染处再写一遍 `hallAvailable ? ... : ...`——移动端抽屉有同样一张表。
  *
  * 名称沿革见 lib/routes.ts 的 NAV_LABEL_KEYS 处注释：曾用「音乐库 / 音乐馆」，
  * 再改「我的音乐 / 在线音乐」+「我的 / 在线」分组，现取消分组且「音乐库」改指在线页。
@@ -86,6 +91,10 @@ export function Sidebar() {
   const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   const tracks = useLibraryStore((s) => s.tracks)
+  // 没有可用音源时音乐库入口整项隐藏：它点进去只有「去配置音源」空态，
+  // 留在侧栏第一项会让人以为应用坏了（判定口径见 lib/hallAvailability.ts）
+  const hallAvailable = useHallAvailable()
+  const items = visibleNavItems(navItems, hallAvailable)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -142,9 +151,9 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 主导航：音乐库（在线发现）居首，与主屏一致 */}
+      {/* 主导航：音乐库（在线发现）居首，与主屏一致；无可用音源时该项由 visibleNavItems 滤掉 */}
       <nav className="flex flex-col gap-px px-3 mt-1">
-        {navItems.map(({ to, icon: Icon, labelKey }) => (
+        {items.map(({ to, icon: Icon, labelKey }) => (
           <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive)}>
             <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
             {t(labelKey)}

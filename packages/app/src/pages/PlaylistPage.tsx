@@ -30,7 +30,8 @@ import {
 } from '@/services/playlistIO.service'
 import { Button } from '@/components/ui/button'
 import { useGoBack } from '@/lib/navigation'
-import { HOME_ROUTE, LIBRARY_ROUTE, NAV_LABEL_KEYS } from '@/lib/routes'
+import { useHallAvailable } from '@/hooks/useHallAvailability'
+import { homeRoute, LIBRARY_ROUTE, NAV_LABEL_KEYS } from '@/lib/routes'
 import { useT } from '@/i18n'
 import { moveTargetsAt } from '@/lib/playlistReorder'
 import { SubPageTitle } from '@/components/PageHeading'
@@ -48,6 +49,8 @@ export function PlaylistPage() {
   const t = useT()
   // 返回兜底：历史栈底时 navigate(-1) 是 no-op，回主屏
   const goBack = useGoBack()
+  // 删除歌单后要回主屏：无可用音源时主屏是我的音乐，别把用户送去音乐库空态
+  const hallAvailable = useHallAvailable()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const playlists = usePlaylistStore((s) => s.playlists)
@@ -209,7 +212,7 @@ export function PlaylistPage() {
                 className="text-destructive focus:text-destructive"
                 onClick={() => {
                   deletePlaylist(playlist.id)
-                  navigate(HOME_ROUTE)
+                  navigate(homeRoute(hallAvailable))
                 }}
               >
                 <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.6} />

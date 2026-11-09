@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Menu, X, Heart, Clock, Settings, Link2, Library, Radio } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { NAV_LABEL_KEYS, ROUTES, type NavItem } from '@/lib/routes'
+import { NAV_LABEL_KEYS, ROUTES, visibleNavItems, type NavItem } from '@/lib/routes'
+import { useHallAvailable } from '@/hooks/useHallAvailability'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { useUIStore } from '@/stores/uiStore'
 import { useT } from '@/i18n'
@@ -35,6 +36,8 @@ import { BrandMark } from '@/components/common/BrandMark'
  * 表里存**键**不存译文（理由见 Sidebar 同名注释与 NavItem.labelKey）：
  * 模块级数组存字符串会把语言冻在模块加载那一刻。
  * 顺序与取名理由见 Sidebar 同名注释：音乐库（在线）居首并与主屏一致。
+ * 这张表也是全量表：没有可用音源时「音乐库」要隐藏，过滤与侧栏同源
+ * （`visibleNavItems`）——两张表各写一份判断，移动端与桌面端迟早给出不同答案。
  */
 const navItems: NavItem[] = [
   { to: ROUTES.hall, icon: Radio, labelKey: NAV_LABEL_KEYS.hall },
@@ -61,6 +64,10 @@ const drawerLinkClass = (isActive: boolean, spaced = false) =>
 
 export function MobileNav({ children }: { children?: ReactNode }) {
   const t = useT()
+  // 没有可用音源时抽屉里不出现「音乐库」：点进去只有引导空态，
+  // 抽屉第一项就是它，会让人以为整个应用没内容（判定见 lib/hallAvailability.ts）
+  const hallAvailable = useHallAvailable()
+  const items = visibleNavItems(navItems, hallAvailable)
   const open = useUIStore((s) => s.mobileDrawerOpen)
   const setOpen = useUIStore((s) => s.setMobileDrawerOpen)
 
@@ -135,7 +142,7 @@ export function MobileNav({ children }: { children?: ReactNode }) {
         </div>
 
         <nav className="flex flex-col gap-px px-3 mt-2 pb-[env(safe-area-inset-bottom)]">
-          {navItems.map(({ to, icon: Icon, labelKey }) => (
+          {items.map(({ to, icon: Icon, labelKey }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive)}>
               <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
               {t(labelKey)}

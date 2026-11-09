@@ -15,6 +15,9 @@ import type { RecommendPlaylist, ToplistBrief, ToplistPreviewSong } from '@/type
  *
  * 数据来自用户配置的音源服务（协议见 @aurora/shared 的 musicHall.ts）。
  * 应用不内置任何平台抓取器——未配音源时整页是引导空态，而不是内置的假数据。
+ * 不过这个空态现在基本看不到：无可用音源时入口被隐藏、App 层还会把停在本页的用户
+ * 重定向回主屏（见 App.tsx 的重定向 effect）。空态保留为自保：重定向在 effect 里跑，
+ * 首帧仍会渲染本页，且「入口看不见就删掉兜底」会让这一页在异常数据下变成白屏。
  *
  * 视觉遵循 DS：长列表卡片用 `.card-solid`（无 blur，避免滚动时逐帧重采样），
  * 一屏只有一个强调色（mint，仅用于选中/焦点），hover 只改背景与描边、不做位移。

@@ -61,18 +61,26 @@ export const NAV_LABEL_KEYS = {
   hall: 'nav.item.hall',
 } as const
 
-/** 我的音乐页的路由：从各处跳回「本地曲库」用它，不要用 HOME_ROUTE（主屏已换到音乐库） */
+/** 我的音乐页的路由：从各处跳回「本地曲库」用它，不要用它当主屏（主屏走 homeRoute） */
 export const LIBRARY_ROUTE = ROUTES.library
 
 /**
  * 应用主屏：冷启动落地页、返回兜底目标、移动端「再按一次退出」的主屏判定都用它。
  *
- * 主屏是**音乐库**（在线推荐 + 排行榜），它是导航第一项，也与「第一位即主屏」的产品决定一致。
- * 注意主屏 ≠ 常驻挂载页：后者固定是我的音乐（见 KEEP_ALIVE_ROUTE），两者已解耦。
+ * 首选是**音乐库**（在线推荐 + 排行榜，导航第一项，与「第一位即主屏」的产品决定一致）；
+ * 但没有可用音源时它只会是一个引导空态，此时主屏回落**我的音乐**——
+ * 冷启动不该把用户丢进「去配置音源」。判定口径只有一份（`hallAvailabilityOf`），
+ * 本函数只负责把结论翻译成路径，不自己判断音源形态。
  *
- * 代价（已知并接受）：无音源 / 断网 / 浏览器版无在线能力时，冷启动首屏是引导空态而非内容。
+ * 为什么是函数而不是常量：可用性会在运行期变化（添加/启停音源、插件开关），
+ * 常量会在模块加载时把落点定死。调用方在**渲染期**取（hook 见
+ * `hooks/useHallAvailability.ts`），返回键那一类只注册一次的监听用 ref 存最新值。
+ *
+ * 注意主屏 ≠ 常驻挂载页：后者固定是我的音乐（见 KEEP_ALIVE_ROUTE），两者已解耦。
  */
-export const HOME_ROUTE = ROUTES.hall
+export function homeRoute(hallAvailable: boolean): string {
+  return hallAvailable ? ROUTES.hall : LIBRARY_ROUTE
+}
 
 /**
  * 唯一**常驻挂载**的页面：离开它时用 `visibility` 隐藏而非卸载，保留布局尺寸与
@@ -117,6 +125,21 @@ export function isRoute(pattern: string, pathname: string): boolean {
 }
 
 /**
+ * 当前路径是否属于「音乐库」这一族（发现页 + 推荐歌单详情 + 榜单详情）。
+ *
+ * 用于「没有可用音源时把停在音乐库的用户送回主屏」：入口藏起来之后，
+ * 这三类路由都不该还能停留（详情页的数据本身就来自在线音源，留在那儿只有失败态）。
+ * 判定必须**包含详情页**，只看 `pathname === ROUTES.hall` 会漏掉用户从推荐里点进去的那一层。
+ */
+export function isHallRoute(pathname: string): boolean {
+  return (
+    pathname === ROUTES.hall ||
+    isRoute(ROUTE_PATHS.hallPlaylist, pathname) ||
+    isRoute(ROUTE_PATHS.hallToplist, pathname)
+  )
+}
+
+/**
  * 导航条目：两处导航表（侧栏 / 移动端抽屉）共用同一份形状。
  *
  * `labelKey` 而不是 `label: string` 是刻意的：这两张表都是**模块级常量数组**，
@@ -129,4 +152,17 @@ export interface NavItem {
   icon: LucideIcon
   /** 文案键：渲染期用 t(labelKey) 取，勿在模块级求值 */
   labelKey: MessageKey
+}
+
+/**
+ * 过滤导航表：没有可用音源时隐藏「音乐库」入口，其余顺序不变。
+ *
+ * 为什么在这里而不是两张导航表各写一遍：侧栏与抽屉的表是两份模块级常量
+ * （见 Sidebar / MobileNav），过滤逻辑写两份必然漂移——改一处忘另一处，
+ * 移动端就会留下一个点进去只有空态的入口。判定口径与主屏落点共用同一份
+ * （`hallAvailabilityOf`），两张表只负责把 `hallAvailable` 传进来。
+ */
+export function visibleNavItems(items: readonly NavItem[], hallAvailable: boolean): NavItem[] {
+  if (hallAvailable) return [...items]
+  return items.filter((item) => item.to !== ROUTES.hall)
 }

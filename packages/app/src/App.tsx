@@ -54,7 +54,8 @@ import {
 } from '@/services/update.service'
 import { cn, isMobile, isMobileUI } from '@/lib/utils'
 import { useOpenSongDetail } from '@/lib/navigation'
-import { HOME_ROUTE, KEEP_ALIVE_ROUTE, ROUTES, ROUTE_PATHS, isRoute } from '@/lib/routes'
+import { useHallAvailable } from '@/hooks/useHallAvailability'
+import { homeRoute, isHallRoute, KEEP_ALIVE_ROUTE, ROUTES, ROUTE_PATHS, isRoute } from '@/lib/routes'
 import { useT, appTranslate } from '@/i18n'
 import type { Track, FolderPickerOptions, EncryptedAudioFile } from '@/types'
 
@@ -321,6 +322,23 @@ function AppLayout() {
   useEffect(() => { folderPickerOpenRef.current = folderPickerOpen }, [folderPickerOpen])
   const locationRef = useRef(location)
   useEffect(() => { locationRef.current = location }, [location])
+  // 主屏落点：音乐库有可用音源时是它，否则回落到我的音乐（见 lib/routes.ts homeRoute）。
+  // 返回键监听只注册一次（依赖不含落点），所以最新值同样经 ref 取；
+  // 同时 `home` 直接用于根路由重定向，那处在渲染期求值，音源变化会立即跟上。
+  const hallAvailable = useHallAvailable()
+  const home = homeRoute(hallAvailable)
+  const homeRef = useRef(home)
+  useEffect(() => { homeRef.current = home }, [home])
+  // 音乐库失去可用性时，正停在发现页/详情页的用户被送回主屏（此刻即我的音乐）。
+  // 不这么做的话有三种入口会把人留在死页上：在设置里停用了最后一个可用音源、
+  // 删掉了唯一的音源配置、或从外部深链直达 /hall——入口已经藏了，页面还留着
+  // 只会显示「暂不可用」的空态，与「藏掉入口」这件事自相矛盾。
+  // 用 replace 而不是 push：被隐藏的入口不该留在历史里，否则返回键能把它再翻出来。
+  useEffect(() => {
+    if (hallAvailable) return
+    if (!isHallRoute(location.pathname)) return
+    navigate(home, { replace: true })
+  }, [hallAvailable, location.pathname, home, navigate])
   const exitConfirmToastRef = useRef<number | null>(null)
   // 「再按一次退出」确认窗口计时器；提为 ref 以便路由切换时从外部撤销待确认状态
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -370,16 +388,17 @@ function AppLayout() {
       }
 
       // ⑥ 路由返回：详情页/歌单页与屏内返回按钮行为一致（回上一页）；
-      //    其他非主屏页回主屏；已在主屏（音乐库）则进入「再按一次退出」确认流程
+      //    其他非主屏页回主屏；已在主屏（音乐库，或回落后是我的音乐）则进入
+      //    「再按一次退出」确认流程
       const path = locationRef.current.pathname
       if (isRoute(ROUTE_PATHS.songDetail, path) || isRoute(ROUTE_PATHS.playlist, path)) {
         // 应用内无历史可退（如冷启动直达详情页）时兜底回主屏
         if (window.history.length > 1) navigate(-1)
-        else navigate(HOME_ROUTE)
+        else navigate(homeRef.current)
         return
       }
-      if (path !== HOME_ROUTE) {
-        navigate(HOME_ROUTE)
+      if (path !== homeRef.current) {
+        navigate(homeRef.current)
         return
       }
       // 主屏：二次确认退出，避免误触直接杀进程
@@ -1162,7 +1181,8 @@ function AppLayout() {
                   用 visibility 隐藏而非 display —— 布局尺寸与滚动容器全程保留，
                   虚拟列表不会因容器失焦归零而停摆，返回时零重建、零空白、滚动位置原样恢复。
                   只有这一个页面常驻：两个虚拟列表同时挂载会让内存与 ResizeObserver 翻倍。
-                  注意与 HOME_ROUTE（音乐库）已解耦：主屏不是常驻页，二者不要合并。
+                  注意与主屏（homeRoute：音乐库，无可用音源时为我的音乐）已解耦：
+                  主屏不是常驻页，二者不要合并。
                 */}
                 <div
                   className={cn(
@@ -1184,8 +1204,10 @@ function AppLayout() {
                   >
                     <Routes>
                       {/* 路径模式全部取自 lib/routes（唯一事实源），此处不写字面量 */}
-                      <Route path={ROUTES.root} element={<Navigate to={HOME_ROUTE} replace />} />
-                      {/* 音乐库：推荐歌单 + 排行榜（在线发现入口；应用主屏，但按需挂载——常驻页是我的音乐） */}
+                      <Route path={ROUTES.root} element={<Navigate to={home} replace />} />
+                      {/* 音乐库：推荐歌单 + 排行榜（在线发现入口）。它是主屏的首选，
+                          但没有可用音源时主屏回落到我的音乐（homeRoute），此处按需挂载——
+                          常驻页始终是我的音乐 */}
                       <Route path={ROUTES.hall} element={<MusicHallPage />} />
                       <Route path={ROUTE_PATHS.hallPlaylist} element={<MusicHallDetailPage />} />
                       <Route path={ROUTE_PATHS.hallToplist} element={<MusicHallDetailPage />} />

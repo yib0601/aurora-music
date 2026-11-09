@@ -8,6 +8,7 @@ import {
 import type { MusicHallSource, ParsedSong, RecommendPlaylist, ToplistGroup, ToplistDetail } from '@/types'
 import { hallRecommend, hallToplists, hallToplistSongs, supportsMusicHall } from '@/services/platform'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { hallAvailabilityOf, type HallAvailability } from '@/lib/hallAvailability'
 import { NAV_LABEL_KEYS } from '@/lib/routes'
 import { appTranslate } from '@/i18n'
 
@@ -102,8 +103,22 @@ export function pickHallSource(): MusicHallSource | null {
 }
 
 /**
+ * 当前配置下的音乐库可用性（`ok` 之外的四种原因见 `lib/hallAvailability.ts`）。
+ *
+ * 读的是**当前快照**而不是订阅：store 内的异步分支与事件回调用它，
+ * 需要跟随变化重渲染的场景（导航入口、主屏落点）走 `hooks/useHallAvailability.ts`。
+ */
+export function hallAvailability(): HallAvailability {
+  return hallAvailabilityOf(useLibraryStore.getState().onlineSources, supportsMusicHall())
+}
+
+/**
  * 无音源 / 平台不支持的统一提示（UI 空态与列表错误态共用一处）。
  * 返回**已按当前语言渲染**的文案；空串表示可用。
+ *
+ * 「是否可用」不在这里判：口径统一由 `hallAvailabilityOf` 给出，
+ * 否则侧栏入口、主屏落点、本页空态会各有一套说法（正是本次要修的问题）。
+ * 这里只负责把结论翻译成文案。
  *
  * `t` 由调用方注入：组件里传 `useT()`（语言切换会重渲染），
  * store 内的异步分支走默认值 `appTranslate()`（每次调用读语言快照，不是模块级求值）。
@@ -114,12 +129,18 @@ export function hallUnavailableReason(t: AppTranslator = appTranslate()): string
   // 页面名不写死在这一层：用占位符注入，免得 routes.ts 改一次名这里漏一处
   // （「音乐库 / 我的音乐」的取名沿革见 lib/routes.ts）。
   const names = { hall: t(NAV_LABEL_KEYS.hall), library: t(NAV_LABEL_KEYS.library) }
-  if (!supportsMusicHall()) return t('hall.unavailable.unsupportedEnv', names)
-  const sources = useLibraryStore.getState().onlineSources
-  if (sources.length === 0) return t('hall.unavailable.noSource', names)
-  if (!sources.some((s) => s.enabled)) return t('hall.unavailable.allDisabled')
-  if (!pickHallSource()) return t('hall.unavailable.sourceUnsupported', names)
-  return ''
+  switch (hallAvailability()) {
+    case 'ok':
+      return ''
+    case 'unsupportedEnv':
+      return t('hall.unavailable.unsupportedEnv', names)
+    case 'noSource':
+      return t('hall.unavailable.noSource', names)
+    case 'allDisabled':
+      return t('hall.unavailable.allDisabled')
+    case 'sourceUnsupported':
+      return t('hall.unavailable.sourceUnsupported', names)
+  }
 }
 
 /**
