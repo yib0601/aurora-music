@@ -36,16 +36,19 @@ import {
   encodeFilePathToUrl,
   encodePathSegments,
   lxInspectionToProbe,
+  parseErrorInfo,
   parseSourceInput,
   probeAuroraService,
   pluginIdOf,
   resolveTrackAudioAcrossScriptSources,
   sourceSongIdOf,
+  stripIpcPrefix,
   trackRefFor,
   unavailableProbe,
 } from '@aurora/shared'
 import type {
   AudioFocusYieldBehavior,
+  LanSyncBridge,
   PluginAuthState as PluginAuthStateInfo,
   PluginCatalogEntry,
   PluginInstallResult as PluginInstallResultInfo,
@@ -53,6 +56,7 @@ import type {
   PluginStartupReport as PluginStartupReportInfo,
   ResolvedAudio,
   SourceTrackRef,
+  SyncSnapshot,
 } from '@aurora/shared'
 
 /** 插件元信息（渲染层只消费这些字段，拿不到插件实现） */
@@ -325,7 +329,82 @@ export interface PlatformExtension {
    * 与 safEStorage 凭证存储，浏览器端两者都没有。
    */
   plugins?: PluginGateway
+
+  // ─── 歌单同步（docs/playlist-sync.md §8：只做桌面端）───────────────
+  /**
+   * 本端是否具备歌单同步能力。
+   *
+   * **必填**而不是可选：这是引擎与 UI 唯一的分支判据（§8 明确「不按插件
+   * available() 分散判断」），写成可选就会出现「undefined 算不算支持」的歧义。
+   * 非桌面端一律 false，入口随之隐藏。
+   */
+  supportsPlaylistSync: boolean
+  /**
+   * 同步凭证网关：口令按 configId 存在主进程 safeStorage，渲染层只拿「有没有」。
+   *
+   * 与 storage 的同名能力分开（不是泛化成一个 KeyValue 网关）：同步配置的 id
+   * 空间与媒体库来源互不相干，混用会让「删了来源顺带清掉同步口令」这类
+   * 生命周期耦合变得可能。
+   */
+  sync?: SyncGateway
+  /**
+   * 局域网同步桥。非桌面端为 `null`（HTTP 服务、UDP 发现与配对鉴权都在主进程）。
+   *
+   * 方法名与 §15.3 的 IPC 通道名不同（`lan:pull`/`lan:push` 映射到
+   * `pullPeer`/`pushPeer`），改名只在这一层做，引擎只见 shared 的 `LanSyncBridge`。
+   */
+  lanSync?: LanSyncBridge | null
+  /**
+   * 局域网收件箱事件订阅（对端推来的快照），返回退订函数。
+   *
+   * 不并进 `LanSyncBridge`：那个接口是 shared 给两端共用的「主动调用」面，
+   * 而这是一条下行事件通道，只有宿主（preload）能提供。
+   */
+  onLanSyncInbox?: (cb: (snapshots: SyncSnapshot[]) => void) => () => void
+  /**
+   * 同步插件发 HTTP 用的 fetch 出口（可选）。
+   *
+   * 桌面端的 WebDAV 方案迟早需要「主进程代发」来绕开 CORS；在补出这条 IPC
+   * 通道之前不实现，引擎按 `platform.syncFetch ?? globalThis.fetch` 退化。
+   */
+  syncFetch?: typeof globalThis.fetch
 }
+
+/**
+ * 歌单同步的凭证网关。
+ *
+ * 与 `PluginGateway` 的 login/logout 分开：那边的凭证属于「插件会话」，
+ * 这里的口令属于「某一条同步目标」（同一插件可以配多条，各用各的口令）。
+ */
+export interface SyncGateway {
+  /** 本机设备身份（主进程首次调用时生成并持久化，渲染层只读） */
+  device(): Promise<SyncDeviceIdentity>
+  /** 保存某条同步目标的口令原文（**单向**，永不回读给 UI 渲染） */
+  saveCredential(configId: string, payload: Record<string, string>): Promise<SyncCredentialResult>
+  /** 口令状态（不含原文）：是否已保存、本机能否加密 */
+  credentialState(configId: string): Promise<SyncCredentialState>
+  /** 清除口令 */
+  clearCredential(configId: string): Promise<SyncCredentialResult>
+  /**
+   * 取回口令原文，**只在一次同步调用内持有**：绝不写进 zustand / persist / 日志 /
+   * lastError（§10）。没有可用口令时返回 null（而不是空对象），调用方据此区分
+   * 「没配口令」与「配了口令但读不到」。
+   */
+  getCredential(configId: string): Promise<Readonly<Record<string, string>> | null>
+}
+
+export interface SyncDeviceIdentity {
+  deviceId: string
+  deviceName: string
+}
+
+export interface SyncCredentialState {
+  saved: boolean
+  /** 本机是否有 safeStorage（否则口令只能明文落盘，配置页必须如实提示） */
+  encryptionAvailable: boolean
+}
+
+export type SyncCredentialResult = { ok: boolean } & SyncCredentialState
 
 /**
  * 插件网关。
@@ -885,6 +964,60 @@ export function createDesktopPlatform(): Platform {
       return api.clearStorageCredential(sourceId)
     },
 
+    // ─── 歌单同步：设备身份与口令转发到主进程，局域网桥原样装配 ───
+    // 与存储口令同一套降级口径：缺通道时**如实回报不可用**，不假装成功。
+    // 口令原文只在 getCredential 里回读一次（引擎持有到本次调用结束），
+    // 这里不做任何缓存 —— 缓存就等于把明文留在渲染层。
+    supportsPlaylistSync: true,
+    sync: {
+      async device() {
+        if (!api?.sync?.device) return fallbackDeviceIdentity()
+        const identity = await api.sync.device()
+        return normalizeDeviceIdentity(identity)
+      },
+      async saveCredential(configId: string, payload: Record<string, string>) {
+        if (!api?.sync?.saveCredential) {
+          return { ok: false, saved: false, encryptionAvailable: false }
+        }
+        return api.sync.saveCredential(configId, payload)
+      },
+      async credentialState(configId: string): Promise<SyncCredentialState> {
+        if (!api?.sync?.credentialState) return { saved: false, encryptionAvailable: false }
+        return api.sync.credentialState(configId)
+      },
+      async clearCredential(configId: string) {
+        if (!api?.sync?.clearCredential) {
+          return { ok: false, saved: false, encryptionAvailable: false }
+        }
+        return api.sync.clearCredential(configId)
+      },
+      async getCredential(configId: string) {
+        if (!api?.sync?.getCredential) return null
+        const secrets = await api.sync.getCredential(configId)
+        // 主进程回 null = 没有可用口令（未配置 / 解密失败），原样透传
+        return secrets && typeof secrets === 'object' ? (secrets as Record<string, string>) : null
+      },
+    },
+    lanSync: createLanSyncBridge(api),
+    onLanSyncInbox(cb: (snapshots: SyncSnapshot[]) => void) {
+      const lan = api?.lanSync
+      if (!lan || typeof lan.onInbox !== 'function') return () => {}
+      return lan.onInbox((payload: SyncSnapshot | SyncSnapshot[]) => {
+        // 主进程推的可能是一份或一批：归一成数组，引擎只认一种形状
+        if (Array.isArray(payload)) cb(payload)
+        else if (payload) cb([payload])
+      })
+    },
+
+    /**
+     * 同步请求的 fetch 出口：桌面端由主进程代发。
+     *
+     * WebDAV 服务端给不给 CORS 头不由我们决定，渲染层直连在部分 NAS 上必被拦。
+     * 主进程的 `sync:fetch` 通道（验证报告 B-2）把请求搬出渲染层，这里把它包成
+     * 标准 `fetch` 形状 —— 插件侧只认 `ctx.fetch`，不需要知道传输在哪一层。
+     */
+    syncFetch: createSyncFetch(api),
+
     // ─── 媒体缓存：转发到主进程 ───
     async resolveCachedAudio(req) {
       if (!api?.audioCache?.resolve) return { src: null }
@@ -1048,6 +1181,9 @@ export function createPlatform(): Platform {
       return unavailableProbe(input.kind || 'aurora', appTranslate()('runtime.platform.scriptUnsupportedEnv'))
     },
     async resolveTrackAudio() { return null },
+    // 未知环境没有主进程：同步与局域网能力一律关掉（入口随 supportsPlaylistSync 隐藏）
+    supportsPlaylistSync: false,
+    lanSync: null,
     database: new NoopDatabase(),
     windowControls: new NoopWindowControls(),
   }
@@ -1088,6 +1224,162 @@ export async function hallToplistSongs(
 /** 当前端是否具备在线音乐能力（web 端为 false，UI 据此展示不可用提示） */
 export function supportsMusicHall(): boolean {
   return Boolean(platform.musicHall)
+}
+
+/**
+ * 把 preload 暴露的 `lanSync` 装配成 shared 的 `LanSyncBridge`。
+ *
+ * 两处差异只在这一层消化：
+ * 1. 通道名不同（`lan:pull`/`lan:push` ↔ `pullPeer`/`pushPeer`）；
+ * 2. 主进程可能只实现了部分通道（老版本 preload）。缺哪个就在调用时报
+ *    `sync.error.lanDisabled`，而不是装配出一个「方法存在但发不出请求」的桥 ——
+ *    UI 的可用性判断看的是桥是否为 null，半残的桥会让入口亮着却一直失败。
+ */
+function createLanSyncBridge(api: any): LanSyncBridge | null {
+  const lan = api?.lanSync
+  // 只有 status 在，才认为主进程真的装了局域网服务（其余通道同批上线）
+  if (!lan || typeof lan.status !== 'function') return null
+  return {
+    status: () => lan.status(),
+    setEnabled: (enabled: boolean) => lan.setEnabled(enabled),
+    rotateCode: () => lan.rotateCode(),
+    discover: (timeoutMs?: number) => lan.discover(timeoutMs),
+    publish: (snapshot: SyncSnapshot) => lan.publish(snapshot),
+    takeInbox: () => lan.takeInbox(),
+    pullPeer: (target) => {
+      if (typeof lan.pull !== 'function') return Promise.reject(unsupportedLanChannel())
+      return lan.pull(target)
+    },
+    pushPeer: (target, snapshot) => {
+      if (typeof lan.push !== 'function') return Promise.reject(unsupportedLanChannel())
+      return lan.push(target, snapshot)
+    },
+  }
+}
+
+/** 主进程代发同步请求的超时（WebDAV 一次 PUT 可能要几十秒，别按浏览器的 8s 算） */
+const SYNC_FETCH_TIMEOUT_MS = 60_000
+
+function unsupportedLanChannel(): Error {
+  return auroraError('sync.error.lanDisabled')
+}
+
+/**
+ * 设备身份的兜底。
+ *
+ * 正常情况下 deviceId 来自主进程持久化（重启不变，LWW 并列判定要靠它稳定）。
+ * 老版本 preload 没有该通道时给一个**本次会话内稳定**的随机身份：宁可让这台机器
+ * 在本轮里被当成「新设备」，也不要因为拿不到身份就让整个同步不可用。
+ */
+let fallbackIdentity: SyncDeviceIdentity | null = null
+function fallbackDeviceIdentity(): SyncDeviceIdentity {
+  if (!fallbackIdentity) {
+    const random =
+      typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36)
+    fallbackIdentity = { deviceId: `renderer-${random}`, deviceName: 'Aurora Music' }
+  }
+  return fallbackIdentity
+}
+
+/** 主进程返回值可能缺字段（旧数据 / 空磁盘），补齐成引擎可用的形状 */
+function normalizeDeviceIdentity(raw: any): SyncDeviceIdentity {
+  const deviceId =
+    raw && typeof raw.deviceId === 'string' && raw.deviceId ? raw.deviceId : fallbackIdentity0()
+  const deviceName =
+    raw && typeof raw.deviceName === 'string' && raw.deviceName ? raw.deviceName : 'Aurora Music'
+  return { deviceId, deviceName }
+}
+
+function fallbackIdentity0(): string {
+  return fallbackDeviceIdentity().deviceId
+}
+
+/**
+ * `window.electronAPI.sync.fetch` → 标准 `fetch`。
+ *
+ * 入参形状是 `{url, method?, headers?, body?, timeoutMs?}`，回 `{status, statusText,
+ * headers, bodyText}`（通道由主进程实现，签名已在 task-8 冻结）。这里只做「Request →
+ * 扁平参数 → Response」的翻译，不掺业务。
+ *
+ * 注意两点：
+ * - 主进程那条通道没有 AbortSignal 语义，取消靠 `timeoutMs` 超时；调用方的
+ *   `init.signal` 在这里被忽略（插件侧超时仍生效，因为请求本身有 timeoutMs 兜底）。
+ * - `status` 非法（缺字段 / 0）时抛错而不是伪造 200：让插件报「连不上」，
+ *   好过拿一个空 200 去按「404 目录不存在」处理。
+ */
+function createSyncFetch(api: any): typeof globalThis.fetch | undefined {
+  const send = api?.sync?.fetch
+  if (typeof send !== 'function') return undefined
+  const syncFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = new Request(input as RequestInfo, init)
+    const headers: Record<string, string> = {}
+    request.headers.forEach((value, key) => {
+      headers[key] = value
+    })
+    const method = request.method.toUpperCase()
+    const body = method === 'GET' || method === 'HEAD' ? undefined : await request.clone().text()
+    let reply: any
+    try {
+      reply = await send({
+        url: request.url,
+        method,
+        headers,
+        body,
+        timeoutMs: SYNC_FETCH_TIMEOUT_MS,
+      })
+    } catch (err) {
+      // 主进程抛的是项目统一的 `AURORA_ERR:{...}` 信封（IPC 还会给 message 加前缀），
+      // 这里把它还原成 `cause`：WebDAV 插件的错误码（sync.error.webdavConnect 等）
+      // 必须原样到 translateError 手里，不能在这里被压成 unknown。
+      throw syncFetchError(err)
+    }
+    const status = Number(reply?.status)
+    if (!Number.isInteger(status) || status < 200 || status > 599) {
+      throw new TypeError('sync:fetch returned no usable status')
+    }
+    const bodyText = typeof reply?.bodyText === 'string' ? reply.bodyText : ''
+    // 204/205/304 是「无实体」状态：手工构造 Response 时带 body 会直接抛 TypeError
+    const nullBody = status === 204 || status === 205 || status === 304
+    return new Response(nullBody ? null : bodyText, {
+      status,
+      statusText: reply?.statusText ?? '',
+      headers: responseHeadersOf(reply?.headers),
+    })
+  }
+  return syncFetch as typeof globalThis.fetch
+}
+
+/**
+ * 把主进程抛回来的 IPC 错误还原成带 `cause` 的 Error。
+ *
+ * `parseErrorInfo` 认 `AURORA_ERR:{...}` 信封，`stripIpcPrefix` 先剥掉 Electron 加的
+ * `Error invoking remote method 'sync:fetch': Error: ` 前缀；两步之后 `cause` 是结构化
+ * 的 `{code,params,detail}`，`translateError` 就能还原文案。
+ */
+function syncFetchError(err: unknown): Error {
+  const raw = err instanceof Error ? err.message : String(err)
+  const payload = stripIpcPrefix(raw)
+  const info = parseErrorInfo(payload)
+  const wrapped: Error & { cause?: unknown } = new Error(raw)
+  if (info) wrapped.cause = info
+  return wrapped
+}
+
+/** 主进程回的头是普通对象；`Response` 会校验几个保留头，构造失败就退化成空头 */
+function responseHeadersOf(raw: any): Headers {
+  try {
+    const headers = new Headers()
+    if (raw && typeof raw === 'object') {
+      for (const [key, value] of Object.entries(raw)) {
+        if (typeof value === 'string') headers.set(key, value)
+      }
+    }
+    return headers
+  } catch {
+    return new Headers()
+  }
 }
 
 export const platform = createPlatform()

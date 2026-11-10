@@ -1,16 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
-  OnlineSearchOptions,
-  OnlineTrackSearchResult,
-  LyricsSearchOptions,
-  LyricsSearchResult,
+  LanPeerInfo,
+  LanSyncStatus,
+  LanSyncTarget,
   LibrarySourceConfig,
   LoggingRendererApi,
+  LyricsSearchOptions,
+  LyricsSearchResult,
+  OnlineSearchOptions,
+  OnlineTrackSearchResult,
   StoragePluginMeta,
+  SyncSecrets,
+  SyncSnapshot,
 } from '@aurora/shared'
 // 纯类型位置：`import type` 在编译后完全擦除，不产生 require。
 // 沙箱 preload 不能 require 相对路径模块，但类型导入是安全的（同下方 LOG_CHANNELS 的用法）。
 import type { StorageCredentialState } from './ipc/storageCredentials'
+import type { SyncCredentialState } from './ipc/syncCredentials'
+import type { SyncFetchRequest, SyncFetchResponse } from './ipc/lanSync'
 
 /**
  * 日志通道名的本地副本 —— 只在这里存在，原因是**沙箱 preload 不能 require 共享包**。
@@ -243,6 +250,50 @@ const electronAPI = {
     setPluginEnabled: (pluginId: string, enabled: boolean): Promise<unknown> =>
       ipcRenderer.invoke('plugin:setEnabled', pluginId, enabled),
     listDisabledPlugins: (): Promise<unknown> => ipcRenderer.invoke('plugin:disabled'),
+  },
+  // ─── 歌单同步 ────────────────────────────────────────────────────
+  // 两块分开：
+  // - `sync`   配置级凭据（WebDAV 口令等）。写入后只回状态，读取是**给渲染层的**：
+  //            同步引擎需要口令才能拼 header，所以这条通道回明文（见 ipc/syncCredentials.ts）。
+  // - `lanSync` 局域网服务：配对码由主进程持有，日志/广播/事件里都不出现；
+  //            服务默认关闭，必须显式 setEnabled(true) 才监听端口。
+  // 通道表与 docs/playlist-sync.md §15.3 一字不差（preloadApi.test.ts 有机器检查）。
+  sync: {
+    device: (): Promise<{ deviceId: string; deviceName: string }> =>
+      ipcRenderer.invoke('sync:device'),
+    saveCredential: (configId: string, payload: unknown): Promise<SyncCredentialState> =>
+      ipcRenderer.invoke('sync:credential:save', configId, payload),
+    credentialState: (configId: string): Promise<SyncCredentialState> =>
+      ipcRenderer.invoke('sync:credential:state', configId),
+    clearCredential: (configId: string): Promise<void> =>
+      ipcRenderer.invoke('sync:credential:clear', configId),
+    getCredential: (configId: string): Promise<SyncSecrets | null> =>
+      ipcRenderer.invoke('sync:credential:get', configId),
+    // 主进程代发 HTTP：打包形态渲染层 origin 是 file://，WebDAV 的
+    // PROPFIND/PUT/MKCOL 会触发 CORS 预检且对端不回 ACAO，只能由主进程发。
+    // 返回结构见 SyncFetchResponse（3xx 原样返回，不跟随重定向）。
+    fetch: (request: SyncFetchRequest): Promise<SyncFetchResponse> =>
+      ipcRenderer.invoke('sync:fetch', request),
+  },
+  lanSync: {
+    status: (): Promise<LanSyncStatus> => ipcRenderer.invoke('lan:status'),
+    setEnabled: (enabled: boolean): Promise<LanSyncStatus> =>
+      ipcRenderer.invoke('lan:setEnabled', enabled),
+    rotateCode: (): Promise<LanSyncStatus> => ipcRenderer.invoke('lan:rotateCode'),
+    discover: (timeoutMs?: number): Promise<LanPeerInfo[]> =>
+      ipcRenderer.invoke('lan:discover', timeoutMs),
+    publish: (snapshot: SyncSnapshot): Promise<void> => ipcRenderer.invoke('lan:publish', snapshot),
+    pull: (target: LanSyncTarget): Promise<SyncSnapshot[]> => ipcRenderer.invoke('lan:pull', target),
+    push: (target: LanSyncTarget, snapshot: SyncSnapshot): Promise<void> =>
+      ipcRenderer.invoke('lan:push', target, snapshot),
+    takeInbox: (): Promise<SyncSnapshot[]> => ipcRenderer.invoke('lan:takeInbox'),
+    // 事件订阅：返回退订函数（与 onTracksScanned 等一致，React effect 里直接 return）。
+    // 事件只是「有新快照了」的提示，真正取走仍走 takeInbox（取走即清空）。
+    onInbox: (callback: (snapshots: SyncSnapshot[]) => void): (() => void) => {
+      const handler = (_event: unknown, snapshots: SyncSnapshot[]) => callback(snapshots)
+      ipcRenderer.on('lan:inbox', handler)
+      return () => ipcRenderer.removeListener('lan:inbox', handler)
+    },
   },
   // 自有服务协议的单曲取址（按源内 id 取直链）：与在线搜索同理在主进程执行
   // （渲染进程直连上游会被 CORS 拦），渲染层只拿结果；失败时返回带原因的结果，

@@ -36,6 +36,8 @@ export type PluginFailureStage =
   | 'installed'
   /** 内置存储插件注册（`storage/index.ts`） */
   | 'storage'
+  /** 内置同步插件注册（`sync/index.ts`） */
+  | 'sync'
 
 /** 一条插件加载失败记录 */
 export interface PluginFailure {

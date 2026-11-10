@@ -217,6 +217,9 @@ const CAPABILITY_LABEL_KEYS: Record<string, MessageKey> = {
   recommendPlaylists: 'sources.plugins.capability.recommendPlaylists',
   toplists: 'sources.plugins.capability.toplists',
   toplistDetail: 'sources.plugins.capability.toplists',
+  // 歌单同步插件只投影这一个能力：probe / pull / push 是**方法名**不是用户概念，
+  // 「能不能拉/推」是每条同步目标的方向选项（docs/playlist-sync.md §15.1）
+  sync: 'sync.capability',
 }
 
 /** 条�� → 去重后的能力文案（同一标签只出现一次，如 webdav 的四个存储能力合成一条） */

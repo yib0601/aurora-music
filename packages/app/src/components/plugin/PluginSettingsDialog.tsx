@@ -6,7 +6,12 @@ import { useT } from '@/i18n'
 import { platform } from '@/services/platform'
 import { NAV_LABEL_KEYS } from '@/lib/routes'
 import { PluginAuthRow } from '@/components/common/PluginAuthPanel'
-import { configsOfPlugin, pluginConfigSurfaces, storageCapabilityOf } from '@/components/common/pluginConfig'
+import {
+  configsOfPlugin,
+  pluginConfigSurfaces,
+  storageCapabilityOf,
+  syncCapabilityOf,
+} from '@/components/common/pluginConfig'
 import { displayNameOf } from '@/components/common/pluginManage'
 import { formKindOf } from '@/components/common/pluginForm'
 import {
@@ -16,7 +21,9 @@ import {
   StorageConfigCard,
   type LibrarySourceStatus,
 } from './pluginConfigCards'
+import { PlaylistSyncPanel } from './PlaylistSyncPanel'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { useSyncStore } from '@/stores/syncStore'
 import { storagePathPrefix } from '@aurora/shared'
 import type { PluginCatalogEntry } from '@aurora/shared'
 import type { LibrarySourceConfig, StoragePluginMeta } from '@/types'
@@ -76,7 +83,15 @@ export function PluginSettingsDialog({
       : storagePlugins.filter((meta) => meta.available !== false).map((meta) => meta.id)
   // 端能力参与「有哪些面」的判定：与卡片上的齿轮用**同一个** capability，
   // 否则会出现"卡片有入口、点开是空分区"
-  const configCapability = { storage: storageCapabilityOf(supportsLibrarySources, storageIds) }
+  /**
+   * 歌单同步判据：只有 `platform.supportsPlaylistSync`（§8），不看插件 available()。
+   * 与插件列表卡片上的齿轮传**同一个**值，否则会「有齿轮、点开是空的」。
+   */
+  const syncCapability = syncCapabilityOf(platform.supportsPlaylistSync)
+  const configCapability = {
+    storage: storageCapabilityOf(supportsLibrarySources, storageIds),
+    sync: syncCapability,
+  }
   const surfaces = pluginConfigSurfaces(entry, configCapability)
 
   // ─── 音源配置 ───
@@ -87,6 +102,8 @@ export function PluginSettingsDialog({
 
   // ─── 网络存储配置 ───
   const librarySources = useLibraryStore((s) => s.librarySources)
+  // 同步目标存在 zustand persist 里（`aurora-sync-state`），与库配置不同源
+  const syncConfigs = useSyncStore((s) => s.configs)
   const addLibrarySource = useLibraryStore((s) => s.addLibrarySource)
   const updateLibrarySource = useLibraryStore((s) => s.updateLibrarySource)
   const removeLibrarySource = useLibraryStore((s) => s.removeLibrarySource)
@@ -115,11 +132,11 @@ export function PluginSettingsDialog({
   }, [open])
 
   const bundle = useMemo(
-    () => configsOfPlugin(entry, onlineSources, librarySources, configCapability),
+    () => configsOfPlugin(entry, onlineSources, librarySources, configCapability, syncConfigs),
     // configCapability 由 entry / supportsLibrarySources / storagePlugins 一起决定，
-    // 三项都列进依赖，避免"名单变了但分段没重算"
+    // 依赖里列全"决定分段"的输入，避免"名单变了但分段没重算"
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entry, onlineSources, librarySources, supportsLibrarySources, storagePlugins]
+    [entry, onlineSources, librarySources, syncConfigs, supportsLibrarySources, storagePlugins]
   )
 
   // 展示名双形态（内置给字典键、已安装给字面量）的解析收在 pluginManage 一处，不在这里再写一遍
@@ -321,6 +338,14 @@ export function PluginSettingsDialog({
                     ))}
                   </div>
                 )}
+              </section>
+            )}
+
+            {/* ─── 歌单同步 ─── */}
+            {surfaces.includes('sync') && (
+              <section className="space-y-2">
+                {sectionHead(t('sync.panel.title'), t('sync.panel.description'))}
+                <PlaylistSyncPanel pluginId={entry.id} />
               </section>
             )}
 

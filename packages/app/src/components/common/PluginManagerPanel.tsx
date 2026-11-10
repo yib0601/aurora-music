@@ -35,7 +35,13 @@ import {
   uninstallPlugin,
   type InstallOutcome,
 } from './pluginManage'
-import { configSummaryOf, configsOfPlugin, hasPluginConfig, storageCapabilityOf } from './pluginConfig'
+import {
+  configSummaryOf,
+  configsOfPlugin,
+  hasPluginConfig,
+  storageCapabilityOf,
+  syncCapabilityOf,
+} from './pluginConfig'
 import { PluginSettingsDialog } from '@/components/plugin/PluginSettingsDialog'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { platform } from '@/services/platform'
@@ -123,6 +129,9 @@ export function PluginManagerPanel() {
       typeof platform.scanLibrarySource === 'function',
       storagePluginIds
     ),
+    // 歌单同步只有桌面端有（docs/playlist-sync.md §8）：判据只有 platform 这一条，
+    // 不看插件自己的 available()，否则某个同步插件不可用会连带把整个入口藏掉
+    sync: syncCapabilityOf(platform.supportsPlaylistSync),
   }
   /**
    * 某插件当前持有的配置条数。

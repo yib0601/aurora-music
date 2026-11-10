@@ -8,7 +8,7 @@
  * - 「在线源」分区里同时放着音源配置行、插件登录面板和插件列表；
  * - 「我的音乐」分区里放着网络存储配置行（而存储本身也是插件）。
  *
- * 于是同一条信息出现在两处：用户在插件列表里看到「Aurora 协议源」开着的开关，
+ * 于是同一条信息出现在两处：用户在插件列表里看到「Aurora」开着的开关，
  * 却要去另一个行里找它的服务地址；想给 SFTP 改密码，得先去「我的音乐」，而
  * 「我的音乐」这个词与「SFTP」之间没有任何语义联系。
  *
@@ -23,7 +23,7 @@
  * 「这条配置在插件设置里看不见」——而它仍然在后台工作，是最难排查的一类错位。
  */
 
-import type { PluginCatalogEntry } from '@aurora/shared'
+import type { PluginCatalogEntry, SyncConfig } from '@aurora/shared'
 import type { PluginFormKind } from './pluginForm'
 import { librarySourcePluginId, pluginIdOf } from '@aurora/shared'
 import type { LibrarySourceConfig, OnlineSourceConfig } from '@/types'
@@ -31,11 +31,14 @@ import type { LibrarySourceConfig, OnlineSourceConfig } from '@/types'
 /**
  * 一个插件可能拥有的配置面。
  *
- * 三种面互不排斥（未来可能出现「既能搜索又要登录」的存储插件），所以是数组而不是
+ * 四种面互不排斥（未来可能出现「既能搜索又要登录」的存储插件），所以是数组而不是
  * 单值枚举。`'auth'` 不是配置而是一份**凭证**，但它对用户同样是「这个插件自己的设置」，
  * 放在同一个面板里才不用记住「登录要去另一行」。
+ *
+ * `'sync'` 是歌单同步目标（docs/playlist-sync.md §15）：一条配置 = 一个「往哪儿同步」，
+ * 与存储/音源配置完全独立（凭证按 configId 存，见 §10）。
  */
-export type PluginConfigSurface = 'sources' | 'storage' | 'auth'
+export type PluginConfigSurface = 'sources' | 'storage' | 'auth' | 'sync'
 
 /** 某个插件当前持有的配置（已按归属挑好） */
 export interface PluginConfigBundle {
@@ -43,6 +46,8 @@ export interface PluginConfigBundle {
   sources: OnlineSourceConfig[]
   /** 这个插件执行的网络存储配置 */
   librarySources: LibrarySourceConfig[]
+  /** 这个插件的歌单同步目标（`sync` 面为空数组时表示这一端不支持） */
+  syncConfigs: SyncConfig[]
   /** 这个插件能配置哪些面（决定面板显示哪些分段） */
   surfaces: PluginConfigSurface[]
 }
@@ -79,6 +84,14 @@ export interface PluginConfigCapability {
    * 移动端把 SFTP / SMB 卡片也放出齿轮，点开却是一个新增后永远连不上的表单。
    */
   storage?: boolean | readonly string[]
+  /**
+   * 本端是否支持歌单同步（桌面端才为 true，见 docs/playlist-sync.md §8）。
+   *
+   * 与 `storage` 同一套缺省语义：不传 = 支持（纯逻辑单测与旧调用点），false = 完全没有。
+   * 这里刻意不用插件自己的 `available()` 拼：平台判据只有 `platform.supportsPlaylistSync`
+   * 一条，多一条判据就会多一处「桌面端某插件不可用时整个同步入口消失」的坑。
+   */
+  sync?: boolean
 }
 
 /** 某个存储插件在本端是否可配（判据见 `PluginConfigCapability.storage`） */
@@ -107,11 +120,23 @@ export function storageCapabilityOf(
 }
 
 /**
+ * 把「本端能力」拼成 `PluginConfigCapability.sync`。
+ *
+ * 只有一个判据：`platform.supportsPlaylistSync`（§8 明确「不按插件 available() 分散判断」）。
+ * 单独出一个函数是为了让调用点写法与 `storageCapabilityOf` 对齐 —— 面板与卡片
+ * 必须传同一个值，否则会出现「卡片有齿轮、点进去是空的」。
+ */
+export function syncCapabilityOf(supportsPlaylistSync: boolean): boolean {
+  return supportsPlaylistSync === true
+}
+
+/**
  * 这个插件有哪些可配置面。
  *
  * 判据是**域 + 能力声明**，不是插件 id：
  * - `domain === 'source'`：它的配置是「在线音源」（服务地址 / 脚本链接 / 歌单 id）；
  * - `domain === 'storage'`：它的配置是「网络存储」（服务地址 + 账号）；
+ * - `domain === 'sync'`：它的配置是「歌单同步目标」（一条目标对应一个对端）；
  * - 声明了 `auth`：它需要一份登录凭证。
  *
  * `capability.storage` 为 false 时**整个存储面不出现**（见上一条注释：那是"这一端
@@ -130,6 +155,7 @@ export function pluginConfigSurfaces(
   // 用户会照着填一条永远不生效的源。
   if (entry.domain === 'source' && !entry.builtinSource) surfaces.push('sources')
   if (entry.domain === 'storage' && storageConfigurable(entry.id, capability.storage)) surfaces.push('storage')
+  if (entry.domain === 'sync' && capability.sync !== false) surfaces.push('sync')
   if (declares(entry, 'auth')) surfaces.push('auth')
   return surfaces
 }
@@ -162,7 +188,8 @@ export function configsOfPlugin(
   entry: PluginCatalogEntry,
   onlineSources: readonly OnlineSourceConfig[],
   librarySources: readonly LibrarySourceConfig[],
-  capability: PluginConfigCapability = {}
+  capability: PluginConfigCapability = {},
+  syncConfigs: readonly SyncConfig[] = []
 ): PluginConfigBundle {
   const surfaces = pluginConfigSurfaces(entry, capability)
   return {
@@ -172,6 +199,11 @@ export function configsOfPlugin(
       : [],
     librarySources: surfaces.includes('storage')
       ? librarySources.filter((source) => librarySourcePluginId(source) === entry.id)
+      : [],
+    // 同步目标的归属是**直接**的 `pluginId`（没有 `kind` 老配置需要兜底）：
+    // 第一版就是按 id 存的，不存在「老配置只有 kind」那一档
+    syncConfigs: surfaces.includes('sync')
+      ? syncConfigs.filter((config) => config.pluginId === entry.id)
       : [],
   }
 }

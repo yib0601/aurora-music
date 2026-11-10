@@ -245,6 +245,8 @@ describe('configsOfPlugin：返回值与入参隔离', () => {
     expect(configsOfPlugin(entry({ id: 'demo', domain: 'source' }), [], [])).toEqual({
       sources: [],
       librarySources: [],
+      // 同步目标的归属也是 bundle 的一部分（无 sync 面时为空数组，不是缺键）
+      syncConfigs: [],
       surfaces: ['sources'],
     })
   })
@@ -253,7 +255,7 @@ describe('configsOfPlugin：返回值与入参隔离', () => {
 
 describe('configSummaryOf：给出列表页要用的三个准确值', () => {
   function bundleOf(overrides: Partial<PluginConfigBundle> = {}): PluginConfigBundle {
-    return { sources: [], librarySources: [], surfaces: [], ...overrides }
+    return { sources: [], librarySources: [], syncConfigs: [], surfaces: [], ...overrides }
   }
 
   it('三个字段都有且取值正确', () => {

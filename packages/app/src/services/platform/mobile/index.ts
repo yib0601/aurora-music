@@ -377,6 +377,11 @@ async function removeMobileCoverFile(coverPath?: string | null): Promise<void> {
 }
 
 export function createMobilePlatform(): PlatformInterface & {
+  // 歌单同步只做桌面端（docs/playlist-sync.md §8）：移动端显式关掉入口。
+  // 局域网桥也不存在（HTTP 服务 / UDP 发现 / 配对码派生都在桌面主进程），
+  // 所以这里用 null 而不是空对象 —— UI 的可用性判断看的就是它。
+  supportsPlaylistSync: false
+  lanSync: null
   // 扩展接口：扫描事件订阅（移动端用回调替代 IPC 事件）
   onTracksScanned: (cb: (tracks: Track[]) => void) => () => void
   onTrackScanned: (cb: (track: Track) => void) => () => void
@@ -1286,5 +1291,9 @@ export function createMobilePlatform(): PlatformInterface & {
       mediaControlCbs.add(cb)
       return () => mediaControlCbs.delete(cb)
     },
+
+    // 歌单同步：移动端明确不支持（docs/playlist-sync.md §8），入口隐藏
+    supportsPlaylistSync: false,
+    lanSync: null,
   }
 }

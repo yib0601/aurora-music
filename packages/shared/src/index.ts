@@ -258,6 +258,11 @@ export {
   testWebdavConnection,
   openWebdavRange,
   openWebdavStream,
+  // 歌单同步用的纯文本原语 + 传输注入点（主进程注入 IPC 代理的 fetch，绕开 CORS）
+  readWebdavText,
+  writeWebdavText,
+  ensureWebdavDir,
+  setWebdavFetch,
 } from './webdav'
 export { firstSuccess, mapWithConcurrency } from './concurrency'
 export type { FirstSuccessOptions, FirstSuccessHit } from './concurrency'
@@ -478,3 +483,9 @@ export {
   scriptBodyFor,
   unregisterInstalledPlugin,
 } from './plugin/installed'
+
+// 歌单同步插件层（注册表 / 快照 / 曲目引用 / 合并 / 内置插件）。
+// 用 `export *`：这一层的每个导出都是新 API（双端 + 插件面板都要），
+// 逐条枚举只会漏（漏一个就是 T3 侧「模块没有导出成员」的编译错误）。
+// 名字与上方各层无重叠，`export *` 不会遮蔽既有同名导出。
+export * from './plugin/sync'

@@ -11,10 +11,42 @@
  */
 
 import { fetchWithTimeout } from './fetchWithTimeout'
+import type { FetchLike } from './fetchWithTimeout'
 import { storageStringField } from './plugin/storage/fields'
 import { encodeErrorInfo, parseErrorInfo, toErrorInfo } from './i18n/errors'
 import type { MessageKey } from './i18n'
 import type { TranslateParams } from './i18n/core'
+
+/**
+ * WebDAV 传输实现注入点（照 storage 层 `setSsh2Module` / `setSmb2Module` 的范式）。
+ *
+ * ## 为什么必须有这个接缝
+ *
+ * 桌面打包版的主窗口 `webSecurity` 为 `true`、页面 origin 是 `file://`（opaque origin），
+ * 而 WebDAV 用的 `PROPFIND` / `PUT` / `MKCOL` 与 `Authorization` / `Depth` 头组合**必然
+ * 触发 CORS 预检**；绝大多数 WebDAV 服务端不返回 `Access-Control-Allow-Origin`，
+ * 于是渲染层直连会被浏览器拦死——表现为笼统的连接失败，用户无从自查。
+ * 存储层早就因为同一原因把网络存储扫描搬到主进程（见 `desktop/src/ipc/librarySource.ts`），
+ * 同步这一侧需要一个等价通道。
+ *
+ * 这里只提供**唯一接缝**：主进程启动时 `setWebdavFetch(ipcBackedFetch)`，之后本文件里
+ * 所有请求（列举、读文本、写文本、建目录、Range GET）都走它；不注入则回落全局 `fetch`，
+ * 开发模式 / 移动端 / 浏览器的行为与以前**逐字节一致**。
+ *
+ * 注意：**不改任何导出函数签名**（`listWebdavDir` / `readWebdavText` / `writeWebdavText` /
+ * `ensureWebdavDir` 等保持原样），调用点无感知，因此 app/desktop 两侧不需要改接口。
+ */
+let webdavFetchOverride: FetchLike | null = null
+
+/** 注入 WebDAV 传输实现；传 `null` 恢复默认（全局 `fetch`） */
+export function setWebdavFetch(fetcher: typeof globalThis.fetch | null): void {
+  webdavFetchOverride = fetcher
+}
+
+/** 当前生效的注入实现（`null` = 用全局 fetch，即 `fetchWithTimeout` 的默认行为） */
+function webdavFetch(): FetchLike | null {
+  return webdavFetchOverride
+}
 
 /**
  * 媒体库来源配置（区别于在线歌源的 OnlineSourceConfig）。
@@ -485,7 +517,8 @@ export async function listWebdavDir(
     resp = await fetchWithTimeout(
       url,
       { method: 'PROPFIND', headers: webdavHeaders(cfg, { Depth: '1', 'Content-Type': 'application/xml; charset=utf-8' }), body: PROPFIND_BODY },
-      timeoutMs
+      timeoutMs,
+      webdavFetch()
     )
   } catch (err) {
     throw webdavErrorOf(
@@ -569,7 +602,8 @@ export async function openWebdavRange(
     resp = await fetchWithTimeout(
       url,
       { method: 'GET', headers: webdavHeaders(cfg, { Range: `bytes=${start}-${end}` }) },
-      timeoutMs
+      timeoutMs,
+      webdavFetch()
     )
   } catch (err) {
     // 统一包成 WebdavError：调用方据此区分「传输层失败（可重试，不应写库）」
@@ -606,7 +640,12 @@ export async function openWebdavStream(
   const extra: Record<string, string> = {}
   if (init.range) extra.Range = init.range
   try {
-    return await fetchWithTimeout(url, { method: 'GET', headers: webdavHeaders(cfg, extra) }, timeoutMs)
+    return await fetchWithTimeout(
+      url,
+      { method: 'GET', headers: webdavHeaders(cfg, extra) },
+      timeoutMs,
+      webdavFetch()
+    )
   } catch (err) {
     throw webdavErrorOf(
       'core.error.webdavRead',
@@ -687,4 +726,149 @@ export async function walkWebdavAudio(
   }
 
   return result
+}
+
+// ─── 纯文本读写（歌单同步用） ─────────────────────────────────
+//
+// 同步链路要的小原语只有三个：GET 一份文本、PUT 一份文本、确保目录存在。
+// 它们和上面的媒体库列举**共用同一套配置字段、鉴权头与错误映射**（WebdavError +
+// core.error.webdav*）——另起一套错误词汇会让设置页出现两种说法，用户无从对照。
+//
+// 为什么不复用 openWebdavRange / openWebdavStream：那两个是为音频流准备的
+// （要拿 Response 做 Range 与流式解码），而快照是几十 KB 的整份 JSON，
+// 直接取 text 更简单，也不会因为 NAS 不支持 Range 而多一条失败路径。
+
+/** 快照文件很小，20s 与目录列举同档；PUT 可能慢一点，调用方可显式放宽 */
+const WEBDAV_TEXT_TIMEOUT_MS = 20000
+
+/**
+ * 读取远端文本文件。
+ *
+ * **404 返回 `null` 而不是抛错**：首次同步时对端快照文件本来就不存在，
+ * 那不是故障；把它当错误会让"第一次同步"永远失败（`docs/playlist-sync.md` §6）。
+ */
+export async function readWebdavText(
+  cfg: LibrarySourceConfig,
+  relPath: string,
+  timeoutMs = WEBDAV_TEXT_TIMEOUT_MS
+): Promise<string | null> {
+  const url = resolveRemoteUrl(cfg, relPath)
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      { method: 'GET', headers: webdavHeaders(cfg) },
+      timeoutMs,
+      webdavFetch()
+    )
+  } catch (err) {
+    throw webdavErrorOf(
+      'core.error.webdavConnect',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
+  }
+  if (resp.status === 404) return null
+  if (resp.status === 401 || resp.status === 403) {
+    throw webdavErrorOf('core.error.webdavAuth', { name: cfg.name, status: resp.status }, resp.status)
+  }
+  if (!resp.ok) {
+    throw webdavErrorOf('core.error.webdavStatus', { name: cfg.name, status: resp.status }, resp.status)
+  }
+  try {
+    return await resp.text()
+  } catch (err) {
+    // 响应头到了、体没读完（NAS 卡住/连接被掐）仍算连接问题，别把它报成 HTTP 状态错误
+    throw webdavErrorOf(
+      'core.error.webdavConnect',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
+  }
+}
+
+/**
+ * 写入远端文本文件（PUT，整份覆盖）。
+ *
+ * 200/201/204 都算成功：不同 WebDAV 实现对"新建"与"覆盖"的状态码选择不一致
+ * （Nextcloud 覆盖返回 204、Apache mod_dav 返回 200/201），只看 2xx 之外的状态才可靠。
+ */
+export async function writeWebdavText(
+  cfg: LibrarySourceConfig,
+  relPath: string,
+  body: string,
+  timeoutMs = WEBDAV_TEXT_TIMEOUT_MS
+): Promise<void> {
+  const url = resolveRemoteUrl(cfg, relPath)
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      {
+        method: 'PUT',
+        headers: webdavHeaders(cfg, { 'Content-Type': 'application/json; charset=utf-8' }),
+        body,
+      },
+      timeoutMs,
+      webdavFetch()
+    )
+  } catch (err) {
+    throw webdavErrorOf(
+      'core.error.webdavConnect',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
+  }
+  if (resp.status === 200 || resp.status === 201 || resp.status === 204) return
+  if (resp.status === 401 || resp.status === 403) {
+    throw webdavErrorOf('core.error.webdavAuth', { name: cfg.name, status: resp.status }, resp.status)
+  }
+  if (resp.status === 404 || resp.status === 409) {
+    // 目录不存在（或 MKCOL 没成功）：给「目录不存在」的文案，用户才知道该去改"目录"字段
+    throw webdavErrorOf('core.error.webdavPathMissing', { name: cfg.name, path: relPath }, resp.status)
+  }
+  throw webdavErrorOf('core.error.webdavStatus', { name: cfg.name, status: resp.status }, resp.status)
+}
+
+/**
+ * 确保远端目录存在（MKCOL）。
+ *
+ * **405 视为成功**：WebDAV 的 MKCOL 在目录已存在时按 RFC 4918 返回 405，
+ * 而"已经是目标状态"就是我们要的结果——把它当失败会让第二次以后的每次同步都报错。
+ * 409（父目录不存在）不重试、不逐级创建：那说明用户填的"目录"本身不对，
+ * 悄悄造一串目录只会把数据写到意料之外的位置。
+ */
+export async function ensureWebdavDir(
+  cfg: LibrarySourceConfig,
+  relPath: string,
+  timeoutMs = WEBDAV_TEXT_TIMEOUT_MS
+): Promise<void> {
+  const url = resolveRemoteUrl(cfg, relPath)
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      { method: 'MKCOL', headers: webdavHeaders(cfg) },
+      timeoutMs,
+      webdavFetch()
+    )
+  } catch (err) {
+    throw webdavErrorOf(
+      'core.error.webdavConnect',
+      { name: cfg.name, reason: reasonTextOf(err) },
+      undefined,
+      String(err)
+    )
+  }
+  if (resp.status === 200 || resp.status === 201 || resp.status === 204 || resp.status === 405) return
+  if (resp.status === 401 || resp.status === 403) {
+    throw webdavErrorOf('core.error.webdavAuth', { name: cfg.name, status: resp.status }, resp.status)
+  }
+  if (resp.status === 404 || resp.status === 409) {
+    throw webdavErrorOf('core.error.webdavPathMissing', { name: cfg.name, path: relPath }, resp.status)
+  }
+  throw webdavErrorOf('core.error.webdavStatus', { name: cfg.name, status: resp.status }, resp.status)
 }

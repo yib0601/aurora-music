@@ -28,6 +28,7 @@ import { usePlayerStore, reconcileNativePlayback } from '@/stores/playerStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { initAudioAnalyser, stopPlayback } from '@/services/audio.service'
+import { initPlaylistSync } from '@/services/playlistSync.service'
 import { isNativePlayerAvailable, nativeUpdateArtwork } from '@/services/mediaSession'
 import {
   checkMediaPermissions,
@@ -626,6 +627,10 @@ function AppLayout() {
 
   useEffect(() => {
     initAudioAnalyser()
+    // 歌单同步：注册局域网桥 + 启调度 + 订阅歌单变更（幂等，重复调用无副作用）。
+    // 与 audio analyser 一样挂在这里而不是各页面里：同步是进程级行为，
+    // 用户没打开设置页时也必须照常跑启动同步与定时同步
+    initPlaylistSync()
 
     // 恢复上次播放状态（不自动播放，仅恢复曲目和进度）
     // 延迟 500ms 等待 audioContext 初始化和 tracks 加载

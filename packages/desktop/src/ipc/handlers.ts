@@ -34,6 +34,7 @@ import { registerLxSourceIpc } from './lxSource'
 import { registerPluginIpc } from './pluginHost'
 import { registerPluginInstallIpc } from './pluginInstall'
 import { registerPluginAvailabilityIpc } from './pluginAvailability'
+import { registerLanSyncIpc } from './lanSync'
 import { mainErrorText, mainTranslate, registerI18nIpc } from '../i18n'
 import type { OnlineTrackSearchResult, OnlineSearchOptions, OnlineSourceConfig, Track, LibrarySourceConfig } from '../types'
 import type { LyricsSearchOptions, LyricsSearchResult, MusicHallOptions, MusicHallSource, DownloadQuality } from '@aurora/shared'
@@ -302,6 +303,10 @@ export function registerIpcHandlers() {
   // 插件启停：只改运行期门禁与一份小配置，**不碰插件目录**，
   // 所以与安装通道分开注册（信任边界不同：那条入参含路径与 URL）
   registerPluginAvailabilityIpc()
+  // 歌单同步（局域网部分）：设备身份 / 同步配置口令 / 本机服务开关 / 发现 / 拉推快照。
+  // 服务默认关闭，只有渲染层显式 lan:setEnabled(true) 才会监听端口并广播；
+  // 配对码与派生 key 只留在主进程，日志里也只出现 deviceId 前缀（见 ipc/lanSync.ts 顶部说明）
+  registerLanSyncIpc(sendToRenderer)
 
   // 媒体缓存清出封面时回填曲库：被删掉的封面文件不能留在 cover_path 里，
   // 否则渲染层认为「已有封面」而不再提取，封面对用户就永久消失了。

@@ -67,10 +67,12 @@ export const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/i
  * - `lyrics`：歌词文本来源
  * - `storage`：持久媒体库协议（**声明式不支持**：WebDAV 的 PROPFIND/XML、SMB 的握手
  *   都不是「一条 HTTP 模板 + 字段映射」能表达的，硬套只会做出一个只能连 demo 服务器的玩具）
+ * - `sync`：歌单同步链路（把快照字节搬进搬出；**声明式不支持**，理由同上，且同步还要
+ *   读目录枚举、需要局域网监听，见 `docs/playlist-sync.md` §2）
  *
  * 域名是「这份清单在哪个注册表里生效」，不是权限，也不是 UI 分类。
  */
-export type PluginDomain = 'source' | 'lyrics' | 'storage'
+export type PluginDomain = 'source' | 'lyrics' | 'storage' | 'sync'
 
 /**
  * 权限项。

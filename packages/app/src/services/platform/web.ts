@@ -206,6 +206,16 @@ export function createWebPlatform() {
   return {
     platform: 'desktop' as const,
 
+    /**
+     * 歌单同步只做桌面端（docs/playlist-sync.md §8）：Web 端没有主进程，
+     * 既存不了口令（没有 safeStorage）也起不了局域网服务。
+     *
+     * 因此 `sync` 网关**不声明**（可选能力缺失就用「方法不存在」表达，
+     * 与 revealTrack / logging 同一套约定），UI 与引擎只看这个必填布尔。
+     */
+    supportsPlaylistSync: false,
+    lanSync: null,
+
     async pickFolder(): Promise<string | null> {
       const picker = (window as any).showDirectoryPicker
       if (typeof picker !== 'function') return null

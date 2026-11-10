@@ -28,6 +28,9 @@ import type { StoragePlugin } from '../storage/types'
 // 直接引 registry 会拿到空表 —— 而这个失败是静默的（目录里少一项，没有任何报错）。
 import { listStoragePlugins } from '../storage'
 import { storageCapabilitiesOf } from '../storage/types'
+// 同理必须从 `../sync`（出口）取：内置同步插件同样在出口的模块求值期注册。
+import { listSyncPlugins } from '../sync'
+import type { SyncPlugin } from '../sync'
 import { builtinPlugins, ensureBuiltinsRegistered } from '../builtins'
 import { getPlugin } from '../registry'
 import type { PluginCatalogEntry, PluginDomain, PluginManifest } from './types'
@@ -123,6 +126,25 @@ function storageEntries(): PluginCatalogEntry[] {
   }))
 }
 
+function syncEntries(): PluginCatalogEntry[] {
+  return listSyncPlugins().map((plugin: SyncPlugin) => ({
+    id: plugin.id,
+    domain: 'sync' as PluginDomain,
+    displayNameKey: plugin.displayNameKey,
+    ...(plugin.descriptionKey ? { descriptionKey: plugin.descriptionKey } : {}),
+    version: plugin.version,
+    // 同步插件的能力**不**投影 probe/pull/push：那三个是链路的实现细节，
+    // 检查/触发在同步面板里做；插件页的徽章只回答"这插件能干什么"——搬歌单。
+    // 投影成具体方法名会让徽章随实现增删跳动，也给不出用户能理解的词。
+    capabilities: ['sync'],
+    provenance: 'builtin' as const,
+    removable: false,
+    // 与音源、存储同一口径：停用只影响执行，不清空 capabilities（否则 UI 分不清
+    // 「没这个能力」与「有这个能力但被关了」）
+    enabled: isPluginEnabled(plugin.id),
+  }))
+}
+
 /**
  * 已安装清单 → 目录条目。
  *
@@ -174,7 +196,7 @@ function installedEntries(
 /**
  * 组装完整目录。
  *
- * 顺序：内置音源 → 内置存储 → 已安装。内置在前是刻意的：新用户打开插件页应该先看到
+ * 顺序：内置音源 → 内置存储 → 内置同步 → 已安装。内置在前是刻意的：新用户打开插件页应该先看到
  * 「本来就有这些」，再看到「我还装了这些」，而不是让装来的插件把内置的挤到屏幕外。
  *
  * 同 id 冲突的处理：已安装条目会在**注册期**就与内置插件撞名并被拒绝（见
@@ -185,7 +207,12 @@ export function buildPluginCatalog(
   installed: readonly { manifest: PluginManifest; record: { sha256: string } }[],
   locale = 'zh-CN'
 ): PluginCatalogEntry[] {
-  return [...sourceEntries(), ...storageEntries(), ...installedEntries(installed, locale)]
+  return [
+    ...sourceEntries(),
+    ...storageEntries(),
+    ...syncEntries(),
+    ...installedEntries(installed, locale),
+  ]
 }
 
 /** 只取某个域的条目（设置页「音源」分区只要 source，存储页只要 storage） */

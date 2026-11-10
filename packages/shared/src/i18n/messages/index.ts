@@ -15,6 +15,7 @@ import mobile from './zh-CN/mobile'
 import runtime from './zh-CN/runtime'
 import core from './zh-CN/core'
 import shell from './zh-CN/shell'
+import sync from './zh-CN/sync'
 
 import commonEn from './en/common'
 import navEn from './en/nav'
@@ -31,6 +32,7 @@ import mobileEn from './en/mobile'
 import runtimeEn from './en/runtime'
 import coreEn from './en/core'
 import shellEn from './en/shell'
+import syncEn from './en/sync'
 
 /**
  * 字典总装：**中文是源语言、是唯一真值形状**。
@@ -59,6 +61,7 @@ export const zhCN = {
   runtime,
   core,
   shell,
+  sync,
 } as const
 
 export const en: LocalizedOf<typeof zhCN> = {
@@ -77,6 +80,7 @@ export const en: LocalizedOf<typeof zhCN> = {
   runtime: runtimeEn,
   core: coreEn,
   shell: shellEn,
+  sync: syncEn,
 }
 
 /** 消息树形状（所有语言共用） */

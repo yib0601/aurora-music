@@ -1,0 +1,335 @@
+/**
+ * 歌单同步插件契约（shared 层，双端共用）。
+ *
+ * ## 为什么是插件
+ *
+ * 仓库的判据（`docs/plugin-system.md`）：凡「从谁的服务器拿数据 / 换地址」→ 插件；
+ * 不联网只碰本地数据与播放器状态 → 基础能力。歌单同步横跨这条线，所以按职责切开：
+ *
+ * - **基础能力**（`packages/app`）：歌单模型、合并语义、曲目身份再匹配、调度、冲突提示、UI。
+ *   这些与「用哪条链路」毫无关系，换 S3 / 换 FTP / 换自建服务都不该动。
+ * - **插件**（本目录）：把快照字节搬进搬出——协议、鉴权、错误映射。
+ *
+ * 与存储插件（`../storage/types.ts`）是同一套设计语言，三处刻意保持一致：
+ * 声明式 `fields`（UI 通用渲染，加协议不加 UI 分支）、`available()`（缺依赖时隐藏入口）、
+ * **能力由方法存在性派生**（一份实现只允许有一种说法，不设第二份真源的 `capabilities`）。
+ *
+ * ## 与存储插件的两处刻意差异
+ *
+ * 1. **没有 `openRange`/`openStream` 那样的流式能力**：同步只搬一份 JSON 快照，
+ *    不需要区间读。多造一个能力就多一套失败模式。
+ * 2. **方向是一等公民**：`pull`（取对端）与 `push`（写对端）可以只实现一个
+ *    （`pullOnly` 的只读分享机只实现 `pull`），能力派生会如实反映。
+ *
+ * ## 快照是**全量**的
+ *
+ * 几十个歌单、几千条曲目引用，序列化后几十 KB；增量同步要为「顺位 / 补偿 / 乱序到达」
+ * 再写一套状态机，收益为零而失败模式多一倍。理由与冲突语义见 `docs/playlist-sync.md`。
+ */
+
+import type { MessageKey } from '../../i18n'
+
+/* ------------------------------------------------------------------ *
+ * 声明式字段（与 `StorageFieldDef` 同构）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 字段控件的类型。UI 据此选控件，**不需要知道是哪个插件**：
+ * - `text`    普通单行输入
+ * - `password` 口令：输入框掩码，值**不进**渲染层持久化，走主进程 safeStorage
+ * - `url`     地址（带格式校验与样例提示）
+ * - `path`    远端路径（相对根目录，允许空 = 根目录本身）
+ */
+export type SyncFieldKind = 'text' | 'password' | 'url' | 'path' | 'port'
+
+/**
+ * 一个配置字段的**声明**（纯数据、不含函数，可直接过 IPC）。
+ *
+ * `key` 同时是 `SyncConfig.settings` 里的键：UI 按 key 写，插件按 key 读。
+ * `kind: 'password'` 的键在保存前由调用方**剥出**，不会出现在 `settings` 里。
+ */
+export interface SyncFieldDef {
+  readonly key: string
+  readonly labelKey: MessageKey
+  readonly kind: SyncFieldKind
+  /** 必填（缺失时 UI 不得提交） */
+  readonly required?: boolean
+  readonly placeholderKey?: MessageKey
+  readonly hintKey?: MessageKey
+  /** 默认值（首次添加配置时预填，如局域网端口 45871） */
+  readonly defaultValue?: string
+}
+
+/* ------------------------------------------------------------------ *
+ * 快照：跨设备唯一可比较的载体
+ * ------------------------------------------------------------------ */
+
+/**
+ * 快照格式标识。`aurora-playlist-sync/<major>`：major 不同即拒绝（宁可报「版本不支持」，
+ * 也不能把结构不明的 JSON 当成歌单灌进用户数据）。
+ */
+export const SYNC_SNAPSHOT_FORMAT = 'aurora-playlist-sync/1'
+
+/** 局域网协议版本（发现包与 HTTP 头都带；与快照格式版本分开演进） */
+export const SYNC_LAN_PROTOCOL_VERSION = 1
+
+/** 曲目元数据：三条解析路径都要带上，用于「本机找不到」时的兜底匹配与占位显示 */
+export interface SyncTrackMeta {
+  readonly title: string
+  readonly artist: string
+  readonly album: string
+  /** 秒；0 表示未知（未知**不参与**时长比对，见 `trackIdentity.ts` 的「缺证据≠相符」） */
+  readonly duration: number
+}
+
+/**
+ * 快照里的曲目引用。
+ *
+ * ## 为什么不能直接搬 `trackId` / `sourceId`
+ *
+ * - `trackId` 由 `uuidv4()` 生成（`packages/desktop/src/ipc/scanner.ts`），**设备相关**：
+ *   同一份文件在两台机器上是两个 id。
+ * - `sourceId` 是**设备本地**的音源/存储配置 id，换台机器就是另一个值。
+ * - 绝对路径同理（盘符、用户名、挂载点都可能不同）。
+ *
+ * 所以快照里存的是「怎么把这首歌在本机再找回来」，解析顺序见 `trackRef.ts`。
+ *
+ * - `local`   本机绝对路径。跨设备时只作为**线索**（第 1 档：路径精确命中）；
+ *             真正的主力是后面的元数据匹配。
+ * - `storage` 存储库相对路径 + 插件 id（`webdav` / `sftp` / `smb`）。换设备后
+ *             「同插件的相对路径」是最可靠的同一份文件判据。
+ * - `meta`    只有元数据 + 可选的在线身份。来自歌单导入登记的在线曲目，
+ *             或对端也没有文件只能靠元数据认领的情况。
+ */
+export type SyncTrackRef = SyncTrackMeta &
+  (
+    | { readonly kind: 'local'; readonly path: string }
+    | { readonly kind: 'storage'; readonly pluginId: string; readonly relPath: string }
+    | {
+        readonly kind: 'meta'
+        /** 在线曲目身份（如 QQ 的 songmid）；跨源不可比，仅在同一 platform 内使用 */
+        readonly onlineId?: string
+        /** 音源平台标记（`qq` / `netease` / …），与 `OnlineTrackSearchResult.source` 同口径 */
+        readonly platform?: string
+        readonly coverUrl?: string
+      }
+  )
+
+/** 快照里的歌单：与 `Playlist` 同形，但成员是 `SyncTrackRef` 而不是本机 `trackId` */
+export interface SyncedPlaylist {
+  readonly id: string
+  readonly name: string
+  readonly createdAt: number
+  /** 变更时间。**合并的唯一裁决依据**（LWW），任何字段改动都必须刷新它 */
+  readonly updatedAt: number
+  /** 墓碑：有值表示这份歌单在 `updatedAt` 被删除；保留 90 天后清理 */
+  readonly deletedAt?: number
+  /** 顺序即歌单内顺序（用户手动排序过，不可重排） */
+  readonly tracks: readonly SyncTrackRef[]
+}
+
+export interface SyncSnapshot {
+  readonly format: string
+  /** 设备身份（不是账号）：由主进程从 `deviceId` 取值，缺失时渲染层生成并持久化 */
+  readonly deviceId: string
+  /** 设备名，仅用于 UI 展示「来自哪台设备」 */
+  readonly deviceName: string
+  /** 本机单调计数，只用于日志与诊断，**不参与**合并裁决 */
+  readonly revision: number
+  readonly updatedAt: number
+  readonly playlists: readonly SyncedPlaylist[]
+}
+
+/* ------------------------------------------------------------------ *
+ * 配置：用户建的一条同步目标
+ * ------------------------------------------------------------------ */
+
+/** 同步方向 */
+export type SyncDirection = 'bidirectional' | 'pullOnly' | 'pushOnly'
+
+export interface SyncConfig {
+  /** 本机配置 id（凭证按它存，见 `docs/playlist-sync.md` §10） */
+  readonly id: string
+  /** 插件 id（`webdav-sync` / `lan-sync` / 将来的第三个） */
+  readonly pluginId: string
+  /** 用户可见的名字，如「坚果云」 */
+  readonly name: string
+  /** 插件字段的值。`kind:'password'` 的键**不在**这里 */
+  readonly settings: Record<string, unknown>
+  readonly direction: SyncDirection
+  /** 是否参与自动同步（启动后 / 变更后 / 定时）；手动「立即同步」不受它限制 */
+  readonly autoSync: boolean
+  readonly enabled: boolean
+  /** 上次成功同步时间（UI 显示「上次同步：…」） */
+  readonly lastSyncAt?: number
+  /**
+   * 上次失败的结构化载荷（`encodeErrorInfo` 的文本，跨 IPC 安全）。
+   * 存载荷而不是文案：重启后界面语言可能已经变了。
+   */
+  readonly lastError?: string
+}
+
+/** 口令字段的值：key 与 `SyncFieldDef.key` 对应（只在内存里活一次调用） */
+export type SyncSecrets = Readonly<Record<string, string>>
+
+/* ------------------------------------------------------------------ *
+ * 局域网桥（主进程能力，仅桌面端）
+ * ------------------------------------------------------------------ */
+
+/** 发现到的对端设备 */
+export interface LanPeerInfo {
+  readonly deviceId: string
+  readonly deviceName: string
+  readonly host: string
+  readonly port: number
+  readonly protocol: number
+  readonly lastSeenAt: number
+}
+
+/** 本机局域网服务状态 */
+export interface LanSyncStatus {
+  readonly running: boolean
+  readonly port: number | null
+  /** 配对码（10 位 Crockford base32）。**只能**给用户看/抄，不进日志、不进广播包 */
+  readonly code: string
+  readonly deviceId: string
+  readonly deviceName: string
+}
+
+/**
+ * 一次对端操作的参数。
+ *
+ * **没有**「长期配对密钥」这种东西：配对码本身就是唯一凭据，主进程每次按它派生
+ * HMAC 密钥。配对码轮换 = 旧凭据立刻失效，不需要再维护一套密钥协商与失效状态。
+ * 代价是每次同步都要把配对码读出来——它由凭证网关保存（`ctx.secrets.code`），
+ * **不进 `settings`、不落 localStorage**（见 `lanSyncPlugin.ts` 的 `codeOf()`）。
+ */
+export interface LanSyncTarget {
+  readonly host: string
+  readonly port: number
+  /** 对端配对码（从对端屏幕抄来）。主进程据此派生 HMAC 密钥；绝不落日志、绝不进广播包 */
+  readonly code: string
+  /** 已知的对端 deviceId；未知时留空，主进程从响应里学 */
+  readonly peerDeviceId?: string
+}
+
+/**
+ * 局域网同步的主进程桥。
+ *
+ * ## 为什么密码学与网络都在主进程
+ *
+ * 渲染层拿 `crypto.subtle` 要「安全上下文」（`app://` 定制协议是否被判安全取决于
+ * Chromium 版本与注册参数，赌不起），而且要长期持有一个能写对端歌单的密钥。
+ * 所以：**HMAC 与 HTTP 都在主进程（`node:crypto` + `node:http`）**，
+ * 渲染层只调这几个方法，从不接触密钥材料。
+ *
+ * 非桌面端没有这个桥（`ctx.lan` 为 `undefined`），`lan-sync` 插件的 `available()`
+ * 据此返回 false。
+ */
+export interface LanSyncBridge {
+  /** 本机服务状态；未启动时 `running:false`（UI 用 state 的 code 也能显示配对码） */
+  status(): Promise<LanSyncStatus>
+  /** 开/关本机服务（开 = 监听端口 + 起 UDP 广播） */
+  setEnabled(enabled: boolean): Promise<LanSyncStatus>
+  /** 轮换配对码（旧码立即失效） */
+  rotateCode(): Promise<LanSyncStatus>
+  /** 收广播（`timeoutMs` 内收集，去重后返回） */
+  discover(timeoutMs?: number): Promise<LanPeerInfo[]>
+  /** 把本机快照交给主进程缓存，供对端 `GET /v1/snapshot` */
+  publish(snapshot: SyncSnapshot): Promise<void>
+  /** 取走对端 PUT 进来的快照（取走即清空，避免同一份被重复应用） */
+  takeInbox(): Promise<SyncSnapshot[]>
+  /** 拉对端快照（签名 GET） */
+  pullPeer(target: LanSyncTarget): Promise<SyncSnapshot[]>
+  /** 推本机快照到对端（签名 PUT） */
+  pushPeer(target: LanSyncTarget, snapshot: SyncSnapshot): Promise<void>
+}
+
+/* ------------------------------------------------------------------ *
+ * 插件契约
+ * ------------------------------------------------------------------ */
+
+/** 插件拿到的执行上下文 */
+export interface SyncContext {
+  /** 走宿主注入的 fetch（能力门禁在宿主侧；不要直接用 `globalThis.fetch`） */
+  readonly fetch: typeof globalThis.fetch
+  /** 本次配置的明文口令字段（一次调用有效，不要缓存） */
+  readonly secrets: SyncSecrets
+  /** 本机设备身份（快照里要填） */
+  readonly device: { readonly deviceId: string; readonly deviceName: string }
+  /** 日志（宿主决定去哪；插件不要直接 console） */
+  readonly log?: (message: string, detail?: unknown) => void
+  /** 局域网桥；非桌面端为 `undefined` */
+  readonly lan?: LanSyncBridge
+  readonly signal?: AbortSignal
+}
+
+/** 探测结果：`message` 是 `encodeErrorInfo` 的结构化载荷，显示端统一 `translateError` */
+export interface SyncProbeResult {
+  readonly ok: boolean
+  readonly message: string
+  /** 附加信息（如「发现 3 个设备」的数字），UI 自由渲染 */
+  readonly detail?: string
+}
+
+/**
+ * 同步插件。
+ *
+ * 能力由 `syncCapabilitiesOf()` **按方法存在性**派生（`'probe' | 'pull' | 'push'`），
+ * 调用方一律 `typeof plugin.pull === 'function'` 判定，**不得**写 `kind === 'xxx'`。
+ */
+export interface SyncPlugin {
+  /** 插件 id：`^[a-z0-9][a-z0-9._-]{0,63}$`（与其它注册表同一正则） */
+  readonly id: string
+  readonly displayNameKey: MessageKey
+  readonly descriptionKey?: MessageKey
+  readonly version: string
+  /** 声明式字段（UI 通用渲染；空数组 = 无配置项，如「本机备份」类插件） */
+  readonly fields: readonly SyncFieldDef[]
+  /** 运行期可用性（缺依赖时 false：入口隐藏，已存配置显示「此平台不支持」） */
+  available?(): boolean
+
+  /** 连接与权限自检。不实现则视为「无法预检」，不算失败 */
+  probe?(config: SyncConfig, ctx: SyncContext): Promise<SyncProbeResult>
+
+  /**
+   * 拉取**对端**快照（可以多份：WebDAV 目录里每台设备一个文件）。
+   *
+   * 必须遵守：
+   * - 返回空数组 = 「对端还没有任何快照」（首次同步），**不是错误**；
+   * - 不要返回本机 deviceId 的快照（引擎也会兜底过滤，但插件不该制造这份流量）；
+   * - 失败一律 `throw auroraError('sync.error.…')`（结构化载荷，别拼中文）。
+   */
+  pull?(config: SyncConfig, ctx: SyncContext): Promise<SyncSnapshot[]>
+
+  /**
+   * 把合并后的本机快照写到对端。
+   *
+   * 必须遵守：写入内容就是 `snapshot`，**不要**在插件里再合并一次
+   * （合并是基础能力的职责，两处各算一遍必然不一致）。
+   */
+  push?(config: SyncConfig, snapshot: SyncSnapshot, ctx: SyncContext): Promise<void>
+}
+
+/** 能力标识（UI 徽章用；**执行判定仍用方法存在性**） */
+export type SyncCapability = 'probe' | 'pull' | 'push'
+
+/** 按方法存在性派生能力（唯一真源） */
+export function syncCapabilitiesOf(plugin: SyncPlugin): SyncCapability[] {
+  const caps: SyncCapability[] = []
+  if (typeof plugin.probe === 'function') caps.push('probe')
+  if (typeof plugin.pull === 'function') caps.push('pull')
+  if (typeof plugin.push === 'function') caps.push('push')
+  return caps
+}
+
+/** 插件是否可用于当前平台（没有 `available()` 视为可用） */
+export function syncPluginAvailable(plugin: SyncPlugin): boolean {
+  if (typeof plugin.available !== 'function') return true
+  try {
+    return plugin.available()
+  } catch {
+    // 可用性判断自身抛错 → 当作不可用：宁可隐藏入口，也不给一个点进去必崩的入口
+    return false
+  }
+}

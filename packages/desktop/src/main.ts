@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, globalShortcut, protocol, Tray, Menu, native
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers, setMainWindow } from './ipc/handlers'
+import { shutdownLanSync } from './ipc/lanSync'
 import { mountInstalledPlugins } from './ipc/pluginInstall'
 import { loadPluginAvailability } from './ipc/pluginAvailability'
 import { installStorageProtocolDeps } from './ipc/storageProtocols'
@@ -594,6 +595,10 @@ if (!gotTheLock) {
     // 音频焦点先于其它清理：它要把被我们暂停的外部播放器还回去，
     // 越晚做越可能因为窗口/D-Bus 已经拆掉而还不上
     disposeAudioFocus()
+    // 局域网同步：关 HTTP 服务、关 UDP socket、清定时器。
+    // 服务默认关闭，只有用户显式开启过才真的在跑；这里无条件调（幂等），
+    // 且不 await —— 关连接已先 closeAllConnections，不拖住退出，端口由 OS 兜底回收。
+    shutdownLanSync()
     // 日志先关（写一条 closed 标记），再关数据库：数据库关闭失败会被记录到日志里，
     // 反过来就丢在退出路径上了。closeMainLogging 本身不做 I/O ——
     // 所有写入都是同步 appendFileSync，数据在函数返回时已交给内核，
