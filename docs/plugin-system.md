@@ -10,7 +10,7 @@
 | 层 | 内容 | 位置 | 为什么在这一层 |
 |---|---|---|---|
 | **基础能力** | 音频解码与播放、播放队列、进度与音量、歌词渲染、曲库与本地扫描、播放条 / 全屏页 / 侧栏 | `packages/app`（`services/audio.*`、`stores/playerStore`、`components/player`、`components/lyrics`） | 它们是播放器本身。做成插件会让"能不能听歌"取决于装了哪些插件 |
-| **插件：音源** | 搜索、取址、歌单曲目、登录 | `packages/shared/src/plugin`（`SourcePlugin`） | 应用**不内置任何音源**：在线能力的可用性取决于用户配置了哪个源 |
+| **插件：音源** | 搜索、取址、歌单曲目、登录 | `packages/shared/src/plugin`（`SourcePlugin`） | 应用**不内置可播放的音源**：在线能力的可用性取决于用户配置了哪个源。唯一内置的是只补**搜索**的「聚合搜索」兜底（可停用，直链仍由用户的取址脚本现取，见 [music-sources.md](./music-sources.md)） |
 | **插件：歌词源** | 按曲目元信息取一份 LRC | `packages/shared/src/plugin/manifest`（`DeclarativeLyricsSpec`）+ 内置 `lrclibPlugin` | 歌词是"有更好、没有也能听"的增强。内置 LRCLIB 兜底，**自 v15 起它本身也是一条可停用的插件** |
 | **插件：存储** | 列举远端目录、读字节流、可用性探测 | `packages/shared/src/plugin/storage`（`StoragePlugin`） | 只有联网曲库需要它；本地目录不走插件（见下） |
 | **插件：在线发现** | 推荐歌单、榜单 | `packages/shared/src/plugin/types.ts`（`SourcePlugin` 的 `recommendPlaylists` / `toplists` / `toplistDetail`） | 浏览型能力：没有它本地播放完全不受影响 |
