@@ -123,6 +123,18 @@ Web 层改动必须先 `build:app` 再 `cap sync`，否则打进 APK 的是上�
 两个启动主题的 `windowSplashScreenAnimatedIcon` 必须指向 `@drawable/splash_blank`。要恢复图形，
 得按上面的 288dp 口径连资源带闸门一起改，只塞一张 png 进来会被它拦下（并且真机上一定被放大裁切）。
 
+**开屏也不额外占时间**：`capacitor.config.ts` 的 `launchShowDuration: 1` + `launchFadeOutDuration: 0`，
+即开屏只跟着系统启动窗口走到「应用画出首帧」就撤，没有固定等待。两个值都别动：
+
+- 写 0 不是「更短」而是「插件不接手」——`@capacitor/splash-screen` 在 `launchShowDuration == 0` 时
+  直接 `return`，不装 `androidx.core.splashscreen`，于是 `postSplashScreenTheme` 没人应用，
+  Activity 停在启动主题上（主题错乱）；
+- 淡出默认 200ms，期间插件仍用 `isHiding` 钉着启动窗口，等于白等；底色和首屏同为深色，淡出也看不见。
+
+撤场后到 React 首屏之间会露出 WebView 的空白画布，所以 config 根级还有 `backgroundColor: '#0A0A0A'`
+（Capacitor 拿它做 `webView.setBackgroundColor`）——删了冷启动会先闪一帧纯白。
+`pnpm verify:brand` 也校验这两项（`launchShowDuration` 非 0 且 ≤ 300ms、`launchFadeOutDuration` 为 0）。
+
 ## 多语言开发
 
 界面文案的权威规范（分层、写界面的三条路径、硬规则）见 [docs/i18n.md](./i18n.md)。

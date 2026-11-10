@@ -153,6 +153,30 @@ if [[ $CHECK -eq 1 ]]; then
     if [[ "$got" == "$want" ]]; then pass "$name = $want"; else fail "$name = ${got:-未找到}，期望 $want"; fi
   done
 
+  # 5) 开屏停留时间：插件必须被叫起来（非 0），但只停一帧；淡出动画关掉。
+  #    0 = 插件直接 return，不装 androidx.core.splashscreen，postSplashScreenTheme 没人
+  #    应用（Activity 停在启动主题上）；几千毫秒 = 冷启动干等一块纯色屏。
+  cap_mobile="$ROOT/packages/mobile/capacitor.config.ts"
+  splash_block=$(sed -n '/SplashScreen: *{/,/^    },/p' "$cap_mobile")
+  dur=$(printf '%s\n' "$splash_block" | sed -n 's/.*launchShowDuration: *\([0-9][0-9]*\).*/\1/p' | head -1)
+  fade=$(printf '%s\n' "$splash_block" | sed -n 's/.*launchFadeOutDuration: *\([0-9][0-9]*\).*/\1/p' | head -1)
+  if [[ -z "$dur" ]]; then
+    fail "capacitor.config.ts 缺 launchShowDuration"
+  elif (( dur == 0 )); then
+    fail "launchShowDuration = 0：插件不接手，启动主题不会被切回运行时主题（写 1，别写 0）"
+  elif (( dur > 300 )); then
+    fail "launchShowDuration = ${dur}ms：开屏不该干等这么久（写 1，让系统启动窗口在首帧后立刻撤）"
+  else
+    pass "launchShowDuration = ${dur}ms（只停首帧）"
+  fi
+  if [[ -z "$fade" ]]; then
+    fail "capacitor.config.ts 缺 launchFadeOutDuration: 0（默认 200ms 淡出期间启动窗口还钉着）"
+  elif (( fade != 0 )); then
+    fail "launchFadeOutDuration = ${fade}ms：撤场动画期间启动窗口不会撤（写 0）"
+  else
+    pass "launchFadeOutDuration = 0（无撤场动画）"
+  fi
+
   echo
   if (( FAILURES > 0 )); then
     echo "品牌资源校验未通过：$FAILURES 项。跑 bash scripts/generate-icons.sh 重新生成。"

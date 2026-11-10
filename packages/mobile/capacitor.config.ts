@@ -8,6 +8,12 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
   },
+  // WebView 画布底色（Capacitor 的 Bridge 会把它设成 webView.setBackgroundColor）。
+  // 开屏现在只停「首帧」那么一下，撤场之后、React 首屏画出来之前会露出 WebView 的
+  // 空白画布——不设就是系统默认的白色，冷启动会闪一帧白（实测 API 34 模拟器上约
+  // 1 帧～1s，取决于设备速度）。与 <meta name="theme-color">、index.html 的静态
+  // class="dark"、开屏底色同为 #0A0A0A，这一帧就看不出来。
+  backgroundColor: '#0A0A0A',
   android: {
     // 歌源返回的封面/音频直链存在明文 http（实测 qpic.y.qq.com、aqqmusic.tc.qq.com），
     // 而 WebView 源是 https://localhost：默认混合内容策略下 <img>/<audio> 的 http
@@ -17,7 +23,18 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2000,
+      // 开屏只留「系统启动窗口」本身的时间，不额外占用：1ms 是让插件走 Android 12
+      // 兼容路径的最小非零值（撑住启动窗口、并在首帧后立刻撤）。
+      //   · 不能设 0：插件 showOnLaunch() 里 `if (getLaunchShowDuration() == 0) return;`，
+      //     直接不装 androidx.core.splashscreen —— 于是 postSplashScreenTheme 没人应用，
+      //     Activity 会一直停在启动主题上（主题错乱），不是「没开屏」而是「坏了」。
+      //   · launchFadeOutDuration 设 0 关掉撤场动画：默认 200ms 的淡出期间插件还用
+      //     isHiding 钉着启动窗口，等于白白多 200ms（底色和内容底色同为深色，淡出本来
+      //     也看不见）。
+      // 两者相加就是开屏的全部停留时间：大约「首帧 + 1 帧」。想再短只能不用这个插件，
+      // 代价是启动主题要改成不依赖 installSplashScreen 的写法（见 values/styles.xml）。
+      launchShowDuration: 1,
+      launchFadeOutDuration: 0,
       // 与 android/app/src/main/res/values/colors.xml 的 aurora_window_bg 同值：
       // 启动图 → 窗口背景 → 主界面若不同色，冷启动会看到三层色块跳变
       backgroundColor: '#0A0A0A',
@@ -31,9 +48,8 @@ const config: CapacitorConfig = {
       //     CENTER_INSIDE 之类会让纯色底一起缩掉，反而露出系统窗口底色；
       //   · 别把 splash 换回整屏位图 —— 位图宽高比固定、屏幕宽高比不固定，会被拉伸
       //     （车机竖屏上就是这么被拉宽 ~1.3 倍的）。
-      // 「纯黑过渡」嫌长就调小 launchShowDuration（系统启动画面本来会自然结束，这个值
-      // 只是下限）；别设 0，那等于撒手让系统启动画面自己撤，Android 12+ 的开屏图标会
-      // 回落到应用图标，又变成放大裁切的那个方块。
+      // 「纯黑过渡」已经压到最短（见上面 launchShowDuration）；别把 0 当成更短，
+      // 0 是「插件不接手」，不是「没有开屏」。
       androidSplashResourceName: 'splash',
     },
     StatusBar: {
