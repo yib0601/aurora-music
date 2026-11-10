@@ -15,11 +15,24 @@ import { cn } from '@/lib/utils'
  * - 窄档手机：MobileNav 顶栏右缘（自然宽度，<640px 退化成 36px 图标按钮）
  * 因此本组件自身不带定位与外边距；各页面的头部工具栏**不再**放置它
  * （避免同一入口出现两处）。设置页不注入（配置页不提供搜索）。
- * 框内不展示快捷键提示：⌘/Ctrl+K 仍由 App 层全局监听，只是不占输入框空间。
+ * 框内右端展示快捷键键帽（⌘K / Ctrl K）：⌘/Ctrl+K 由 App 层全局监听，
+ * 这里只是把它显性化 —— 文案只填满入口左半，胶囊右半会空出一大片，
+ * 键帽同时承担「支住构图」和「告诉用户有快捷键」两件事。
+ * 仅桌面档展示，窄窗收成图标钮时由 globals.css 的媒体查询隐藏
+ * （手机上既没有物理修饰键，44px 的方钮也塞不下）。
  *
  * 文案在渲染期取（`useT`）：语言切换时这个常驻顶栏组件必须跟着变，
  * 所以键存在 `search.entry` 里而不是写成常量。
  */
+/** 键帽上的修饰键：与 App 层监听（`metaKey || ctrlKey`）保持同一套习惯写法。
+ *  app 内没有同步的系统判定（getSystemInfo 是异步 IPC），这里直接看 UA ——
+ *  只影响键帽画什么字，不影响真实快捷键是否可用。 */
+const SHORTCUT_LABEL = /Mac|iPhone|iPad|iPod/.test(
+  typeof navigator === 'undefined' ? '' : navigator.userAgent,
+)
+  ? '⌘K'
+  : 'Ctrl K'
+
 export function SearchEntry({ className }: { className?: string }) {
   const setSearchOpen = useUIStore((s) => s.setSearchOpen)
   const t = useT()
@@ -39,6 +52,11 @@ export function SearchEntry({ className }: { className?: string }) {
       <span className="search-entry-label font-text tracking-[-0.15px] whitespace-nowrap">
         {t('search.entry.placeholder')}
       </span>
+      {/* aria-hidden：键帽是视觉提示，不该并进按钮的可访问名（否则读屏会念成
+          「搜索 歌曲、歌手、专辑 Ctrl K」） */}
+      <kbd className="search-entry-kbd" aria-hidden>
+        {SHORTCUT_LABEL}
+      </kbd>
     </button>
   )
 }

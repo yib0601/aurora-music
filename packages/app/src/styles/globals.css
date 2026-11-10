@@ -1018,10 +1018,33 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
    * 组件里写 `h-4 w-4` / `text-[13px]` 落在 utilities 层，会把 .search-entry-compact
    * 那一档的字号/图标一起钉死成 md 档规格（compact 是 44px 高的大档，配 13px 字
    * 就是「框大了字没大」，正是「有点小」的第三个来源）。 */
-  .search-entry-icon { width: 16px; height: 16px; }
+  .search-entry-icon { width: 16px; height: 16px; color: rgb(var(--tw-white) / .55); transition: color .18s; }
   /* 占位文案必须自己让位：label 是 flex item，默认 `min-width: auto` 会按内容撑开，
    * 框被压窄时文字直接顶到圆角外；给 0 + 裁剪后最坏也只是把文案截短，不会溢出框体。 */
   .search-entry-label { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* 快捷键键帽：文案只填满入口左半，胶囊右半会空出一大片（353px 的框文字只到
+   * ~40%），所以右端放一块键帽把构图支住 —— 顺带把「这个框能按快捷键唤起」讲出来。
+   * 形体对齐浮层里 <kbd> Esc 那枚（小一号）：11px、圆角、极淡底 + 极淡描边。
+   * 全部走 --tw-white 的 alpha，两套主题通用（浅色主题下 --tw-white 是墨色）。 */
+  .search-entry-kbd {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+    height: 24px;
+    padding: 0 7px;
+    border: 1px solid rgb(var(--tw-white) / .10);
+    border-radius: 7px;
+    background: rgb(var(--tw-white) / .05);
+    color: rgb(var(--tw-white) / .42);
+    /* kbd 的 UA 默认是 monospace：等宽字体在 11px 下字距过松（「C t r l K」），
+     * 摆在中文字号旁像另一套排版。键帽跟正文同字体，只靠描边和底表达「可按键」。 */
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .search-entry:hover .search-entry-icon { color: rgb(var(--tw-white) / .80); }
 
   /* 顶栏工具带里的入口形态：高度取 DS 的 lg 档 44px（与主播放按钮同档）。
    * 尺寸一律在这里管，调用方不再写 Tailwind 尺寸类：utilities 层会压过本层，
@@ -1045,16 +1068,37 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     padding: 0 18px;
     gap: 12px;
   }
+  /* 顶栏入口的材质：**反相玻璃井**。
+   * 原来这里是「白 .065→.035 渐变 + 14px 圆角」：44px 高、353px 宽的框用 14px 圆角，
+   * 两端既不是半圆也不是直角，读起来像一个说不清道不明的长条；白度又只比背景高一点，
+   * 在色场上是一块灰糊片，只有顶部那根 +29 亮度的高光线在勉强示意边界。
+   * 现在两件事一起改：
+   * 1. 圆角 999 → 真胶囊（DS §2.1 把「搜索框」明确列进 --ds-radius-pill 的典型元素）；
+   * 2. 材质反过来做「凹」：搜索框是等待输入的空位，比周围面板暗一档才像可输入字段，
+   *    深色主题用加深的玻璃井 + 顶部内高光（DS：暗色靠内高光而不是黑影）。
+   * 浅色主题不能照搬暗井（浅底上会是一块脏斑），改用白玻璃凸起，
+   * 取值与 --glass-liquid-bg（.72/.60）同族。 */
   .search-entry.glass-control {
-    border-radius: 14px;
-    background: linear-gradient(145deg, rgb(var(--tw-white) / .065), rgb(var(--tw-white) / .035));
-    box-shadow: inset 0 1px 0 rgb(var(--tw-white) / .07), 0 3px 12px rgba(0,0,0,.06);
-    backdrop-filter: blur(12px) saturate(1.2);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    border-radius: var(--r-ds-pill);
+    background: linear-gradient(180deg, rgba(4, 8, 16, .26), rgba(4, 8, 16, .13));
+    border-color: rgb(var(--tw-white) / .12);
+    box-shadow: inset 0 1px 0 rgb(var(--tw-white) / .10), 0 6px 18px rgba(0, 0, 0, .16);
+    backdrop-filter: blur(14px) saturate(1.35);
+    -webkit-backdrop-filter: blur(14px) saturate(1.35);
+    color: rgb(var(--tw-white) / .78);
+  }
+  html:not(.dark) .search-entry.glass-control {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .86), rgba(255, 255, 255, .66));
+    border-color: rgb(var(--tw-white) / .10);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .92), 0 4px 14px rgba(20, 40, 70, .10);
   }
   .search-entry.glass-control:hover {
-    background: rgb(var(--tw-white) / .09);
-    border-color: rgb(var(--tw-white) / .16);
+    background: linear-gradient(180deg, rgba(4, 8, 16, .31), rgba(4, 8, 16, .17));
+    border-color: rgb(var(--tw-white) / .18);
+    color: rgb(var(--tw-white) / .92);
+  }
+  html:not(.dark) .search-entry.glass-control:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .93), rgba(255, 255, 255, .75));
   }
   /* 大档规格：44px 的框要配 15px 占位文字与 18px 图标才立得住，
    * 沿用 md 档的 13px/16px 会显得「框撑大了、内容还是小的」。 */
@@ -1074,6 +1118,9 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
       justify-content: center;
     }
     .search-entry .search-entry-label { display: none; }
+    /* 键帽一起收掉：图标钮里只有一个放大镜，塞「Ctrl K」会把 44px 的方钮撑成胶囊。
+     * 手机上本来也没有物理 Ctrl 键。 */
+    .search-entry .search-entry-kbd { display: none; }
     /* 顶栏工具带里的形态在窄窗下收成方形图标钮，尺寸取 44×44（触控最小可点尺寸），
      * 而不是只收宽度 —— 只收宽度会得到 36×44 的竖长条，图标钮没有这种比例。
      * （窄窗 + 宽档并非不可能：判据是「宽 ≥1024 或宽高都 ≥520」，

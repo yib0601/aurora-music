@@ -15,8 +15,12 @@ import type { DownloadQuality } from '@/types'
  *      就会「默认值」与「最左那一格」打架。这里把两者钉在一起，顺序数组的
  *      首项必须等于对应的默认值，由 `__tests__/settingOptions.test.ts` 守护。
  *
- * 非默认档保持原有相对顺序（只把默认档提到最前），避免一次改动顺带重排
- * 用户已经记住的位置。
+ * 非默认档的相对顺序按组自定：
+ *   - 主题组保持原相对顺序（只把默认档提到最前），避免一次改动顺带重排用户
+ *     已经记住的位置；
+ *   - 下载音质组按**音质从高到低递减**（无损 → 高品质 → 标准），因为这一组的
+ *     档位本身有客观优劣，"越好越靠前"比"历史顺序"更符合直觉——默认档恰好
+ *     是最高档，于是整组天然单调递减。
  */
 
 /** 主题档位（深色 / 浅色 / 跟随系统） */
@@ -41,8 +45,8 @@ export const THEME_OPTION_ORDER: readonly ThemePreference[] = ['system', 'dark',
  */
 export const DEFAULT_DOWNLOAD_QUALITY: DownloadQuality = 'flac'
 
-/** 下载音质档位展示顺序：默认（无损 FLAC）在最左，其余保持标准 → 高品质的原顺序 */
-export const DOWNLOAD_QUALITY_OPTION_ORDER: readonly DownloadQuality[] = ['flac', '128', '320']
+/** 下载音质档位展示顺序：默认（无损 FLAC）在最左，其余按音质递减（高品质 320k → 标准 128k） */
+export const DOWNLOAD_QUALITY_OPTION_ORDER: readonly DownloadQuality[] = ['flac', '320', '128']
 
 /**
  * 「其他应用播放声音时」档位顺序：默认（暂停本应用 = 让位）在最左。

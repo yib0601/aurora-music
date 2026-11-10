@@ -20,8 +20,8 @@ const core = {
   /** 平台展示名（协议标识 → 界面文案）；标识串本身见 LX_KNOWN_PLATFORMS，不翻译 */
   platform: {
     /** 插件展示名（插件契约的 displayNameKey 指向这里） */
-    aurora: 'Aurora 协议源',
-    lx: '洛雪音源脚本',
+    aurora: 'Aurora',
+    lx: '洛雪音源',
     qishui: '汽水音乐',
     /** 内置歌词兜底插件（domain=lyrics）：不再是隐式常量，可在插件列表里停用 */
     builtinLyricsLrclib: 'LRCLIB 歌词',

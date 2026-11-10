@@ -33,9 +33,9 @@ const sources = {
   },
   /** 插件登录面板 */
   auth: {
-    unsupportedEnv: '当前环境不支持插件（请使用桌面端或手机端）',
+    unsupportedEnv: '当前环境不支持插件，请用桌面端或手机端',
     emptyInput: '请先粘贴凭证',
-    saved: '已保存，登录成功',
+    saved: '已保存并登录',
     loggedOut: '已退出登录',
     failed: '操作失败',
     notLoggedIn: '未登录',
@@ -43,10 +43,10 @@ const sources = {
     loggedIn: '已登录',
     loggedInAs: '已登录：{name}',
     inputLabel: '凭证',
-    inputHint: '从官方客户端复制 Cookie 或凭证值粘贴到这里',
+    inputHint: '从官方客户端复制 Cookie 或凭证',
     submit: '保存登录',
     logout: '退出登录',
-    refresh: '刷新状态',
+    refresh: '刷新',
     noPlugins: '没有需要登录的插件',
   },
   /** 探测（「测试」/「测试连接」按钮与结论） */
@@ -56,11 +56,11 @@ const sources = {
     testConnection: '测试连接',
     scriptOk: '脚本可用',
     scriptFailed: '脚本加载失败：{reason}',
-    noPlatform: '脚本未声明任何可用平台',
+    noPlatform: '脚本未声明可用平台',
     unnamedScript: '未命名脚本',
     scriptName: '{name}',
     scriptNameWithVersion: '{name} · v{version}',
-    packed: '脚本经 liscript 包装，已自动解包',
+    packed: '脚本已自动解包',
     qualityCount: '音质 {count} 档',
     searchAndResolve: '搜索+取址',
     resolveOnly: '取址',
@@ -69,8 +69,8 @@ const sources = {
   form: {
     title: '添加音源',
     titleLx: '添加洛雪音源',
-    desc: '服务地址自动生成接口，接口模板原样使用',
-    descLx: '粘贴脚本链接，脚本提供取址能力',
+    desc: '服务地址自动生成接口，模板原样使用',
+    descLx: '粘贴脚本链接，由脚本取址',
     /*
        这几个 `kind*` 键**不是**「形态选择器」的残留，而是插件自己的展示名与说明：
        `auroraPlugin` / `lxPlugin` / `qishuiPlugin` 的 `displayNameKey` / `descriptionKey`
@@ -81,15 +81,15 @@ const sources = {
        一起消失之后，「这个端支不支持」改由插件设置入口的**可见性**表达；
        「是不是被停用」由目录条目上的开关表达，都不再需要一句事后解释。
     */
-    kindAuroraHint: '服务地址 / 接口模板',
-    kindLx: '洛雪音源脚本',
-    kindLxHint: '脚本链接（取址）',
+    kindAuroraHint: '服务地址或接口模板',
+    kindLx: '洛雪音源',
+    kindLxHint: '脚本链接，只取址',
     defaultNameQishui: '我的汽水歌单',
     namePlaceholderQishui: '如：我的汽水歌单',
     playlistUrlLabel: '歌单链接或 ID',
     playlistUrlPlaceholder: 'https://music.douyin.com/qishui/share/playlist?playlist_id=…',
-    playlistUrlHint: '粘贴汽水歌单的分享链接或歌单 ID 即可导入；不需要登录',
-    kindQishuiHint: '歌单链接（免登录）；登录后可拉取我的歌单',
+    playlistUrlHint: '粘贴汽水歌单链接或 ID 即可导入，无需登录',
+    kindQishuiHint: '歌单链接，免登录；登录后可用我的歌单',
     nameLabel: '名称（可选）',
     namePlaceholder: '如：我的音源',
     namePlaceholderLx: '如：我的洛雪源',
@@ -99,27 +99,26 @@ const sources = {
     defaultNameLx: '新洛雪源',
     scriptLabel: '脚本链接',
     scriptHint:
-      '脚本负责取址；洛雪脚本大多只做取址、没有搜索接口。搜索仍由其他音源负责，搜到的曲目在播放 / 下载时会优先交给这条脚本取直链，取不到自动回落原地址',
+      '脚本只负责取址，搜索仍由其他音源负责',
     /** 「认领平台」：限定这个洛雪脚本只服务哪个平台（可选，默认按曲目地址自动识别） */
     lxPlatformLabel: '限定平台（可选）',
     lxPlatformNone: '自动识别（按曲目地址）',
-    lxPlatformHint:
-      '默认按曲目的播放地址自动识别平台，一般无需设置；只有当音源返回的是自己的中转地址、识别不出平台时才需要在这里指明',
+    lxPlatformHint: '一般无需设置，识别不出平台时才填',
     lxPlatformBadge: '取址：{platform}',
     sourceLabel: '音源地址',
-    sourceDetectedWithKey: '已识别为服务地址，密钥已提取；搜索与歌单接口自动生成',
-    sourceDetected: '已识别为服务地址；搜索与歌单接口自动生成，密钥可写在链接里',
-    templateDetected: '按接口模板使用，占位符由软件替换',
-    sourceHint: '服务地址或完整接口地址都行；密钥写在链接里即可，如 https://host?key=xxx',
+    sourceDetectedWithKey: '已识别服务地址，密钥已提取；接口自动生成',
+    sourceDetected: '已识别服务地址；密钥可写在链接里',
+    templateDetected: '按接口模板使用，占位符自动替换',
+    sourceHint: '服务地址或完整接口地址均可；密钥写在链接里，如 https://host?key=xxx',
     playlistLabel: '歌单解析接口（可选）',
     playlistLabelRequired: '歌单解析接口（可选，需含 {placeholder}）',
     playlistHint: '留空表示该音源不参与歌单导入',
-    playlistHintDialog: '填入后，导入歌单时可直接解析 QQ / 网易云等平台的歌单分享链接',
+    playlistHintDialog: '填入后可直接解析 QQ / 网易云等平台的歌单链接',
     headersLabel: '请求头（可选，JSON 对象）',
     previewService: '服务 {url}',
     previewSearch: '搜索 {url}',
     previewPlaylist: '歌单 {url}',
-    savedDisabled: '脚本未测试通过，已保存为停用；测试通过后可在列表中启用',
+    savedDisabled: '测试未通过，已保存为停用；通过后可在列表启用',
   },
   /** 网络存储（WebDAV）来源：会入库的持久曲库来源，与在线音源不是一层 */
   webdav: {
@@ -128,7 +127,7 @@ const sources = {
      * 弹窗通用说明：**不提具体协议**。曲库来源已插件化，WebDAV 只是当前唯一的内置协议；
      * 协议特有的地址格式说明归各字段自己的 hint（如 baseUrlHint），不写在这一层。
      */
-    desc: '添加网络存储后可先「测试连接」，再扫描入库。',
+    desc: '添加后可先测试连接，再扫描入库',
     nameLabel: '名称（可选）',
     namePlaceholder: '如：家里的群晖',
     nameDraftPlaceholder: '名称',
@@ -142,17 +141,17 @@ const sources = {
     rootPlaceholderDraft: '音乐库根目录（可选），如 Music',
     usernameLabel: '用户名（可选）',
     passwordLabel: '口令（可选）',
-    passwordHint: '口令仅保存在本机配置中，不会写入曲库、也不会出现在播放地址里（远端请求由主进程代理）。',
-    enabledTitle: '已启用（启动时自动扫描该来源）',
-    disabledTitle: '已停用（启动时不再自动扫描，可手动扫描）',
-    removeTitle: '移除来源（同时从{library}移除该来源的歌曲）',
+    passwordHint: '口令只存本机，不写入曲库和播放地址',
+    enabledTitle: '已启用（启动时自动扫描）',
+    disabledTitle: '已停用（可手动扫描）',
+    removeTitle: '移除来源（同时从{library}移除歌曲）',
     removeConfirm: '移除网络存储「{name}」？',
     removeConfirmWithCount:
-      '移除网络存储「{name}」？\n该来源下的 {count} 首歌曲会同时从{library}中移除（远端文件不会被删除）。',
+      '移除网络存储「{name}」？\n该来源的 {count} 首歌曲会从{library}移除（远端文件保留）。',
     testConnection: '测试连接',
     scan: '扫描入库',
     scanComplete: '扫描完成，曲库共 {count} 首',
-    scanIncomplete: '扫描完成，但有 {count} 个目录无法访问，已保留原记录',
+    scanIncomplete: '扫描完成，{count} 个目录无法访问，已保留原记录',
     /**
      * 声明式表单的通用文案（字段标签/占位/说明由插件的 `fields` 声明提供，
      * 这里只放「表单骨架」自己的字，协议特有的说明一律归各字段的 hint）。
@@ -160,12 +159,12 @@ const sources = {
     /** 口令状态的三种形态：已保存 / 未保存 / 本机无法加密保存 */
     credentialSaved: '口令已安全保存',
     credentialMissing: '未保存口令',
-    credentialUnavailable: '本机无法安全保存口令，每次启动都需要重新输入',
+    credentialUnavailable: '本机无法加密保存口令，每次启动需重输',
     /**
      * 移动端形态：没有系统密钥（keyring / safeStorage 等价物），口令只能落在
      * 应用私有目录。文案必须说清"存在哪、清得掉吗"，不能冒充"已加密"。
      */
-    credentialSavedUnprotected: '口令保存在应用私有目录（未加密），卸载应用会一并清除',
+    credentialSavedUnprotected: '口令未加密，存于应用私有目录，卸载即清除',
     /**
      * 口令去向的通用说明。
      *
@@ -173,7 +172,7 @@ const sources = {
      * （见 `credentialSavedUnprotected`）。这里只承诺两端都成立的部分，
      * 「到底怎么保护的」交给保存后卡片上的状态文案如实回答。
      */
-    credentialHint: '口令不会写入配置文件，也不会出现在播放地址里；保存后卡片上会标明它的保护方式',
+    credentialHint: '口令不写入配置文件，也不出现在播放地址里',
     clearCredential: '清除口令',
     /** 必填字段缺失时的提交校验提示 */
     fieldRequired: '{field}不能为空',
@@ -193,9 +192,9 @@ const sources = {
     portPlaceholder: '22',
     usernameLabel: '用户名',
     passwordLabel: '口令',
-    passwordHint: '口令经系统密钥加密后保存在本机，不会写入配置文件',
+    passwordHint: '口令经系统密钥加密保存在本机',
     privateKeyLabel: '私钥（可选）',
-    privateKeyHint: '粘贴 OpenSSH 私钥全文（以 -----BEGIN 开头）。填了私钥就无需口令',
+    privateKeyHint: '粘贴 OpenSSH 私钥全文；填了私钥就无需口令',
     rootLabel: '音乐库根目录（可选）',
     rootPlaceholder: '如：/volume1/music 或 music，留空表示登录目录',
   },
@@ -204,19 +203,19 @@ const sources = {
    */
   smb: {
     title: 'SMB',
-    desc: '访问 Windows 共享或 NAS 的 SMB 共享目录',
+    desc: '访问 Windows 或 NAS 的 SMB 共享',
     hostLabel: '主机',
     hostPlaceholder: '如：nas.example.com 或 192.168.1.10',
     portLabel: '端口（默认 445）',
     portPlaceholder: '445',
     shareLabel: '共享名',
     sharePlaceholder: '如：music',
-    shareHint: '共享名是路径的第一段，不是完整路径（如 //nas/music 里的 music）',
+    shareHint: '共享名是路径第一段，如 //nas/music 里的 music',
     domainLabel: '域（可选）',
     domainPlaceholder: '如：WORKGROUP',
     usernameLabel: '用户名',
     passwordLabel: '口令',
-    passwordHint: '口令经系统密钥加密后保存在本机，不会写入配置文件',
+    passwordHint: '口令经系统密钥加密保存在本机',
     rootLabel: '共享内子目录（可选）',
     rootPlaceholder: '如：Music，留空表示共享根目录',
   },
@@ -240,28 +239,28 @@ const sources = {
    */
   plugins: {
     title: '插件',
-    desc: '插件为播放器补充能力（音源、歌词）。内置插件随应用发布，也可以从网址或本地文件安装第三方插件',
+    desc: '插件为播放器补充音源与歌词，可自行安装',
     pickTitle: '选择插件清单',
     allFiles: '所有文件',
     /** 列表 */
     installed: '已安装',
     builtin: '内置',
     /** 内置歌词兜底插件的说明（domain=lyrics） */
-    builtinLyricsDesc: '内置歌词兜底：所有用户歌词源未命中时，从 LRCLIB 开放接口取词。可停用',
+    builtinLyricsDesc: '内置歌词兜底：其他歌词源未命中时改用 LRCLIB',
     /** 内置聚合搜索插件（domain=source，自带内置源） */
     aggregateSearchName: '聚合搜索',
     aggregateSearchDesc:
-      '内置搜索兜底：所配音源一条结果都给不出时，软件并发查询 QQ 音乐、酷我、网易云、酷狗、咪咕；曲目地址仍由你配的取址脚本现取。可停用',
+      '内置搜索兜底：所配音源无结果时并发查 QQ、酷我、网易云、酷狗、咪咕',
     /**
      * 卡片上的「这一端用不了」说明。
      *
      * 与「没有可配置项」是两件事：SFTP / SMB 的协议库只在桌面端注入，
      * 手机上的卡片若什么都不说，用户只会看到"这里少了齿轮"（本 bug 的起点）。
      */
-    unsupportedHere: '当前设备不支持该协议（仅桌面端可用）',
-    listEmpty: '还没有安装任何第三方插件',
+    unsupportedHere: '当前设备不支持该协议，仅桌面端可用',
+    listEmpty: '还没有第三方插件',
     listBroken: '有 {count} 个插件文件读取失败',
-    brokenHint: '这些文件不符合插件清单格式，或内容与被安装时不一致（可能被修改过）',
+    brokenHint: '文件不是有效清单，或内容被修改过',
     removeBroken: '删除该文件',
     openDir: '打开插件目录',
     /**
@@ -270,34 +269,34 @@ const sources = {
      * 措辞的关键是**先说"不影响使用"**：用户看到"插件出错"第一反应是"我是不是得修"，
      * 而这件事的正确答案是"不用，其他功能照常"。第二句才说他能做什么。
      */
-    startupWarning: '{count} 个插件没能正常加载，它们的音源暂不可用。软件其余功能不受影响',
+    startupWarning: '{count} 个插件未加载，其音源不可用，其他功能正常',
     startupWarningAction: '查看',
-    startupFailedList: '启动时未能加载',
-    startupFailedHint: '这些插件在加载阶段出错，因此没有出现在上面的列表里。可以重新安装或删除它们所在目录',
+    startupFailedList: '启动加载失败',
+    startupFailedHint: '加载出错，所以不在上方列表；可重装或删除',
     /** 安装 */
     install: '安装插件',
     installFromUrl: '从网址安装',
     installFromFile: '从本地文件安装',
     urlLabel: '插件清单地址',
     urlPlaceholder: 'https://example.com/aurora-plugin.json',
-    installHint: '清单是一份 JSON 描述文件，安装时不会执行任何代码',
+    installHint: '清单只是 JSON 描述，安装时不执行代码',
     installing: '正在安装…',
-    installingWait: '上一个安装还没结束，请稍候',
+    installingWait: '上一个安装未完成，请稍候',
     installedOk: '已安装「{name}」',
     installFailed: '安装失败：{reason}',
     /** 权限确认（安装前逐条列出） */
     permissionTitle: '该插件申请的权限',
     permissionNetwork: '访问这些域名：{hosts}',
-    permissionCredential: '保存登录凭证（加密存放在本机）',
+    permissionCredential: '加密保存登录凭证到本机',
     /** B 档：会运行第三方代码 —— 措辞必须与 A 档的「只发 HTTP 请求」明显不同 */
-    permissionScript: '在本机沙箱内运行插件作者提供的脚本代码（可发网络请求，读不到你的文件）',
+    permissionScript: '在本机沙箱运行插件脚本，可联网，读不到你的文件',
     permissionNone: '不需要额外权限',
     /** 安装前尚未取到清单时的域名占位（列不出就是列不出，不假装列出） */
-    pendingHosts: '（安装后会在此显示具体域名）',
+    pendingHosts: '（安装后显示具体域名）',
     /** 卸载 */
     uninstall: '卸载',
     uninstallConfirmTitle: '卸载插件「{name}」？',
-    uninstallConfirmBody: '卸载后，使用该插件的音源会立即失效。已保存的登录凭证同时被删除。',
+    uninstallConfirmBody: '卸载后其音源立即失效，已存凭证也会删除',
     uninstalledOk: '已卸载「{name}」',
     uninstallFailed: '卸载失败：{reason}',
     /** 能力徽章（与 capability.* 分开：这里是插件管理页的短标签） */
@@ -329,9 +328,9 @@ const sources = {
      * 不能只写"已停用"：用户真正要知道的是"停用之后会发生什么" ——
      * 哪些东西不再工作、有没有被删掉。所以这句把两个后果都写出来。
      */
-    disabledHint: '已停用：它的音源与存储暂时不参与工作。配置和登录凭证都还在，随时可以重新启用',
+    disabledHint: '已停用：音源与存储不参与工作，配置和凭证都还在',
     enableFailed: '操作失败：{reason}',
-    toggleUnsupported: '当前环境不支持管理插件启停（请使用桌面端）',
+    toggleUnsupported: '当前环境不支持插件启停，请用桌面端',
     /** 校验问题（清单结构不对时逐条展示，path 指到具体字段） */
     issue: {
       title: '清单内容有问题',
@@ -344,7 +343,7 @@ const sources = {
       invalidType: '字段类型不对',
       invalidUrl: '地址无效（需以 http:// 或 https:// 开头）',
       empty: '不能为空',
-      wildcardHost: '域名不能使用通配符，必须写具体域名',
+      wildcardHost: '域名须写具体值，不能用通配符',
       unsupportedPermission: '本应用不支持该权限',
       unsupportedDomain: '本应用不支持该能力类型',
       noCapability: '至少要声明一种能力（音源或歌词）',
@@ -378,13 +377,13 @@ const sources = {
   config: {
     open: '配置',
     title: '「{name}」的设置',
-    desc: '这个插件的全部配置都在这里，改完立即生效',
+    desc: '该插件的全部设置，改完立即生效',
     sectionSources: '音源',
-    sectionSourcesHint: '这些音源负责在线搜索与歌单导入',
+    sectionSourcesHint: '负责在线搜索与歌单导入',
     sectionStorage: '网络存储',
     sectionStorageHint: '配好后可测试连接并扫描入库',
     sectionAuth: '登录',
-    sectionAuthHint: '登录后可用该插件的账号能力',
+    sectionAuthHint: '登录后可用账号功能',
     sourceEmpty: '还没有音源',
     storageEmpty: '还没有网络存储',
     noConfig: '这个插件没有可配置项',

@@ -11,8 +11,8 @@ import type { LocalizedOf } from '../schema'
  */
 const en: LocalizedOf<typeof core> = {
   platform: {
-    aurora: 'Aurora protocol source',
-    lx: 'LX music script',
+    aurora: 'Aurora',
+    lx: 'LX Music',
     qishui: 'Soda Music',
     /** 内置歌词兜底插件（domain=lyrics）：不再是隐式常量，可在插件列表里停用 */
     builtinLyricsLrclib: 'LRCLIB lyrics',

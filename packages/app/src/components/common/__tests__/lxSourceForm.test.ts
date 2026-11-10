@@ -92,7 +92,7 @@ describe('lxProbeErrorText', () => {
     expect(lxProbeErrorText(probe({ ok: false, error: '脚本语法错误：Unexpected token' }), zh)).toBe(
       '脚本加载失败：脚本语法错误：Unexpected token'
     )
-    expect(lxProbeErrorText(probe({ ok: false }), zh)).toBe('脚本加载失败：脚本未声明任何可用平台')
+    expect(lxProbeErrorText(probe({ ok: false }), zh)).toBe('脚本加载失败：脚本未声明可用平台')
   })
 
   it('英文界面下同一份结论按英文渲染（语言由渲染端决定，不在产生地烧死）', () => {
