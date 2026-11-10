@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  启动主题里 windowSplashScreenAnimatedIcon 的取值：一个全透明的形状。
+
+  为什么不是 @null / 干脆不写：启动主题继承 Theme.SplashScreen，不写就等于库默认的
+  @android:drawable/sym_def_app_icon（系统那个通用机器人图标）；写 @null 在资源编译
+  期没有语义。而 Android 12+ 的系统启动画面**没有**「不要图标」的开关，只要主题里能
+  解析出图标就会画出来（并且按「画布 × 1.5」放大、套设备图标形状遮罩）。所以用一张
+  透明的 drawable 占住这个属性，屏幕上就只剩 windowSplashScreenBackground 的纯色底。
+
+  显式给 1dp 的 size 而不是留空：避免系统按「intrinsic 尺寸未知」走额外的测量分支；
+  系统绘制时会用自己的边界覆盖它。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size
+        android:width="1dp"
+        android:height="1dp" />
+</shape>

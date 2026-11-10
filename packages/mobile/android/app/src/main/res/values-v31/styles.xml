@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 31+（Android 12 起）的系统启动画面（SplashScreen API）覆盖层。
+
+  为什么需要这个文件：Android 12 起开屏不再由我们的 drawable/splash.xml 画，而是系统
+  启动画面接管（@capacitor/splash-screen 在 launchShowDuration > 0 时走
+  androidx.core.splashscreen，把系统启动画面留着不撤）。系统那条路径只认**平台属性**
+  （android:windowSplashScreenXxx），drawable/splash.xml 只管窗口背景，对开屏图形没有
+  发言权。所以下面两条要显式写死，不能指望库默认值。
+
+  · android:windowSplashScreenBackground = @color/aurora_window_bg
+    与窗口背景、Capacitor SplashScreen.backgroundColor 同源（values/colors.xml 顶部
+    列了三处同色的理由）。不写的话取主题 colorBackground，浅色系统主题下会先闪白。
+
+  · android:windowSplashScreenAnimatedIcon = @drawable/splash_blank（全透明）
+    开屏不放图形。系统没有「不要图标」的开关：属性缺失就去解析应用图标，而我们的
+    ic_launcher_foreground 是满幅图形，系统会按「画布 × 1.5」放大再套设备图标形状
+    遮罩 —— 0.8.7 的真机症状就是一块放大 2 倍、四角发尖的数码方块。用透明 drawable
+    占住这个属性，屏幕上就只剩纯色底。要改回画图形，得同时按「图形占画布 2/3、画布
+    = 288dp」的口径出一套资源，见 drawable/splash.xml 的注释。
+
+  · android:windowSplashScreenIconBackgroundColor 故意不设：留系统默认的透明值。
+-->
+<resources>
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBarLaunchBase">
+        <item name="android:windowSplashScreenBackground">@color/aurora_window_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+    </style>
+</resources>

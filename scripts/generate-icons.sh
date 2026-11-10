@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# 从 SVG 源生成全平台品牌资源：桌面图标、Android 应用图标与启动图、web favicon。
+# 从 SVG 源生成全平台品牌资源：桌面图标、Android 应用图标、web favicon。
 #
 #   bash scripts/generate-icons.sh          生成全部派生资源
 #   bash scripts/generate-icons.sh --check  只校验派生资源是否与 SVG 源同代（CI / 发布前用）
 #
-# 为什么开屏图形也归这里管：res/drawable-*/splash_logo.png 是启动画面里那块品
-# 牌图形，与 mipmap、桌面图标一样都是从品牌 SVG 派生的位图。派生资源各自为政
-# 过一次（车机开屏长期停在 Capacitor 模板白底图上，全靠人肉发现），所以统一收
-# 口到本脚本，`--check` 就是防止下次再漏一处的闸门（CI 的 android job 会跑它）。
+# 派生资源各自为政过一次（车机开屏长期停在 Capacitor 模板白底图上，全靠人肉发现），
+# 所以统一收口到本脚本，`--check` 就是防止下次再漏一处的闸门（CI 的 android job 会
+# 跑它）。
+#
+# 开屏不画品牌图形，所以这里**不产出** splash_*.png；--check 反过来卡住「有人又把
+# 开屏图形位图加回来」——理由见 packages/mobile/android/app/src/main/res/drawable/splash.xml。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +17,7 @@ RES="$ROOT/packages/desktop/resources"
 ANDROID_RES="$ROOT/packages/mobile/android/app/src/main/res"
 APP_PUBLIC="$ROOT/packages/app/public"
 
-SVG_ROUND="$RES/icon.svg"        # 圆角版：桌面 / web / 启动图居中图形
+SVG_ROUND="$RES/icon.svg"        # 圆角版：桌面图标 / web favicon
 SVG_FULL="$RES/icon-full.svg"    # 全幅版：Android 自适应图标前景
 
 # 启动图底色。必须与下面两处同值，否则冷启动会看到「启动图 → 窗口背景 → 主界面」
@@ -23,18 +25,6 @@ SVG_FULL="$RES/icon-full.svg"    # 全幅版：Android 自适应图标前景
 #   packages/mobile/android/app/src/main/res/values/colors.xml  (aurora_window_bg)
 #   packages/mobile/capacitor.config.ts                         (SplashScreen.backgroundColor)
 SPLASH_BG='#0A0A0A'
-
-# 启动画面里的品牌图形：正方形，边长 192dp —— 与 Android 12 系统启动画面
-# （windowSplashScreenAnimatedIcon 可见区 192dp）同尺寸；车机 hdpi 落在 800~1280px
-# 宽的竖屏上约占 29%~22%。
-#
-# 只出正方形、只出这一块图形，不出口「整屏位图」：整屏 png 会被框架按窗口尺寸
-# 拉伸，位图宽高比固定（10:16）而车机屏宽高比五花八门（竖屏实测 0.69），牌子就
-# 被横着拉宽约 1.3 倍（2026-11 车机实拍 280x208 的图形，本该 1:1）。窗口背景改
-# 由 res/drawable/splash.xml 的 layer-list 拼：纯色底 + 居中本图，layer-list 每层
-# 按自己的尺寸绘制，与屏幕宽高比再无关系。
-SPLASH_LOGO_DP=192
-declare -A SPLASH_LOGO=( [mdpi]=192 [hdpi]=288 [xhdpi]=384 [xxhdpi]=576 [xxxhdpi]=768 )
 
 declare -A ICON_SIZE=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
 DENSITIES=(mdpi hdpi xhdpi xxhdpi xxxhdpi)
@@ -55,10 +45,12 @@ if [[ $CHECK -eq 1 ]]; then
 
   echo "== 品牌资源校验 =="
 
-  # 1) 启动画面：窗口背景 splash.xml（layer-list）+ 各密度正方形图形 splash_logo.png。
-  #    这两样是「开屏不随屏幕宽高比变形」的唯一保证：图形在 layer-list 里走
-  #    <bitmap gravity="center">，按自身像素居中绘制、不参与窗口尺寸缩放；谁要是
-  #    又塞回整屏 png 当窗口背景，图形立刻重新被拉伸，所以下面几条都硬卡。
+  # 1) 启动画面：**开屏不画品牌图形**（刻意的决定，理由见 drawable/splash.xml）。
+  #    窗口背景 splash.xml 只允许纯色 layer-list；res 下不允许再出现任何 splash 位图；
+  #    两个启动主题的 windowSplashScreenAnimatedIcon 必须指向全透明的 splash_blank。
+  #    这些是反向闸门：图形一旦加回来，Android 12+ 的系统启动画面会把它按「画布 ×1.5」
+  #    放大再套设备图标形状遮罩（真机实拍 = 放大 2 倍、四角发尖的方块），要恢复就得连
+  #    288dp 画布口径一起改，不能只塞一张 png 进来。
   splash_xml="$ANDROID_RES/drawable/splash.xml"
   if [[ ! -f "$splash_xml" ]]; then
     fail "缺少 $(rel "$splash_xml")"
@@ -66,40 +58,40 @@ if [[ $CHECK -eq 1 ]]; then
     xml_ok=1
     grep -q '@color/aurora_window_bg' "$splash_xml" \
       || { fail "$(rel "$splash_xml") 未引用 @color/aurora_window_bg（底色须与窗口同源）"; xml_ok=0; }
-    grep -q '@drawable/splash_logo' "$splash_xml" \
-      || { fail "$(rel "$splash_xml") 未引用 @drawable/splash_logo"; xml_ok=0; }
-    grep -q 'android:gravity="center"' "$splash_xml" \
-      || { fail "$(rel "$splash_xml") 图形未居中（缺 android:gravity=\"center\"）"; xml_ok=0; }
-    [[ $xml_ok -eq 1 ]] && pass "$(rel "$splash_xml") layer-list"
+    if grep -qE '@drawable/splash_(logo|icon)|<bitmap' "$splash_xml"; then
+      fail "$(rel "$splash_xml") 又引用了开屏图形（开屏不放图形，见文件内注释）"; xml_ok=0
+    fi
+    [[ $xml_ok -eq 1 ]] && pass "$(rel "$splash_xml") 纯色 layer-list（无图形）"
   fi
 
-  leftover=$(find "$ANDROID_RES" -name 'splash.png' | sort)
+  leftover=$(find "$ANDROID_RES" -name 'splash*.png' | sort)
   if [[ -n "$leftover" ]]; then
-    fail "res 下仍有整屏启动图（会被按窗口尺寸拉伸，改用 drawable/splash.xml）：$(echo "$leftover" | tr '\n' ' ')"
+    fail "res 下仍有开屏位图（整屏图会被按窗口尺寸拉伸，居中图形会被系统启动画面放大裁切；开屏不放图形，见 drawable/splash.xml）：$(echo "$leftover" | tr '\n' ' ')"
   fi
 
-  #    图形本身：正方形 + 尺寸对着密度档位 + 不是 Capacitor 模板白底图
-  #    （白底均值≈1.0，品牌图是深底 + 亮带，均值明显更低）。
-  check_splash_logo() {
-    local out=$1 size=$2
-    if [[ ! -f "$out" ]]; then fail "缺少 $(rel "$out")"; return; fi
-    local dims
-    dims=$(identify -format '%wx%h' "$out")
-    if [[ "$dims" != "${size}x${size}" ]]; then
-      fail "$(rel "$out") 尺寸 $dims，期望正方形 ${size}x${size}"
-      return
-    fi
-    local mean
-    mean=$(identify -format '%[fx:mean]' "$out")
-    if awk -v m="$mean" 'BEGIN{exit !(m > 0.8)}'; then
-      fail "$(rel "$out") 近似纯白——疑为 Capacitor 模板图形"
-      return
-    fi
-    pass "$(rel "$out") ${size}x${size}"
-  }
-  for d in "${DENSITIES[@]}"; do
-    check_splash_logo "$ANDROID_RES/drawable-$d/splash_logo.png" "${SPLASH_LOGO[$d]}"
-  done
+  #    透明占位图 + 两个启动主题的指向。缺了 splash_blank 或没指过去，系统就会去画
+  #    应用图标（我们那张前景是满幅图形 → 必然被放大裁切）。
+  blank="$ANDROID_RES/drawable/splash_blank.xml"
+  if [[ ! -f "$blank" ]]; then
+    fail "缺少 $(rel "$blank")（windowSplashScreenAnimatedIcon 要用它占位）"
+  else
+    grep -q '@android:color/transparent' "$blank" \
+      || fail "$(rel "$blank") 不是全透明（开屏不放图形）"
+  fi
+
+  base_styles="$ANDROID_RES/values/styles.xml"
+  v31="$ANDROID_RES/values-v31/styles.xml"
+  grep -q 'windowSplashScreenAnimatedIcon">@drawable/splash_blank' "$base_styles" \
+    || fail "$(rel "$base_styles") 里 windowSplashScreenAnimatedIcon 未指向 @drawable/splash_blank（漏了会画出应用图标并被放大裁切）"
+  if [[ ! -f "$v31" ]]; then
+    fail "缺少 $(rel "$v31")（API 31+ 的系统启动画面读平台属性，缺了它开屏会回落到应用图标）"
+  else
+    grep -q 'android:windowSplashScreenAnimatedIcon">@drawable/splash_blank' "$v31" \
+      || fail "$(rel "$v31") 未把 android:windowSplashScreenAnimatedIcon 指向 @drawable/splash_blank"
+    grep -q 'android:windowSplashScreenBackground">@color/aurora_window_bg' "$v31" \
+      || fail "$(rel "$v31") 未把 android:windowSplashScreenBackground 指向 @color/aurora_window_bg"
+    pass "$(rel "$v31") 平台启动画面属性"
+  fi
 
   # 2) Android 自适应图标：尺寸 + 非白底（模板默认图标是白底绿机器人）
   check_mipmap() {
@@ -208,14 +200,14 @@ done
 # adaptive icon 背景色 = 夜空底色
 sed -i 's|#FFFFFF|#0A1128|' "$ANDROID_RES/values/ic_launcher_background.xml"
 
-echo "== Android 启动画面图形 =="
-# 正方形、保留 alpha：圆角外露出的透明角由 drawable/splash.xml 的纯色底层补上。
+echo "== Android 启动画面 =="
+# 不产出任何 splash 位图：开屏只铺 colors.xml 的 aurora_window_bg 纯色底，图形一律不画
+# （理由见 packages/mobile/android/app/src/main/res/drawable/splash.xml）。历史遗留的
+# drawable-*/splash_logo.png、splash_icon.png 一并删掉，别在这里重建。
 for d in "${DENSITIES[@]}"; do
-  size=${SPLASH_LOGO[$d]}
-  mkdir -p "$ANDROID_RES/drawable-$d"
-  IM -background none "$SVG_ROUND" -resize "${size}x${size}" PNG32:"$ANDROID_RES/drawable-$d/splash_logo.png"
-  echo "  $d: ${size}px"
+  rm -f "$ANDROID_RES/drawable-$d/splash_logo.png" "$ANDROID_RES/drawable-$d/splash_icon.png"
 done
+echo "  无图形（纯色底），已清理历史 splash_*.png"
 
 echo "== Web favicon =="
 mkdir -p "$APP_PUBLIC"

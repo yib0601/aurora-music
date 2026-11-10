@@ -101,17 +101,27 @@ cd packages/mobile/android && ./gradlew assembleRelease
 Web 层改动必须先 `build:app` 再 `cap sync`，否则打进 APK 的是上一次的前端产物 ——
 `pnpm build:android` 就是把这两步串在一起，让这条依赖没机会被跳过。
 
-应用图标、启动画面图形与 web favicon 都由 `packages/desktop/resources/icon*.svg` 派生，统一交给
+应用图标与 web favicon 都由 `packages/desktop/resources/icon*.svg` 派生，统一交给
 `scripts/generate-icons.sh` 生成（`pnpm verify:brand` 校验一致性，CI 的 android job 已接入）。
-换品牌图形时改 SVG 后重跑一次即可，不要单独去改 `res/drawable*/splash_logo.png` 或 mipmap：
-这些派生资源一旦各管各的，漏一处没有任何东西会提示（车机开屏就曾长期停在 Capacitor 模板的
-白底占位图上）。
+换品牌图形时改 SVG 后重跑一次即可，不要单独去改 mipmap：这些派生资源一旦各管各的，漏一处没有
+任何东西会提示（车机开屏就曾长期停在 Capacitor 模板的白底占位图上）。
 
-Android 启动画面由 `res/drawable/splash.xml` 的 layer-list 拼出来——纯色底 + 居中的正方形
-`splash_logo.png`，**不是整屏位图**：整屏 png 会被按窗口尺寸拉伸，而位图宽高比固定、屏幕宽高比
-不固定（车机竖屏实测 0.69，10 寸车机常见 800x1280 / 1280x800），图里的牌子会被横着拉宽约
-1.3 倍。图形边长由 `generate-icons.sh` 的 `SPLASH_LOGO_DP` 决定（192dp，与 Android 12 系统启动
-画面的图标尺寸一致），要调大小就改它再重跑脚本。
+**开屏不画品牌图形**：启动画面只有 `colors.xml` 里的 `aurora_window_bg`（`#0A0A0A`）纯色底，
+`res/drawable*` 下没有任何 splash 位图，启动主题的启动图标指向全透明的 `drawable/splash_blank.xml`。
+这不是遗漏，是刻意的：
+
+- Android 12（API 31）起的开屏由**系统** SplashScreen API 画，输入是启动主题里的
+  `android:windowSplashScreenAnimatedIcon`（`res/values-v31/styles.xml`）。系统会把该图标按
+  「画布 × 1.5」绘制、再套上**设备自己的图标形状遮罩**（圆 / 方 / 圆角随用户的图标形状设置变），
+  图形尺寸和形状都不由我们决定。指满幅图形（`@mipmap/ic_launcher`、应用图标）进去的实测症状：
+  一块被放大 2 倍、四角发尖的数码方块，星芒被裁掉；模拟器上是放大 1.5 倍的圆。
+- 要在系统这条路径里放图形，就得长期维护一套「画布 288dp、图形占中间 2/3（192dp）」的派生资源
+  才对齐系统口径，而 API < 31 的 core-splashscreen 兼容路径又是另一套尺寸规则。为一块开屏图形
+  付两份维护成本不值当，所以不画。
+
+`pnpm verify:brand` 反向卡住这里：`splash.xml` 不许引用位图、`res` 下不许有 `splash*.png`、
+两个启动主题的 `windowSplashScreenAnimatedIcon` 必须指向 `@drawable/splash_blank`。要恢复图形，
+得按上面的 288dp 口径连资源带闸门一起改，只塞一张 png 进来会被它拦下（并且真机上一定被放大裁切）。
 
 ## 多语言开发
 

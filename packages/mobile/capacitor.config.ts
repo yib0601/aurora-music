@@ -22,12 +22,18 @@ const config: CapacitorConfig = {
       // 启动图 → 窗口背景 → 主界面若不同色，冷启动会看到三层色块跳变
       backgroundColor: '#0A0A0A',
       showSpinner: false,
-      // 启动画面本身是 res/drawable/splash.xml（layer-list：纯色底 + 居中正方形
-      // 图形），插件按名字 splash（本项默认值）找它。两件事别动：
+      // 启动画面是 res/drawable/splash.xml，插件按名字 splash（本项默认值）找它。
+      // 那张资源**只有纯色底、没有图形**：开屏不画品牌图形是刻意的（Android 12+ 的
+      // 系统启动画面会把图标按「画布 × 1.5」放大再套设备图标形状遮罩，尺寸形状都不由
+      // 我们定；要在系统路径里放图形，就得长期维护一套 288dp 画布的派生资源）。
+      // 详见该文件的注释。两点别动：
       //   · androidScaleType 保持默认 FIT_XY —— layer-list 需要铺满窗口，换成
       //     CENTER_INSIDE 之类会让纯色底一起缩掉，反而露出系统窗口底色；
-      //   · 别把 splash 换回整屏位图 —— 位图宽高比固定、屏幕宽高比不固定，
-      //     图里的牌子会被拉伸（车机竖屏上就是这么被拉宽 ~1.3 倍的）。
+      //   · 别把 splash 换回整屏位图 —— 位图宽高比固定、屏幕宽高比不固定，会被拉伸
+      //     （车机竖屏上就是这么被拉宽 ~1.3 倍的）。
+      // 「纯黑过渡」嫌长就调小 launchShowDuration（系统启动画面本来会自然结束，这个值
+      // 只是下限）；别设 0，那等于撒手让系统启动画面自己撤，Android 12+ 的开屏图标会
+      // 回落到应用图标，又变成放大裁切的那个方块。
       androidSplashResourceName: 'splash',
     },
     StatusBar: {

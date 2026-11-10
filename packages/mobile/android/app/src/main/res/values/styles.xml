@@ -34,28 +34,34 @@
 
         1. android:background —— 冷启动的窗口背景，也就是 @capacitor/splash-screen
            按名字找的那张 splash（插件默认 androidSplashResourceName = "splash"）。
-           它现在是 res/drawable/splash.xml 的 layer-list（纯色底 + 居中正方形图形），
-           不再是整屏位图：整屏 png 会被按窗口尺寸拉伸（插件给 ImageView 的 ScaleType
-           默认是 FIT_XY），位图宽高比固定（10:16）而车机屏竖屏实测 0.69、10 寸车机
-           常见 800x1280 与 1280x800 —— 图里的牌子就被横着拉宽约 1.3 倍。layer-list
-           两层各按自己的规则画（底色铺满、图形按自身像素居中），与屏幕宽高比无关。
+           它现在是 res/drawable/splash.xml 的 layer-list，**只有纯色底、不画图形**；
            底色取 colors.xml 的 aurora_window_bg，不写死色值。
-        2. windowSplashScreenBackground —— AndroidX core-splashscreen 的启动画面
-           底色（API < 31 的兼容路径与 API >= 31 的系统路径都读它）。不显式给值时
-           取主题的 colorBackground，浅色系统主题下会先闪一帧白底。
+        2. windowSplashScreenBackground —— 启动画面底色（API < 31 的兼容路径与
+           API >= 31 的系统路径都读它）。不显式给值时取主题的 colorBackground，
+           浅色系统主题下会先闪一帧白底。
         3. postSplashScreenTheme —— 缺失时 core-splashscreen 无法把窗口切回运行时
            主题，系统栏会一直停留在启动主题的默认样式上（真机实测：状态栏 #757575
            灰、导航栏 #FAFAFA 白，与深色播放器割裂）。
-        4. windowSplashScreenAnimatedIcon —— 必须显式给 @mipmap/ic_launcher：
-           Theme.SplashScreen 的库默认值是 @android:drawable/sym_def_app_icon（系统
-           那个通用机器人图标），不覆盖的话 API < 31 的兼容路径会拿它当启动图标。
-           API >= 31 上库把本属性透传给系统的 android:windowSplashScreenAnimatedIcon，
-           所以给了之后系统路径仍然是应用图标（自适应图标，系统按圆遮罩）。
+        4. windowSplashScreenAnimatedIcon —— 必须显式给值，且给的是
+           @drawable/splash_blank（全透明）：
+
+           · 不写 = 吃库默认的 @android:drawable/sym_def_app_icon（系统那个通用机器人
+             图标）；给应用图标 = 白送系统去画它——Android 12+ 的系统启动画面会把图标
+             按「画布 × 1.5」放大再套设备图标形状遮罩，我们的满幅前景会变成一块放大、
+             四角发尖的数码方块（真机实拍）。
+           · 开屏不放品牌图形是刻意的：要在系统路径里放图形，就得长期维护一套 288dp
+             画布（图形占中间 2/3）的派生资源，还得兼顾 API < 31 的另一套尺寸口径。
+             不值为了一块开屏图形付这份维护成本，见 drawable/splash.xml 的注释。
+           · values-v31/styles.xml 里再显式写一次平台属性，是为了不依赖「库会把自定义
+             属性透传成平台属性」这层间接关系。
     -->
-    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+    <style name="AppTheme.NoActionBarLaunchBase" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
         <item name="windowSplashScreenBackground">@color/aurora_window_bg</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
+
+    <!-- values-v31/styles.xml 在 API >= 31 上覆盖同名主题（补系统启动画面属性） -->
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBarLaunchBase" />
 </resources>
