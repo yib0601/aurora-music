@@ -48,8 +48,8 @@ const search = {
     playNow: '立即播放',
     playNext: '下一首播放',
     addToQueue: '添加到队列',
-    addToPlaylist: '添加到播放列表',
-    noPlaylist: '暂无播放列表',
+    addToPlaylist: '添加到歌单',
+    noPlaylist: '暂无歌单',
   },
 }
 

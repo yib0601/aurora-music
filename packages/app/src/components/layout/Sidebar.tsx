@@ -5,21 +5,16 @@ import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { NAV_LABEL_KEYS, ROUTES, visibleNavItems, type NavItem } from '@/lib/routes'
 import { useHallAvailable } from '@/hooks/useHallAvailability'
+import { useLikedDisplayCount } from '@/hooks/useLikedDisplayCount'
 import { Button } from '@/components/ui/button'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { pickM3UFile, parseM3U, matchTracksByPaths } from '@/services/playlistIO.service'
 import { APP_VERSION } from '@/services/update.service'
 import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
+import { CreatePlaylistDialog } from '@/components/layout/CreatePlaylistDialog'
 import { toast } from '@/components/common/Toast'
 import { useT } from '@/i18n'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
@@ -41,10 +36,15 @@ import {
  * 过滤统一走 `visibleNavItems`，判定口径见 `lib/hallAvailability.ts`。
  * 不要在渲染处再写一遍 `hallAvailable ? ... : ...`——移动端抽屉有同样一张表。
  *
+ * ⚠️ 「收藏」**不在这张表里**：它是「系统歌单」，与用户自建歌单同列在下方歌单组的第一位
+ * （= `nav.item.liked` 那一行，不可改名、不可删除，计数见 `useLikedDisplayCount`）。
+ * 用户对「收藏是不是一个歌单」的直觉是「是」——那就让它在结构上也站在歌单里，
+ * 而不是先在主导航占一格、再让人去歌单里另找一个不存在的自己。
+ * 移动端抽屉（MobileNav）同样是这个结构：它渲染同一份歌单分组，收藏也在组里。
+ *
  * 名称沿革见 lib/routes.ts 的 NAV_LABEL_KEYS 处注释：曾用「音乐库 / 音乐馆」，
  * 再改「我的音乐 / 在线音乐」+「我的 / 在线」分组，现取消分组且「音乐库」改指在线页。
- * 「收藏 / 最近播放」跨来源（最近播放统一登记本地与在线；收藏入口对在线曲目开放但当前空转），
- * 取消分组后它们与两个内容页平级，不再需要为分组标题措辞纠结。
+ * 「最近播放」跨来源（统一登记本地与在线），与两个内容页平级。
  *
  * 表里存的是**键**（`NavItem.labelKey`）而不是译文：模块级常量数组若存字符串，
  * 语言会在模块加载那一刻被冻结，用户切语言后导航项不会跟着变。译文一律在渲染期取。
@@ -53,7 +53,6 @@ import {
 const navItems: NavItem[] = [
   { to: ROUTES.hall, icon: Radio, labelKey: NAV_LABEL_KEYS.hall },
   { to: ROUTES.library, icon: Library, labelKey: NAV_LABEL_KEYS.library },
-  { to: ROUTES.liked, icon: Heart, labelKey: 'nav.item.liked' },
   { to: ROUTES.recent, icon: Clock, labelKey: 'nav.item.recent' },
 ]
 
@@ -91,23 +90,16 @@ export function Sidebar() {
   const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist)
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist)
   const tracks = useLibraryStore((s) => s.tracks)
+  // 系统歌单「收藏」的条数：去重后的展示行数，与收藏页同一口径（见 useLikedDisplayCount）。
+  const likedCount = useLikedDisplayCount()
   // 没有可用音源时音乐库入口整项隐藏：它点进去只有「去配置音源」空态，
   // 留在侧栏第一项会让人以为应用坏了（判定口径见 lib/hallAvailability.ts）
   const hallAvailable = useHallAvailable()
   const items = visibleNavItems(navItems, hallAvailable)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [newPlaylistName, setNewPlaylistName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [showImportDialog, setShowImportDialog] = useState(false)
-
-  const handleCreatePlaylist = () => {
-    if (newPlaylistName.trim()) {
-      createPlaylist(newPlaylistName.trim())
-      setNewPlaylistName('')
-      setShowCreateDialog(false)
-    }
-  }
 
   const handleRename = (id: string) => {
     if (editingName.trim()) {
@@ -168,8 +160,12 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* 播放列表 */}
-      <div className="mt-5 flex-1 overflow-y-auto scrollbar-thin min-h-0 px-3">
+      {/*
+        歌单分组：标题与系统歌单「收藏」**固定**，只有自建歌单列表滚动。
+        收藏不跟着滚——它是歌单组的第一项，但「歌单多到把它挤出视野」会让人以为
+        收藏没了（旧版它在主导航里是常驻可见的），所以这里把滚动区收到的只有列表。
+      */}
+      <div className="mt-5 flex-1 flex flex-col min-h-0 px-3">
         <div className="flex items-center justify-between px-3 py-1.5">
           <span className="font-text text-[11px] font-semibold text-white/65 uppercase tracking-wider">
             {t('nav.item.playlists')}
@@ -203,6 +199,38 @@ export function Sidebar() {
           </div>
         </div>
         <div className="flex flex-col gap-px">
+          {/*
+            系统歌单「收藏」：它不是 `playlistStore` 里的 Playlist 记录——不能改名、不能删除，
+            路由仍是 /liked（页面标题「我喜欢的音乐」）。它在同步里是另一套记录
+            （每首歌一条、逐条裁决，见 docs/playlist-sync.md §5.1），但仍然属于歌单分组。
+            但对用户来说它就是歌单组里的第一个歌单，所以与下方自建歌单**共用同一行样式**：
+            样式不同会让「这是不是歌单」重新变成一个要靠猜的问题。
+            计数取去重后的展示行数（与收藏页同源，见 useLikedDisplayCount）；
+            为 0 时也照常显示，空歌单本来就是歌单。
+          */}
+          <NavLink
+            to={ROUTES.liked}
+            className={({ isActive }) =>
+              cn(
+                'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media min-w-0 transition-all duration-200 ease-mineradio border',
+                isActive
+                  ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
+                  : 'border-transparent text-white/65 hover:text-white hover:bg-white/[0.045]'
+              )
+            }
+          >
+            <Heart
+              className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint group-aria-[current=page]:opacity-100"
+              strokeWidth={1.5}
+            />
+            <span className="truncate text-[13px] tracking-[-0.224px]">{t('nav.item.liked')}</span>
+            <span className="text-[11px] text-white/65 ml-auto tabular-nums font-semibold">
+              {likedCount}
+            </span>
+          </NavLink>
+        </div>
+        {/* 自建歌单列表：整块滚动区只有它（收藏已在上面固定住） */}
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin flex flex-col gap-px">
           {playlists.length === 0 ? (
             <p className="px-3 py-2 text-[12px] text-white/65 leading-relaxed">{t('shell.playlist.empty')}</p>
           ) : (
@@ -282,28 +310,8 @@ export function Sidebar() {
         </p>
       </div>
 
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t('shell.playlist.create')}</DialogTitle>
-          </DialogHeader>
-          <Input
-            autoFocus
-            placeholder={t('shell.playlist.namePlaceholder')}
-            value={newPlaylistName}
-            onChange={(e) => setNewPlaylistName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreatePlaylist()
-            }}
-          />
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowCreateDialog(false)}>
-              {t('common.action.cancel')}
-            </Button>
-            <Button variant="primary" onClick={handleCreatePlaylist}>{t('shell.playlist.submit')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* 新建歌单：与移动端抽屉共用同一份对话框（见 CreatePlaylistDialog） */}
+      <CreatePlaylistDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
 
       <PlaylistImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
     </div>

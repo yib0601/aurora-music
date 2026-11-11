@@ -12,7 +12,7 @@
  *   繁简映射表、"未知艺术家" 这类参与匹配的占位值）不得进字典；
  * - 不要在这里写「{count} 首歌」以外的拼接式句子：需要拼接的用整句 + 占位符。
  *
- * 归属判据：**页面/组件名 + 名词**（播放列表、文件夹选择器、重复曲目）放本命名空间；
+ * 归属判据：**页面/组件名 + 名词**（歌单、文件夹选择器、重复曲目）放本命名空间；
  * 纯动作词（确定/取消/重试/播放/下一首）优先用 common.action.*，
  * 纯字段名（标题/艺术家/专辑/时长/本地/在线）优先用 common.label.*，
  * 纯计数单位（首歌/项/个文件）优先用 common.unit.*——不要在这里重复造。
@@ -27,7 +27,7 @@ const library = {
     viewDetails: '查看歌曲详情',
     playNext: '下一首播放',
     addToQueue: '添加到队列',
-    addToPlaylist: '添加到播放列表',
+    addToPlaylist: '添加到歌单',
     like: '收藏',
     unlike: '取消收藏',
     sortBy: '排序方式',
@@ -89,25 +89,31 @@ const library = {
       hint: '在歌曲上点击爱心，它们会出现在这里',
     },
   },
+  /**
+   * 用户歌单。**中文一律叫「歌单」，不叫「播放列表」**——后者在中文里会被读成
+   * 「播放队列」（当前正在播的那串歌，`nav.item.queue`），两者是不同对象。
+   * 英文侧仍是 Playlist，故本组键名保留 playlist，只改译文。
+   */
   playlist: {
-    title: '播放列表',
-    new: '新建播放列表',
+    /** 歌单页眉标（页头大标题是歌单名，眉标说明「这是什么」） */
+    title: '歌单',
+    new: '新建歌单',
     /** 菜单项：省略号表示「会打开对话框」 */
-    newMenu: '新建播放列表…',
-    namePlaceholder: '播放列表名称',
+    newMenu: '新建歌单…',
+    namePlaceholder: '歌单名称',
     createAndAdd: '创建并添加',
     /** 导入歌单时的默认名（同时用于输入框占位与创建时的兜底名） */
-    defaultImportName: '导入的播放列表',
-    notFound: '播放列表不存在',
-    empty: '暂无播放列表',
+    defaultImportName: '导入的歌单',
+    notFound: '歌单不存在',
+    empty: '暂无歌单',
     exportM3u: '导出为 M3U',
     importM3u: '导入 M3U 文件',
     importLink: '导入歌单（链接/文本）',
-    delete: '删除播放列表',
-    removeTrack: '从播放列表移除',
+    delete: '删除歌单',
+    removeTrack: '从歌单移除',
     importInvalidFile: '文件中没有找到有效的音乐路径',
     importNoMatch: '没有匹配到{label}中的歌曲，请先扫描包含这些歌曲的目录',
-    emptyTitle: '播放列表为空',
+    emptyTitle: '歌单为空',
     emptyHint: '从{label}中添加歌曲',
   },
   /** 歌单导入对话框（链接/纯文本 → 本地匹配 → 在线补齐） */

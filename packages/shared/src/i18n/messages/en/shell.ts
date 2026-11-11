@@ -24,7 +24,7 @@ const en: LocalizedOf<typeof shell> = {
     create: 'New playlist',
     submit: 'Create',
     namePlaceholder: 'Playlist name',
-    empty: 'Click + to create your first playlist',
+    empty: 'No custom playlists yet · tap + to create one',
     importNoPath: 'No valid music paths found in the file',
     importNoMatch: 'No songs from {library} matched — scan the folder that contains them first',
     importedName: 'Imported playlist',
