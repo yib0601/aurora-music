@@ -207,7 +207,7 @@ desktop typecheck ✅ / test ✅、verify:i18n ✅、**app build ✅**。
 | `lan:publish` 是否原样接受快照 | **先验 format**：`isSyncSnapshot` 不过直接 throw `sync.error.snapshotInvalid`；`lan:push` 同样先验 | `lanSync.ts:521-531`、`pushToPeer` 首行 |
 
 ### 4.2 隐私（清单 2）
-- 快照字段白名单：`SyncTrackRef` 只有 `title/artist/album/duration` + 三档坐标（local.path / storage.pluginId+relPath / meta.onlineId+platform+coverUrl），**无** `playCount/liked/lastPlayedAt/sourceId`，**无**音频地址。测试钉住：`verifyPlaylistSync.behaviour.test.ts:182`（序列化文本不含 `playCount/liked/lastPlayedAt/sourceId/http`）。
+- 快照字段白名单：`SyncTrackRef` 只有 `title/artist/album/duration` + 三档坐标（local.path / storage.pluginId+relPath / meta.onlineId+platform+coverUrl），**无** `playCount/lastPlayedAt/sourceId`，**无**音频地址。收藏现在**是**同步内容（`playlist-sync.md` §5.1），它的记录只有 `{id, likedAt, removedAt?, ref}` 四个键；测试钉住：`verifyPlaylistSync.behaviour.test.ts`「隐私：快照字段白名单」——序列化文本不含 `playCount/lastPlayedAt/sourceId/http`，且收藏记录的键集与引用的键集被逐字断言。
 - 占位 `importedTracks` **不污染曲库**：`importedTracks` 只在 `packages/app/src/pages/PlaylistPage.tsx:64,79-81` 用于歌单成员解析（`tracks.find(...) || importedTracks[tid]`），`libraryStore` 不读它。
 
 ### 4.3 合并正确性（清单 3）
@@ -223,7 +223,7 @@ desktop typecheck ✅ / test ✅、verify:i18n ✅、**app build ✅**。
 另：`toSyncTrackRef` 对 storage 路径编码时**不带绝对路径** ✓；无 path 的占位编码成 `meta`、不伪造 local path ✓。
 
 ### 4.5 破坏性风险（清单 5）
-- **不覆盖统计**：`applySyncChanges` 只替换 `{id,name,createdAt,updatedAt,trackIds}` 五个字段（`Playlist` 类型就只有这些，`packages/app/src/types/index.ts:160-166`；`playlistStore.ts:155-196` 的 upsert 是原位替换），`playCount/liked/lastPlayedAt` 在 `Track` 上、不在歌单上，且 `libraryStore` 从不被 `applySyncedPlaylists` 写。
+- **不覆盖统计**：`applySyncChanges` 只替换 `{id,name,createdAt,updatedAt,trackIds}` 五个字段（`Playlist` 类型就只有这些，`packages/app/src/types/index.ts:160-166`；`playlistStore.ts:155-196` 的 upsert 是原位替换），`playCount/liked/lastPlayedAt` 在 `Track` 上、不在歌单上；`libraryStore` 只被 `applySyncedLikes` 写，且只写 `liked` 标志与 `likeRecords`（不碰 `playCount/lastPlayedAt`）。
 - **不删快照里没有的本地歌单**：`deletes` 只来自 `tombstones ∩ 本地存在`（`playlistSync.service.ts:354`）；测试 `verifyPlaylistSync.behaviour.test.ts:203` 确认 absent 歌单保留。
 - **不重复登记占位**：`:362` `if (store.importedTracks[id]) continue`，测试确认第二次 0。
 - **串行锁真实有效**：`running: Map<configId, Promise>`（`:391,456-464`），撞车复用同一 Promise；测试 `verifyPlaylistSync.behaviour.test.ts:233` 确认失败后锁释放、runtime 能回 `ok`（不会永久 running）。早退路径（plugin 不存在/不可用，`:473-477`）在 try 内、finally 仍执行。

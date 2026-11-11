@@ -8,14 +8,18 @@ import {
   clearTrackEndpointCache,
   DEFAULT_AUDIO_FOCUS_YIELD_BEHAVIOR,
   normalizeAudioFocusYieldBehavior,
+  librarySourcePluginId,
+  likeActionAt,
+  likeKeyOf,
 } from '@aurora/shared'
 import type { Track, Album, Playlist, ViewMode, LibraryTab, SortField, SortOrder, OnlineSourceConfig, DownloadQuality, LibrarySourceConfig, LyricsSourceConfig, EncryptedAudioFile } from '@/types'
-import type { AudioFocusYieldBehavior } from '@aurora/shared'
+import type { AudioFocusYieldBehavior, SyncedLike, SyncTrackRef } from '@aurora/shared'
 import {
   DEFAULT_DOWNLOAD_QUALITY,
   DEFAULT_THEME,
   type ThemePreference,
 } from '@/lib/settingOptions'
+import { toSyncRefOf } from '@/lib/syncTrack'
 import { audioEvents } from '@/services/audioEvents'
 import { platform } from '@/services/platform'
 import { configureAudioCache } from '@/services/audioCache.service'
@@ -267,6 +271,28 @@ interface LibraryState {
   toggleLike: (trackId: string) => void
   likedTracks: Set<string>
   likedTrackIds?: string[]
+  /**
+   * 收藏同步记录（`docs/playlist-sync.md` §5.1）：键是**跨设备歌曲身份**（`likeKeyOf`），
+   * 值是「这首歌最近一次被收藏/取消的时刻 + 怎么在别的设备上找回它」。
+   *
+   * 为什么状态里要留这套记录：同步要裁决的从来不是「现在收藏了哪些」（那由
+   * `likedTracks` 表达），而是「**谁的动作更晚**」。没有时刻就只能比集合，
+   * 而集合比较必然把「本机收藏了 A、对端收藏了 B」判成冲突，只能选一边——
+   * 也就是整片丢收藏（详见 `SyncedLike` 的注释）。
+   *
+   * 落盘（persist 白名单已放行）：不落盘则重启后所有收藏的时刻都变回「未知」，
+   * 对端一个更早的取消动作就能把它们抹掉。
+   */
+  likeRecords: Record<string, SyncedLike>
+  /**
+   * 同步用：把 liked 状态**设**成指定值（幂等），且**不**产生新的收藏记录。
+   *
+   * 与 `toggleLiked` 分开是必须的：应用远端快照时若走 toggleLiked，每次都会以「现在」
+   * 记一次动作，时间戳被本机单方面推进 → 对端下一轮又变成更新的动作 → 两端永远收敛不了。
+   */
+  setLiked: (trackId: string, liked: boolean) => void
+  /** 同步用：整体采用合并后的收藏记录（含墓碑与时刻），由引擎在应用快照时调用 */
+  applyLikeRecords: (records: Record<string, SyncedLike>) => void
   // 音源配置操作（一条音源可同时含搜索接口与歌单解析接口）
   /**
    * 歌词源的增删改（v15）。
@@ -317,6 +343,85 @@ interface LibraryState {
 /** 递增版本号：防止 getAllTracks 的延迟响应用旧数据覆盖 scan:complete 的新数据 */
 let tracksVersion = 0
 
+/** 来源 id → 存储插件 id（收藏引用要用与歌单同步同一套坐标表达远端曲目） */
+function storagePluginIdOfFrom(
+  sources: readonly LibrarySourceConfig[]
+): (sourceId: string) => string | undefined {
+  return (sourceId) => {
+    const source = sources.find((s) => s.id === sourceId)
+    // 查不到来源就不冒充默认插件：那会让「另一个 webdav 库里的同名文件」被误认
+    return source ? librarySourcePluginId(source) : undefined
+  }
+}
+
+/**
+ * 一次「收藏 / 取消收藏」→ 更新后的收藏记录表。
+ *
+ * 三个时刻约定（与 `@aurora/shared` 的 `likeActionAt` / `likeIsActive` 一一对应）：
+ * - 收藏：`likedAt = now`，保留上一次的 `removedAt` 作为历史（它不参与裁决）；
+ * - 取消：`removedAt = now`，**不动** `likedAt`（那是「这条收藏何时开始」的事实）；
+ * - 同一毫秒并列时取消胜（见 `likeIsActive`）。
+ *
+ * 时刻取 `max(现在, 这条记录上一次动作 + 1ms)`：**用户刚做的动作必须赢过已有记录**。
+ * 对端时钟偏快时，单纯用本机 `Date.now()` 可能比记录里已有的时刻还早 → 取消被判成
+ * 「比那次收藏还早」→ 点了取消却仍然算收藏（下轮同步还会把它重新点亮）。
+ *
+ * 找不到曲目（在线曲目不在曲库里）时不写记录：没有 `Track` 就没有「怎么在别的设备
+ * 上找回它」的坐标，硬造一条无引用的记录会让对端多出一首无名曲目。
+ */
+function recordLikeOf(
+  track: Track,
+  liked: boolean,
+  state: Pick<LibraryState, 'librarySources' | 'likeRecords'>
+): Record<string, SyncedLike> {
+  const ref = toSyncRefOf(track, storagePluginIdOfFrom(state.librarySources))
+  const id = likeKeyOf(ref)
+  const previous = state.likeRecords[id]
+  const now = Math.max(Date.now(), (previous ? likeActionAt(previous) : 0) + 1)
+  const record: SyncedLike = {
+    id,
+    likedAt: liked ? now : (previous?.likedAt ?? now),
+    ...(liked
+      ? previous?.removedAt
+        ? { removedAt: previous.removedAt }
+        : {}
+      : { removedAt: now }),
+    ref,
+  }
+  return { ...state.likeRecords, [id]: record }
+}
+
+/**
+ * 归一化持久化的收藏记录（**外部输入**：老版本、手改、迁移残留都可能）。
+ *
+ * 为什么必须在入口净化一次：这些记录会被并进同步快照、参与 LWW 比较，
+ * 一条 `ref` 缺失/类型不对的记录会让 `canonicalLike` 在合并里抛错——表现是
+ * 「同步一直失败」而不是「少一条收藏」，用户没有任何可操作信息。
+ * 坏条目丢弃而不是整份放弃：少一条收藏记录不影响其它收藏继续同步。
+ */
+function sanitizeLikeRecords(raw: unknown): Record<string, SyncedLike> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, SyncedLike> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const candidate = value as Partial<SyncedLike>
+    const ref = candidate.ref as SyncTrackRef | undefined
+    if (!ref || typeof ref !== 'object') continue
+    if (ref.kind !== 'local' && ref.kind !== 'storage' && ref.kind !== 'meta') continue
+    const likedAt = Number(candidate.likedAt)
+    if (!Number.isFinite(likedAt) || likedAt < 0) continue
+    const removedAt = Number(candidate.removedAt)
+    const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : key
+    out[id] = {
+      id,
+      likedAt,
+      ...(Number.isFinite(removedAt) && removedAt > 0 ? { removedAt } : {}),
+      ref,
+    }
+  }
+  return out
+}
+
 export const useLibraryStore = create<LibraryState>()(
   persist(
     (set, get) => ({
@@ -338,6 +443,7 @@ export const useLibraryStore = create<LibraryState>()(
       searchResults: [],
       searchHistory: [],
       likedTracks: new Set<string>(),
+      likeRecords: {},
       onlineSources: [],
       librarySources: [],
       lyricsSources: [],
@@ -489,11 +595,31 @@ export const useLibraryStore = create<LibraryState>()(
         } else {
           likedTracks.delete(trackId)
         }
-        set({ tracks, likedTracks })
+        set({
+          tracks,
+          likedTracks,
+          // 只有找得到这条曲目才有「跨设备坐标」可写（在线曲目不在曲库里 → 只本地生效）
+          ...(track ? { likeRecords: recordLikeOf(track, !!track.liked, get()) } : {}),
+        })
       },
       toggleLike: (trackId) => {
         get().toggleLiked(trackId)
       },
+      /**
+       * 幂等设置 liked 状态（同步应用专用）。
+       *
+       * 找不到这条曲目就什么都不做：远端收藏的引用可能指向本机没有的歌（那些记录照样
+       * 留在 `likeRecords` 里等它出现），不能在曲库里凭空造一条记录。
+       */
+      setLiked: (trackId, liked) => {
+        if (!get().tracks.some((t) => t.id === trackId && t.liked !== liked)) return
+        const tracks = get().tracks.map((t) => (t.id === trackId ? { ...t, liked } : t))
+        const likedTracks = new Set(get().likedTracks)
+        if (liked) likedTracks.add(trackId)
+        else likedTracks.delete(trackId)
+        set({ tracks, likedTracks })
+      },
+      applyLikeRecords: (records) => set({ likeRecords: records }),
 
       addLyricsSource: (source) => {
         // id 生成与在线源同口径：时间戳 + 随机后缀，不引 uuid 依赖
@@ -582,6 +708,9 @@ export const useLibraryStore = create<LibraryState>()(
         sortOrder: state.sortOrder,
         theme: state.theme,
         likedTrackIds: Array.from(state.likedTracks),
+        // 收藏的同步记录（时刻 + 跨设备引用）：丢了它 = 重启后所有收藏都变成「时刻未知」，
+        // 对端一个更早的取消动作就能把它们抹掉（见 LibraryState.likeRecords）
+        likeRecords: state.likeRecords,
         searchHistory: state.searchHistory,
         // 歌词源全部字段都是配置数据、没有运行期字段，直接落盘即可（不做白名单裁剪）
         lyricsSources: state.lyricsSources,
@@ -783,11 +912,24 @@ export const useLibraryStore = create<LibraryState>()(
       // v13 存储插件化：曲库来源由存储插件执行，`pluginId` 取代 `kind` 成为标识；
       //     老配置的顶层扁平字段搬进 `settings`，**口令从持久化里摘出**改由主进程
       //     safeStorage 加密保存（见上方 toPersistedLibrarySource / pendingStorageSecrets）
+      // 收藏参与同步（v15 起）新增了 `likeRecords`（收藏/取消的时刻 + 跨设备引用），
+      // **但版本号刻意不跟着升**：它是纯增量字段，老数据没有它 → 走初始值 {}，
+      // 没有任何历史字段需要改写。而 zustand 只在「版本号变了」时才在合并后立即写回一次
+      // 持久层，且那次写回发生在 `onRehydrateStorage` 之前——升版本会用一个
+      // 「likedTracks 尚未复活」的空数组覆盖掉磁盘上的 `likedTrackIds`。
+      // 历史上 `likedTrackIds` 仍原样保留（它表达「现在收藏了哪些」，两套各管一段）。
       version: 14,
       onRehydrateStorage: () => (state) => {
-        if (state?.likedTrackIds) {
-          state.likedTracks = new Set(state.likedTrackIds)
+        if (!state) return
+        // 只在「持久层确实留下了收藏」或「内存里本来就没有」时采用持久值：
+        // 同一次会话里再水合时（`persist.rehydrate()`），磁盘上那份可能是迁移写回的旧快照，
+        // 此时内存里的 likedTracks 才是更新的——无条件采用会把这次会话里刚点的收藏清空。
+        const persistedLikes = Array.isArray(state.likedTrackIds) ? state.likedTrackIds : null
+        if (persistedLikes && (persistedLikes.length > 0 || (state.likedTracks?.size ?? 0) === 0)) {
+          state.likedTracks = new Set(persistedLikes)
         }
+        // 收藏记录来自 localStorage，是外部输入：合并会直接读它，坏结构必须在入口挡掉
+        state.likeRecords = sanitizeLikeRecords(state.likeRecords)
       },
     }
   )

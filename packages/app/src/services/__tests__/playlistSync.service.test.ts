@@ -12,8 +12,8 @@
  * 只跑一轮。平台与插件全部打桩，不碰真实网络与磁盘。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearSyncPluginsForTest, registerSyncPlugin } from '@aurora/shared'
-import type { MessageKey, SyncConfig, SyncSnapshot, SyncTrackRef } from '@aurora/shared'
+import { clearSyncPluginsForTest, likeKeyOf, registerSyncPlugin, snapshotContentHash } from '@aurora/shared'
+import type { MessageKey, SyncConfig, SyncSnapshot, SyncedLike, SyncTrackRef } from '@aurora/shared'
 import type { Track } from '@/types'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import {
@@ -22,6 +22,7 @@ import {
   useSyncStore,
 } from '@/stores/syncStore'
 import {
+  applySyncedLikes,
   applySyncedPlaylists,
   initPlaylistSync,
   resetPlaylistSyncForTest,
@@ -33,7 +34,15 @@ import {
 
 const mocks = vi.hoisted(() => ({
   /** 库侧状态（真 store 太重且会拉平台，这里只喂引擎要看的两份数组） */
-  library: { tracks: [] as Track[], librarySources: [] as unknown[] },
+  // 收藏同步（§5.1）用到的状态与动作：默认是「空库 + 空收藏」，具体用例按需替换
+  library: {
+    tracks: [] as Track[],
+    librarySources: [] as unknown[],
+    likedTracks: new Set<string>(),
+    likeRecords: {} as Record<string, SyncedLike>,
+    setLiked: (_trackId: string, _liked: boolean) => {},
+    applyLikeRecords: (_records: Record<string, SyncedLike>) => {},
+  },
   platform: {
     supportsPlaylistSync: true,
     lanSync: null as unknown,
@@ -52,7 +61,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/services/platform', () => ({ platform: mocks.platform }))
 vi.mock('@/stores/libraryStore', () => ({
-  useLibraryStore: { getState: () => mocks.library },
+  useLibraryStore: { getState: () => mocks.library, subscribe: () => () => {} },
 }))
 
 /** 900 天之类的时间常量在测试里不该出现魔法数：直接对共享导出的 TTL 取用 */
@@ -147,6 +156,10 @@ beforeEach(() => {
   })
   mocks.library.tracks = []
   mocks.library.librarySources = []
+  mocks.library.likedTracks = new Set<string>()
+  mocks.library.likeRecords = {}
+  mocks.library.setLiked = (_trackId: string, _liked: boolean) => {}
+  mocks.library.applyLikeRecords = (_records: Record<string, SyncedLike>) => {}
   mocks.platform.sync.device.mockClear()
   mocks.platform.sync.getCredential.mockClear()
   mocks.platform.sync.getCredential.mockResolvedValue({})
@@ -601,5 +614,158 @@ describe('N-2：占位曲目 id 的哈希宽度', () => {
     const a = syncPlaceholderId(metaRef({ onlineId: 'aaa' }))
     const b = syncPlaceholderId(metaRef({ onlineId: 'aab' }))
     expect(a).not.toBe(b)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 收藏（§5.1）：采集与落盘
+ * ------------------------------------------------------------------ */
+
+/**
+ * 把 mock 库接成「真的会变」的状态机：`setLiked` 改 `likedTracks`、`applyLikeRecords`
+ * 落盘记录。收藏同步的正确性全在「谁的时刻更晚」上，用 no-op 桩测不出来。
+ */
+function wireLikeState(): { calls: Array<[string, boolean]>; saved: () => Record<string, SyncedLike> } {
+  const calls: Array<[string, boolean]> = []
+  let records: Record<string, SyncedLike> = {}
+  mocks.library.setLiked = (trackId: string, liked: boolean) => {
+    calls.push([trackId, liked])
+    const next = new Set(mocks.library.likedTracks)
+    if (liked) next.add(trackId)
+    else next.delete(trackId)
+    mocks.library.likedTracks = next
+  }
+  mocks.library.applyLikeRecords = (next: Record<string, SyncedLike>) => {
+    records = next
+    mocks.library.likeRecords = next
+  }
+  return { calls, saved: () => records }
+}
+
+const likedRef = (over: Partial<Track> = {}): SyncTrackRef => localRef(over)
+
+describe('snapshotFromStores：收藏采集', () => {
+  it('收藏的曲目进快照；有记录的沿用记录里的时刻，历史收藏（无记录）时刻算 0', () => {
+    const first = track({ id: 'liked-1', path: '/m/甲.flac', title: '甲' })
+    const second = track({ id: 'liked-2', path: '/m/乙.flac', title: '乙' })
+    mocks.library.tracks = [first, second]
+    mocks.library.likedTracks = new Set(['liked-1', 'liked-2'])
+    const refOfFirst = likedRef({ path: '/m/甲.flac', title: '甲' })
+    mocks.library.likeRecords = {
+      [likeKeyOf(refOfFirst)]: { id: likeKeyOf(refOfFirst), likedAt: 1_234, ref: refOfFirst },
+    }
+
+    const snapshot = snapshotFromStores({ deviceId: 'dev-local', deviceName: '本机' })
+
+    expect(snapshot.likes).toHaveLength(2)
+    const byTitle = new Map((snapshot.likes ?? []).map((entry) => [entry.ref.title, entry]))
+    expect(byTitle.get('甲')?.likedAt).toBe(1_234)
+    // 「收藏参与同步」之前就存在的收藏：时刻无从得知，按 0 算（见 collectSnapshotLikes）
+    expect(byTitle.get('乙')?.likedAt).toBe(0)
+  })
+
+  it('取消收藏的墓碑进快照；过期的被清掉（否则过期取消会长期压制对端的重新收藏）', () => {
+    const now = Date.now()
+    const fresh = likedRef({ path: '/m/刚取消.flac', title: '刚取消' })
+    const stale = likedRef({ path: '/m/很久前取消.flac', title: '很久前取消' })
+    mocks.library.tracks = []
+    mocks.library.likedTracks = new Set()
+    mocks.library.likeRecords = {
+      [likeKeyOf(fresh)]: { id: likeKeyOf(fresh), likedAt: 1, removedAt: now - 1_000, ref: fresh },
+      [likeKeyOf(stale)]: {
+        id: likeKeyOf(stale),
+        likedAt: 1,
+        removedAt: now - TTL_MS - 1,
+        ref: stale,
+      },
+    }
+
+    const snapshot = snapshotFromStores({ deviceId: 'dev-local', deviceName: '本机' })
+
+    expect((snapshot.likes ?? []).map((entry) => entry.ref.title)).toEqual(['刚取消'])
+    expect(snapshot.likes?.[0]?.removedAt).toBe(now - 1_000)
+  })
+
+  it('曲目已不在本机的「已收藏」记录照样带出去（删掉文件不等于不喜欢）', () => {
+    const gone = likedRef({ path: '/m/已删除.flac', title: '已删除' })
+    mocks.library.tracks = []
+    mocks.library.likedTracks = new Set()
+    mocks.library.likeRecords = { [likeKeyOf(gone)]: { id: likeKeyOf(gone), likedAt: 777, ref: gone } }
+
+    const snapshot = snapshotFromStores({ deviceId: 'dev-local', deviceName: '本机' })
+
+    expect(snapshot.likes).toHaveLength(1)
+    expect(snapshot.likes?.[0]?.likedAt).toBe(777)
+  })
+})
+
+describe('applySyncedLikes：收藏落盘', () => {
+  it('解析到本机曲目：设为已收藏，并把合并结果整体落盘', () => {
+    mocks.library.tracks = [track()]
+    const { calls, saved } = wireLikeState()
+    const ref = likedRef()
+
+    const outcome = applySyncedLikes(
+      snapshotOf([], { likes: [{ id: likeKeyOf(ref), likedAt: 500, ref }] })
+    )
+
+    expect(calls).toEqual([['track-local-1', true]])
+    expect(outcome).toMatchObject({ liked: 1, unliked: 0, records: 1 })
+    expect(Object.keys(saved())).toEqual([likeKeyOf(ref)])
+  })
+
+  it('取消收藏的墓碑：本机原来是收藏的 → 设回未收藏', () => {
+    mocks.library.tracks = [track()]
+    mocks.library.likedTracks = new Set(['track-local-1'])
+    const { calls } = wireLikeState()
+    const ref = likedRef()
+
+    // 墓碑时刻要落在 TTL 内，否则会按「过期取消」被丢弃（那是另一条用例的口径）
+    const removedAt = Date.now() - 1_000
+    const outcome = applySyncedLikes(
+      snapshotOf([], {
+        likes: [{ id: likeKeyOf(ref), likedAt: removedAt - 1_000, removedAt, ref }],
+      })
+    )
+
+    expect(calls).toEqual([['track-local-1', false]])
+    expect(outcome).toMatchObject({ liked: 0, unliked: 1 })
+  })
+
+  it('本机没有这首歌：只留记录，不造占位曲目（收藏页不展示占位，造了也没人看得见）', () => {
+    mocks.library.tracks = []
+    const { calls } = wireLikeState()
+    const ref = metaRef()
+
+    const outcome = applySyncedLikes(
+      snapshotOf([], { likes: [{ id: likeKeyOf(ref), likedAt: 500, ref }] })
+    )
+
+    expect(calls).toEqual([])
+    expect(outcome).toMatchObject({ liked: 0, unliked: 0, records: 1 })
+    expect(usePlaylistStore.getState().importedTracks).toEqual({})
+  })
+
+  it('状态没变的记录不重复写（幂等 setLiked 不该被调用）', () => {
+    mocks.library.tracks = [track()]
+    mocks.library.likedTracks = new Set(['track-local-1'])
+    const { calls } = wireLikeState()
+    const ref = likedRef()
+
+    applySyncedLikes(snapshotOf([], { likes: [{ id: likeKeyOf(ref), likedAt: 500, ref }] }))
+
+    expect(calls).toEqual([])
+  })
+
+  it('应用后再采集，收藏部分的内容哈希与合并结果一致（一轮收敛）', () => {
+    mocks.library.tracks = [track()]
+    wireLikeState()
+    const ref = likedRef()
+    const merged = snapshotOf([], { likes: [{ id: likeKeyOf(ref), likedAt: 500, ref }] })
+
+    applySyncedLikes(merged)
+    const mine = snapshotFromStores({ deviceId: 'dev-local', deviceName: '本机' })
+
+    expect(snapshotContentHash(mine)).toBe(snapshotContentHash({ ...merged, playlists: mine.playlists }))
   })
 })

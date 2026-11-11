@@ -18,7 +18,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  library: { tracks: [] as unknown[], librarySources: [] as unknown[] },
+  library: {
+    tracks: [] as unknown[],
+    librarySources: [] as unknown[],
+    likedTracks: new Set<string>(),
+    // 只有歌单参与本文件的两台设备往返；收藏记录留空即可（形状与 store 对齐）
+    likeRecords: {} as Record<string, unknown>,
+    setLiked: (_trackId: string, _liked: boolean) => {},
+    applyLikeRecords: (_records: Record<string, unknown>) => {},
+  },
   device: { deviceId: 'dev-a', deviceName: '设备 A' },
   credentials: { code: 'ABCDEFGHJK' } as Record<string, string>,
   platform: {
@@ -40,7 +48,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/services/platform', () => ({ platform: mocks.platform }))
 vi.mock('@/stores/libraryStore', () => ({
-  useLibraryStore: { getState: () => mocks.library },
+  useLibraryStore: { getState: () => mocks.library, subscribe: () => () => {} },
 }))
 
 type PlaylistRow = { id: string; name: string; createdAt: number; updatedAt: number; trackIds: string[] }

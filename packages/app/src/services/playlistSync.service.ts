@@ -7,7 +7,8 @@
  * - 曲目引用解析在 `resolveSyncTrackRef`。
  *
  * 引擎自己负责的四件事，正好是「必须知道本机状态」的那部分：
- * 1. 采集快照（`snapshotFromStores`）与落盘合并结果（`applySyncedPlaylists`）；
+ * 1. 采集快照（`snapshotFromStores`，含收藏记录）与落盘合并结果
+ *    （`applySyncedPlaylists` + `applySyncedLikes`）；
  * 2. 调度（启动 / 变更防抖 / 定时 / 局域网收件箱 / 手动）与失败退避；
  * 3. 口令的生命周期（**只在一次调用内持有**，绝不进 store / persist / 日志 / lastError）；
  * 4. 同 config 互斥（不同 config 可并行）。
@@ -22,8 +23,11 @@ import {
   encodeErrorInfo,
   getLanSyncBridge,
   getSyncPlugin,
+  isLikeTombstoneExpired,
   isSnapshotOfDevice,
   librarySourcePluginId,
+  likeIsActive,
+  likeKeyOf,
   mergeSnapshots,
   pruneSnapshot,
   resolveSyncTrackRef,
@@ -31,7 +35,6 @@ import {
   setWebdavFetch,
   snapshotContentHash,
   toErrorInfo,
-  toSyncTrackRef,
 } from '@aurora/shared'
 import type {
   LanPeerInfo,
@@ -44,6 +47,7 @@ import type {
   SyncPlugin,
   SyncSecrets,
   SyncSnapshot,
+  SyncedLike,
   SyncedPlaylist,
   SyncTrackRef,
 } from '@aurora/shared'
@@ -52,6 +56,7 @@ import { platform } from './platform'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { takePendingSecretMigrations, useSyncStore } from '@/stores/syncStore'
+import { toSyncMatchTrack, toSyncRefOf } from '@/lib/syncTrack'
 
 /** 启动后首次自动同步的延迟（§15.4 覆盖 §9 的旧值 10s） */
 const STARTUP_SYNC_DELAY_MS = 3_000
@@ -92,6 +97,16 @@ export interface ApplyOutcome {
   readonly removed: number
   /** 本次新登记的占位曲目数（已在本地的不重复登记，避免覆盖播放统计） */
   readonly placeholders: number
+}
+
+/** `applySyncedLikes` 的落盘摘要 */
+export interface LikeApplyOutcome {
+  /** 本次被**设为已收藏**的曲目数 */
+  readonly liked: number
+  /** 本次被**取消收藏**的曲目数 */
+  readonly unliked: number
+  /** 落盘后的收藏记录条数（含墓碑；仅供日志与诊断） */
+  readonly records: number
 }
 
 interface SyncDevice {
@@ -146,27 +161,6 @@ function allLocalTracks(): Map<string, Track> {
   return map
 }
 
-/** `Track` → 匹配索引条目（多传的字段 harmless，见 SyncMatchTrack 注释） */
-function toMatchTrack(track: Track): SyncMatchTrack {
-  return {
-    id: track.id,
-    title: track.title,
-    artist: track.artist,
-    duration: track.duration,
-    path: track.path,
-    ...(track.sourceId ? { sourceId: track.sourceId } : {}),
-    album: track.album,
-    ...(track.onlineId ? { onlineId: track.onlineId } : {}),
-    ...(onlinePlatformOf(track) ? { platform: onlinePlatformOf(track) } : {}),
-    ...(track.coverUrl ? { coverUrl: track.coverUrl } : {}),
-  }
-}
-
-/** 在线曲目的平台标记：与 `toSyncTrackRef` 的 meta.platform 同口径 */
-function onlinePlatformOf(track: Track): string {
-  return track.trackRef?.platform || track.onlineSource || ''
-}
-
 /**
  * 在线身份认领表：`` `${platform}:${onlineId}` `` 与裸 `onlineId` 两种键都填。
  *
@@ -186,11 +180,69 @@ function onlineClaimMap(tracks: Iterable<SyncMatchTrack>): ReadonlyMap<string, s
 
 /** 建一次匹配索引（一次同步只建一次：解析几千条引用不该每条都扫全库） */
 function buildLocalMatchIndex(): SyncMatchIndex {
-  const tracks = [...allLocalTracks().values()].map(toMatchTrack)
+  const tracks = [...allLocalTracks().values()].map(toSyncMatchTrack)
   return buildMatchIndex(tracks, {
     online: onlineClaimMap(tracks),
     storagePluginIdOf: storagePluginIdOf(),
   })
+}
+
+/**
+ * 采集本机的收藏记录（`docs/playlist-sync.md` §5.1）。
+ *
+ * 三路来料，缺一条就会出真问题：
+ * 1. **当前收藏着的本机曲目**：一条记录一首歌。引用优先沿用记录里那份——合并已经裁决过
+ *    它，每轮都按本机副本重新生成会让两台机器对同一首歌给出不同引用，内容哈希随之每轮
+ *    都"变了"，同步永远收敛不了；只有本机从来没有记录（历史数据 / 首次同步）才现算一份。
+ * 2. **取消收藏的墓碑（TTL 内）**：不带上它们，对端那份更旧的「已收藏」下一轮就会复活。
+ * 3. **曲目已不在本机的已收藏记录**：照样带出去。删掉本地文件不等于不喜欢这首歌；
+ *    而且本机是真删了，对端那台还有这份文件，收藏应该在那边继续有效。
+ *
+ * 第 3 路要排除「本机其实还有同一首歌，只是换了副本/改了名」的情况（`liveKeys`）：
+ * 那种情况由第 1 路按身份重新表达，再带上旧引用只会让对端多出一条指向旧元数据的收藏。
+ */
+function collectSnapshotLikes(now: number): SyncedLike[] {
+  const library = useLibraryStore.getState()
+  const records = library.likeRecords ?? {}
+  const likedIds = library.likedTracks ?? new Set<string>()
+  const tracks = allLocalTracks()
+  const pluginIdOf = storagePluginIdOf()
+
+  const byKey = new Map<string, SyncedLike>()
+  const liveKeys = new Set<string>()
+
+  for (const track of tracks.values()) {
+    const ref = toSyncRefOf(track, pluginIdOf)
+    const key = likeKeyOf(ref)
+    liveKeys.add(key)
+    if (!likedIds.has(track.id)) continue
+    const record = records[key]
+    byKey.set(key, {
+      id: key,
+      // 没有记录 = 这次收藏发生在「收藏参与同步」之前，时刻无从得知，按 0 算：
+      // 它会被对端任何一个更晚的取消压下去，而不会反过来抹掉对端的改动
+      likedAt: record ? record.likedAt : 0,
+      ...(record?.removedAt ? { removedAt: record.removedAt } : {}),
+      ref: record ? record.ref : ref,
+    })
+  }
+
+  for (const record of Object.values(records)) {
+    if (!record) continue
+    if (likeIsActive(record)) continue
+    if (isLikeTombstoneExpired(record, now)) continue
+    if (byKey.has(record.id)) continue
+    byKey.set(record.id, record)
+  }
+
+  for (const record of Object.values(records)) {
+    if (!record) continue
+    if (!likeIsActive(record)) continue
+    if (byKey.has(record.id) || liveKeys.has(record.id)) continue
+    byKey.set(record.id, record)
+  }
+
+  return [...byKey.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 
 /**
@@ -212,7 +264,7 @@ export function snapshotFromStores(device: SyncDevice): SyncSnapshot {
     for (const trackId of playlist.trackIds) {
       const track = tracks.get(trackId)
       if (!track) continue
-      refs.push(toSyncTrackRef(toMatchTrack(track), pluginIdOf))
+      refs.push(toSyncRefOf(track, pluginIdOf))
     }
     playlists.push({
       id: playlist.id,
@@ -247,6 +299,7 @@ export function snapshotFromStores(device: SyncDevice): SyncSnapshot {
       revision: revisionCounter,
       updatedAt: now,
       playlists,
+      likes: collectSnapshotLikes(now),
     },
     now
   )
@@ -438,6 +491,53 @@ export function applySyncedPlaylists(snapshot: SyncSnapshot): ApplyOutcome {
   return { added, updated, removed: deletes.length, placeholders: freshPlaceholders.length }
 }
 
+/**
+ * 把合并后的收藏记录写回本地（§5.1）。
+ *
+ * 与 `applySyncedPlaylists` 的分工：那个只碰歌单，这个只碰收藏，**互不回退**——
+ * 一次同步里两者都可能是「变了」，混在一个函数里会让「只改了收藏」的那轮
+ * 多写一遍歌单 store（进而触发它自己的变更订阅，白跑一轮同步）。
+ *
+ * 三条边界：
+ * - 记录**整体采用**合并结果（不是增量）：合并输出必然包含本机那份的赢家，
+ *   整体替换才能让「本机记录 == 快照内容」，第二轮才有 `changed=false`；
+ * - 找不到本机曲目的引用**只留记录、不造占位曲目**：收藏页只展示曲库里的歌，
+ *   造一条空路径的占位曲目在收藏页里看不见，却会污染歌单占位登记；
+ * - 真正的写入走 `setLiked`（幂等 set），**不**走 `toggleLiked`——后者会以「现在」
+ *   记一次动作，时间戳被单方面推进，两端永远收敛不了。
+ */
+export function applySyncedLikes(snapshot: SyncSnapshot): LikeApplyOutcome {
+  const likes = snapshot.likes
+  if (!Array.isArray(likes)) return { liked: 0, unliked: 0, records: 0 }
+
+  const library = useLibraryStore.getState()
+  const index = buildLocalMatchIndex()
+  const now = Date.now()
+  const next: Record<string, SyncedLike> = {}
+  let liked = 0
+  let unliked = 0
+
+  for (const like of likes) {
+    if (!like || typeof like.id !== 'string' || !like.id) continue
+    // 过期墓碑不再传播：留着它只会让一首歌在 90 天后依旧无法被重新收藏
+    if (isLikeTombstoneExpired(like, now)) continue
+    next[like.id] = like
+
+    const trackId = resolveSyncTrackRef(like.ref, index)
+    // 本机没有这首歌：记录留着（它可能稍后才被扫进来），这次不产生可见变化
+    if (!trackId) continue
+    const active = likeIsActive(like)
+    // 每轮都取最新状态：同一首歌可能有多条记录（本机副本 / NAS 副本）指到同一个 trackId
+    if (useLibraryStore.getState().likedTracks.has(trackId) === active) continue
+    library.setLiked(trackId, active)
+    if (active) liked += 1
+    else unliked += 1
+  }
+
+  library.applyLikeRecords(next)
+  return { liked, unliked, records: Object.keys(next).length }
+}
+
 /* ------------------------------------------------------------------ *
  * 单次同步
  * ------------------------------------------------------------------ */
@@ -567,6 +667,11 @@ async function runSync(config: SyncConfig): Promise<SyncOutcome> {
     const applied = merged.changed
       ? applySyncedPlaylists(merged.snapshot)
       : { added: 0, updated: 0, removed: 0, placeholders: 0 }
+    // 收藏与歌单分别落盘：合并只要「哪边有变化」就是同一个 changed，
+    // 但写回是两个独立的 store（互不牵连，也不会互相触发对方的变更订阅）
+    const appliedLikes = merged.changed
+      ? applySyncedLikes(merged.snapshot)
+      : { liked: 0, unliked: 0, records: 0 }
 
     // ── 不动点：只有「内容真的变了」才写对端（验证报告 B-1 / N-1）──
     //
@@ -606,7 +711,12 @@ async function runSync(config: SyncConfig): Promise<SyncOutcome> {
       trackCount,
     }
     useSyncStore.getState().markSyncOk(config.id, result)
-    debugLog('sync ok', { configId: config.id, durationMs: at - startedAt, ...result })
+    debugLog('sync ok', {
+      configId: config.id,
+      durationMs: at - startedAt,
+      ...result,
+      likes: { ...appliedLikes, total: merged.snapshot.likes?.length ?? 0 },
+    })
     return { configId: config.id, ok: true, changed: merged.changed, ...result }
   } catch (err) {
     const payload = redactSecrets(encodeErrorInfo(toErrorInfo(err)), secrets)
@@ -879,6 +989,15 @@ export function initPlaylistSync(): void {
       if (state.playlists !== prev.playlists || state.syncTombstones !== prev.syncTombstones) {
         scheduleChangeSync()
       }
+    })
+  )
+
+  // 收藏也是同步内容：用户点一下爱心/取消，就要在防抖窗口后跑一轮。
+  // 盯 `likeRecords` 而不是 `likedTracks`：后者在每次曲库刷新（setTracks）时都会换新引用，
+  // 启动扫描会因此触发一轮冤枉的同步；前者只在「收藏/取消」与「应用快照」时变化。
+  disposers.push(
+    useLibraryStore.subscribe((state, prev) => {
+      if (state.likeRecords !== prev.likeRecords) scheduleChangeSync()
     })
   )
 

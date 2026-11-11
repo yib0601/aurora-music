@@ -1,7 +1,7 @@
 # 歌单同步（插件域 `sync`）
 
-> 目标：在**多台桌面设备**之间同步歌单（名称、顺序、成员），支持两条链路——
-> 用户自己的 Web 网络存储（任意 WebDAV），以及局域网内直连自动同步。
+> 目标：在**多台桌面设备**之间同步歌单（名称、顺序、成员）与收藏（每首歌的收藏/取消状态），
+> 支持两条链路——用户自己的 Web 网络存储（任意 WebDAV），以及局域网内直连自动同步。
 >
 > 本文只写**当前实现**的事实与理由。做完的、没做的、为什么这么做，都在这里。
 
@@ -12,9 +12,14 @@
 同步的内容：
 
 - **歌单**：`name`、创建/更新时间、曲目顺序（`trackIds` 的**顺序是有意义的**）
+- **收藏**：每首歌的「收藏 / 取消」状态及其动作时刻（§5.1）
 - **曲目元数据**：曲名 / 歌手 / 专辑 / 时长，以及「本机文件在哪」或「在线曲目是谁」
 
-不同步的内容：喜欢列表、播放次数、最近播放、播放队列、当前选中歌单、音源凭证。
+不同步的内容：播放次数、最近播放、播放队列、当前选中歌单、音源凭证。
+
+> 「收藏」在侧栏里位于**歌单分组的第一位**，但它不是 `playlistStore` 里的 `Playlist` 记录：
+> 没有 `updatedAt`、不能改名/删除，路由仍是 `/liked`。它是「系统歌单」——在结构上站在歌单组里，
+> 在同步上却是另一套冲突单元（集合 of 每首歌，而不是一条有序记录），见 §5.1。
 
 平台：**桌面端**。移动端与 Web 端不出现入口——理由见 §8。
 
@@ -68,12 +73,26 @@ PROPFIND/MKCOL/PUT 与非标准动词、需要读目录枚举结果；局域网�
       "deletedAt": null,         // 墓碑：有值表示这份歌单在 updatedAt 被删除
       "tracks": [ /* SyncTrackRef[]，顺序即歌单顺序 */ ]
     }
+  ],
+  "likes": [                     // 可选；缺字段 = 对方版本不认识收藏同步（不是「收藏为空」）
+    {
+      "id": "…",                 // 跨设备歌曲身份（歌名+歌手+整秒时长），同时是合并键
+      "likedAt": 1762400000123,  // 收藏时刻
+      "removedAt": null,         // 取消时刻（墓碑）：> likedAt 表示当前不收藏
+      "ref": { /* SyncTrackRef，定位口径与歌单成员相同 */ }
+    }
   ]
 }
 ```
 
+**为什么 `likes` 是可选字段而不是新格式号**：格式号一改，对方那份旧文件会被整份拒绝
+（`sync.error.snapshotVersion`），升级期间连歌单一起停摆。`likes` 缺失只表示「这份快照
+没有收藏意见」，合并时按空集处理，不会删掉任何本机记录；两端的写法都能被对方读懂。
+
 **为什么全量**：几十个歌单、几千条曲目引用，序列化后几十 KB 量级；增量同步要为
 「顺位 / 补偿 / 乱序到达」再写一套状态机，收益为零而失败模式多一倍。
+收藏会再叠一层：每条记录约 200–300 字节，几千首收藏约 1 MB 以内——仍在局域网
+`PUT /v1/snapshot` 的 5 MB 上限之内，所以不为它单独设计增量通道。
 
 **为什么 `updatedAt` 而不是逻辑时钟**：跨设备没有共享的因果链，HLC/向量时钟的额外
 收益（精确的并发判定）在本场景换不来复杂度——见 §5 的冲突提示。
@@ -129,6 +148,48 @@ type SyncTrackRef =
 并集合并无法回答「两边的顺序都变了，听谁的」，也无法回答「A 删了、B 又加回来」。
 LWW 的代价是明确的：**两端同时改同一个歌单会丢一侧的改动**。这个代价用 UI 明说
 （`sync.conflict.note`：同一歌单在两端都被修改时，以较新的改动为准），而不是靠算法偷偷选一个。
+
+### 5.1 收藏：每条记录一首歌，逐条 LWW
+
+歌单的冲突单元是「整条歌单」，收藏的冲突单元是「每首歌」——共用一个集合级的 LWW 会整片丢数据：
+
+| 场景 | 整条集合 LWW | 逐条 LWW（当前实现） |
+|---|---|---|
+| 手机连点 20 首，电脑点了 3 首 | 以较晚的整份集合为准，另一侧整片消失 | 23 首都在 |
+| A 取消 X，B 收藏 Y | 一侧全部作废 | X 被取消、Y 被收藏 |
+| 同一首歌两端一收一取 | 看整份集合的时间 | 看**这首歌**谁的动作更晚 |
+
+**记录形状**（`SyncedLike`）：`{ id, likedAt, removedAt?, ref }`——与歌单记录同构
+（稳定 id + 时刻 + 墓碑 + `SyncTrackRef`），只是成员只有一个。
+
+- `id` = 跨设备歌曲身份：`likeKeyOf(ref)` = 归一化「歌名 + 歌手 + 整秒时长」。与展示去重
+  （`dedupeTracksForDisplay`）同一口径——否则会出现「收藏页只显示 1 行、同步却认为有 2 条」。
+  时长取整秒是因为本地是完整解析、远端媒体库是头部概算（§4 的同一理由）。
+  不含 `kind` / 路径 / `sourceId` / `onlineId`：前三个设备相关，`onlineId` 只在一侧存在。
+- `likedAt` / `removedAt`：最近一次动作的真实时刻，**取大者**参与裁决（`likeActionAt`）。
+- 同一毫秒的「收藏 vs 取消」判为取消（`likeIsActive` 的并列口径，宁可少显示一首，
+  也不让已取消的收藏在两端反复复活）。
+- 取消的墓碑保留 90 天（与歌单同一 `SYNC_TOMBSTONE_TTL_MS`），过期后不再压制重新收藏。
+
+**记录落在哪**：`libraryStore.likeRecords`（按 `id` 键，随 persist 落 localStorage）。
+`likedTracks` 仍是「现在收藏了哪些」的真相源，`likeRecords` 只补「什么时候、怎么找回这首歌」。
+没有它就比不出「谁更晚」——重启后所有收藏都变成「时刻未知」（`likedAt: 0`）。
+
+**采集快照时的三路来料**（`collectSnapshotLikes`）：
+
+1. 当前收藏着的本机曲目：有记录就沿用记录里的引用与时刻（合并已裁决过，每轮重算会让两端
+   对同一首歌给出不同引用、内容哈希每轮都"变了"）；历史收藏没有记录 → `likedAt: 0`。
+2. 取消收藏的墓碑（TTL 内）：带上才能压住对端那份更旧的收藏。
+3. 曲目已不在本机的已收藏记录：照样带出去——删掉本地文件不等于不喜欢，对端还有这份文件。
+
+**落盘**（`applySyncedLikes`）：整体采用合并结果（不是增量，否则第二轮仍判"变了"）；
+找不到本机曲目的引用**只留记录、不造占位曲目**（收藏页只展示曲库里的歌，占位曲目在那儿
+看不见，还会污染歌单的占位登记）；真正的写入走 `setLiked`（幂等 set）而不是 `toggleLiked`
+——后者会以「现在」记一次动作，时间戳被单方面推进，两端永远收敛不了。
+
+**已知道的边界**：曲目被改名/重打标签后内容身份变了，会被当成另一首歌；旧身份的收藏记录
+会在本机留一条不再被采纳的记录（不影响播放与展示，也不会每轮重推）。这是「跨设备身份只能
+靠内容」的固有代价，与展示去重同源。
 
 **幂等与收敛**（`__tests__/merge.test.ts` 覆盖）：
 
@@ -351,6 +412,7 @@ packages/shared/src/plugin/sync/
 | 层 | 覆盖 |
 |---|---|
 | `merge.test.ts` | 幂等、交换律、墓碑、时间并列、三方收敛、`changed` 标志 |
+| `likes.test.ts` | 收藏逐条裁决（两端各收藏不同歌都保留）、并列判取消、墓碑 TTL、缺 `likes` 的旧快照、身份判据、内容哈希 |
 | `trackRef.test.ts` | 五种解析路径、路径归一化（Windows 反斜杠）、占位回落 |
 | `snapshot.test.ts` | 版本/格式校验拒绝、坏 JSON 不抛到调用点 |
 | `webdavSyncPlugin.test.ts` | 列举→合并、404 视为空、401 映射、PUT 失败映射（用 stub fetch） |
@@ -372,10 +434,12 @@ pnpm verify:i18n
 
 ## 13. 隐私
 
-快照里含：歌单名、曲名/歌手/专辑/时长、**本机绝对路径**（可能含用户名）。
+快照里含：歌单名、曲名/歌手/专辑/时长、**本机绝对路径**（可能含用户名）、
+收藏的**动作时刻**（不是播放统计）。
 
 - 文件只写进**用户自己的** WebDAV 目录，或只在**配对过**的设备间传输；
-- 不传播放统计、喜欢、音源凭证、任何音频内容；
+- 不传播放次数 / 最近播放 / 收藏以外的任何行为统计；收藏只传「哪首歌 + 收藏或取消的时刻」；
+- 不传音源凭证、任何音频内容；
 - UI 的同步面板明示这一点（`sync.panel.privacyNote`）；
 - 局域网快照是**明文**（见 §7 的信任边界），不宣称加密。
 
@@ -383,7 +447,7 @@ pnpm verify:i18n
 
 ## 14. 未做（明确的下一步）
 
-- 喜欢列表 / 播放统计 / 最近播放的同步（数据模型不同，需要单独定冲突语义）
+- 播放统计 / 最近播放的同步（数据模型不同，需要单独定冲突语义；收藏已按「每条一首歌」落地，见 §5.1）
 - 移动端（需要 safeStorage 封装与后台调度，先做 WebDAV 单向拉取更现实）
 - A 档声明式同步插件（JSON 描述「GET/PUT 一个端点」的极简场景，如自建 HTTP 服务）
 - 实时推送（SSE / WebSocket）：当前靠定时 + 变更防抖，延迟上限 5 分钟
@@ -409,7 +473,7 @@ packages/shared/src/plugin/sync/           # T1
   webdavSyncPlugin.ts
   lanSyncPlugin.ts
   index.ts           模块求值期注册（isolatePluginStep）
-  __tests__/{merge,trackRef,snapshot,webdavSyncPlugin}.test.ts
+  __tests__/{merge,likes,trackRef,snapshot,webdavSyncPlugin}.test.ts
 packages/shared/src/webdav.ts              # T1 追加：ensureWebdavDir / readWebdavText / writeWebdavText
 
 packages/desktop/src/ipc/                  # T2
@@ -457,7 +521,16 @@ export function serializeSnapshot(snapshot: SyncSnapshot): string
 export function parseSnapshot(text: string, file?: string): SyncSnapshot   // 失败 throw auroraError('sync.error.snapshotInvalid' / 'snapshotVersion')
 export function isSnapshotOfDevice(snapshot: SyncSnapshot, deviceId: string): boolean
 export function pruneSnapshot(snapshot: SyncSnapshot, now?: number): SyncSnapshot
-export function snapshotContentHash(snapshot: SyncSnapshot): string   // 跨设备可比的「歌单内容」哈希
+export function snapshotContentHash(snapshot: SyncSnapshot): string   // 跨设备可比的「歌单 + 收藏内容」哈希
+
+// canonical.ts（收藏身份与合并键；app 侧写本地记录时用同一口径）
+export function likeKeyOf(ref: SyncTrackRef): string        // 跨设备歌曲身份（歌名+歌手+整秒时长）
+export function canonicalLike(like: SyncedLike): string     // 收藏记录的规范化内容串
+
+// snapshot.ts（收藏的墓碑与时刻口径，合并与清理共用，避免两处各判一套）
+export function likeActionAt(like: SyncedLike): number              // 最近一次动作时刻 = max(likedAt, removedAt)
+export function likeIsActive(like: SyncedLike): boolean             // 并列判为未收藏
+export function isLikeTombstoneExpired(like: SyncedLike, now?: number): boolean
 
 // trackRef.ts
 export interface SyncMatchTrack { id: string; title: string; artist: string; duration: number; path: string; sourceId?: string }
@@ -467,7 +540,11 @@ export function toSyncTrackRef(track: SyncMatchTrack, storagePluginIdOf?: (sourc
 export function resolveSyncTrackRef(ref: SyncTrackRef, index: SyncMatchIndex): string | null
 
 // merge.ts
-export interface MergeOutcome { snapshot: SyncSnapshot; changed: boolean; added: number; updated: number; removed: number }
+export interface MergeOutcome {
+  snapshot: SyncSnapshot; changed: boolean
+  added: number; updated: number; removed: number
+  likesAdded: number; likesRemoved: number   // 只算可见状态变化，不含纯时间戳采纳
+}
 export function mergeSnapshots(local: SyncSnapshot, remotes: readonly SyncSnapshot[], now?: number): MergeOutcome
 ```
 
@@ -559,4 +636,6 @@ syncOnce(config) →
 - `applySyncedPlaylists(snapshot)`：只增改删 playlists（按 tombstone），**不碰**
   `playCount/liked/lastPlayedAt`；未解析出本机曲目的引用登记为占位 `importedTracks`
   （`id = 'sync:' + hash(ref)`，`path: ''`），解析出的一律用**本机 trackId**。
+- `applySyncedLikes(snapshot)`：只改收藏（与上一条互不牵连，见 §5.1）。记录整体采用合并结果，
+  已解析出本机曲目的按 `likeIsActive` 调 `setLiked`，解析不出的只留记录不造占位曲目。
 

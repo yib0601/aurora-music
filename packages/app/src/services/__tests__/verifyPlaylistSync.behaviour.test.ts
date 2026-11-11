@@ -14,7 +14,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearSyncPluginsForTest, registerSyncPlugin } from '@aurora/shared'
-import type { MessageKey, SyncConfig, SyncSnapshot, SyncTrackRef } from '@aurora/shared'
+import type { MessageKey, SyncConfig, SyncSnapshot, SyncedLike, SyncTrackRef } from '@aurora/shared'
 import type { Track } from '@/types'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useSyncStore } from '@/stores/syncStore'
@@ -30,7 +30,14 @@ import {
 } from '../playlistSync.service'
 
 const mocks = vi.hoisted(() => ({
-  library: { tracks: [] as Track[], librarySources: [] as unknown[] },
+  library: {
+    tracks: [] as Track[],
+    librarySources: [] as unknown[],
+    likedTracks: new Set<string>(),
+    likeRecords: {} as Record<string, SyncedLike>,
+    setLiked: (_trackId: string, _liked: boolean) => {},
+    applyLikeRecords: (_records: Record<string, SyncedLike>) => {},
+  },
   platform: {
     supportsPlaylistSync: true,
     lanSync: null as unknown,
@@ -49,7 +56,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/services/platform', () => ({ platform: mocks.platform }))
 vi.mock('@/stores/libraryStore', () => ({
-  useLibraryStore: { getState: () => mocks.library },
+  useLibraryStore: { getState: () => mocks.library, subscribe: () => () => {} },
 }))
 
 const track = (over: Partial<Track> = {}): Track =>
@@ -143,6 +150,8 @@ beforeEach(() => {
   })
   mocks.library.tracks = []
   mocks.library.librarySources = []
+  mocks.library.likedTracks = new Set<string>()
+  mocks.library.likeRecords = {}
   mocks.platform.lanSync = null
   mocks.platform.onLanSyncInbox = undefined
   mocks.platform.sync.device.mockClear()
@@ -182,23 +191,31 @@ describe('收敛性：本地时间戳是否会被远端推进', () => {
 })
 
 describe('隐私：快照字段白名单', () => {
-  it('序列化结果不含播放统计 / 喜欢 / 音源凭证 / 音频地址', () => {
+  it('不含播放统计 / 音源来源 id / 音频地址；收藏记录只有「身份 + 时刻 + 定位坐标」', () => {
     mocks.library.tracks = [
       { ...track({ playCount: 9, liked: true }), lastPlayedAt: 1234, sourceId: 'sid-1' } as Track,
     ]
+    // 收藏**是**同步内容（§5.1），所以要断言的不是「快照里没有 liked 字样」，
+    // 而是这条记录除了身份、时刻与定位坐标之外什么都不带
+    mocks.library.likedTracks = new Set(['track-local-1'])
     usePlaylistStore.setState({
       playlists: [
         { id: 'pl-1', name: '长途飞行', createdAt: 1, updatedAt: 2, trackIds: ['track-local-1'] },
       ],
     })
 
-    const text = JSON.stringify(snapshotFromStores({ deviceId: 'dev-local', deviceName: '本机' }))
+    const snapshot = snapshotFromStores({ deviceId: 'dev-local', deviceName: '本机' })
+    const text = JSON.stringify(snapshot)
 
     expect(text).not.toContain('playCount')
-    expect(text).not.toContain('liked')
     expect(text).not.toContain('lastPlayedAt')
     expect(text).not.toContain('sourceId')
     expect(text).not.toContain('http')
+    expect(snapshot.likes).toHaveLength(1)
+    expect(Object.keys(snapshot.likes?.[0] ?? {}).sort()).toEqual(['id', 'likedAt', 'ref'])
+    expect(Object.keys(snapshot.likes?.[0]?.ref ?? {}).sort()).toEqual([
+      'album', 'artist', 'duration', 'kind', 'path', 'title',
+    ])
   })
 })
 

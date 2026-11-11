@@ -5,7 +5,7 @@
  * Keys and `{placeholder}` sets must stay identical to the Chinese source of truth.
  */
 const sync = {
-  capability: 'Playlist sync',
+  capability: 'Playlist & favorites sync',
 
   plugin: {
     webdav: {
@@ -41,13 +41,14 @@ const sync = {
   },
 
   panel: {
-    title: 'Playlist sync',
+    title: 'Playlist & favorites sync',
     description:
-      'Keep playlists (names, order and tracks) in sync with other devices. Tracks are re-matched against the local library; missing ones are shown as placeholders.',
-    unsupported: 'Playlist sync requires the desktop app.',
+      'Keep playlists (names, order and tracks) and favorites in sync with other devices. Tracks are re-matched against the local library; missing ones are shown as placeholders.',
+    unsupported: 'Playlist and favorites sync require the desktop app.',
     privacyNote:
-      'Snapshots contain playlist names, track metadata and local file paths. LAN transfers are unencrypted — use them on trusted networks only.',
-    conflictNote: 'When the same playlist changed on both sides, the more recent change wins.',
+      'Snapshots contain playlist names, track metadata, favorite timestamps and local file paths. LAN transfers are unencrypted — use them on trusted networks only.',
+    conflictNote:
+      'When the same playlist changed on both sides, the more recent change wins. Favorites follow the later like/unlike per song.',
     emptyTitle: 'No sync target yet',
     emptyDesc: 'Add a network storage, or another device on the same network.',
     add: 'Add sync target',
