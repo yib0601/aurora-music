@@ -91,6 +91,12 @@ jobs:
     # 产物符号不超出基线。
     container:
       image: ubuntu:22.04
+      # 容器默认继承宿主的 systemd-resolved stub（127.0.0.53），而该链路上
+      # archive.ubuntu.com / security.ubuntu.com 会解析失败（2026-11-11 在
+      # ubuntu-24.04 镜像 20261101.360 上实测：宿主 getent 直接 GETENT FAIL，
+      # 容器内 apt-get update 报 Could not resolve，Linux 包因此打不出来）。
+      # 实测固定公共 DNS 后同一容器 7s 拉完 49MB 索引，故显式覆盖。
+      options: --dns 8.8.8.8 --dns 1.1.1.1
     env:
       CC: clang-15
       CXX: clang++-15

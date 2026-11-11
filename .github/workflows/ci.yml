@@ -142,14 +142,27 @@ jobs:
       - name: Build shared
         run: pnpm --filter @aurora/shared build
 
+      - name: Ensure apt DNS + ImageMagick
+        # 两件事都跟「镜像变了」有关，一起在这里解决：
+        #  1) 宿主的 systemd-resolved stub（127.0.0.53）当前解析不了
+        #     archive.ubuntu.com（2026-11-11 在 ubuntu-24.04 镜像 20261101.360 上
+        #     实测：`getent hosts` 直接失败、apt 报 Temporary failure resolving，
+        #     容器续承同一解析器也一样）；固定公共 DNS 后 apt 恢复正常。
+        #  2) 该镜像已不再预装 ImageMagick（identify / magick / convert 全无），
+        #     而品牌校验脚本要靠 identify 读尺寸与平均亮度。
+        run: |
+          sudo rm -f /etc/resolv.conf
+          printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' | sudo tee /etc/resolv.conf
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends imagemagick
+          identify -version | head -1
+
       - name: Verify brand assets match SVG sources
         # 启动图曾长期停在 Capacitor 模板的白底占位图上：「替换全平台图标」那次只
         # 覆盖了 mipmap 与桌面图标，车机开屏依旧是旧图且没有任何提示。这一步把
         # 派生资源（启动图 / 应用图标 / favicon / 启动链路底色）与品牌 SVG 的一致性
         # 卡在 PR 阶段，而不是等用户装到车机上才发现。
-        run: |
-          command -v identify >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y imagemagick; }
-          bash scripts/generate-icons.sh --check
+        run: bash scripts/generate-icons.sh --check
 
       - name: Build app bundle (vite)
         run: pnpm --filter @aurora/app build
