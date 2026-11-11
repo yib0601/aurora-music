@@ -1,6 +1,7 @@
 import { Filesystem, Directory, FileInfo as CapFileInfo } from '@capacitor/filesystem'
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { setCustomFetch } from '@aurora/shared'
+import type { LanPairPeer, LanPairRequest, LanSyncBridge, SyncSnapshot } from '@aurora/shared'
 import { createNativeFetch } from './nativeFetch'
 import type {
   PlatformInterface,
@@ -97,6 +98,15 @@ import { APP_VERSION } from '@/services/update.service'
 import { base64ToUint8Array, uint8ArrayToBase64 } from './base64'
 import { ensureEmbeddedCoverForTrack, ensureOnlineCoverForTrack } from './localCover'
 import { nativeSetAudioFocusBehavior } from '@/services/mediaSession'
+import {
+  createMobileLanSyncBridge,
+  mobileDeviceIdentity,
+  mobileLanSyncAvailable,
+  mobileSyncCredentialGateway,
+  onMobileLanInbox,
+  onMobileLanPaired,
+  onMobileLanPairRequest,
+} from './lanSync'
 
 // WebView 的原生 fetch 受 CORS 约束，而用户配置的歌源/歌词源普遍不带
 // Access-Control-Allow-Origin，在线搜索会全部失败。注入基于原生 HTTP 的
@@ -377,11 +387,38 @@ async function removeMobileCoverFile(coverPath?: string | null): Promise<void> {
 }
 
 export function createMobilePlatform(): PlatformInterface & {
-  // 歌单同步只做桌面端（docs/playlist-sync.md §8）：移动端显式关掉入口。
-  // 局域网桥也不存在（HTTP 服务 / UDP 发现 / 配对码派生都在桌面主进程），
-  // 所以这里用 null 而不是空对象 —— UI 的可用性判断看的就是它。
-  supportsPlaylistSync: false
-  lanSync: null
+  // 歌单同步与局域网服务端在 Android 上由原生插件 `LanSync` 提供
+  // （docs/playlist-sync.md §17）：HTTP 监听、UDP 发现、HMAC 与一键配对都在 Kotlin 侧，
+  // 渲染层拿到的仍是同一个 LanSyncBridge。插件没注册时桥为 null，UI 据此隐藏入口。
+  supportsPlaylistSync: boolean
+  lanSync: LanSyncBridge | null
+  /** 对端 PUT 进来的快照（原生事件 → 回调；与桌面端 preload 的下行通道同形状） */
+  onLanSyncInbox: (cb: (snapshots: SyncSnapshot[]) => void) => () => void
+  /** 对端发来的配对请求（一键配对，§16.6） */
+  onLanPairRequest: (cb: (request: LanPairRequest) => void) => () => void
+  /** 配对完成（本机作为应答方时由原生侧推） */
+  onLanPaired: (cb: (peer: LanPairPeer) => void) => () => void
+  /**
+   * 同步凭证网关（移动端落到原生 Keystore）。
+   *
+   * 形状与桌面端 `SyncGateway` 一致，这里手写一份而不再 import 类型：那个接口在
+   * `services/platform/index.ts`，而该文件 import 本目录 —— 类型环在 tsc 能过、
+   * 在 vite HMR 下偶发 TDZ，不值得为省几行引入。
+   */
+  sync: {
+    device: () => Promise<{ deviceId: string; deviceName: string }>
+    saveCredential: (
+      configId: string,
+      payload: Record<string, string>
+    ) => Promise<{ ok: boolean; saved: boolean; encryptionAvailable: boolean }>
+    credentialState: (configId: string) => Promise<{ saved: boolean; encryptionAvailable: boolean }>
+    clearCredential: (
+      configId: string
+    ) => Promise<{ ok: boolean; saved: boolean; encryptionAvailable: boolean }>
+    getCredential: (configId: string) => Promise<Readonly<Record<string, string>> | null>
+  }
+  /** WebDAV 的代发出口（原生 HTTP，绕 CORS 并放行 PROPFIND） */
+  syncFetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   // 扩展接口：扫描事件订阅（移动端用回调替代 IPC 事件）
   onTracksScanned: (cb: (tracks: Track[]) => void) => () => void
   onTrackScanned: (cb: (track: Track) => void) => () => void
@@ -477,6 +514,11 @@ export function createMobilePlatform(): PlatformInterface & {
    */
   plugins: PluginGateway
 } {
+  // 凭证网关与局域网桥都必须是**单例**：桥内部持有事件订阅与进行中的配对轮询，
+  // 每次访问都新建一个会让「发起配对」与「收到确认」落在两个互不相通的实例上。
+  const syncCredentials = mobileSyncCredentialGateway()
+  const mobileLan = createMobileLanSyncBridge()
+
   return {
     platform: 'mobile',
 
@@ -1292,8 +1334,22 @@ export function createMobilePlatform(): PlatformInterface & {
       return () => mediaControlCbs.delete(cb)
     },
 
-    // 歌单同步：移动端明确不支持（docs/playlist-sync.md §8），入口隐藏
-    supportsPlaylistSync: false,
-    lanSync: null,
+    // 歌单同步：Android 原生插件 `LanSync` 提供完整的局域网服务端（§17）。
+    // 插件缺失（Web 端 / 老包 / 单测 node 环境）时桥为 null，入口随之隐藏。
+    supportsPlaylistSync: mobileLanSyncAvailable(),
+    lanSync: mobileLan,
+    onLanSyncInbox: onMobileLanInbox,
+    onLanPairRequest: onMobileLanPairRequest,
+    onLanPaired: onMobileLanPaired,
+    sync: {
+      device: mobileDeviceIdentity,
+      saveCredential: (configId, payload) => syncCredentials.saveCredential(configId, payload),
+      credentialState: (configId) => syncCredentials.credentialState(configId),
+      clearCredential: (configId) => syncCredentials.clearCredential(configId),
+      getCredential: (configId) => syncCredentials.getCredential(configId),
+    },
+    // WebDAV 在手机上同样要绕 CORS（WebView 源是 https://localhost），而原生 HTTP
+    // 也放行 PROPFIND 这类非标准动词（见 nativeFetch.ts 开头两条路径的说明）。
+    ...(Capacitor.isNativePlatform() ? { syncFetch: createNativeFetch() } : {}),
   }
 }

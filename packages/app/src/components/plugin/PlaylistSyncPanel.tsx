@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Copy, Loader2, Plus, Radar, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,6 +13,7 @@ import { useT } from '@/i18n'
 import { toast } from '@/components/common/Toast'
 import { platform } from '@/services/platform'
 import {
+  pairWithLanPeer,
   refreshLanStatus,
   rotateLanCode,
   scanLanPeers,
@@ -21,8 +22,9 @@ import {
 } from '@/services/playlistSync.service'
 import { useSyncStore } from '@/stores/syncStore'
 import { SyncConfigAddDialog, SyncConfigCard, newSyncConfig, type SyncConfigDraft } from './syncConfigCards'
-import { listSyncPluginMeta } from '@aurora/shared'
-import type { LanPeerInfo, SyncConfig, SyncPluginMeta } from '@aurora/shared'
+import { LAN_SYNC_PLUGIN_ID, listSyncPluginMeta } from '@aurora/shared'
+import type { LanPairFailureReason, LanPeerInfo, SyncConfig, SyncPluginMeta } from '@aurora/shared'
+import { pairFailureText } from './lanPairMessages'
 
 /**
  * 「设置 → 插件 → 歌单同步」的面板主体。
@@ -50,6 +52,15 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
   const [peerTarget, setPeerTarget] = useState<LanPeerInfo | null>(null)
   /** 待确认删除的配置：用对话框而不是 `window.confirm`（标题/说明都要走 i18n 键） */
   const [pendingRemove, setPendingRemove] = useState<SyncConfig | null>(null)
+  /**
+   * 正在配对的设备（null = 没有进行中的配对）。
+   *
+   * 用它而不是布尔：等待弹窗要显示「正在等哪台设备确认」，而 `pairStart` 是长轮询，
+   * 用户可能同时看到多台设备，光一个 true 说不清。
+   */
+  const [pairingPeer, setPairingPeer] = useState<LanPeerInfo | null>(null)
+  /** 用户是否主动关掉了等待框：是的话结果回来时不该再弹「配对失败」 */
+  const pairCancelledRef = useRef(false)
 
   const isLanPlugin = pluginId === LAN_SYNC_PLUGIN_ID
 
@@ -107,6 +118,29 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
     void scanLanPeers().then((peers) => {
       if (peers.length === 0) toast(t('sync.discover.empty'), { type: 'info' })
     })
+  }
+
+  /**
+   * 一键配对：点一下 → 对端弹确认框 → 两端各自建一条双向目标。
+   *
+   * 这里不碰配对码：码在两端主进程之间用 ECDH 封装后传递，渲染层只拿「成没成」
+   * 与失败原因（§16）。失败仍保留「手动填码」这条退路，所以不把失败弹成阻断式对话框。
+   */
+  const handlePair = (peer: LanPeerInfo) => {
+    pairCancelledRef.current = false
+    setPairingPeer(peer)
+    void pairWithLanPeer(peer)
+      .then((outcome) => {
+        // 用户自己关掉了等待框：这是取消，不是失败，不弹任何提示
+        if (!outcome.ok) {
+          if (!pairCancelledRef.current && outcome.reason !== 'cancelled') {
+            toast(pairFailureText(t, outcome.reason as LanPairFailureReason, peer), { type: 'error' })
+          }
+          return
+        }
+        toast(t('sync.pair.paired', { name: outcome.config.name }), { type: 'success' })
+      })
+      .finally(() => setPairingPeer(null))
   }
 
   /**
@@ -266,6 +300,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
               {lan.scanning ? t('sync.discover.scanning') : t('sync.discover.scan')}
             </Button>
           </div>
+          <p className="font-text text-caption text-white/40">{t('sync.discover.pairHint')}</p>
 
           {lan.peers.length === 0 ? (
             <p className="font-text text-caption text-white/40 py-1.5">{t('sync.discover.empty')}</p>
@@ -287,14 +322,24 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
                         </p>
                       </div>
                       <Button
-                        variant="secondary"
                         size="sm"
-                        className="h-8 px-3"
+                        className="h-8 px-3 bg-mint text-mint-fg font-semibold hover:bg-mint/90 disabled:opacity-40 disabled:hover:bg-mint"
+                        disabled={!online || pairingPeer !== null}
+                        onClick={() => handlePair(peer)}
+                      >
+                        {pairingPeer?.deviceId === peer.deviceId
+                          ? t('sync.discover.pairing')
+                          : t('sync.discover.pair')}
+                      </Button>
+                      {/* 手动填码退路：老版本对端、配对反复失败、或发现被防火墙挡掉时仍能配 */}
+                      <button
+                        type="button"
+                        className="font-text text-caption text-white/40 hover:text-mint underline underline-offset-2 flex-shrink-0"
                         disabled={!online}
                         onClick={() => setPeerTarget(peer)}
                       >
-                        {t('sync.discover.add')}
-                      </Button>
+                        {t('sync.discover.manualAdd')}
+                      </button>
                     </div>
                   </div>
                 )
@@ -323,6 +368,33 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
         }}
       />
 
+      {/* 等待对端确认：配对是长轮询，必须给一个「正在进行」的可取消状态 */}
+      <Dialog
+        open={pairingPeer !== null}
+        onOpenChange={(open) => {
+          if (open) return
+          // 用户自己关掉等待框 = 放弃这次配对：通知宿主停掉长轮询，
+          // 否则对端屏幕上会一直挂着一个没人再等的请求，占着它的 pending 名额。
+          pairCancelledRef.current = true
+          void platform.lanSync?.pairCancel()
+          setPairingPeer(null)
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-white text-tagline">{t('sync.pair.title')}</DialogTitle>
+            <DialogDescription className="font-text text-caption text-white/60">
+              {t('sync.pair.waiting', { name: pairingPeer?.deviceName ?? '' })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-end">
+            <Button variant="ghost" size="sm" className="h-9 px-4 text-white/60 hover:text-white/90" onClick={() => setPairingPeer(null)}>
+              {t('sync.config.cancel')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <AddPeerDialog
         peer={peerTarget}
         onOpenChange={(open) => {
@@ -337,9 +409,6 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
     </div>
   )
 }
-
-/** 局域网内置插件的 id（与 shared 的 `lan-sync` 一致；换协议不改这里，只加插件） */
-const LAN_SYNC_PLUGIN_ID = 'lan-sync'
 
 /** 与 `newSyncConfig` 同一套 id 生成；本地包一层避免把 `generateId` 也拖进这个文件 */
 function newSyncConfigId(): string {

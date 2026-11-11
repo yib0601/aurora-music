@@ -44,7 +44,7 @@ const sync = {
     title: 'Playlist & favorites sync',
     description:
       'Keep playlists (names, order and tracks) and favorites in sync with other devices. Tracks are re-matched against the local library; missing ones are shown as placeholders.',
-    unsupported: 'Playlist and favorites sync require the desktop app.',
+    unsupported: 'Playlist and favorites sync require the desktop or mobile app.',
     privacyNote:
       'Snapshots contain playlist names, track metadata, favorite timestamps and local file paths. LAN transfers are unencrypted — use them on trusted networks only.',
     conflictNote:
@@ -130,6 +130,30 @@ const sync = {
     offline: 'Offline',
     add: 'Add as sync target',
     added: 'Added device {name}',
+    pair: 'Pair',
+    pairing: 'Waiting for the other device…',
+    pairHint: 'Tap "Pair", then tap "Allow" once on the other device. No code to copy.',
+    manualAdd: 'Enter code manually',
+  },
+
+  /** One-tap pairing (docs/playlist-sync.md §16) */
+  pair: {
+    title: 'Pairing request',
+    requestDesc: '"{name}" wants to sync playlists with this device. Allowing merges both sides.',
+    allow: 'Allow',
+    deny: 'Deny',
+    waiting: 'Pairing request sent to "{name}". Tap "Allow" on that device.',
+    paired: 'Paired with "{name}". Two-way sync is on.',
+    denied: 'The other device denied the request',
+    timeout: 'Timed out waiting for the other device. Try again.',
+    unreachable: 'Cannot reach {host}:{port}. Make sure LAN sync is on there and you are on the same network.',
+    unsupported: 'The other device is too old for one-tap pairing. Update it, or use "Enter code manually".',
+    auth: 'The other device could not accept the pairing credential. Retry, or use "Enter code manually".',
+    self: 'You cannot pair with this device itself',
+    busy: 'The other device is handling another pairing request. Try again later.',
+    invalid: 'Unrecognized reply from the other device. Update both apps.',
+    expired: 'The pairing request expired',
+    cancelled: 'Pairing cancelled',
   },
 
   error: {

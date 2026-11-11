@@ -16,6 +16,7 @@
  * 平台判据只有一条：`platform.supportsPlaylistSync`（§8）。非桌面端整条链路不启动。
  */
 import {
+  LAN_SYNC_PLUGIN_ID,
   SYNC_SNAPSHOT_FORMAT,
   SYNC_TOMBSTONE_TTL_MS,
   auroraError,
@@ -37,6 +38,8 @@ import {
   toErrorInfo,
 } from '@aurora/shared'
 import type {
+  LanPairFailureReason,
+  LanPairPeer,
   LanPeerInfo,
   LanSyncStatus,
   SyncConfig,
@@ -57,6 +60,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { takePendingSecretMigrations, useSyncStore } from '@/stores/syncStore'
 import { toSyncMatchTrack, toSyncRefOf } from '@/lib/syncTrack'
+import { generateId } from '@/lib/utils'
 
 /** 启动后首次自动同步的延迟（§15.4 覆盖 §9 的旧值 10s） */
 const STARTUP_SYNC_DELAY_MS = 3_000
@@ -852,6 +856,106 @@ export async function rotateLanCode(): Promise<LanSyncStatus | null> {
   const status = await bridge.rotateCode()
   useSyncStore.getState().setLanStatus(status)
   return status
+}
+
+/* ------------------------------------------------------------------ *
+ * 一键配对（docs/playlist-sync.md §16）
+ * ------------------------------------------------------------------ */
+
+/** 配对结果：失败原因直接给 UI 查 i18n（`sync.pair.*`），不做字符串判断 */
+export type LanPairOutcome =
+  | { readonly ok: true; readonly config: SyncConfig }
+  | { readonly ok: false; readonly reason: LanPairFailureReason }
+
+/**
+ * 配对成功后自动建的那条配置：双向、自动同步、名称取对端设备名。
+ *
+ * 为什么两端都建：单向建一份只能保证「一轮」双向收敛——对端自己的改动要等下一次
+ * 反向拉取才回得来，而它没有配置就不会反向拉（§7「方向」）。所以发起方与应答方
+ * 走**同一个** `materializePairedConfig`，行为对称。
+ */
+function pairedConfigOf(peer: LanPairPeer, id: string): SyncConfig {
+  return {
+    id,
+    pluginId: LAN_SYNC_PLUGIN_ID,
+    name: peer.deviceName || peer.host,
+    // peerDeviceId 记进 settings：对端身份稳定，排查「同一台设备反复被当成新设备」时要看它
+    settings: { host: peer.host, port: peer.port, peerDeviceId: peer.deviceId },
+    direction: 'bidirectional',
+    autoSync: true,
+    enabled: true,
+  }
+}
+
+/**
+ * 把「刚配对换来的对端配对码」落进一条新配置，并把配置写进 store。
+ *
+ * 顺序不能反：先 `adoptPairedCode` 再 `addConfig`。反过来的话，卡片会先出现在界面上，
+ * 用户在码落地之前点「立即同步」就会因为缺凭据失败——「配对成功却同步失败」是最容易
+ * 被理解成「配对没成」的一种状态。返回 null 表示码没落住（配对已过期/被取走）。
+ */
+async function materializePairedConfig(peer: LanPairPeer): Promise<SyncConfig | null> {
+  const bridge = getLanSyncBridge()
+  if (!bridge) return null
+  const id = generateId()
+  const adopted = await bridge.adoptPairedCode(id, peer.deviceId).catch(() => false)
+  if (!adopted) return null
+  const config = pairedConfigOf(peer, id)
+  useSyncStore.getState().addConfig(config)
+  return config
+}
+
+/**
+ * 发起一键配对：等对端用户确认 → 换到对端配对码 → 建配置 → 立刻跑一轮同步。
+ *
+ * 立刻同步一轮是刻意的：它把「配对码对不对、端口通不通」在一个用户还在看屏幕的
+ * 时刻验证掉；失败会落在卡片的状态行上，比让用户等到 5 分钟后的定时同步才发现好。
+ */
+export async function pairWithLanPeer(peer: LanPeerInfo): Promise<LanPairOutcome> {
+  const bridge = getLanSyncBridge()
+  if (!bridge) return { ok: false, reason: 'unsupported' }
+  let result
+  try {
+    result = await bridge.pairStart({
+      deviceId: peer.deviceId,
+      deviceName: peer.deviceName,
+      host: peer.host,
+      port: peer.port,
+    })
+  } catch (err) {
+    debugLog('lan pair start failed', err)
+    return { ok: false, reason: 'unreachable' }
+  }
+  if (!result.ok) return { ok: false, reason: result.reason }
+  const config = await materializePairedConfig(result.peer)
+  if (!config) return { ok: false, reason: 'auth' }
+  void syncOnce(config)
+  return { ok: true, config }
+}
+
+/** 应答对端发来的配对请求（确认框的两个按钮） */
+export async function respondLanPairRequest(pairId: string, accept: boolean): Promise<boolean> {
+  const bridge = getLanSyncBridge()
+  if (!bridge) return false
+  try {
+    const result = await bridge.pairRespond(pairId, accept)
+    return result.accepted === true
+  } catch (err) {
+    debugLog('lan pair respond failed', err)
+    return false
+  }
+}
+
+/**
+ * 配对完成（本机作为**应答方**）：建配置 + 落码 + 跑一轮。
+ *
+ * 与 `pairWithLanPeer` 共用 `materializePairedConfig`，差别只在码从哪来：
+ * 发起方的码是 `pairStart()` 换回来的，应答方的码是主进程在 reply 里解出来的。
+ */
+export async function completeLanPairing(peer: LanPairPeer): Promise<SyncConfig | null> {
+  const config = await materializePairedConfig(peer)
+  if (config) void syncOnce(config)
+  return config
 }
 
 /** 扫描附近设备（UDP 广播收集） */

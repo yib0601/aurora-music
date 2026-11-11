@@ -12,6 +12,7 @@ import { QueueView } from '@/components/player/QueueView'
 import { GlassSvgFilter } from '@/components/common/GlassSvgFilter'
 import { SearchEntry } from '@/components/common/SearchEntry'
 import { ToastHost, toast, dismissToast } from '@/components/common/Toast'
+import { LanPairDialogHost } from '@/components/plugin/LanPairDialogHost'
 import { RemoveTrackConfirmHost } from '@/components/common/TrackLibraryActions'
 import { EncryptedAudioDialog } from '@/components/EncryptedAudioDialog'
 import { describeStartupFailures, loadPluginStartupReport } from '@/components/common/pluginManage'
@@ -1381,6 +1382,10 @@ function AppLayout() {
         open={encryptedDialogOpen}
         onOpenChange={(open) => (open ? openEncryptedDialog() : closeEncryptedDialog())}
       />
+
+      {/* 一键配对的应答方确认框：挂在根部而不是同步面板里，用户在任何页面都能确认
+          （对端点「配对」时，本机用户未必正停在「设置 → 插件 → 歌单同步」） */}
+      <LanPairDialogHost />
     </div>
   )
 }

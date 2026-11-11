@@ -48,6 +48,10 @@ import {
 } from '@aurora/shared'
 import type {
   AudioFocusYieldBehavior,
+  LanPairPeer,
+  LanPairRequest,
+  LanPairRespondResult,
+  LanPairStartResult,
   LanSyncBridge,
   PluginAuthState as PluginAuthStateInfo,
   PluginCatalogEntry,
@@ -361,6 +365,20 @@ export interface PlatformExtension {
    * 而这是一条下行事件通道，只有宿主（preload）能提供。
    */
   onLanSyncInbox?: (cb: (snapshots: SyncSnapshot[]) => void) => () => void
+  /**
+   * 对端发来的配对请求（一键配对，docs/playlist-sync.md §16.6）。
+   *
+   * 与 `onLanSyncInbox` 同一类「只有宿主能提供」的下行事件：应答方要在这里弹确认框。
+   * 未定义 = 本端没有一键配对能力（老 preload / 浏览器端）。
+   */
+  onLanPairRequest?: (cb: (request: LanPairRequest) => void) => () => void
+  /**
+   * 配对完成（本机作为**应答方**时由宿主推）。
+   *
+   * 发起方不走事件：`pairStart()` 直接带着结果返回（见 shared `LanSyncBridge`）。
+   * 两边都在这里建配置，所以单向建的只能保证一轮收敛——各自建一条才真双向。
+   */
+  onLanPaired?: (cb: (peer: LanPairPeer) => void) => () => void
   /**
    * 同步插件发 HTTP 用的 fetch 出口（可选）。
    *
@@ -1008,6 +1026,17 @@ export function createDesktopPlatform(): Platform {
         else if (payload) cb([payload])
       })
     },
+    onLanPairRequest(cb: (request: LanPairRequest) => void) {
+      const lan = api?.lanSync
+      // 老 preload 没有这条通道：配对确认框不会出现，但「发起配对」仍可用
+      if (!lan || typeof lan.onPairRequest !== 'function') return () => {}
+      return lan.onPairRequest(cb)
+    },
+    onLanPaired(cb: (peer: LanPairPeer) => void) {
+      const lan = api?.lanSync
+      if (!lan || typeof lan.onPaired !== 'function') return () => {}
+      return lan.onPaired(cb)
+    },
 
     /**
      * 同步请求的 fetch 出口：桌面端由主进程代发。
@@ -1253,6 +1282,27 @@ function createLanSyncBridge(api: any): LanSyncBridge | null {
     pushPeer: (target, snapshot) => {
       if (typeof lan.push !== 'function') return Promise.reject(unsupportedLanChannel())
       return lan.push(target, snapshot)
+    },
+    // ── 一键配对（docs/playlist-sync.md §16）──
+    // 缺通道时**降级成 unsupported 而不是抛 lanDisabled**：老 preload 照样能手动填码，
+    // UI 要据此提示「改用手动填码」，不能让人以为整个局域网同步坏了。
+    pairStart: (peer): Promise<LanPairStartResult> => {
+      if (typeof lan.pairStart !== 'function') {
+        return Promise.resolve({ ok: false, reason: 'unsupported' })
+      }
+      return lan.pairStart(peer)
+    },
+    pairRespond: (pairId, accept): Promise<LanPairRespondResult> => {
+      if (typeof lan.pairRespond !== 'function') return Promise.resolve({ accepted: false })
+      return lan.pairRespond(pairId, accept)
+    },
+    pairCancel: async (pairId?: string): Promise<void> => {
+      if (typeof lan.pairCancel !== 'function') return
+      await lan.pairCancel(pairId)
+    },
+    adoptPairedCode: async (configId: string, deviceId: string): Promise<boolean> => {
+      if (typeof lan.adoptPairedCode !== 'function') return false
+      return (await lan.adoptPairedCode(configId, deviceId)) === true
     },
   }
 }
