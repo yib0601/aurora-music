@@ -880,6 +880,10 @@ export async function scanLanPeers(timeoutMs?: number): Promise<LanPeerInfo[]> {
  *    才回推一次 —— 学到的东西对方已经有了，回推没有信息量；
  * 2. 收件箱只当作「对端有变化」的信号，按 config 触发一轮同步，且同一条配置
  *    在 `INBOX_SYNC_COOLDOWN_MS` 内不重复触发（一次连推 20 份快照不该变成 20 轮同步）。
+ * 3. 合并结果**当场落盘**：歌单与收藏是两个独立 store，这里两份都要写。不能只写歌单、
+ *    指望随后那轮 `syncOnce` 补上——配置没开自动同步、是 `pushOnly`、或插件 pull 不可用时
+ *    那轮同步根本不会跑，对端推来的收藏就永远不落盘（收藏页看不到、按钮不点亮），
+ *    而下面 publish 出去的却是「含收藏」的内容：本地与刚推出去的内容不一致。
  *
  * 写入本身还有 `syncOnce` 里的 hash 门控兜底，即使这里判断失误也只多一次写。
  */
@@ -891,7 +895,13 @@ async function handleLanInbox(snapshots: SyncSnapshot[]): Promise<void> {
     if (others.length === 0) return
 
     const merged = mergeSnapshots(snapshotFromStores(device), others)
-    if (merged.changed) applySyncedPlaylists(merged.snapshot)
+    if (merged.changed) {
+      // 收藏与歌单各写各的 store（与 runSync 同一分工）。这里少写一份，下面拿来算哈希
+      // 并 publish 的合并结果就与本地状态不一致：推出去的是「含收藏」的内容，本地却没有；
+      // 而补写只发生在随后那轮 syncOnce 里，它可能根本不会跑（见函数头第 3 条）。
+      applySyncedPlaylists(merged.snapshot)
+      applySyncedLikes(merged.snapshot)
+    }
 
     const mergedHash = snapshotContentHash(merged.snapshot)
     const incomingHashes = new Set(others.map((snap) => snapshotContentHash(snap)))

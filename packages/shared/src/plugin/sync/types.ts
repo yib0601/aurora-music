@@ -140,13 +140,21 @@ export interface SyncedPlaylist {
  * 而是用户毫无预期的大面积丢数据。
  *
  * 所以收藏的冲突单元下沉到**每首歌**：`id` 相同的两条记录按时刻 LWW，
- * `id` 不同的记录互不影响（各自保留）。时序规则见 `merge.ts` 的 `mergeLikes`。
+ * `id` 不同的记录互不影响（各自保留）。裁决都在 `merge.ts` 的 `mergeSnapshots` 里：
+ * `likeMapOf` 按 `id` 选出每条记录的赢家，`compareLikeCandidates` 定全序
+ * （动作时刻 → 同一毫秒判「取消」胜 → 内容串）。没有单独的 `mergeLikes` 函数。
  *
  * ## `id` 是什么
  *
- * 跨设备的「同一首歌」身份，由 `likeKeyOf(ref)` 从元数据派生（歌名 + 歌手 + 整秒时长，
- * 与 `trackIdentity.ts` 的展示去重同一口径），**不含** trackId / 路径 / sourceId
+ * 跨设备的「同一首歌」身份，由 `likeKeyOf(ref)` 从元数据派生（归一化歌名 + 歌手 +
+ * 四舍五入到整秒的时长，三者**严格相等**），**不含** trackId / 路径 / sourceId
  * （三者都是设备相关的）。所以两台设备对同一首歌点赞/取消会用同一个 id 相遇。
+ *
+ * 它与 `trackIdentity.ts` 的**展示去重不是同一判据**：展示去重先按「歌名 + 歌手」分桶，
+ * 再与桶内代表值比时长做 ±1s **容差聚类**（`DURATION_MATCH_TOLERANCE`，容差不传递）。
+ * 两者共用同一套归一化与同样三个字段，差别只在时长判据。同一首歌的两个副本时长相差 ≤1s
+ * 但取整后落在相邻两秒时，展示去重会合成 1 行、收藏身份却是 2 条——合并键必须严格相等才
+ * 稳定、可逆，容差聚类给不出这样的键，所以两者刻意不共用时长判据。
  */
 export interface SyncedLike {
   /** 跨设备歌曲身份（`likeKeyOf` 派生），同时是合并键 */

@@ -598,7 +598,10 @@ export const useLibraryStore = create<LibraryState>()(
         set({
           tracks,
           likedTracks,
-          // 只有找得到这条曲目才有「跨设备坐标」可写（在线曲目不在曲库里 → 只本地生效）
+          // 只有找得到这条曲目才有「跨设备坐标」可写。在线曲目不在 `tracks` 里 →
+          // 整个 toggle 在值层面空转（爱心不点亮、`likedTracks` 不变、也不写 `likeRecords`；
+          // 仍会 set 一次，引用变、值不变），与「收藏页只列曲库里的歌」一致；
+          // 入口开放但不生效是现状，不是已支持。
           ...(track ? { likeRecords: recordLikeOf(track, !!track.liked, get()) } : {}),
         })
       },
@@ -912,8 +915,8 @@ export const useLibraryStore = create<LibraryState>()(
       // v13 存储插件化：曲库来源由存储插件执行，`pluginId` 取代 `kind` 成为标识；
       //     老配置的顶层扁平字段搬进 `settings`，**口令从持久化里摘出**改由主进程
       //     safeStorage 加密保存（见上方 toPersistedLibrarySource / pendingStorageSecrets）
-      // 收藏参与同步（v15 起）新增了 `likeRecords`（收藏/取消的时刻 + 跨设备引用），
-      // **但版本号刻意不跟着升**：它是纯增量字段，老数据没有它 → 走初始值 {}，
+      // 收藏参与同步新增了 `likeRecords`（收藏/取消的时刻 + 跨设备引用），
+      // **版本号仍是 14、刻意不升**：它是纯增量字段，老数据没有它 → 走初始值 {}，
       // 没有任何历史字段需要改写。而 zustand 只在「版本号变了」时才在合并后立即写回一次
       // 持久层，且那次写回发生在 `onRehydrateStorage` 之前——升版本会用一个
       // 「likedTracks 尚未复活」的空数组覆盖掉磁盘上的 `likedTrackIds`。

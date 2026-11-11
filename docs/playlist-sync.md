@@ -162,9 +162,19 @@ LWW 的代价是明确的：**两端同时改同一个歌单会丢一侧的改�
 **记录形状**（`SyncedLike`）：`{ id, likedAt, removedAt?, ref }`——与歌单记录同构
 （稳定 id + 时刻 + 墓碑 + `SyncTrackRef`），只是成员只有一个。
 
-- `id` = 跨设备歌曲身份：`likeKeyOf(ref)` = 归一化「歌名 + 歌手 + 整秒时长」。与展示去重
-  （`dedupeTracksForDisplay`）同一口径——否则会出现「收藏页只显示 1 行、同步却认为有 2 条」。
-  时长取整秒是因为本地是完整解析、远端媒体库是头部概算（§4 的同一理由）。
+- `id` = 跨设备歌曲身份：`likeKeyOf(ref)` = 归一化「歌名 + 歌手 + 四舍五入到整秒的时长」，
+  三者**严格相等**才算同一首。时长取整秒是因为本地是完整解析、远端媒体库是头部概算
+  （§4 的同一理由）。
+  它**不是**展示去重（`dedupeTracksForDisplay`）的口径：展示去重先按「歌名 + 歌手」分桶，
+  再与桶内代表值比时长做 **±1s 容差聚类**（`DURATION_MATCH_TOLERANCE`，容差不传递：
+  A≈B、B≈C 推不出 A≈C）。两者共用同一套归一化与同样三个字段，差别只在时长判据——
+  合并键必须是稳定、可逆的等价关系，容差聚类给不出这样的键。
+  已知代价：同一首歌的两个副本时长相差 ≤1s 但取整后落在相邻两秒时，展示去重会合成 1 行、
+  同步却保留 2 条记录（两条都指向这一行）。三副本以上两组甚至可能**交叉分组**（展示并
+  {100.0,100.5}、同步并 {100.5,101.4}）——判据不同，不存在「谁比谁粗」的定论。
+  这些记录若解析到同一首本机曲目而状态相左，
+  可见状态由 `applySyncedLikes` 按记录 id 顺序逐条 `setLiked` 决定（**后者覆盖前者**），
+  不保证等于用户最后一次点击——这是逐条 LWW 与展示去重判据不同带来的已知边界。
   不含 `kind` / 路径 / `sourceId` / `onlineId`：前三个设备相关，`onlineId` 只在一侧存在。
 - `likedAt` / `removedAt`：最近一次动作的真实时刻，**取大者**参与裁决（`likeActionAt`）。
 - 同一毫秒的「收藏 vs 取消」判为取消（`likeIsActive` 的并列口径，宁可少显示一首，
@@ -189,7 +199,7 @@ LWW 的代价是明确的：**两端同时改同一个歌单会丢一侧的改�
 
 **已知道的边界**：曲目被改名/重打标签后内容身份变了，会被当成另一首歌；旧身份的收藏记录
 会在本机留一条不再被采纳的记录（不影响播放与展示，也不会每轮重推）。这是「跨设备身份只能
-靠内容」的固有代价，与展示去重同源。
+靠内容」的固有代价——与展示去重同前提、但判据不同（见上）。
 
 **幂等与收敛**（`__tests__/merge.test.ts` 覆盖）：
 
@@ -620,17 +630,33 @@ lanSync: { status, setEnabled, rotateCode, discover, publish, pull, push, takeIn
 
 ```
 syncOnce(config) →
+  device = await ensureDevice()                       // 设备身份先就位：ctx 与快照都要它
   secrets = platform.sync.getCredential(config.id)
   ctx = { fetch, secrets, device, log, lan: getLanSyncBridge() ?? undefined }
-  remote = config.direction === 'pushOnly' ? [] : await plugin.pull?.(config, ctx)
+  remote = config.direction === 'pushOnly' || !plugin.pull ? [] : await plugin.pull(config, ctx)
   local  = snapshotFromStores(device)                 // 由 playlistStore + importedTracks 构造
   outcome = mergeSnapshots(local, remote.filter(r => !isSnapshotOfDevice(r, device.deviceId)))
-  if (outcome.changed) applySyncedPlaylists(outcome.snapshot)   // 写回 playlistStore
-  if (config.direction !== 'pullOnly') await plugin.push?.(config, outcome.snapshot, ctx)
-  if (lan) await lan.publish(outcome.snapshot)
+  if (outcome.changed) {                                      // 两个 store 各写各的
+    applySyncedPlaylists(outcome.snapshot)                    // → playlistStore
+    applySyncedLikes(outcome.snapshot)                        // → libraryStore.likeRecords
+  }
+  // 不动点：内容没变就不写对端，否则两台设备会以「一次 HTTP 往返」为周期无限互推
+  contentHash = snapshotContentHash(outcome.snapshot)
+  shouldWrite = outcome.changed || lastPushedHash(config.id) !== contentHash
+  wrotePeer = false
+  if (shouldWrite && config.direction !== 'pullOnly' && plugin.push) {
+    await plugin.push(config, outcome.snapshot, ctx); wrotePeer = true
+  }
+  // 服务没开时不 publish 是常态，失败吞掉，不让整轮同步因此算失败
+  if (shouldWrite && lan) { await lan.publish(outcome.snapshot).catch(() => {}); wrotePeer = true }
+  if (wrotePeer) markPushed(config.id, contentHash)
 ```
 
 - 串行锁：同一 config 同时只跑一次；不同 config 可并行但每个 `await` 点之间不交错写 store。
+- **`lan:inbox` 走同一套合并与落盘**：合并结果当场写**两个** store（歌单 + 收藏），再按内容
+  哈希决定是否回推、按冷却触发一轮同步。收藏不能留给收件箱触发的那轮 `syncOnce` 去补：
+  配置未开 `autoSync`、方向是 `pushOnly`、或插件 `pull` 不可用时那轮根本不会跑，
+  对端推来的收藏就永远不落盘，而回推出去的却是「含收藏」的内容。
 - 触发：启动后 3s、歌单 store 变更后 2s 防抖、每 5 分钟一次、局域网收件箱事件到达时。
 - 失败：`lastError = encodeErrorInfo(...)`，退避 30s→2min→10min，成功后清空。
 - `applySyncedPlaylists(snapshot)`：只增改删 playlists（按 tombstone），**不碰**

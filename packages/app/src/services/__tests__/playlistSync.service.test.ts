@@ -527,6 +527,41 @@ describe('B-1：互推环的不动点', () => {
   })
 })
 
+describe('收件箱落盘：收藏与歌单在同一轮写回', () => {
+  it('autoSync 关闭时，对端推来的收藏仍然当场落盘（不再等随后的 syncOnce 补）', async () => {
+    vi.useFakeTimers()
+    try {
+      const bridge = fakeBridge()
+      mocks.platform.lanSync = bridge
+      let deliver: (snapshots: SyncSnapshot[]) => void = () => {}
+      mocks.platform.onLanSyncInbox = ((cb: (snapshots: SyncSnapshot[]) => void) => {
+        deliver = cb
+        return () => {}
+      }) as typeof mocks.platform.onLanSyncInbox
+
+      // 把「补写」那轮同步彻底关掉：模拟 pushOnly / pull 不可用 / 用户没开自动同步。
+      // 旧实现只 applySyncedPlaylists，收藏要等收件箱触发的那轮 syncOnce 才落盘，
+      // 这个场景下那轮不会跑 → 收藏永远不生效。
+      useSyncStore.setState({ configs: [configOf({ autoSync: false })] })
+      const applyLikeRecords = vi.fn()
+      mocks.library.applyLikeRecords = applyLikeRecords
+
+      initPlaylistSync()
+      await vi.advanceTimersByTimeAsync(0)
+
+      const ref = metaRef({ title: '远端的歌', artist: '对端', duration: 201 })
+      deliver([snapshotOf([], { likes: [{ id: likeKeyOf(ref), likedAt: 500, ref }] })])
+      for (let i = 0; i < 12; i += 1) await vi.advanceTimersByTimeAsync(0)
+
+      expect(applyLikeRecords).toHaveBeenCalled()
+      const records = applyLikeRecords.mock.calls.at(-1)?.[0] as Record<string, SyncedLike>
+      expect(records[likeKeyOf(ref)]).toMatchObject({ likedAt: 500 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('S-1：内容相同但远端时间戳更新时收敛', () => {
   it('采纳时间戳但不回推，第二轮 changed=false', async () => {
     const push = vi.fn(async () => {})
