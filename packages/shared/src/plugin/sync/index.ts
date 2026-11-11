@@ -29,6 +29,7 @@ export type {
   SyncSnapshot,
   SyncTrackMeta,
   SyncTrackRef,
+  SyncedLike,
   SyncedPlaylist,
 } from './types'
 export { SYNC_LAN_PROTOCOL_VERSION, SYNC_SNAPSHOT_FORMAT, syncCapabilitiesOf, syncPluginAvailable } from './types'
@@ -50,13 +51,19 @@ export type { SyncPluginMeta } from './registry'
 // ─── 快照 ──────────────────────────────────────────────────
 export {
   SYNC_TOMBSTONE_TTL_MS,
+  isLikeTombstoneExpired,
   isSnapshotOfDevice,
   isTombstoneExpired,
+  likeActionAt,
+  likeIsActive,
   parseSnapshot,
   pruneSnapshot,
   serializeSnapshot,
   snapshotContentHash,
 } from './snapshot'
+
+// ─── 规范化（收藏身份与合并键，app 侧写本地记录时也要用同一口径） ──
+export { canonicalLike, canonicalPlaylist, canonicalTrackRef, likeKeyOf } from './canonical'
 
 // ─── 曲目引用 ──────────────────────────────────────────────
 export { buildMatchIndex, resolveSyncTrackRef, toSyncTrackRef } from './trackRef'

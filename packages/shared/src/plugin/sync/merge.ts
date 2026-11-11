@@ -37,11 +37,22 @@
  * 仅掉落过期墓碑、或学到一个本机从未有过的陈旧墓碑，都不算"变了"——它们不影响用户
  * 看到的歌单，若算作变化会让引擎白写一遍 store、抬高 `updatedAt`，进而诱发下一轮虚假变更
  * （§5「写入策略」）。
+ *
+ * ## 收藏（`snapshot.likes`）是另一套裁决单元
+ *
+ * 歌单是**一条有序记录**，整体 LWW；收藏是**集合**，每首歌一条记录、逐条 LWW。
+ * 若收藏也按整条集合 LWW，「手机上连点 20 首 + 电脑上点了 3 首」会整片吞掉一侧的收藏。
+ * 并列裁决与 `changed` 口径见 `compareLikeCandidates` / `mergeSnapshots` 内的注释。
  */
 
-import { canonicalPlaylist } from './canonical'
-import { isTombstoneExpired } from './snapshot'
-import { SYNC_SNAPSHOT_FORMAT, type SyncSnapshot, type SyncedPlaylist } from './types'
+import { canonicalLike, canonicalPlaylist } from './canonical'
+import { isLikeTombstoneExpired, isTombstoneExpired, likeActionAt, likeIsActive } from './snapshot'
+import {
+  SYNC_SNAPSHOT_FORMAT,
+  type SyncSnapshot,
+  type SyncedLike,
+  type SyncedPlaylist,
+} from './types'
 
 /**
  * 合并结果。
@@ -56,6 +67,10 @@ export interface MergeOutcome {
   added: number
   updated: number
   removed: number
+  /** 本次合并让「已收藏集合」多出来的歌数（只算用户能看见的状态变化，不算时间戳采纳） */
+  likesAdded: number
+  /** 本次合并让「已收藏集合」少掉的歌数 */
+  likesRemoved: number
 }
 
 /**
@@ -91,6 +106,45 @@ function comparePlaylistOrder(a: SyncedPlaylist, b: SyncedPlaylist): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
+/* ------------------------------------------------------------------ *
+ * 收藏：每条记录一首歌，**逐条** LWW
+ *
+ * 与歌单的「整条记录 LWW」刻意不同：歌单是一条有序记录，改一个字就该整条替换；
+ * 收藏是集合，每次点赞都是独立编辑。若也按整条集合 LWW，「手机上连点 20 首、
+ * 电脑上点了 3 首」会以较晚的那次为准，另一端的 20 首整片消失（见 `SyncedLike`）。
+ * ------------------------------------------------------------------ */
+
+/** 取消时刻（非墓碑按 0 算） */
+function removedRankOf(like: SyncedLike): number {
+  const removedAt = Number(like.removedAt)
+  return Number.isFinite(removedAt) && removedAt > 0 ? removedAt : 0
+}
+
+/** 全序：最近一次动作时刻 → 更晚的是取消 → 内容串。三级都不含设备身份（理由同歌单） */
+function compareLikeCandidates(a: SyncedLike, b: SyncedLike): number {
+  const aAt = likeActionAt(a)
+  const bAt = likeActionAt(b)
+  if (aAt !== bAt) return aAt - bAt
+  // 同一毫秒的「收藏 vs 取消」：取消胜。宁可少显示一首，也不让已取消的收藏复活
+  const aRemoved = removedRankOf(a)
+  const bRemoved = removedRankOf(b)
+  if (aRemoved !== bRemoved) return aRemoved - bRemoved
+  const aKey = canonicalLike(a)
+  const bKey = canonicalLike(b)
+  return aKey < bKey ? -1 : aKey > bKey ? 1 : 0
+}
+
+/** 按 id 收拢（同一份快照里出现重复 id 时取该快照内较新的那条） */
+function likeMapOf(likes: readonly SyncedLike[] | undefined): Map<string, SyncedLike> {
+  const map = new Map<string, SyncedLike>()
+  for (const like of likes ?? []) {
+    if (!like || typeof like.id !== 'string' || !like.id) continue
+    const current = map.get(like.id)
+    if (!current || compareLikeCandidates(like, current) > 0) map.set(like.id, like)
+  }
+  return map
+}
+
 /**
  * 合并本机快照与若干远端快照。
  *
@@ -119,6 +173,24 @@ export function mergeSnapshots(
   consider(local)
   for (const remote of remotes) consider(remote)
 
+  // ---- 收藏：每首歌独立裁决（与歌单互不影响） ----
+  const likeWinners = new Map<string, SyncedLike>()
+  const liveLikesOf = (snapshot: SyncSnapshot | null | undefined): Map<string, SyncedLike> =>
+    // 先滤掉过期墓碑**再**按 id 收拢：同一份快照里万一出现同 id 的「活跃收藏 + 过期墓碑」，
+    // 先收拢会把活跃那条挑剩或挑掉，顺序反过来才是「过期的不参与任何裁决」
+    likeMapOf((snapshot?.likes ?? []).filter((like) => !isLikeTombstoneExpired(like, now)))
+
+  const considerLikes = (snapshot: SyncSnapshot | null | undefined): void => {
+    for (const [id, like] of liveLikesOf(snapshot)) {
+      const current = likeWinners.get(id)
+      if (!current || compareLikeCandidates(like, current) > 0) likeWinners.set(id, like)
+    }
+  }
+  considerLikes(local)
+  for (const remote of remotes) considerLikes(remote)
+
+  const likes = [...likeWinners.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+
   const playlists = [...winners.values()].sort(comparePlaylistOrder)
 
   // ---- 与 local 的活跃集合比较（墓碑不参与：它不改变用户看到的歌单） ----
@@ -146,7 +218,36 @@ export function mergeSnapshots(
     if (!resultActive.has(id)) removed += 1
   }
 
-  const changed = added > 0 || updated > 0 || removed > 0
+  // ---- 收藏的变化计数：**可见状态**（收藏/未收藏）变了才算，纯时间戳采纳不算 ----
+  const localLikes = liveLikesOf(local)
+  let likesChanged = false
+  let likesAdded = 0
+  let likesRemoved = 0
+  for (const like of likes) {
+    const before = localLikes.get(like.id)
+    if (!before) {
+      // 本机没有这条记录（含「本机从未见过的墓碑」）：内容确实变了，要落盘。
+      // 与歌单不同，这里**不能**把幽灵墓碑算成"没变"：收藏的墓碑是逐首歌的，
+      // 学下来才能压住第三台设备上那份更旧的收藏；代价只是多一轮无可见变化的写盘。
+      likesChanged = true
+      if (likeIsActive(like)) likesAdded += 1
+      continue
+    }
+    if (canonicalLike(before) !== canonicalLike(like)) likesChanged = true
+    const wasActive = likeIsActive(before)
+    const active = likeIsActive(like)
+    if (wasActive !== active) {
+      if (active) likesAdded += 1
+      else likesRemoved += 1
+    }
+  }
+  for (const [id, like] of localLikes) {
+    if (likeWinners.has(id)) continue
+    likesChanged = true
+    if (likeIsActive(like)) likesRemoved += 1
+  }
+
+  const changed = added > 0 || updated > 0 || removed > 0 || likesChanged
   const localRevision = Math.max(0, Number(local?.revision) || 0)
 
   return {
@@ -159,10 +260,13 @@ export function mergeSnapshots(
       revision: changed ? localRevision + 1 : localRevision,
       updatedAt: changed ? now : Math.max(0, Number(local?.updatedAt) || 0),
       playlists,
+      likes,
     },
     changed,
     added,
     updated,
     removed,
+    likesAdded,
+    likesRemoved,
   }
 }

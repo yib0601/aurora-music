@@ -16,11 +16,12 @@
  */
 
 import { auroraError } from '../../i18n/errors'
-import { canonicalPlaylist } from './canonical'
+import { canonicalLike, canonicalPlaylist, likeKeyOf } from './canonical'
 import {
   SYNC_SNAPSHOT_FORMAT,
   type SyncSnapshot,
   type SyncTrackRef,
+  type SyncedLike,
   type SyncedPlaylist,
 } from './types'
 
@@ -97,6 +98,27 @@ function normalizeTrackRef(raw: unknown): SyncTrackRef | null {
   }
 }
 
+/**
+ * 逐条净化一条收藏记录；结构不可用返回 null（丢弃该条，不整份失败）。
+ *
+ * `id` **按引用重算**而不是照抄文件里的值：它只是「同一首歌」的内容身份，
+ * 由 `likeKeyOf` 派生才有唯一真源。照抄意味着手工改过/旧版本算法写出的 id
+ * 会变成合并键的一部分，两台设备从此各认一套 id、同一个键被当成两条记录。
+ */
+function normalizeLike(raw: unknown): SyncedLike | null {
+  if (!isRecord(raw)) return null
+  const ref = normalizeTrackRef(raw.ref)
+  if (!ref) return null
+  const likedAt = Math.max(0, numberOf(raw.likedAt))
+  const removedAt = Math.max(0, numberOf(raw.removedAt))
+  return {
+    id: likeKeyOf(ref),
+    likedAt,
+    ...(removedAt > 0 ? { removedAt } : {}),
+    ref,
+  }
+}
+
 /** 净化一份歌单；缺 id / updatedAt 视为**文件损坏**（throw，由 parseSnapshot 整份拒绝） */
 function normalizePlaylist(raw: unknown, file: string | undefined): SyncedPlaylist {
   if (!isRecord(raw)) {
@@ -167,6 +189,10 @@ export function parseSnapshot(text: string, file?: string): SyncSnapshot {
   if (!deviceId || !Array.isArray(raw.playlists)) {
     throw auroraError('sync.error.snapshotInvalid', { file: fileLabelOf(file) })
   }
+  const rawLikes: unknown = raw.likes
+  if (rawLikes !== undefined && !Array.isArray(rawLikes)) {
+    throw auroraError('sync.error.snapshotInvalid', { file: fileLabelOf(file) })
+  }
   return {
     format: SYNC_SNAPSHOT_FORMAT,
     deviceId,
@@ -174,6 +200,15 @@ export function parseSnapshot(text: string, file?: string): SyncSnapshot {
     revision: Math.max(0, numberOf(raw.revision)),
     updatedAt: Math.max(0, numberOf(raw.updatedAt)),
     playlists: raw.playlists.map((playlist) => normalizePlaylist(playlist, file)),
+    // 「缺失」与「空数组」必须区分开（见 SyncSnapshot.likes）：缺失 = 对方没有意见，
+    // 补成 [] 会让快照的字节形态随解析路径变化，内容哈希与收敛判定都不再稳定
+    ...(Array.isArray(rawLikes)
+      ? {
+          likes: rawLikes
+            .map(normalizeLike)
+            .filter((like): like is SyncedLike => like !== null),
+        }
+      : {}),
   }
 }
 
@@ -198,6 +233,40 @@ export function isTombstoneExpired(playlist: SyncedPlaylist, now: number = Date.
   const deletedAt = playlist.deletedAt
   if (typeof deletedAt !== 'number' || !Number.isFinite(deletedAt) || deletedAt <= 0) return false
   return now - deletedAt > SYNC_TOMBSTONE_TTL_MS
+}
+
+/**
+ * 收藏记录这次动作的真实时刻：`likedAt` 与 `removedAt` 取大者。
+ *
+ * 一条记录会同时带两个时刻（先收藏、后取消），裁决只看**最近一次动作**，
+ * 拿 `likedAt` 单独比较会让「取消后又重新收藏」被旧墓碑压回去。
+ */
+export function likeActionAt(like: SyncedLike): number {
+  const likedAt = Number.isFinite(Number(like.likedAt)) ? Math.max(0, Number(like.likedAt)) : 0
+  const removedAt = Number(like.removedAt)
+  const removed = Number.isFinite(removedAt) && removedAt > 0 ? removedAt : 0
+  return Math.max(likedAt, removed)
+}
+
+/**
+ * 这条收藏记录当前是否表示「已收藏」。
+ *
+ * 时刻并列（`removedAt === likedAt`）判为**未收藏**：宁可少显示一首，也不要让一条
+ * 早已不想要的收藏在两端反复复活。这个口径必须与 `merge.ts` 的并列裁决一致，
+ * 否则会出现「合并选出 A、应用后判成 B」的抖动。
+ */
+export function likeIsActive(like: SyncedLike): boolean {
+  const likedAt = Number(like.likedAt)
+  const removedAt = Number(like.removedAt)
+  const liked = Number.isFinite(likedAt) ? likedAt : 0
+  const removed = Number.isFinite(removedAt) && removedAt > 0 ? removedAt : 0
+  return !(removed > 0 && removed >= liked)
+}
+
+/** 收藏墓碑是否已过保留期（只有「当前不收藏」的记录才算墓碑，与歌单同 TTL） */
+export function isLikeTombstoneExpired(like: SyncedLike, now: number = Date.now()): boolean {
+  if (likeIsActive(like)) return false
+  return now - likeActionAt(like) > SYNC_TOMBSTONE_TTL_MS
 }
 
 /**
@@ -248,7 +317,13 @@ export function snapshotContentHash(snapshot: SyncSnapshot): string {
     .map((playlist) => ({ id: playlist.id, key: canonicalPlaylist(playlist) }))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map((entry) => entry.key)
-  return fnv1a64(JSON.stringify(playlists))
+  // 收藏是**集合**：顺序不参与（按内容串排序），但每条记录的 id/时刻/引用都参与——
+  // 点赞、取消、墓碑时间变化都会改变哈希，否则「只改了收藏」的那一轮不会被推给对端
+  const likes = (snapshot?.likes ?? [])
+    .filter((like): like is SyncedLike => Boolean(like) && typeof like.id === 'string' && Boolean(like.id))
+    .map(canonicalLike)
+    .sort()
+  return fnv1a64(JSON.stringify([playlists, likes]))
 }
 
 /**
@@ -256,9 +331,20 @@ export function snapshotContentHash(snapshot: SyncSnapshot): string {
  *
  * 不刷新 `updatedAt`：清理墓碑不是"用户改了歌单"，若借此抬高时间戳，会在下一轮合并里
  * 把这份快照变成 LWW 的赢家——凭空覆盖对端更新的内容。
+ *
+ * 收藏的过期墓碑在这里一并清掉（同一 90 天口径）：留着它们只会让快照无限增长，
+ * 而「很久以前取消过的收藏」也不该继续压制对端后来的重新收藏。
  */
 export function pruneSnapshot(snapshot: SyncSnapshot, now: number = Date.now()): SyncSnapshot {
   const playlists = snapshot.playlists.filter((playlist) => !isTombstoneExpired(playlist, now))
-  if (playlists.length === snapshot.playlists.length) return snapshot
-  return { ...snapshot, playlists }
+  const likes = (snapshot.likes ?? []).filter((like) => !isLikeTombstoneExpired(like, now))
+  if (playlists.length === snapshot.playlists.length && likes.length === (snapshot.likes ?? []).length) {
+    return snapshot
+  }
+  return {
+    ...snapshot,
+    playlists,
+    // 原本没有 likes 字段就继续保持「没有意见」，不要凭空补一个 []
+    ...(snapshot.likes ? { likes } : {}),
+  }
 }

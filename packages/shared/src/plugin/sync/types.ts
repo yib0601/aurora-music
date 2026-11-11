@@ -128,6 +128,37 @@ export interface SyncedPlaylist {
   readonly tracks: readonly SyncTrackRef[]
 }
 
+/**
+ * 快照里的**一条收藏记录**：与 `SyncedPlaylist` 同构的最小单元——
+ * 稳定 id + 变更时刻 + 墓碑 + 曲目引用，只是它只描述「一首歌被收藏/取消收藏」。
+ *
+ * ## 为什么不能把收藏做成「一条特殊歌单」
+ *
+ * 收藏集是无序集合，且**每次点赞都是独立的一次编辑**。若把它塞成一个
+ * `SyncedPlaylist`（整条按 `updatedAt` 做 LWW），那么「手机上连点 20 首 + 电脑上点了 3 首」
+ * 里较晚的那一整份集合会赢，另一端的 20 首**整体消失**——这不是「冲突时丢一侧的改动」，
+ * 而是用户毫无预期的大面积丢数据。
+ *
+ * 所以收藏的冲突单元下沉到**每首歌**：`id` 相同的两条记录按时刻 LWW，
+ * `id` 不同的记录互不影响（各自保留）。时序规则见 `merge.ts` 的 `mergeLikes`。
+ *
+ * ## `id` 是什么
+ *
+ * 跨设备的「同一首歌」身份，由 `likeKeyOf(ref)` 从元数据派生（歌名 + 歌手 + 整秒时长，
+ * 与 `trackIdentity.ts` 的展示去重同一口径），**不含** trackId / 路径 / sourceId
+ * （三者都是设备相关的）。所以两台设备对同一首歌点赞/取消会用同一个 id 相遇。
+ */
+export interface SyncedLike {
+  /** 跨设备歌曲身份（`likeKeyOf` 派生），同时是合并键 */
+  readonly id: string
+  /** 收藏时刻。与 `removedAt` 取大者才是这次动作的真实时刻（LWW 依据） */
+  readonly likedAt: number
+  /** 取消收藏时刻（墓碑）：`> likedAt` 表示当前**不**收藏；保留 90 天后清理 */
+  readonly removedAt?: number
+  /** 曲目引用（定位方式与歌单成员完全相同，见 `SyncTrackRef`） */
+  readonly ref: SyncTrackRef
+}
+
 export interface SyncSnapshot {
   readonly format: string
   /** 设备身份（不是账号）：由主进程从 `deviceId` 取值，缺失时渲染层生成并持久化 */
@@ -138,6 +169,18 @@ export interface SyncSnapshot {
   readonly revision: number
   readonly updatedAt: number
   readonly playlists: readonly SyncedPlaylist[]
+  /**
+   * 收藏记录（每条一首歌）。
+   *
+   * **可选**，且「字段缺失」与「空数组」语义不同：
+   * - 缺失 = 对方版本还不认识收藏同步，**没有意见**（不是「对方的收藏是空的」）；
+   * - `[]`   = 认识的对方、当前没有任何收藏记录。
+   *
+   * 合并对两者都按「没有条目」处理，所以升级期间新旧版本混跑不会互相删收藏；
+   * 因此格式号仍是 `aurora-playlist-sync/1`，不为这个字段做破坏性升级
+   * （升级会让对方那份旧文件整份被拒，连歌单一起停摆）。
+   */
+  readonly likes?: readonly SyncedLike[]
 }
 
 /* ------------------------------------------------------------------ *

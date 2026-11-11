@@ -14,7 +14,7 @@
  * 真正的幂等 + 交换 + 结合运算（来源信息在合并后必然丢失，用它做 tiebreak 会破坏结合律）。
  */
 
-import type { SyncTrackRef, SyncedPlaylist } from './types'
+import type { SyncTrackRef, SyncedLike, SyncedPlaylist } from './types'
 
 /**
  * 曲目引用的身份字段。
@@ -53,4 +53,41 @@ export function canonicalPlaylist(playlist: SyncedPlaylist): string {
     playlist.deletedAt ?? 0,
     playlist.tracks.map(canonicalTrackRef),
   ])
+}
+
+/**
+ * 歌名/歌手归一化：与 `trackIdentity.ts` 的私有 `normalizeText` 逐字一致
+ * （去首尾空白 + 折叠连续空白 + 小写；**不**做去括号/去标点）。
+ */
+const normalizeText = (raw: string): string => (raw || '').trim().replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * 「同一首歌」的跨设备身份（收藏记录的合并键）。
+ *
+ * 口径**刻意与展示去重（`dedupeTracksForDisplay`）对齐**：歌名 + 歌手 + 时长。
+ * 三者在用户眼里就是「是不是同一首」的全部依据，而收藏页是按这个口径去重展示的——
+ * 若收藏用另一套身份，会出现「收藏页只显示 1 行、同步却认为有 2 条」的分裂。
+ *
+ * 时长取**整秒四舍五入**而不是原始浮点：同一份文件在本地是完整解析（213.47s），
+ * 在远端媒体库是从文件头估算（213.0s），严格相等会让两台设备永远认不出同一首歌。
+ * 不同录音版本（现场/重制）时长一般差 5s 以上，取整不会把它们并成一首。
+ *
+ * 不含 `kind` / 路径 / `sourceId` / `onlineId`：前三者都是设备相关的；`onlineId` 只在
+ * 一侧存在（本机文件 vs 在线曲目），把它并进键会让同一首歌在两端得到不同的 id。
+ * 代价是「同名同歌手且时长相同」的两条不同录音会撞成一个键——这与展示去重的
+ * 已知边界完全一致，不额外引入新的失真。
+ */
+export function likeKeyOf(ref: SyncTrackRef): string {
+  const seconds = Math.max(0, Math.round(Number(ref.duration) || 0))
+  return JSON.stringify([normalizeText(ref.title), normalizeText(ref.artist), seconds])
+}
+
+/**
+ * 收藏记录的内容串（固定字段顺序；供合并的比较、并列裁决与内容哈希共用）。
+ *
+ * 含两个时刻：它们一变就说明是「另一次收藏/取消动作」，必须算内容变化——
+ * 否则两端各自记录的同一状态会因时刻不同反复被判成「没变」，时间戳永远收敛不了。
+ */
+export function canonicalLike(like: SyncedLike): string {
+  return JSON.stringify([like.id, like.likedAt, like.removedAt ?? 0, canonicalTrackRef(like.ref)])
 }
