@@ -75,4 +75,19 @@ describe('preload 暴露面', () => {
     // 上报端：主进程推的通道名必须与 preload 监听的一致
     expect(handlers).toContain("sendToRenderer('scan:encrypted'")
   })
+
+  it('一键配对的四条通道与两条事件，preload 与主进程两端名字一字不差', () => {
+    const preload = read(PRELOAD_PATH)
+    // 主进程侧：`channel()` 与 `sendToRenderer()` 都在 lanSync.ts
+    const lanSync = read(path.resolve(__dirname, '../lanSync.ts'))
+    for (const name of ['lan:pairStart', 'lan:pairRespond', 'lan:pairCancel', 'lan:adoptPaired']) {
+      expect(preload).toContain(`ipcRenderer.invoke('${name}'`)
+      expect(lanSync).toContain(`channel('${name}'`)
+    }
+    // 事件方向：主进程推 lan:pairRequest / lan:paired，preload 必须监听同名通道
+    for (const name of ['lan:pairRequest', 'lan:paired']) {
+      expect(preload).toContain(`ipcRenderer.on('${name}'`)
+      expect(lanSync).toContain(`sendToRenderer('${name}'`)
+    }
+  })
 })

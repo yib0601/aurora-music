@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  LanPairPeer,
+  LanPairRequest,
+  LanPairRespondResult,
+  LanPairStartResult,
   LanPeerInfo,
   LanSyncStatus,
   LanSyncTarget,
@@ -287,6 +291,28 @@ const electronAPI = {
     push: (target: LanSyncTarget, snapshot: SyncSnapshot): Promise<void> =>
       ipcRenderer.invoke('lan:push', target, snapshot),
     takeInbox: (): Promise<SyncSnapshot[]> => ipcRenderer.invoke('lan:takeInbox'),
+    // ─── 一键配对（docs/playlist-sync.md §16）───
+    // 密码学与网络全在主进程：这里的入参只有「对端是谁」和「点允许还是拒绝」，
+    // 换回来的对端配对码**不经过渲染层**，由 adoptPairedCode 直接落进配置的凭证槽。
+    pairStart: (peer: LanPairPeer): Promise<LanPairStartResult> =>
+      ipcRenderer.invoke('lan:pairStart', peer),
+    pairRespond: (pairId: string, accept: boolean): Promise<LanPairRespondResult> =>
+      ipcRenderer.invoke('lan:pairRespond', pairId, accept),
+    pairCancel: (pairId?: string): Promise<void> => ipcRenderer.invoke('lan:pairCancel', pairId),
+    adoptPairedCode: (configId: string, deviceId: string): Promise<boolean> =>
+      ipcRenderer.invoke('lan:adoptPaired', configId, deviceId),
+    // 事件订阅：返回退订函数（与 onInbox 同形）。
+    // onPairRequest → 弹「允许 / 拒绝」确认框；onPaired → 建配置 + adoptPairedCode。
+    onPairRequest: (callback: (request: LanPairRequest) => void): (() => void) => {
+      const handler = (_event: unknown, request: LanPairRequest) => callback(request)
+      ipcRenderer.on('lan:pairRequest', handler)
+      return () => ipcRenderer.removeListener('lan:pairRequest', handler)
+    },
+    onPaired: (callback: (peer: LanPairPeer) => void): (() => void) => {
+      const handler = (_event: unknown, peer: LanPairPeer) => callback(peer)
+      ipcRenderer.on('lan:paired', handler)
+      return () => ipcRenderer.removeListener('lan:paired', handler)
+    },
     // 事件订阅：返回退订函数（与 onTracksScanned 等一致，React effect 里直接 return）。
     // 事件只是「有新快照了」的提示，真正取走仍走 takeInbox（取走即清空）。
     onInbox: (callback: (snapshots: SyncSnapshot[]) => void): (() => void) => {

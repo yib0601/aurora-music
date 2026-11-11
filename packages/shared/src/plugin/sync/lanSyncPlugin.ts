@@ -33,6 +33,9 @@ import type {
   SyncSnapshot,
 } from './types'
 
+/** 插件 id（配置里的 `pluginId`、UI 判断「是不是局域网那条链路」都用它） */
+export const LAN_SYNC_PLUGIN_ID = 'lan-sync'
+
 /** 默认监听端口（被占用时主进程顺延；发现包里公布真实端口，这里只是首次添加时的预填值） */
 const DEFAULT_LAN_PORT = 45871
 
@@ -181,7 +184,7 @@ async function push(config: SyncConfig, snapshot: SyncSnapshot, ctx: SyncContext
 }
 
 export const lanSyncPlugin: SyncPlugin = {
-  id: 'lan-sync',
+  id: LAN_SYNC_PLUGIN_ID,
   displayNameKey: 'sync.plugin.lan.name',
   descriptionKey: 'sync.plugin.lan.description',
   version: '1.0.0',

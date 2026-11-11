@@ -7,6 +7,10 @@
  * 当前配对码派生的 HMAC 签名（见 `lanSyncAuth.ts`）。配对码只在用户屏幕上，
  * 不进广播包、不进日志。
  *
+ * 唯一的例外是一键配对的两条路由（`/v1/pair/request`、`/v1/pair/status`，见 §16.1）：
+ * 发起方还没有本机码，签不出来；它们的授权闸门是应答方的**人工确认**，
+ * 并且入参按不可信处理（回连地址只取 TCP 源地址）。`/v1/pair/reply` 仍走签名。
+ *
  * ## 状态放哪
  *
  * 三个小状态是**模块级单例**，因为 lan:status / lan:publish 等 IPC 与 HTTP 路由
@@ -36,8 +40,9 @@ import {
   isAuroraError,
   parseSnapshot,
 } from '@aurora/shared'
-import type { Logger, SyncSnapshot } from '@aurora/shared'
+import type { LanPairPeer, LanPairRequest, Logger, SyncSnapshot } from '@aurora/shared'
 import { LAN_HEADERS, deriveKey, verifyRequest } from './lanSyncAuth'
+import { handleLanPairRoute } from './lanSyncPair'
 
 /** 默认监听端口（文档 §15.3 固定值；对端「端口」字段默认也是它） */
 export const LAN_SYNC_DEFAULT_PORT = 45871
@@ -74,6 +79,10 @@ export interface LanSyncServerOptions {
   readonly isEnabled?: () => boolean
   /** 收到一份通过校验的快照后回调（lanSync.ts 在这里推 lan:inbox 事件） */
   readonly onSnapshot?: (snapshot: SyncSnapshot) => void
+  /** 收到一条新的一键配对请求（lanSync.ts 在这里推 lan:pairRequest，让渲染层弹确认框） */
+  readonly onPairRequest?: (request: LanPairRequest) => void
+  /** 本端拿到发起方的配对码（lanSync.ts 在这里推 lan:paired，渲染层建配置 + adopt） */
+  readonly onPaired?: (peer: LanPairPeer) => void
   readonly logger?: Logger
 }
 
@@ -310,15 +319,6 @@ async function handleRequest(
     const url = new URL(req.url ?? '/', 'http://lan-sync.invalid')
     const path = url.pathname
 
-    // 协议版本单独判：版本不符是 400（客户端结构没错，是版本不对），
-    // 其余验签失败才是 401。缺 proto 头也算验签失败（401 protocol），
-    // 这样「完全没签名的裸请求」得到的是 401 而不是 400。
-    const protoHeader = headerValue(req.headers, LAN_HEADERS.proto)
-    if (protoHeader !== null && protoHeader !== String(SYNC_LAN_PROTOCOL_VERSION)) {
-      sendJson(res, 400, { code: 'protocol' })
-      return
-    }
-
     let body: Buffer
     try {
       body = await readBody(req, LAN_SYNC_MAX_BODY_BYTES)
@@ -328,6 +328,44 @@ async function handleRequest(
       } else {
         sendJson(res, 400, { code: 'protocol' })
       }
+      return
+    }
+
+    // ── 一键配对（docs/playlist-sync.md §16）──────────────────────────
+    // 必须排在通用验签**之前**：发起方此刻还没有本机配对码，签不出请求来。
+    // 三条路由自己把住边界 —— request / status 免签（输入全按不可信处理），
+    // reply 用本机当前配对码派生 HMAC 校验（与 §7 其它路由同一口径）。
+    // 也排在协议版本头检查之前：配对协定的版本是 body 里的 `v`，与快照协议分开演进。
+    const pairResult = handleLanPairRoute(
+      {
+        method,
+        path,
+        searchParams: url.searchParams,
+        headers: req.headers,
+        body,
+        // 回连地址只信 TCP 源地址，body 里只有 port 可信（§16.2）
+        remoteAddress: req.socket.remoteAddress ?? null,
+      },
+      {
+        deviceId: options.deviceId,
+        deviceName: options.deviceName,
+        getCode: options.getCode,
+        getPort: () => state.port ?? 0,
+        onPairRequest: options.onPairRequest,
+        onPaired: options.onPaired,
+      },
+    )
+    if (pairResult) {
+      sendJson(res, pairResult.status, pairResult.body)
+      return
+    }
+
+    // 协议版本单独判：版本不符是 400（客户端结构没错，是版本不对），
+    // 其余验签失败才是 401。缺 proto 头也算验签失败（401 protocol），
+    // 这样「完全没签名的裸请求」得到的是 401 而不是 400。
+    const protoHeader = headerValue(req.headers, LAN_HEADERS.proto)
+    if (protoHeader !== null && protoHeader !== String(SYNC_LAN_PROTOCOL_VERSION)) {
+      sendJson(res, 400, { code: 'protocol' })
       return
     }
 

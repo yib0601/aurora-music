@@ -13,6 +13,11 @@ import { webdavSyncPlugin } from './webdavSyncPlugin'
 
 // ─── 契约类型（`types.ts` 已定稿，勿改语义） ───────────────
 export type {
+  LanPairFailureReason,
+  LanPairPeer,
+  LanPairRequest,
+  LanPairRespondResult,
+  LanPairStartResult,
   LanPeerInfo,
   LanSyncBridge,
   LanSyncStatus,
@@ -75,7 +80,7 @@ export type { MergeOutcome } from './merge'
 
 // ─── 内置插件 ──────────────────────────────────────────────
 export { webdavSyncPlugin } from './webdavSyncPlugin'
-export { lanSyncPlugin } from './lanSyncPlugin'
+export { LAN_SYNC_PLUGIN_ID, lanSyncPlugin } from './lanSyncPlugin'
 
 /**
  * 内置同步插件清单（按注册顺序，UI 列出的顺序即此顺序）。

@@ -264,6 +264,72 @@ export interface LanSyncTarget {
   readonly peerDeviceId?: string
 }
 
+/* ------------------------------------------------------------------ *
+ * 一键配对（不再手抄配对码）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 配对失败原因（机器可读）。
+ *
+ * 显示端按这个码查 i18n 键（`sync.pair.*`），**不做字符串匹配**：主进程/原生侧
+ * 只说发生了什么，翻译留给渲染期（重启后界面语言可能已经变了）。
+ */
+export type LanPairFailureReason =
+  /** 对端用户点了「拒绝」 */
+  | 'denied'
+  /** 等了 `LAN_PAIR_TTL_MS` 仍没有答复 */
+  | 'timeout'
+  /** 连不上对端（服务未开、防火墙、不在同一网段） */
+  | 'unreachable'
+  /** 对端版本太老：没有配对路由（404/405） */
+  | 'unsupported'
+  /** 对端拒绝接收配对凭据 / 解不开（AEAD 失败） */
+  | 'auth'
+  /** 对端就是本机（同一 deviceId） */
+  | 'self'
+  /** 对端已有未完成的配对请求 */
+  | 'busy'
+  /** 对端返回的数据结构不认识 */
+  | 'invalid'
+  /**
+   * 本机用户自己取消了等待（关掉等待框）。
+   *
+   * 必须与 `denied` 分开：一个是「对端拒绝」，一个是「我不等了」，同一句提示会把
+   * 责任指错人。两端宿主遇到取消都回这一个码。
+   */
+  | 'cancelled'
+
+/** 一台可配对的设备：发现结果（`LanPeerInfo`）去掉时间戳后的形状 */
+export interface LanPairPeer {
+  readonly deviceId: string
+  readonly deviceName: string
+  readonly host: string
+  readonly port: number
+}
+
+/**
+ * 对端发来的配对请求（应答方渲染层据此弹确认框）。
+ *
+ * 只有**应答方**会收到它：发起方调用 `pairStart()` 后一直挂着等结果，
+ * 不需要事件（详见 `docs/playlist-sync.md` §16）。
+ */
+export interface LanPairRequest extends LanPairPeer {
+  /** 本次配对的随机 id（128 bit hex）：既是幂等键，也是 AEAD 的附加数据 */
+  readonly pairId: string
+  /** 过期时刻（毫秒时间戳）；到期后对端不再受理，UI 据此自动收掉弹窗 */
+  readonly expiresAt: number
+}
+
+/** 发起配对的结果：成功时带回对端，渲染层据此建一条双向同步目标 */
+export type LanPairStartResult =
+  | { readonly ok: true; readonly peer: LanPairPeer }
+  | { readonly ok: false; readonly reason: LanPairFailureReason }
+
+/** 应答配对的结果：`accepted:false` 只表示「按了拒绝」，不代表出错 */
+export interface LanPairRespondResult {
+  readonly accepted: boolean
+}
+
 /**
  * 局域网同步的主进程桥。
  *
@@ -294,6 +360,28 @@ export interface LanSyncBridge {
   pullPeer(target: LanSyncTarget): Promise<SyncSnapshot[]>
   /** 推本机快照到对端（签名 PUT） */
   pushPeer(target: LanSyncTarget, snapshot: SyncSnapshot): Promise<void>
+
+  // ── 一键配对（docs/playlist-sync.md §16）────────────────────────
+  /**
+   * 发起配对：向对端请求 → 等对端用户点「允许」→ 协商出共享密钥 → 换回对端配对码。
+   *
+   * 一直挂到出结果（成功 / 拒绝 / 超时 / 连不上），长轮询在桥内部完成，
+   * 渲染层不需要自己轮询。成功后对端配对码**留在宿主**，用
+   * `adoptPairedCode()` 落到配置名下（配对码不进渲染层，见 §10）。
+   */
+  pairStart(peer: LanPairPeer): Promise<LanPairStartResult>
+  /** 应答对端发来的配对请求（弹框的「允许 / 拒绝」两个按钮） */
+  pairRespond(pairId: string, accept: boolean): Promise<LanPairRespondResult>
+  /** 撤销未完成的配对（发起方关弹窗时调用；幂等，没有匹配项时什么都不做） */
+  pairCancel(pairId?: string): Promise<void>
+  /**
+   * 把刚配对换来的对端配对码写进**这条配置**的凭证槽。
+   *
+   * 单独一步而不是让 `pairStart` 直接写：配对完成时渲染层才生成 `configId`
+   * （配置归 store 管），而配对码从一开始就只该待在宿主里。
+   * 返回 false 表示没有可落的码（配对过期/已被取走），调用方提示「请重新配对」。
+   */
+  adoptPairedCode(configId: string, deviceId: string): Promise<boolean>
 }
 
 /* ------------------------------------------------------------------ *

@@ -5,9 +5,10 @@
  *
  * - `lanSyncAuth.ts`   密码学原语（配对码归一化 / key 派生 / 签名 / 验签）
  * - `lanSyncServer.ts` 本机 HTTP 服务（监听、路由、收件箱）
+ * - `lanSyncPair.ts`   一键配对的密码学、应答方状态机与发起方长轮询（§16）
  * - `lanSyncDiscovery.ts` UDP 广播发现
- * - 本文件             把三者接到 IPC 上：状态、开关、轮换、发现、发布、拉、推、取收件箱，
- *                      以及设备身份与配对码的落盘。
+ * - 本文件             把三者接到 IPC 上：状态、开关、轮换、发现、发布、拉、推、取收件箱、
+ *                      一键配对，以及设备身份与配对码的落盘。
  *
  * ## 两个持久化
  *
@@ -40,6 +41,9 @@ import { randomUUID } from 'node:crypto'
 import { auroraError, createLogger, isAuroraError } from '@aurora/shared'
 import { SYNC_LAN_PROTOCOL_VERSION } from '@aurora/shared'
 import type {
+  LanPairPeer,
+  LanPairRespondResult,
+  LanPairStartResult,
   LanPeerInfo,
   LanSyncStatus,
   LanSyncTarget,
@@ -68,6 +72,14 @@ import {
   startLanSyncDiscovery,
   stopLanSyncDiscovery,
 } from './lanSyncDiscovery'
+import {
+  cancelLanPair,
+  consumePairedCode,
+  peekPairedCode,
+  resetLanPairState,
+  respondToLanPairRequest,
+  startLanPair,
+} from './lanSyncPair'
 import {
   clearSyncCredential,
   readSyncCredential,
@@ -280,6 +292,9 @@ async function setEnabled(enabled: boolean): Promise<LanSyncStatus> {
       await stopLanSyncDiscovery()
       await stopLanSyncServer()
       running = false
+      // 待确认的配对与刚换回来的对端码都属于凭据材料：服务关掉就一并丢掉，
+      // 免得「关掉同步后仍有一个确认框能弹出、仍有一把码躺在内存里」
+      resetLanPairState()
       log.info('service disabled')
       return currentStatus()
     }
@@ -296,6 +311,9 @@ async function setEnabled(enabled: boolean): Promise<LanSyncStatus> {
           // 推一份拷贝；清空由渲染层 lan:takeInbox 负责（事件丢了还能取）
           sendToRenderer('lan:inbox', getLanSyncInbox())
         },
+        // 一键配对（§16.6）：对端请求 → 渲染层弹确认框；本端拿到对端码 → 渲染层建配置
+        onPairRequest: (request) => sendToRenderer('lan:pairRequest', request),
+        onPaired: (peer) => sendToRenderer('lan:paired', peer),
       })
       await startLanSyncDiscovery({
         deviceId: device.deviceId,
@@ -544,6 +562,91 @@ async function discover(timeoutMs?: number): Promise<LanPeerInfo[]> {
   )
   log.info('discover done', { peers: peers.length })
   return peers
+}
+
+/* ------------------------------------------------------------------ *
+ * 一键配对（docs/playlist-sync.md §16）
+ *
+ * 密码学、状态机与 HTTP 都在 `lanSyncPair.ts`；这里只做三件事：把本机身份/端口/码
+ * 递进去、把结果与事件接到 IPC、把换来的码落进配置的凭证槽。
+ * 渲染层从头到尾看不到任何密钥材料（§10 的凭证纪律）。
+ * ------------------------------------------------------------------ */
+
+/**
+ * `lan:pairStart`：向对端发起一键配对。
+ *
+ * 本机服务必须开着：请求体里的 `port` 是应答方回连用的（§16.2），服务没开时这个
+ * 字段没有意义 —— 而且发现（UDP 广播）本来也只在服务开启时跑，正常流程里不会走到。
+ */
+async function pairStart(peer: unknown): Promise<LanPairStartResult> {
+  const device = ensureIdentity()
+  const port = running ? getLanSyncServerPort() : null
+  if (!port) {
+    log.warn('pair start while service disabled')
+    return { ok: false, reason: 'unreachable' }
+  }
+
+  const result = await startLanPair(peer, {
+    local: {
+      deviceId: device.deviceId,
+      deviceName: device.deviceName,
+      port,
+      // 本机码只在这一刻读一次，交给 lanSyncPair 封进 sealed（不进渲染层、不进日志）
+      code: currentPairCode(),
+    },
+  })
+  log.info('pair start result', {
+    ok: result.ok,
+    reason: result.ok ? 'ok' : result.reason,
+  })
+  return result
+}
+
+/** `lan:pairRespond`：用户在确认框上点「允许 / 拒绝」（pairId 来自 lan:pairRequest） */
+function pairRespond(pairId: unknown, accept: unknown): LanPairRespondResult {
+  const result = respondToLanPairRequest({ getCode: currentPairCode }, pairId, accept === true)
+  log.info('pair respond', { accepted: result.accepted })
+  return result
+}
+
+/** `lan:pairCancel`：撤销未完成的配对（幂等；没有 pairId 就取消本进程所有进行中的） */
+function pairCancel(pairId?: unknown): void {
+  cancelLanPair(typeof pairId === 'string' && pairId ? pairId : undefined)
+}
+
+/**
+ * `lan:adoptPaired`：把刚换来的对端码写进**这条配置**的凭证槽。
+ *
+ * 配对完成时渲染层才生成 `configId`（配置归 store 管），所以落地是单独一步；
+ * 码本身一直只在主进程，这里经 `syncCredentials` 走 safeStorage 落盘。
+ * 返回 false 的三种情形：没有暂存的码（过期/已取走）、configId 非法、本机无法安全保存。
+ * 加密不可用时**不消费**暂存：等 keyring 恢复后同一个码还能再 adopt 一次。
+ */
+function adoptPairedCode(configId: unknown, deviceId: unknown): boolean {
+  const id = typeof configId === 'string' ? configId : ''
+  const peer = typeof deviceId === 'string' ? deviceId : ''
+  const code = peekPairedCode(peer)
+  if (!code) {
+    log.warn('adopt skipped: no staged pair code', { device: devicePrefix(peer) })
+    return false
+  }
+
+  let saved = false
+  try {
+    saved = saveSyncCredential(id, { code }).saved
+  } catch (err) {
+    // configId 非法是渲染层的 bug：契约返回 boolean，不把异常抛回 UI
+    log.warn('adopt failed', { device: devicePrefix(peer), error: errorName(err) })
+    return false
+  }
+  if (!saved) {
+    log.warn('adopt refused: encryption unavailable', { device: devicePrefix(peer) })
+    return false
+  }
+
+  consumePairedCode(peer)
+  log.info('paired code adopted', { device: devicePrefix(peer), config: id })
+  return true
 }
 
 /* ------------------------------------------------------------------ *
@@ -910,6 +1013,14 @@ export function registerLanSyncIpc(send?: LanSendToRenderer): void {
   )
   channel('lan:takeInbox', () => takeLanSyncInbox())
 
+  // ── 一键配对（§16.6；事件 lan:pairRequest / lan:paired 由服务回调推）──
+  channel('lan:pairStart', (peer) => pairStart(peer))
+  channel('lan:pairRespond', (pairId, accept) => pairRespond(pairId, accept))
+  channel('lan:pairCancel', (pairId) => {
+    pairCancel(pairId)
+  })
+  channel('lan:adoptPaired', (configId, deviceId) => adoptPairedCode(configId, deviceId))
+
   // ── 主进程代发 HTTP（WebDAV 绕开 file:// 的 CORS 预检）────────────
   channel('sync:fetch', (request) => runSyncFetch(request))
 }
@@ -923,6 +1034,8 @@ export function registerLanSyncIpc(send?: LanSendToRenderer): void {
  */
 export function shutdownLanSync(): void {
   running = false
+  // 配对状态（私钥、暂存的对端码）是纯内存的凭据材料，退出前明确丢掉
+  resetLanPairState()
   void (async () => {
     try {
       await stopLanSyncDiscovery()
