@@ -128,7 +128,9 @@ export function RecentPage() {
                         className="row-hover cursor-pointer border-b border-white/[0.05] last:border-0"
                         onClick={() => handlePlay(track, idx)}
                       >
-                        <td className="py-3.5 px-1.5 md:py-3.5 md:px-3 max-w-xs">
+                        {/* 标题列不声明宽度：表格是 table-layout: fixed（见 globals.css），
+                            它吃掉剩余宽度，truncate 才有效；用 max-w-xs 反而会把表格撑宽 */}
+                        <td className="py-3.5 px-1.5 md:py-3.5 md:px-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <button
                               onClick={(e) => {

@@ -1531,6 +1531,33 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
   container-type: inline-size;
 }
 
+/* ===== 表格列表（收藏页 / 最近播放页）的列宽：固定布局 =====
+ *
+ * 病灶（实拍 + CDP 实测）：标题单元格此前靠 `max-w-xs`(320px) 当上限，但 auto 表
+ * 布局的列宽是**内容驱动**的——标题是 nowrap + truncate（min-content 等于整串），
+ * 320 只是把它从「整串宽」压到 320，压不到容器宽度。于是
+ *   表格宽 = 320(标题) + 40(收藏) + 48(时长) + 内边距 ⇒ 实测 389px，
+ * 手机竖屏容器只有约 329px（CSS 视口 361 − 页面 px-4）。溢出的 60px 被容器的
+ * padding-box 右缘裁掉（`overflow-y-auto` 让另一轴计算成 auto，该轴就是个裁剪盒），
+ * 表现为**收藏爱心被切掉一半、时长整列彻底看不见**。
+ *
+ * 修法：`table-layout: fixed` —— 列宽只认列上声明的 width，与内容无关。标题列不声明
+ * 宽度（吃掉剩余空间），truncate 这才有确定宽度可用、真的出省略号。其余列沿用原
+ * 桌面的 max-w-40 / 48 数值（10rem / 12rem），宽窗下观感与改造前一致；窄容器档位由
+ * 下面的 @container 规则继续接管（与 .track-row-grid 同源）。
+ * ⚠️ 固定布局下「列宽之和 > 表宽」时表格会**被撑宽**，所以新增列必须给得出宽度，
+ * 别在这一档里加没宽度的列。
+ */
+.track-row-table {
+  table-layout: fixed;
+}
+.track-row-table .track-col-artist {
+  width: 10rem;
+}
+.track-row-table .track-col-album {
+  width: 12rem;
+}
+
 /* 默认档（宽窗）：标题 1fr / 艺术家 10rem / 专辑 12rem / 收藏 2.5rem / 时长 4rem / 更多 2.5rem */
 .track-row-grid {
   --track-cols: minmax(0, 1fr) 10rem 12rem 2.5rem 4rem 2.5rem;
@@ -1546,6 +1573,13 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
 @container (max-width: 999px) {
   .track-row-grid {
     --track-cols: minmax(0, 1fr) 9rem 10rem 2.5rem 4rem 2.5rem;
+  }
+  /* 表格列表同档收窄（理由见 .track-row-table 顶部注释） */
+  .track-row-table .track-col-artist {
+    width: 9rem;
+  }
+  .track-row-table .track-col-album {
+    width: 10rem;
   }
 }
 
@@ -1569,6 +1603,10 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
   }
   .track-row-table .track-artist-inline {
     display: block;
+  }
+  /* 专辑列同档收窄到 7rem（与网格的 --track-cols 对齐，理由见上） */
+  .track-row-table .track-col-album {
+    width: 7rem;
   }
   .track-row-grid > .track-col-artist {
     visibility: hidden;

@@ -111,7 +111,10 @@ export function LikedPage() {
                       className="row-hover cursor-pointer group border-b border-white/[0.05] last:border-0"
                       onClick={() => handlePlay(track, idx)}
                     >
-                      <td className="py-3.5 px-1.5 md:py-3.5 md:px-3 max-w-xs">
+                      {/* 标题列不声明宽度：表格是 table-layout: fixed（见 globals.css），
+                          它吃掉剩余宽度，truncate 才有效。此处原先是 max-w-xs —— 那是
+                          auto 布局下「想给上限」的写法，实际把表格撑得比容器还宽 */}
+                      <td className="py-3.5 px-1.5 md:py-3.5 md:px-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <button
                             onClick={(e) => {

@@ -302,7 +302,10 @@ export function PlaylistPage() {
                   <span className="font-text text-caption text-white/50 tabular-nums w-12 text-right">
                     {formatTime(track.duration)}
                   </span>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-apple w-16 justify-end">
+                  {/* 移动端无 hover：行尾动作（收藏 / 更多）必须常显，否则触屏上两个按钮
+                      永远 opacity:0 ——「爱心显示不出来」的另一种形态。桌面端仍是 hover 才出，
+                      与曲库行（VirtualTrackTable）的收藏按钮同一套写法。 */}
+                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-200 ease-apple w-16 justify-end">
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
