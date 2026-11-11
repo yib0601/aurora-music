@@ -354,18 +354,21 @@ UI 列成「可添加的设备」，点一下就把 `host/port` 预填进配置�
 
 ---
 
-## 8. 为什么只做桌面端
+## 8. 哪些端支持
 
-| 需要的能力 | 桌面 | 移动 | Web |
+| 需要的能力 | 桌面 | Android | Web |
 |---|---|---|---|
-| 监听局域网端口 + UDP 广播 | ✅ | ❌ 后台接听不可靠、Doze 会掐 | ❌ |
-| safeStorage 存口令/配对码 | ✅ | ⚠️ 有 Keystore 但无 safeStorage 封装 | ❌ |
-| 长驻调度（5 分钟定时） | ✅ | ⚠️ 受限 | ❌ |
+| 监听局域网端口 + UDP 广播 | ✅ 主进程 `node:http`/`node:dgram` | ✅ 原生 `ServerSocket`/`DatagramSocket` + `dataSync` 前台服务 | ❌ |
+| 存口令/配对码 | ✅ `safeStorage` | ✅ Keystore（`SecureStorage` + 原生凭证文件） | ❌ |
+| WebDAV 代发 HTTP（绕 CORS） | ✅ 主进程 `sync:fetch` | ✅ `NativeHttp`（OkHttp，支持 PROPFIND） | ❌ |
+| 长驻调度（5 分钟定时 + 变更防抖） | ✅ | ✅（进程存活期间；由前台服务延长） | ❌ |
 
-WebDAV 链路本身在移动端是可行的（`CapacitorHttp` + Basic 认证），但它需要同样的
-safeStorage 与调度支撑才能安全落地；移动端当前连「选本地文件」都没有，歌单数据面也不完整。
-**所以 v1 的入口判定统一用 `platform.supportsPlaylistSync === true`（仅桌面端），
-不按插件 `available()` 分散判断**——一处判定，两端一致，避免出现「插件显示可用但点了没反应」。
+入口判定仍只有一条：`platform.supportsPlaylistSync === true`（桌面端与 Android 为 true，
+Web 与未知环境为 false），**不按插件 `available()` 分散判断**——一处判定，避免出现
+「插件显示可用但点了没反应」。Android 的实现与可靠性说明见 §17。
+
+移动端两条链路（WebDAV / 局域网）都可用：WebDAV 不需要监听端口，局域网需要前台服务兜住监听
+（Doze 与厂商省电策略仍可能掐掉，见 §17 的遗留风险）。
 
 ---
 
@@ -428,6 +431,8 @@ packages/shared/src/plugin/sync/
 | `webdavSyncPlugin.test.ts` | 列举→合并、404 视为空、401 映射、PUT 失败映射（用 stub fetch） |
 | desktop `lanAuth.test.ts` | 签名正确/篡改/过期/重放、密钥派生对称性、发现包解析 |
 | app `playlistSync.service.test.ts` | 引擎应用快照：本地匹配、占位登记、删除、`changed=false` 不写 store |
+| desktop `lanPair.test.ts` | 配对金标（ECDH/GCM/AAD 可复现）、端到端 A↔B（允许/拒绝/取消/self/busy）、`adoptPairedCode` 落到 configId 后能被凭证读回 |
+| app `playlistSync.pair.test.ts` | 配对后的编排：先落码再入 store、两端对称建配置、失败原因透传、码没落住不留无凭据配置 |
 
 门禁：
 
@@ -458,7 +463,8 @@ pnpm verify:i18n
 ## 14. 未做（明确的下一步）
 
 - 播放统计 / 最近播放的同步（数据模型不同，需要单独定冲突语义；收藏已按「每条一首歌」落地，见 §5.1）
-- 移动端（需要 safeStorage 封装与后台调度，先做 WebDAV 单向拉取更现实）
+- 移动端的真机回归（协议已用金标与桌面端逐字节对齐，UDP 广播 / `MulticastLock` /
+  Keystore 落盘 / 前台服务生命周期仍需真机 A↔B 验证）
 - A 档声明式同步插件（JSON 描述「GET/PUT 一个端点」的极简场景，如自建 HTTP 服务）
 - 实时推送（SSE / WebSocket）：当前靠定时 + 变更防抖，延迟上限 5 分钟
 - 歌单封面同步（当前歌单没有封面字段）
@@ -590,14 +596,26 @@ export function mergeSnapshots(local: SyncSnapshot, remotes: readonly SyncSnapsh
 | `lan:push` | `LanSyncTarget, snapshot` | `void` |
 | `lan:takeInbox` | — | `SyncSnapshot[]`（取走即清空） |
 | `lan:inbox`（下行事件） | — | `SyncSnapshot[]` |
+| `lan:pairStart` | `LanPairPeer` | `LanPairStartResult`（长轮询，最长 `LAN_PAIR_TTL_MS`） |
+| `lan:pairRespond` | `pairId, accept: boolean` | `{ accepted: boolean }` |
+| `lan:pairCancel` | `pairId?: string` | `void` |
+| `lan:adoptPaired` | `configId, deviceId` | `boolean`（码是否落到该配置名下） |
+| `lan:pairRequest`（下行事件） | — | `LanPairRequest` |
+| `lan:paired`（下行事件） | — | `LanPairPeer` |
 | `sync:fetch` | `{ url, method?, headers?, body?, timeoutMs? }` | `{ status, statusText, headers, bodyText }` |
 
 preload 暴露为两个**顶层**对象（`preloadApi.test.ts` 只认两空格缩进的顶层键）：
 
 ```ts
 sync:    { device, saveCredential, credentialState, clearCredential, getCredential, fetch }
-lanSync: { status, setEnabled, rotateCode, discover, publish, pull, push, takeInbox, onInbox }
+lanSync: {
+  status, setEnabled, rotateCode, discover, publish, pull, push, takeInbox,
+  pairStart, pairRespond, pairCancel, adoptPairedCode,
+  onInbox, onPairRequest, onPaired,
+}
 ```
+
+全部事件订阅都返回退订函数（与既有事件同形）。配对相关的通道语义见 §16.6。
 
 `onInbox(cb)` 返回退订函数（与既有事件订阅同形）。
 
@@ -665,3 +683,119 @@ syncOnce(config) →
 - `applySyncedLikes(snapshot)`：只改收藏（与上一条互不牵连，见 §5.1）。记录整体采用合并结果，
   已解析出本机曲目的按 `likeIsActive` 调 `setLiked`，解析不出的只留记录不造占位曲目。
 
+
+## 16. 一键配对（协议 `pair/v1`，免手抄配对码）
+
+发现到设备后点「配对」，对端弹一次确认框点「允许」，两端各自建一条**双向**同步目标。
+配对码全程不进用户手也**不进明文网络**：双方用临时 ECDH 交换出共享密钥，把各自的码
+AES-GCM 封好再互相递过去。
+
+### 16.1 信任边界
+
+- **接收方的用户确认是唯一的授权闸门**：没有确认，任何设备都拿不到本机配对码；
+  确认弹窗里显示的是发起方自报的设备名（与广播包同一字段，可伪造，但不构成授权）。
+- 未认证路由只有两条：`POST /v1/pair/request` 与 `GET /v1/pair/status`；其余
+  （含 `/v1/pair/reply`、`/v1/hello`、`/v1/snapshot`）一律走 §7 的 HMAC 签名。
+- 同网段的**旁听者**拿不到任何一把码（AEAD 封的是密文）。主动 MITM 不在威胁模型内，
+  与 §7 一致：局域网快照本身是明文，配对只解决「谁有权写歌单」，不宣称建立加密信道。
+- 配对码、共享密钥、私钥**绝不进日志**：日志只出现 deviceId 前 8 位与 pairId 前 8 位。
+
+### 16.2 端点
+
+| 方法 | 路径 | 认证 | 请求体 | 响应 |
+|---|---|---|---|---|
+| POST | `/v1/pair/request` | 无 | `{v:1, pairId, deviceId, deviceName, port, pub}` | 202 `{state:'pending'}` / 409 `{code:'busy'}` / 403 `{code:'disabled'}` / 400 `{code:'invalid'\|'self'}` |
+| GET | `/v1/pair/status?pairId=<32hex>` | 无 | — | 200 `{state:'pending'}`、`{state:'accepted', deviceId, deviceName, port, pub, sealed}`、`{state:'denied'}` / 404 `{code:'unknown'}` |
+| POST | `/v1/pair/reply?pairId=<32hex>` | **HMAC**（密钥 = 对端这次给出的配对码） | `{v:1, pairId, sealed}` | 200 `{state:'done'}` / 401 `{code:'auth'}` / 404 `{code:'unknown'}` / 409 `{code:'state'}` |
+
+状态码的补充说明（都比「500」更能说清发生了什么，客户端据此归类失败原因）：
+- `request` 的 400：body/公钥/端口不合法 → `invalid`；`deviceId` 等于本机 → `self`；
+- `reply` 的 409 `state`：签名对，但这条配对还没被用户确认（`pending`）或已被拒绝 ——
+  没有用户点过「允许」就递回执，不该被当成「认证通过」；
+- 已 `done` 的 pairId：`status` 仍回 `accepted` 那份（只有发起方私钥解得开），`reply` 回 200，
+  两者都幂等（发起方在回执丢了之后会重试）；
+- 服务关闭时三条配对路由都回 403 `disabled`（与 §7 的其它路由同一道闸）。
+
+`pub` = 非压缩 P-256 点（65 字节）base64；`sealed` 见 16.3。`port` 是发起方本机 HTTP 服务端口
+（应答方据此回连；地址一律取 TCP 源地址，不信 body 里自报的 host）。
+`pairId` = 16 字节随机 hex（32 字符），既是幂等键也是 AEAD 的 AAD。
+
+### 16.3 密码学
+
+```
+shared = ECDH(P-256, privLocal, pubPeer)          // 32 字节 X 坐标
+K      = HMAC-SHA256(key = shared, data = "aurora-lan-sync/pair/v1")
+sealed = base64(nonce(12) || AES-256-GCM(K, iv = nonce, aad = pairId, plaintext = <配对码>))
+```
+
+- 明文就是 §7 那个 10 位 Crockford base32 码本身，不做二次编码。
+- `K` 只用于这一次配对；两边各自封自己那把码（`sealed` 分别来自 A 与 B，互不通用）。
+- 实现必须逐字节一致，否则两端互相解不开：Node 用 `crypto.createECDH('prime256v1')` +
+  `createCipheriv('aes-256-gcm')`；Android 用 `KeyPairGenerator("EC")` + `KeyAgreement("ECDH")` +
+  `Cipher("AES/GCM/NoPadding")`。
+
+### 16.4 时序
+
+```
+A（发起方）                                        B（应答方）
+用户点「配对」
+ ① 生成 pairId / ECDH 密钥对
+ ② POST /v1/pair/request ───────────────────────▶ 存 pending（TTL 120s）
+                                                  推渲染层事件 ──▶ 弹「允许/拒绝」
+   每 1s GET /v1/pair/status?pairId=… ──────────▶
+ ⑤ 拿到 {accepted, pub, sealed}
+   解出 B 的配对码（留在主进程）
+ ⑥ 带 B 的码签名 POST /v1/pair/reply ───────────▶ 解密得到 A 的配对码
+                                                   建配置 + adoptPairedCode()
+                                                  推「已配对」事件 ──▶ 建配置 + adopt
+ ⑦ 200 {done} → 建配置 + adoptPairedCode()
+```
+
+- 渲染层只做三件事：`pairStart(peer)`、`pairRespond(pairId, accept)`、
+  在「已配对」后建一条 `direction: 'bidirectional'` 的配置并调 `adoptPairedCode(configId, deviceId)`。
+  码永远不经过渲染层（与 §10 的凭证纪律一致）。
+- 两端都建配置：单向建一份只能保证一轮双向收敛，对端自己的改动仍推不回来（§7「方向」）。
+- 幂等：A 在 ⑥ 失败后会重试同一个 `pairId`；B 对已 `done` 的 pairId 直接回 200。
+
+### 16.5 状态与限制
+
+- `LAN_PAIR_TTL_MS = 120_000`；发起方轮询间隔 `1_000`，到 TTL 判 `timeout` 并清状态。
+- 待处理上限 `LAN_PAIR_MAX_PENDING = 8`；同一 deviceId 只保留一个（新的顶掉旧的）；
+  同一 `pairId` 重复 request 视为重试，返回 200/202 而不是报错。
+- 拒绝 → 清状态、A 收到 `denied`；`/v1/pair/reply` 用 `pairId` 取状态，取不到回 404。
+- **取消**（`pairCancel` / 发起方关掉等待框）→ `pairStart` 立刻 resolve `{ok:false, reason:'cancelled'}`，
+  与「对端拒绝」（`denied`）分开：两者文案不同，一个是「我不等了」、一个是「对方不同意」。
+  TTL 到点仍是 `timeout`。取消时对端那条 pending 不会被撤销（跨进程没有撤销通道），
+  由它自己的 TTL 收尾。
+- 手机端（§17）与桌面端同一套；对端不支持配对时 ① 得到 404/405 → `unsupported`，
+  UI 提示改用「手动填码」（字段仍在，见 16.6）。
+
+### 16.6 通道与降级
+
+| 层 | 名字 |
+|---|---|
+| 主进程 IPC | `lan:pairStart` / `lan:pairRespond` / `lan:pairCancel` / `lan:adoptPaired` |
+| 主进程 → 渲染层 | `lan:pairRequest` / `lan:paired` |
+| Capacitor 插件 | `LanSync.pairStart` / `pairRespond` / `pairCancel` / `adoptPairedCode`，事件 `pairRequest` / `paired` |
+| shared 桥 | `LanSyncBridge.pairStart` / `pairRespond` / `pairCancel` / `adoptPairedCode` |
+
+手动填码保留：老版本对端、发现被防火墙挡掉、或配对反复失败时的唯一退路。
+配对成功 → 自动建配置后不再需要用户碰 `code` 字段。
+
+## 17. 移动端（Android）
+
+桌面端与手机端用**同一份** `lan-sync` 协议、同一套快照合并与同步引擎；差别只在实现的宿主：
+
+| 能力 | 桌面 | Android |
+|---|---|---|
+| HTTP 服务（`node:http` / `ServerSocket`） | 主进程 | 原生插件 + 前台服务（`dataSync`） |
+| UDP 发现（`node:dgram` / `DatagramSocket`） | 主进程 | 原生插件（`MulticastLock` + 广播地址按网卡算） |
+| 配对码/凭证（`safeStorage`） | 主进程 | `SecureStorage` 插件（Android Keystore） |
+| 调度（5 分钟 + 变更防抖） | 渲染层定时器 | 同左（进程存活期间） |
+
+- 端口、路径、头字段、签名公式、配对封装**全部与桌面一致**，两端必须能互换角色。
+- 手机端起服务时申请前台服务（`FOREGROUND_SERVICE_DATA_SYNC` + 常驻通知），
+  否则 Doze 会掐掉监听；用户关掉开关即停服务与广播。
+- 移动端 `platform.supportsPlaylistSync = true`；`lanSync` 桥由 Capacitor 插件提供，
+  `sync` 凭证网关走 `SecureStorage`，`syncFetch` 走 `NativeHttp`（WebDAV 因此同样可用）。
+- Web 端仍为 `false`（浏览器没有监听端口与凭证存储的能力）。

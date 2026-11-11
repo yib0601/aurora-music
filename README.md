@@ -1,10 +1,10 @@
 # Aurora Music
 
-<p align="center"><img src="./packages/desktop/resources/icon.svg" alt="Aurora Music 图标" width="128"></p>
+<p align="center"><img src="./packages/desktop/resources/icon.svg" alt="Aurora Music 图标" width="120"></p>
 
 <p align="center">
-  <strong>Aurora Music</strong> — 跨平台音乐播放器，覆盖 <strong>桌面（Linux / Windows / macOS）与 Android</strong>。<br/>
-  桌面端 Electron + React + Vite；移动端由 Capacitor 打包、原生播放引擎接管播放，一套 UI 多端一致。<br/>
+  <strong>Aurora Music</strong> — 跨平台音乐播放器，桌面（Linux / Windows / macOS）与 Android 同一套界面。<br/>
+  桌面端 Electron + React，移动端 Capacitor 打包、原生播放引擎接管播放。<br/>
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue" alt="PolyForm Noncommercial License 1.0.0">
   &nbsp;·&nbsp; <a href="./README.en.md">English</a>
 </p>
@@ -13,8 +13,6 @@
 
 ## 截图
 
-**桌面端** — 音乐库 / 播放详情 / 设置（插件）
-
 <p align="center"><img src="./screenshots/hall.jpg" width="760" alt="音乐库"></p>
 
 <table align="center"><tr>
@@ -22,43 +20,20 @@
   <td><img src="./screenshots/settings.jpg" width="520" alt="设置"></td>
 </tr></table>
 
-**Android** — 原生播放引擎，锁屏与通知栏媒体控制
-
 <p align="center"><img src="./screenshots/android-playing.jpg" width="280" alt="Android 播放界面"></p>
 
 ---
 
-## 特性
+## 简介
 
-| 能力 | 桌面（Linux / Windows / macOS） | Android |
-|---|---|---|
-| 本地播放 | 扫描文件夹、渐进式入库，支持 WebDAV 远端媒体库 | 系统文件夹导入、存储权限引导 |
-| 后台播放 | 关闭窗口最小化到托盘继续播放 | MediaSession 前台服务，锁屏与深度灭屏下稳定续播 |
-| 在线搜索 | 搜索 / 试听 / 下载 / 缓存（容量可调、一键清空） | 与桌面端同一份配额口径；下载目录可配置，原生后台线程下载 |
-| 应用内更新 | 按平台推荐安装包（EXE / RPM / DEB / AppImage / DMG），一键安装 | 调起系统安装器 |
+一个自带曲库管理、在线搜索与多端同步的播放器：本地文件夹和 WebDAV 都能入库，
+在线听歌靠你配置的音源，歌单与收藏可以在多台设备间同步。
 
-首屏**音乐库**的推荐歌单与排行榜由你配置的音源服务实时提供，点开即试听、不入库；**我的音乐**是你自己扫描入库的本地 / WebDAV 资产，长期有效、离线可播。未配音源时音乐库展示引导空态，本地曲库不受影响。
-
-- **歌词** — LRC 同步歌词（含逐字时间戳）；来源可为音源派生、**独立配置的歌词源**或内置 LRCLIB 兜底（后者是一条可停用的内置插件）
-- **播放控制** — 队列、循环 / 随机、变速（0.75×–2×）与睡眠定时器；到点暂停而非退出，队列原样保留
-- **音频焦点（桌面端 / Android）** — 设置里二选一：其他应用出声时本应用「暂停播放」还是「继续播放」。暂停=参与互斥（本应用播放时暂停其他播放器，被打断时让位、对方安静后自动续播）；继续=不干预，两边各播各的
-- **歌单** — 新建 / 改名 / 加移曲 / 排序，M3U 导入导出；导入支持分享链接（经插件解析）或纯文本（本地处理、零网络请求），自动匹配本地曲库
-- **曲库管理** — 从曲库移除单曲（只删记录，不动磁盘文件）、在文件夹中显示（桌面端）
-- **外观** — Liquid Glass 毛玻璃美学、动态封面柔光背景、深色 / 浅色 / 跟随系统主题
-- **多语言** — 简体中文 / English，默认跟随系统、可在设置中固定；界面、Android 通知与锁屏控件、桌面 .desktop 与 deb 元数据一并本地化
-- **更新多源兜底** — 检查更新与安装包下载按「GitHub 官方 → 公共加速前缀」降级：检查更新并发竞速，下载跟随系统代理并在源明显过慢时自动换源
-
----
-
-## 音源
-
-应用不内置任何音源：在线搜索、歌词匹配与歌单解析都依赖你自行配置的 HTTP 接口，或按洛雪格式自备的音源脚本（设置 → 在线源）。**一条音源同时提供这三种能力**。
-
-端点与响应字段、洛雪脚本的平台定位字段、WebDAV 媒体库用法见 [docs/music-sources.md](./docs/music-sources.md)。
-
-除内置音源外，还可以在**设置 → 在线源 → 插件**里安装第三方插件：填一个清单地址、或选一个本地
-JSON 文件即可。插件是**声明式**的（描述端点与字段映射），安装与运行都不会执行任何代码，
-只允许访问它自己声明的域名。分层与安装细节见 [docs/plugin-system.md](./docs/plugin-system.md)。
+- **曲库** — 扫描本地文件夹或 WebDAV 媒体库入库，渐进式扫描、离线可播
+- **在线** — 搜索 / 试听 / 下载 / 缓存；音源自配，支持协议源与洛雪脚本，只配脚本也能搜（内置「聚合搜索」兜底）
+- **歌单与收藏** — 歌单管理、M3U 导入导出；通过 WebDAV 或局域网直连在多设备间同步，局域网支持一键配对
+- **播放** — LRC 歌词、队列与循环 / 随机、变速、睡眠定时器；桌面与 Android 都可选择音频焦点行为
+- **多端一致** — 桌面托盘播放、Android 前台服务续播；简体中文 / English
 
 ---
 
@@ -72,9 +47,9 @@ pnpm dev              # 桌面端（Electron + Vite 热重载）
 pnpm dev:app          # 仅 Web UI
 ```
 
-pnpm monorepo：`packages/{app, desktop, mobile, shared}`；需 Node.js ≥ 20、pnpm ≥ 9.15，Android 构建另需 JDK 17+ 与 Android SDK。
+需 Node.js ≥ 20、pnpm ≥ 9.15；Android 构建另需 JDK 17+ 与 Android SDK。
 
-测试、Android 构建、平台注意事项与打包发布见 [docs/development.md](./docs/development.md)。
+音源协议、歌单同步、插件体系、开发与打包细节见 [docs/](./docs/)。
 
 ---
 

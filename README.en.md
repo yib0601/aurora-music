@@ -1,10 +1,10 @@
 # Aurora Music
 
-<p align="center"><img src="./packages/desktop/resources/icon.svg" alt="Aurora Music icon" width="128"></p>
+<p align="center"><img src="./packages/desktop/resources/icon.svg" alt="Aurora Music icon" width="120"></p>
 
 <p align="center">
-  <strong>Aurora Music</strong> — a cross-platform music player for <strong>desktop (Linux / Windows / macOS) and Android</strong>.<br/>
-  The desktop app is Electron + React + Vite; the mobile app is packaged with Capacitor and hands playback to a native engine, so one UI codebase stays consistent across platforms.<br/>
+  <strong>Aurora Music</strong> — a cross-platform music player for desktop (Linux / Windows / macOS) and Android, with one shared UI.<br/>
+  The desktop app is Electron + React; the mobile app is packaged with Capacitor and hands playback to a native engine.<br/>
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue" alt="PolyForm Noncommercial License 1.0.0">
   &nbsp;·&nbsp; <a href="./README.md">中文说明</a>
 </p>
@@ -13,48 +13,26 @@
 
 ## Screenshots
 
-**Desktop** — online library / now playing / settings (plugins)
-
-<p align="center"><img src="./screenshots/hall.jpg" width="760" alt="Online library"></p>
+<p align="center"><img src="./screenshots/hall.jpg" width="760" alt="Discover"></p>
 
 <table align="center"><tr>
   <td><img src="./screenshots/detail.jpg" width="520" alt="Now playing"></td>
   <td><img src="./screenshots/settings.jpg" width="520" alt="Settings"></td>
 </tr></table>
 
-**Android** — native playback engine with lock-screen and notification controls
-
 <p align="center"><img src="./screenshots/android-playing.jpg" width="280" alt="Android playback screen"></p>
 
 ---
 
-## Features
+## Overview
 
-| Capability | Desktop (Linux / Windows / macOS) | Android |
-|---|---|---|
-| Local playback | Folder scanning with progressive indexing, plus WebDAV media libraries | System folder import with storage permission flow |
-| Background playback | Keeps playing in the tray after the window is closed | MediaSession foreground service; stable on the lock screen and after deep screen-off |
-| Online search | Search / preview / download / cache (adjustable quota, one-click clear) | Same quota model; configurable download folder, native background download |
-| In-app updates | Per-platform package recommendation (EXE / RPM / DEB / AppImage / DMG), one-click install | Hands off to the system installer |
+A player that brings its own library management, online search and multi-device sync: local folders and WebDAV both go into your collection, online playback uses the music source you configure, and playlists and favorites sync across devices.
 
-The first screen is the **online library**: recommended playlists and charts served live by the music source you configure, played straight from the list without being added to your collection. **My Music** is your own scanned local / WebDAV collection — long-lived and playable offline. With no source configured, the online library shows a guided empty state while the local collection keeps working.
-
-- **Lyrics** — LRC synchronized lyrics (including word-level timestamps), provided by your music source; no separate lyrics source needed
-- **Audio focus (desktop / Android)** — choose what happens when another app starts playing: “Pause playback” takes part in mutual exclusion (pauses other players while Aurora Music plays, and yields — resuming once the other app goes quiet); “Keep playing” does not interfere, and both play side by side
-- **Playlist import** — share links (resolved through your source) or plain text (handled locally, zero network requests), matched against your local library
-- **Appearance** — Liquid Glass aesthetics, dynamic cover glow background, dark / light / follow-system themes
-- **Languages** — Simplified Chinese and English, following the system by default and pin-able in Settings; the UI, Android notification controls, the desktop `.desktop` entry and deb metadata are all localized
-- **Resilient update delivery** — update checks and installer downloads fall back from GitHub official to public mirrors: checks race the candidates concurrently, downloads follow the system proxy and switch source when one is clearly slower
-
-> The interface ships in Simplified Chinese and English. It follows the system language by default and can be pinned to either one in Settings; the Android notification controls and permission prompts are localized along with it.
-
----
-
-## Music sources
-
-The app bundles **no** music sources: online search, lyric matching and playlist resolution all use HTTP endpoints you configure, or LX Music–style user source scripts (Settings → Online sources). **One source provides all three capabilities.**
-
-Endpoint and response details, LX script platform fields, and the WebDAV library are documented in [docs/music-sources.md](./docs/music-sources.md) (Chinese).
+- **Library** — scan local folders or WebDAV media libraries, indexed progressively and playable offline
+- **Online** — search / preview / download / cache; bring your own source, either the HTTP protocol or an LX Music script, and a script-only setup can still search (built-in aggregate-search fallback)
+- **Playlists & favorites** — manage playlists, import and export M3U; sync across devices over WebDAV or direct LAN with one-tap pairing
+- **Playback** — LRC lyrics, queue with repeat / shuffle, speed control, sleep timer; configurable audio-focus behavior on both desktop and Android
+- **Consistent everywhere** — tray playback on desktop, foreground-service playback on Android; Simplified Chinese and English
 
 ---
 
@@ -68,9 +46,9 @@ pnpm dev              # desktop app (Electron + Vite HMR)
 pnpm dev:app          # web UI only
 ```
 
-The repository is a pnpm monorepo: `packages/{app, desktop, mobile, shared}`. Requirements: Node.js ≥ 20, pnpm ≥ 9.15; Android builds additionally need JDK 17+ and the Android SDK.
+Requirements: Node.js ≥ 20, pnpm ≥ 9.15; Android builds additionally need JDK 17+ and the Android SDK.
 
-Tests, the Android build, platform notes and packaging are documented in [docs/development.md](./docs/development.md) (Chinese).
+The music-source protocol, playlist sync, plugin system, development and packaging are documented in [docs/](./docs/) (Chinese).
 
 ---
 
