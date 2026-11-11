@@ -18,6 +18,17 @@
     <!-- 系统 DownloadManager 下载更新包（后台进行，App 被杀也不中断） -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 
+    <!-- 局域网同步（LanSyncService，docs/playlist-sync.md §7/§17）：
+         - DATA_SYNC：服务类型是「数据同步」，不是媒体播放；Android 14+ 必须与
+           foregroundServiceType="dataSync" 成对声明，否则 startForeground 抛 SecurityException
+         - ACCESS_WIFI_STATE + CHANGE_WIFI_MULTICAST_STATE：UDP 广播发现需要
+           WifiManager.MulticastLock 关掉 Wi-Fi 驱动的广播过滤（见 LanSyncDiscovery 注释）
+         - ACCESS_NETWORK_STATE：广播地址按网卡枚举时读网络状态，避免在无网时反复重试 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -52,6 +63,15 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </service>
+
+        <!-- 局域网同步的前台服务：保持 HTTP 监听与 UDP 广播在息屏/切后台时仍可达。
+             不导出：只有本应用能启停它（对端是走 TCP 进来的，不需要导出服务）。
+             类型是 dataSync，不是 mediaPlayback（理由见 LanSyncService 类注释）。 -->
+        <service
+            android:name=".LanSyncService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

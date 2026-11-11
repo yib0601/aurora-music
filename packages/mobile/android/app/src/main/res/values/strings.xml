@@ -18,4 +18,12 @@
     <string name="aurora_notification_action_play">Play</string>
     <string name="aurora_notification_action_pause">Pause</string>
     <string name="aurora_notification_action_next">Next</string>
+
+    <!-- 局域网同步前台服务（LanSyncService）：通知渠道与常驻通知文案。
+         「Listening on port %1$d」里的占位符是端口号，由服务在真实端口确定后填入。 -->
+    <string name="aurora_lan_sync_channel_name">LAN sync</string>
+    <string name="aurora_lan_sync_channel_description">Keeps the phone reachable to paired devices on the same network</string>
+    <string name="aurora_lan_sync_notification_title">LAN sync</string>
+    <string name="aurora_lan_sync_notification_text">Listening on port %1$d</string>
+    <string name="aurora_lan_sync_notification_text_starting">Starting…</string>
 </resources>

@@ -11,4 +11,11 @@
     <string name="aurora_notification_action_play">播放</string>
     <string name="aurora_notification_action_pause">暂停</string>
     <string name="aurora_notification_action_next">下一首</string>
+
+    <!-- 局域网同步前台服务（LanSyncService）：通知渠道与常驻通知文案 -->
+    <string name="aurora_lan_sync_channel_name">局域网同步</string>
+    <string name="aurora_lan_sync_channel_description">保持本机可被同网段的已配对设备访问</string>
+    <string name="aurora_lan_sync_notification_title">局域网同步</string>
+    <string name="aurora_lan_sync_notification_text">正在监听端口 %1$d</string>
+    <string name="aurora_lan_sync_notification_text_starting">正在启动…</string>
 </resources>

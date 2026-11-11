@@ -23,6 +23,9 @@ public class MainActivity extends BridgeActivity {
         // SecureStorage：Android Keystore 的 AES-GCM 加解密。网络存储口令用它加密后再落盘
         // （没有 keyring 等价物时，这是唯一不引第三方库的加密手段）。
         registerPlugin(SecureStoragePlugin.class);
+        // LanSync：局域网同步服务端（HTTP 监听 + UDP 广播 + 一键配对）。
+        // socket/UDP 的生命周期挂在 LanSyncService 前台服务上，WebView 被挂起时仍能接请求。
+        registerPlugin(LanSyncPlugin.class);
         super.onCreate(savedInstanceState);
     }
 
