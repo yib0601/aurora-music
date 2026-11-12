@@ -735,7 +735,14 @@ export function SettingsPage() {
             <SettingsSection id="general" title={t('settings.nav.general')}>
               <div className="px-3 pt-1">
                 <p className="font-text text-caption text-white/50 mb-2">{t('settings.general.theme.label')}</p>
-                <div className="flex gap-2">
+                {/* 选项排必须允许换行。320 逻辑像素（小屏安卓 / iPhone SE）实测：
+                    卡片内可用宽 246，而「跟随系统+深色+浅色」= 108+84+84+两个 gap = 292、
+                    「跟随系统+简体中文+English」= 266、「无损 FLAC+高品质 320k+标准 128k」= 307
+                    —— 三排都会顶出去。溢出的那 20~60px 会把外层 `overflow-y-auto` 的横向
+                    计算值补成 auto，整页变成可以左右拖动、右侧选项被切（与插件设置弹窗
+                    那次手机端问题是同一条成因）。四个 pill 排一律 flex-wrap：宽屏一行不变，
+                    窄屏自动折成两行。 */}
+                <div className="flex flex-wrap gap-2">
                   {THEME_OPTION_ORDER.map((value) => {
                     const { labelKey, icon: Icon } = themeOptionMeta[value]
                     return (
@@ -769,7 +776,7 @@ export function SettingsPage() {
                 <p className="font-text text-caption text-white/50 mb-2">
                   {t('settings.general.language.label')}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {LANGUAGE_PREFERENCES.map((value) => (
                     <button
                       key={value}
@@ -853,7 +860,7 @@ export function SettingsPage() {
                         : 'settings.general.audioFocus.behavior.hint'
                     )}
                   </p>
-                  <div className="flex gap-2 mt-2">
+                  <div className="flex flex-wrap gap-2 mt-2">
                     {AUDIO_FOCUS_YIELD_OPTION_ORDER.map((value) => (
                       <button
                         key={value}
@@ -918,7 +925,7 @@ export function SettingsPage() {
                 <p className="font-text text-caption text-white/50 mb-2">
                   {t('settings.storage.downloadQuality.label')}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {DOWNLOAD_QUALITY_OPTION_ORDER.map((value) => (
                     <button
                       key={value}

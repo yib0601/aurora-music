@@ -113,7 +113,12 @@ export function LxScriptProbe({
             // 链接一改，上次的探测结果立即失效（否则会张冠李戴）
             onProbeChange({ loading: false })
           }}
-          className={`inset-field flex-1 px-2.5 py-1.5 font-text text-caption text-white/70 ${invalid ? 'is-invalid' : ''}`}
+          /* min-w-0 不能省：<input> 作为 flex 子项时自动最小尺寸取固有宽度
+             （约 20 字符 ≈ 190px），而右侧「测试」按钮是 flex-shrink-0（≈68px），
+             这一行的下限 ≈266px。洛雪源卡片在 320 逻辑像素的弹窗里只剩约 244px，
+             缺 min-w-0 就会把卡片撑破，进而把外层的 overflow-y-auto 撑成横向可拖
+             （与 pluginConfigCards 卡片改名输入框同一条修法）。 */
+          className={`inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/70 ${invalid ? 'is-invalid' : ''}`}
         />
         <Button
           variant="secondary"

@@ -42,7 +42,20 @@ const DialogContent = React.forwardRef<
            都会把列顶宽，进而把整块内容连同底部按钮推出弹窗外（fixed 元素
            width 仍是 max-w-*，只是内容越界）。显式 1fr 并带 0 下限后，
            子元素按 min-w-0 收缩，truncate 才真正生效。 */
-        'fixed left-[50%] top-[50%] z-50 grid grid-cols-[minmax(0,1fr)] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 glass-liquid border border-white/[0.08] rounded-ds-panel p-6 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+        /* 行高同理必须给上限：弹窗自己只管定位（top-50% + translate-y-[-50%]），
+           内容高于视口时是**上下对称切掉**，而 body 是 overflow:hidden、弹层是
+           fixed —— 用户没有任何办法滚到被切掉的标题或底部按钮。
+           手机横屏（740×360）实测：插件的新增音源 / 新增存储 / 新增同步目标三个
+           DialogContent 没写 max-h，内容 420–520px，上下各切 30–80px，标题与
+           右上关闭 X 在视口外、底部「添加」也在视口外，整块不可操作。
+           这里给基线兜底（保留 1rem 呼吸位），调用点自己写的 max-h-* 仍然优先
+           （cn 是 twMerge，同名工具类后写覆盖先写）。
+           用 vh 不用 dvh：车机老 WebView（Chrome 84–87）不认 dvh，整条声明会被丢弃，
+           见 scripts/verify-webview-compat.mjs。
+           overflow-y-auto 会把横向的计算值补成 auto（globals.css 有记录），
+           所以必须同时锁 overflow-x-hidden，否则横向溢出会变成「可以左右拖动」的
+           滚区（插件设置弹窗那次手机端问题的成因）。 */
+        'fixed left-[50%] top-[50%] z-50 grid grid-cols-[minmax(0,1fr)] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 max-h-[calc(100vh-1rem)] overflow-y-auto overflow-x-hidden glass-liquid border border-white/[0.08] rounded-ds-panel p-6 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className
       )}
       {...props}

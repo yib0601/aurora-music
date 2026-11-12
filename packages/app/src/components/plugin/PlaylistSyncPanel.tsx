@@ -383,7 +383,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white text-tagline">{t('sync.pair.title')}</DialogTitle>
-            <DialogDescription className="font-text text-caption text-white/60">
+            <DialogDescription className="font-text text-caption text-white/60 break-words">
               {t('sync.pair.waiting', { name: pairingPeer?.deviceName ?? '' })}
             </DialogDescription>
           </DialogHeader>
@@ -447,7 +447,7 @@ function AddPeerDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">{t('sync.discover.add')}</DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60">
+          <DialogDescription className="font-text text-caption text-white/60 break-words">
             {peer ? `${peer.deviceName} · ${peer.host}:${peer.port}` : ''}
           </DialogDescription>
         </DialogHeader>
@@ -511,7 +511,7 @@ function DeleteConfigDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">{t('sync.config.deleteTitle')}</DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60">
+          <DialogDescription className="font-text text-caption text-white/60 break-words">
             {config ? `${config.name} · ${t('sync.config.deleteDesc')}` : ''}
           </DialogDescription>
         </DialogHeader>

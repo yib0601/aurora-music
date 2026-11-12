@@ -90,7 +90,7 @@ export function LanPairDialogHost() {
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">{t('sync.pair.title')}</DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60">
+          <DialogDescription className="font-text text-caption text-white/60 break-words">
             {t('sync.pair.requestDesc', { name: request?.deviceName ?? '' })}
           </DialogDescription>
         </DialogHeader>

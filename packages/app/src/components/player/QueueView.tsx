@@ -49,7 +49,11 @@ export function QueueView() {
   }
 
   return (
-    <div ref={panelRef} className="absolute right-0 bottom-full mb-3 w-80 max-h-[55vh] glass-liquid rounded-[16px] overflow-hidden z-50 flex flex-col">
+    // 宽度上限随视口走：面板固定在 320（w-80），而它挂在播放条容器里、右缘与该容器
+    // 对齐（容器左右各留 16）。320 逻辑像素的小屏实测：右缘 304 - 320 = -16，
+    // 面板左端连同封面一起被裁掉 16px。`max-w-[calc(100vw-2rem)]` 让 320 屏收到 288、
+    // 左右各留 16 对称；≥360 宽时仍是 320，与桌面播放条的宽度约定一致。
+    <div ref={panelRef} className="absolute right-0 bottom-full mb-3 w-80 max-w-[calc(100vw-2rem)] max-h-[55vh] glass-liquid rounded-[16px] overflow-hidden z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 h-12 border-b border-white/[0.06]">
         <span className="font-display text-[15px] font-semibold tracking-[-0.224px] text-foreground">
           {t('player.queue.title')}
