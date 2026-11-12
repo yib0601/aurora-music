@@ -297,6 +297,15 @@ export function SourceConfigCard({
 
   return (
     <div className={`inset-row px-3.5 py-3 ${enabled ? '' : 'opacity-55'}`}>
+      {/* 头行：名称 + 开关 + 编辑/移除。
+          窄屏实测（360 逻辑像素）这三个控件会把卡片撑破：`<input>` 作为 flex 子项时
+          自动最小尺寸取的是它的**固有宽度**（默认约 20 字符 ≈ 275px），flex-1 只分
+          「剩余」空间、管不到这条下限；再加上开关 36px 与按钮 28px，整行最小宽约 343px，
+          而卡片可用宽只有 280px。溢出的行会把外层滚动区（`overflow-y-auto` 的横向
+          计算值补成 auto）撑出横向滚动 —— 用户看到的就是「弹窗内容可以左右滑，右侧
+          开关和按钮被切掉」。
+          修法必须成对：名称输入框 `min-w-0`（允许缩），右侧按钮 `shrink-0`（不许缩），
+          只改一边的话，缩下去的就是图标按钮。 */}
       <div className={`flex items-center gap-2 ${editing ? 'mb-2' : ''}`}>
         {editing ? (
           <input
@@ -304,7 +313,7 @@ export function SourceConfigCard({
             value={nameDraft}
             placeholder={t('sources.form.nameDraftPlaceholder')}
             onChange={(e) => setNameDraft(e.target.value)}
-            className="flex-1 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-white/[0.24] transition-colors duration-200 py-1"
+            className="flex-1 min-w-0 bg-transparent font-text text-caption-strong text-white/90 outline-none border-b border-transparent focus:border-white/[0.24] transition-colors duration-200 py-1"
           />
         ) : (
           <>
@@ -371,7 +380,7 @@ export function SourceConfigCard({
             variant="ghost"
             size="icon"
             title={t('common.action.edit')}
-            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
+            className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
             <Pencil className="h-4 w-4" strokeWidth={1.6} />
@@ -381,7 +390,7 @@ export function SourceConfigCard({
           variant="ghost"
           size="icon"
           title={t('common.action.remove')}
-          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
+          className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -490,7 +499,9 @@ export function SourceConfigCard({
                     {probe.loading ? t('sources.probe.testing') : t('sources.probe.testConnection')}
                   </Button>
                   {probe.message && (
-                    <p className={`font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}>
+                    /* min-w-0：与左侧 flex-shrink-0 的测试按钮并排，缺了它 truncate 不生效
+                       —— flex 子项的自动最小尺寸就是整句文本的宽度，窄屏会被它顶出卡片 */
+                    <p className={`min-w-0 font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}>
                       {renderError(probe.message, t)}
                     </p>
                   )}
@@ -1091,7 +1102,7 @@ export function StorageConfigCard({
             variant="ghost"
             size="icon"
             title={t('common.action.edit')}
-            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
+            className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
             <Pencil className="h-4 w-4" strokeWidth={1.6} />
@@ -1101,7 +1112,7 @@ export function StorageConfigCard({
           variant="ghost"
           size="icon"
           title={t('sources.webdav.removeTitle', { library: t(NAV_LABEL_KEYS.library) })}
-          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
+          className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />

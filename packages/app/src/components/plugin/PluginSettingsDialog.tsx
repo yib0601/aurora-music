@@ -222,7 +222,11 @@ export function PluginSettingsDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-white text-tagline">{t('sources.config.title', { name: displayName })}</DialogTitle>
+            {/* break-words：插件名是**用户可装**的第三方清单字面量，可能出现超长无空格串；
+                不折行时它会从标题里横穿出去（窄屏实测整块弹窗被撑出横向溢出） */}
+            <DialogTitle className="min-w-0 break-words text-white text-tagline">
+              {t('sources.config.title', { name: displayName })}
+            </DialogTitle>
           </DialogHeader>
           <p className="font-text text-caption text-white/50">{t('sources.config.noConfig')}</p>
           <DialogFooter>
@@ -252,13 +256,20 @@ export function PluginSettingsDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white text-tagline">
               <Settings2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.7} />
-              {t('sources.config.title', { name: displayName })}
+              {/* 标题文字包一层并允许断词：插件名可能是第三方清单里的超长串，
+                  匿名 flex 子项的最小宽度取整串宽度，会把弹窗顶出屏幕 */}
+              <span className="min-w-0 break-words">{t('sources.config.title', { name: displayName })}</span>
             </DialogTitle>
             <p className="font-text text-caption text-white/50">{t('sources.config.desc')}</p>
           </DialogHeader>
 
-          {/* 弹窗内部自己滚动：装了很多条配置的插件不该把弹窗顶出屏幕 */}
-          <div className="max-h-[60vh] overflow-y-auto scrollbar-thin -mr-2 pr-2 space-y-5">
+          {/* 弹窗内部自己滚动：装了很多条配置的插件不该把弹窗顶出屏幕。
+              上限取 `min(60vh, 100vh - 15rem)`：60vh 是常态下的舒适高度，后面的减法
+              只在**矮视口**（手机横屏 360 高、小窗口）才生效 —— 此时标题+页脚+内衬
+              加起来约 200px，60vh 会让整块弹窗上下各被切掉十几像素，关闭按钮都点不到。
+              系数刻意用 vh 而不是 dvh：dvh 在老车机 WebView（Chrome 84–87）解析不出，
+              整条声明会被丢弃、弹窗高度失守，与仓库的车机兼容约束冲突。 */}
+          <div className="max-h-[min(60vh,calc(100vh-15rem))] overflow-y-auto scrollbar-thin -mr-2 pr-2 space-y-5">
             {/* ─── 音源 ─── */}
             {surfaces.includes('sources') && (
               <section className="space-y-2">
