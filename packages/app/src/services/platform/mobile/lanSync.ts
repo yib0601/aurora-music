@@ -80,10 +80,23 @@ interface LanSyncNativePlugin {
   /** 未保存时原生侧 resolve 空 → JS 收到 undefined（≠ null，但同为 falsy） */
   getCredential(options: { configId: string }): Promise<SyncSecrets | null | undefined>
   clearCredential(options: { configId: string }): Promise<CredentialState & { ok?: boolean }>
+  /**
+   * 订阅原生事件。
+   *
+   * **返回形状取决于插件走哪条通道**（见 `subscribeNative` 的注释）：
+   *   - 有 JS 包的插件（`@capacitor/core` 的 `registerPlugin` 代理）→ Promise<handle>；
+   *   - 纯原生插件（本插件就是这么暴露的，Capacitor 在页面里注入的 shim）→ handle 本身。
+   * 所以这里必须是联合类型，调用方两种都得接。
+   */
   addListener(
     eventName: string,
     callback: (data: unknown) => void,
-  ): Promise<{ remove: () => Promise<void> }>
+  ): NativeListenerHandle | Promise<NativeListenerHandle>
+}
+
+/** Capacitor 的事件订阅句柄 */
+interface NativeListenerHandle {
+  remove: () => Promise<void>
 }
 
 /** 取原生插件；不存在（Web / 单测 / 老包）返回 null */
@@ -146,26 +159,51 @@ export function createMobileLanSyncBridge(): LanSyncBridge | null {
 /**
  * 订阅一个原生事件，返回退订函数（与桌面端 `onLanSyncInbox` 同形状）。
  *
- * Capacitor 的 `addListener` 是 Promise，但 React effect 必须**同步**拿到退订函数，
- * 所以这里先返回一个「等 Promise 落地再 remove」的闭包：订阅还没建好就被退订时，
- * 落地后会立刻摘掉，不会泄漏监听器。
+ * ## `addListener` 的返回值不是「一定是 Promise」
+ *
+ * Capacitor 有两条完全不同的通道，同一句 `plugin.addListener(...)` 结果形状不同：
+ *
+ * 1. 带 JS 包的插件（`@capacitor/core` 的 `registerPlugin` 代理，如 `@capacitor/app`）：
+ *    返回 Promise（Capacitor 4+ 起 `addListener` 异步化）。
+ * 2. **纯原生插件**（本项目这些 `LanSync` / `NativeHttp` / `MediaSession` 都没 JS 包）：
+ *    Capacitor 在页面加载时注入的 shim 是 `t.addListener = (name, cb) => w.Capacitor.addListener(...)`
+ *    （见 `@capacitor/android` 的 `JSExport.getPluginJS`），而 `Capacitor.addListener`
+ *    在 `native-bridge.js` 里**同步**返回 `{ remove }`。
+ *
+ * v0.8.11 把第 2 条当成第 1 条写（无脑 `.then()`），真机上每个订阅都抛
+ * `TypeError: addListener(...).then is not a function`。订阅发生在 App 挂载的 effect 里，
+ * 异常一路冒到 React → 整棵树卸载 → **启动即黑屏**（单测里 mock 成了 Promise，所以没拦住）。
+ *
+ * 因此这里两种形状都接，且同步抛出的异常也吞掉：订阅失败最多让局域网同步不好使，
+ * 绝不能把整个界面带走。React effect 必须**同步**拿到退订函数，所以订阅还在落地
+ * 途中就被退订时，落地后立刻摘掉，不泄漏监听器。
  */
 function subscribeNative(name: string, cb: (data: unknown) => void): () => void {
   const plugin = lanSyncNativePlugin()
   if (!plugin) return () => {}
   let disposed = false
-  let handle: { remove: () => Promise<void> } | null = null
-  void plugin
-    .addListener(name, (data) => {
+  let handle: NativeListenerHandle | null = null
+  const adopt = (created: NativeListenerHandle | null | undefined): void => {
+    if (!created || typeof created.remove !== 'function') return
+    if (disposed) void created.remove()
+    else handle = created
+  }
+  try {
+    const created = plugin.addListener(name, (data) => {
       if (!disposed) cb(data)
     })
-    .then((created) => {
-      if (disposed) void created.remove()
-      else handle = created
-    })
-    .catch((err) => {
-      console.warn(`[LanSync] 订阅 ${name} 失败:`, err)
-    })
+    if (created && typeof (created as Promise<NativeListenerHandle>).then === 'function') {
+      void (created as Promise<NativeListenerHandle>)
+        .then(adopt)
+        .catch((err) => {
+          console.warn(`[LanSync] 订阅 ${name} 失败:`, err)
+        })
+    } else {
+      adopt(created as NativeListenerHandle)
+    }
+  } catch (err) {
+    console.warn(`[LanSync] 订阅 ${name} 失败:`, err)
+  }
   return () => {
     disposed = true
     void handle?.remove()
