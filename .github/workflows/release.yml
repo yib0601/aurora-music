@@ -19,9 +19,9 @@ env:
   PNPM_VERSION: '9.15.0'
 
 jobs:
-  # ============ Windows ============
-  build-windows:
-    name: Build Windows (nsis)
+  # ============ Windows (x64) ============
+  build-windows-x64:
+    name: Build Windows x64 (nsis)
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -57,22 +57,93 @@ jobs:
       - name: Compile Electron main (tsc)
         run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
 
-      - name: Build Windows installer
-        run: pnpm --filter @aurora/desktop exec electron-builder --win --x64 --publish never
+      - name: Build Windows installer (x64)
+        # artifactName 从 CLI 覆盖：electron-builder 的 ${arch} 宏在已发布资产里
+        # 必须与 macOS 的 -arm64 / -x64 命名一致，渲染层更新逻辑才能挑对本机那份
+        # （packages/app/src/services/update-asset.ts）。
+        run: pnpm --filter @aurora/desktop exec electron-builder --win --x64 --publish never -c.artifactName='Aurora-Music-${version}-x64.${ext}'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify exe architecture (x64)
+        # 文件名带 -x64 不代表内容就是 x64：真正的架构由下载的 Electron 包与
+        # better-sqlite3 的 rebuild 目标决定，这里读 PE 头直接断言。
+        run: node scripts/verify-win-arch.cjs "packages/desktop/release/win-unpacked/Aurora-Music.exe" x64
 
       - name: Upload release artifacts
         if: success()
         uses: actions/upload-artifact@v5
         with:
-          name: windows-nsis
+          name: windows-x64-nsis
           path: packages/desktop/release/
           if-no-files-found: warn
 
-  # ============ Linux ============
-  build-linux:
-    name: Build Linux (AppImage/deb/rpm)
+  # ============ Windows (arm64) ============
+  # Windows on ARM 用原生 arm64 runner：better-sqlite3 是原生模块，在 x64 上交叉
+  # 编译需要 node-gyp 拉 arm64 headers 并让 MSVC 走 ARM64 工具链，失败面大。
+  #
+  # continue-on-error：这条腿依赖 runner 镜像里是否带 MSVC 的 ARM64 构建工具。
+  # 失败时不能让整个 Release 一起挂（教训见 docs/desktop-packaging.md §5.2.1：
+  # 一个腿失败 → create-release 被 skip → 整次发布没有产物）。continue-on-error
+  # 的 job 结论仍是 success，所以它照样进 create-release 的 needs —— 保证发版时
+  # 等它跑完（否则 download-artifact 可能抢跑、把 arm64 安装包漏在 Release 外），
+  # 而它失败也不会挡发布；产物存在就并入。
+  build-windows-arm64:
+    name: Build Windows arm64 (nsis)
+    runs-on: windows-11-arm
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install deps (skip native build scripts; electron-builder will rebuild)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+        env:
+          npm_config_build_from_source: 'false'
+
+      - name: Build app (vite)
+        run: pnpm --filter @aurora/shared build && pnpm --filter @aurora/app build
+
+      - name: Sync app dist to desktop
+        run: |
+          Remove-Item -Recurse -Force packages/desktop/app-dist -ErrorAction SilentlyContinue
+          Copy-Item -Recurse packages/app/dist packages/desktop/app-dist
+        shell: pwsh
+
+      - name: Compile Electron main (tsc)
+        run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
+
+      - name: Build Windows installer (arm64)
+        run: pnpm --filter @aurora/desktop exec electron-builder --win --arm64 --publish never -c.artifactName='Aurora-Music-${version}-arm64.${ext}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify exe architecture (arm64)
+        # 交叉/原生都可能出「名字对、架构错」的包，读 PE 头的 Machine 字段直接断言
+        # （0xAA64 = arm64）。这条腿整体是 continue-on-error，但校验失败会带警告暴露出来。
+        run: node scripts/verify-win-arch.cjs "packages/desktop/release/win-arm64-unpacked/Aurora-Music.exe" arm64
+
+      - name: Upload release artifacts
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-arm64-nsis
+          path: packages/desktop/release/
+          if-no-files-found: warn
+
+  # ============ Linux (x64) ============
+  build-linux-x64:
+    name: Build Linux x64 (AppImage/deb/rpm)
     runs-on: ubuntu-latest
     # 固定 glibc 基线：编译环境决定产物的符号下限。
     # AppImage 目录（appimage.github.io）在 ubuntu-22.04（glibc 2.35、libstdc++
@@ -138,28 +209,122 @@ jobs:
       - name: Compile Electron main (tsc)
         run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
 
-      - name: Build Linux packages
-        run: pnpm --filter @aurora/desktop exec electron-builder --linux --x64 --publish never
+      - name: Build Linux packages (x64)
+        # artifactName 由这里覆盖：electron-builder 的 ${arch} 宏对 deb/rpm/AppImage
+        # 展开成 amd64 / aarch64 / x86_64，与 macOS 的 -arm64 / -x64 命名不一致，
+        # 渲染层更新逻辑（packages/app/src/services/update-asset.ts）按 -arm64 / -x64
+        # 分辨架构，所以两种架构都用 CLI 覆盖成同一套名字。
+        run: pnpm --filter @aurora/desktop exec electron-builder --linux --x64 --publish never -c.artifactName='Aurora-Music-${version}-x64.${ext}'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify glibc baseline (Ubuntu 22.04 / Debian 12)
+      - name: Verify glibc baseline + arch (x64)
         # 产物里任何引用超过 GLIBC_2.35 / GLIBCXX_3.4.30 的库，都会让老系统
-        # （含 AppImage 目录的测试机）在 dlopen 时失败，这里直接挡住发布
+        # （含 AppImage 目录的测试机）在 dlopen 时失败，这里直接挡住发布。
+        # EXPECTED_ARCH 同时断言主程序与 better-sqlite3 真的是 x86_64。
+        env:
+          EXPECTED_ARCH: x64
         run: |
           bash scripts/check-linux-baseline.sh \
-            packages/desktop/release/*.AppImage \
-            packages/desktop/release/*.deb \
-            packages/desktop/release/*.rpm
+            packages/desktop/release/*-x64.AppImage \
+            packages/desktop/release/*-x64.deb \
+            packages/desktop/release/*-x64.rpm
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: linux-packages
+          name: linux-x64-packages
           path: |
-            packages/desktop/release/*.AppImage
-            packages/desktop/release/*.deb
-            packages/desktop/release/*.rpm
+            packages/desktop/release/*-x64.AppImage
+            packages/desktop/release/*-x64.deb
+            packages/desktop/release/*-x64.rpm
+
+  # ============ Linux (arm64) ============
+  # 原生 arm64 runner：better-sqlite3 必须在本机架构编译（与 macOS 双架构同一理由）。
+  # 这里不用 container —— runner 本身是 Ubuntu 22.04 arm64（glibc 2.35），恰好就是
+  # x64 侧容器锁定的同一条基线；另外 job 级 container 在 arm64 上对 JS action 支持
+  # 有限，直接跑在 runner 上更稳。
+  #
+  # arm64 的打包工具链逐项确认过（electron-builder 26.15.3）：
+  #   - app-builder-bin 自带 linux/arm64/app-builder
+  #   - fpm 有 linux-arm64v8 版（toolsets/linux.js 按 process.arch 选包）
+  #   - AppImage 走 legacy FUSE2 路径，工具集里含 linux-arm64/mksquashfs 与 runtime-arm64
+  # 缺任何一项 electron-builder 会在打包一开始报 "AppImage tool ... not found"。
+  build-linux-arm64:
+    name: Build Linux arm64 (AppImage/deb/rpm)
+    runs-on: ubuntu-22.04-arm
+    env:
+      CC: clang-15
+      CXX: clang++-15
+    steps:
+      - name: Free disk space
+        # 标准 arm64 runner 磁盘比 x64 小；Electron arm64 + node_modules + 三份包
+        # （解包目录就 ~300MB）容易顶满，先清掉用不到的大目录。
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/share/swift 2>/dev/null || true
+          df -h /
+
+      - name: Install build dependencies
+        # clang 必装：Electron 43 的 V8 头把 V8_DEPRECATED 属性宏放在类名之前，
+        # GCC 11/12 直接编不过（见 x64 job 的同款注释）。
+        # rpm/cpio/binutils 用于打包与基线检查；python3/make 给 node-gyp。
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates git python3 build-essential clang-15 \
+            rpm cpio binutils xz-utils
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app (vite)
+        run: pnpm --filter @aurora/shared build && pnpm --filter @aurora/app build
+
+      - name: Sync app dist to desktop
+        run: |
+          rm -rf packages/desktop/app-dist
+          cp -r packages/app/dist packages/desktop/app-dist
+
+      - name: Compile Electron main (tsc)
+        run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
+
+      - name: Build Linux packages (arm64)
+        run: pnpm --filter @aurora/desktop exec electron-builder --linux --arm64 --publish never -c.artifactName='Aurora-Music-${version}-arm64.${ext}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify glibc baseline + arch (arm64)
+        env:
+          EXPECTED_ARCH: arm64
+        run: |
+          bash scripts/check-linux-baseline.sh \
+            packages/desktop/release/*-arm64.AppImage \
+            packages/desktop/release/*-arm64.deb \
+            packages/desktop/release/*-arm64.rpm
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: linux-arm64-packages
+          path: |
+            packages/desktop/release/*-arm64.AppImage
+            packages/desktop/release/*-arm64.deb
+            packages/desktop/release/*-arm64.rpm
+          if-no-files-found: error
 
   # ============ Android ============
   build-android:
@@ -417,7 +582,7 @@ jobs:
   # ============ Release ============
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-linux, build-android, build-macos-arm64, build-macos-x64]
+    needs: [build-windows-x64, build-windows-arm64, build-linux-x64, build-linux-arm64, build-android, build-macos-arm64, build-macos-x64]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
@@ -479,11 +644,16 @@ jobs:
           set -e
           mkdir -p release
           # Windows（只取带版本号的 NSIS 安装包，跳过 unpacked 的 Aurora-Music.exe 和 elevate.exe）
-          find release-artifacts/windows-nsis -name "Aurora-Music-*.exe" -exec cp {} release/ \; 2>/dev/null || true
-          # Linux
-          find release-artifacts/linux-packages -name "*.AppImage" -exec cp {} release/ \; 2>/dev/null || true
-          find release-artifacts/linux-packages -name "*.deb" -exec cp {} release/ \; 2>/dev/null || true
-          find release-artifacts/linux-packages -name "*.rpm" -exec cp {} release/ \; 2>/dev/null || true
+          # 文件名已按架构区分：Aurora-Music-<ver>-x64.exe / -arm64.exe
+          for d in windows-x64-nsis windows-arm64-nsis; do
+            find "release-artifacts/$d" -name "Aurora-Music-*.exe" -exec cp {} release/ \; 2>/dev/null || true
+          done
+          # Linux（x64 / arm64 各自一个 artifact，文件名带 -x64 / -arm64）
+          for d in linux-x64-packages linux-arm64-packages; do
+            for ext in AppImage deb rpm; do
+              find "release-artifacts/$d" -name "*.$ext" -exec cp {} release/ \; 2>/dev/null || true
+            done
+          done
           # macOS（双架构 dmg，文件名已带 -arm64 / -x64）
           find release-artifacts/macos-arm64 -name "*.dmg" -exec cp {} release/ \; 2>/dev/null || true
           find release-artifacts/macos-x64 -name "*.dmg" -exec cp {} release/ \; 2>/dev/null || true
@@ -511,9 +681,12 @@ jobs:
 
             | 平台 | 文件 | 安装 |
             | --- | --- | --- |
-            | Windows | `Aurora-Music-${{ steps.ver.outputs.version }}.exe` | NSIS 安装包，双击安装 |
-            | Linux (AppImage) | `Aurora-Music-${{ steps.ver.outputs.version }}.AppImage` | 便携免安装，`chmod +x` 后直接运行 |
-            | Linux (deb / rpm) | `Aurora-Music-${{ steps.ver.outputs.version }}.deb` / `.rpm` | `sudo dpkg -i` / `sudo rpm -Uvh` |
+            | Windows (x64) | `Aurora-Music-${{ steps.ver.outputs.version }}-x64.exe` | NSIS 安装包，双击安装 |
+            | Windows (ARM64) | `Aurora-Music-${{ steps.ver.outputs.version }}-arm64.exe` | 骁龙 X 等 ARM 设备；x64 机器请用上面那个 |
+            | Linux x64 (AppImage) | `Aurora-Music-${{ steps.ver.outputs.version }}-x64.AppImage` | 便携免安装，`chmod +x` 后直接运行 |
+            | Linux x64 (deb / rpm) | `Aurora-Music-${{ steps.ver.outputs.version }}-x64.deb` / `.rpm` | `sudo dpkg -i` / `sudo rpm -Uvh` |
+            | Linux ARM64 (AppImage) | `Aurora-Music-${{ steps.ver.outputs.version }}-arm64.AppImage` | 树莓派 4/5、ARM 笔记本与服务器；`chmod +x` 后直接运行 |
+            | Linux ARM64 (deb / rpm) | `Aurora-Music-${{ steps.ver.outputs.version }}-arm64.deb` / `.rpm` | 同上，装系统包更省事 |
             | macOS (Apple Silicon) | `Aurora-Music-${{ steps.ver.outputs.version }}-arm64.dmg` | M 系列芯片，打开 dmg 拖入「应用程序」 |
             | macOS (Intel) | `Aurora-Music-${{ steps.ver.outputs.version }}-x64.dmg` | Intel 芯片，打开 dmg 拖入「应用程序」 |
             | Android | `Aurora-Music-${{ steps.ver.outputs.version }}-android.apk` | 允许「未知来源」后安装；签名固定，可直接覆盖升级 |

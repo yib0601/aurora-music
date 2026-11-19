@@ -50,10 +50,14 @@
 
 | 平台 | 产物 | 说明 |
 | --- | --- | --- |
-| Linux | `.AppImage` / `.deb` / `.rpm` | AppImage 免安装；包基线固定 glibc 2.35（Ubuntu 22.04） |
-| Windows | `Aurora-Music-<版本>.exe` | NSIS 安装器，x64，可选安装目录 |
-| macOS | `Aurora-Music-<版本>-arm64.dmg` | Apple Silicon，ad-hoc 签名，首次启动需在「隐私与安全性」放行 |
+| Linux x64 | `Aurora-Music-<版本>-x64.AppImage` / `.deb` / `.rpm` | AppImage 免安装；包基线固定 glibc 2.35（Ubuntu 22.04） |
+| Linux ARM64 | `Aurora-Music-<版本>-arm64.AppImage` / `.deb` / `.rpm` | 树莓派 4/5、ARM 笔记本与服务器；同一 glibc 2.35 基线 |
+| Windows x64 | `Aurora-Music-<版本>-x64.exe` | NSIS 安装器，可选安装目录 |
+| Windows ARM64 | `Aurora-Music-<版本>-arm64.exe` | 骁龙 X 等 ARM 设备；x64 机器请用上面那个 |
+| macOS | `Aurora-Music-<版本>-arm64.dmg` / `-x64.dmg` | Apple Silicon / Intel，ad-hoc 签名，首次启动需在「隐私与安全性」放行 |
 | Android | `app-debug.apk` | debug 签名；versionCode 单调递增，可直接覆盖升级 |
+
+桌面端每个平台都出 arm64 与 x64 两份，**文件名后缀已标明架构**；应用内更新会按 `process.arch` 自动挑本机那份。
 
 应用内「设置 → 关于」也能检查更新并下载对应安装包。
 

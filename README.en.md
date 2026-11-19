@@ -45,10 +45,14 @@ Released builds live in [Releases](https://github.com/yib0601/aurora-music/relea
 
 | Platform | Assets | Notes |
 | --- | --- | --- |
-| Linux | `.AppImage` / `.deb` / `.rpm` | AppImage is portable; the baseline is glibc 2.35 (Ubuntu 22.04) |
-| Windows | `Aurora-Music-<version>.exe` | NSIS installer, x64, install directory selectable |
-| macOS | `Aurora-Music-<version>-arm64.dmg` | Apple Silicon, ad-hoc signed — allow it once under Privacy & Security |
+| Linux x64 | `Aurora-Music-<version>-x64.AppImage` / `.deb` / `.rpm` | AppImage is portable; the baseline is glibc 2.35 (Ubuntu 22.04) |
+| Linux ARM64 | `Aurora-Music-<version>-arm64.AppImage` / `.deb` / `.rpm` | Raspberry Pi 4/5, ARM laptops and servers; same glibc 2.35 baseline |
+| Windows x64 | `Aurora-Music-<version>-x64.exe` | NSIS installer, install directory selectable |
+| Windows ARM64 | `Aurora-Music-<version>-arm64.exe` | Snapdragon X and other ARM devices; use the x64 build on x64 machines |
+| macOS | `Aurora-Music-<version>-arm64.dmg` / `-x64.dmg` | Apple Silicon / Intel, ad-hoc signed — allow it once under Privacy & Security |
 | Android | `app-debug.apk` | Debug-signed; versionCode increases monotonically so it upgrades in place |
+
+Every desktop platform ships both arm64 and x64 builds, with the architecture in the filename; the in-app updater picks the right one from `process.arch`.
 
 "Settings → About" inside the app also checks for updates and fetches the matching asset.
 

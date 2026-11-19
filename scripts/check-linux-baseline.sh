@@ -16,18 +16,37 @@
 # 环境变量:
 #   GLIBC_BASELINE    默认 2.35   （Ubuntu 22.04，AppImage 目录的测试机）
 #   GLIBCXX_BASELINE  默认 3.4.30 （同上，libstdc++ 6.0.30）
+#   EXPECTED_ARCH     可选：x64 / arm64（也接受 amd64 / x86_64 / aarch64）。
+#                     设定后额外断言包内主程序与 better-sqlite3 原生模块的 ELF
+#                     e_machine 与之一致。交叉打包时真的会产出「文件名写 arm64、
+#                     内容却是 x86-64」的包（electron-builder 的 target.arch 与
+#                     命令行 --arm64 打架时），发出去用户拿到的是装不上的包，
+#                     所以发布前必须在同一道闸门里卡住。
 #
-# 退出码: 0 = 全部达标；1 = 存在超基线符号或解包失败
+# 退出码: 0 = 全部达标；1 = 存在超基线符号、架构不符或解包失败
 set -euo pipefail
 
 GLIBC_BASELINE="${GLIBC_BASELINE:-2.35}"
 GLIBCXX_BASELINE="${GLIBCXX_BASELINE:-3.4.30}"
+
+# 期望架构归一化成 electron-builder 的命名（x64 / arm64）
+EXPECTED_ARCH="${EXPECTED_ARCH:-}"
+case "$EXPECTED_ARCH" in
+  x64|amd64|x86_64) EXPECTED_ARCH="x64" ;;
+  arm64|aarch64)    EXPECTED_ARCH="arm64" ;;
+  '') ;;
+  *)
+    echo "错误: EXPECTED_ARCH 只支持 x64 / arm64（收到 $EXPECTED_ARCH）" >&2
+    exit 2
+    ;;
+esac
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
 if [ $# -lt 1 ]; then
   echo "用法: bash scripts/check-linux-baseline.sh <包文件或已解包目录...>" >&2
   echo "      GLIBC_BASELINE=2.35 GLIBCXX_BASELINE=3.4.30 可覆盖基线" >&2
+  echo "      EXPECTED_ARCH=x64|arm64 额外断言产物架构（发布前必填）" >&2
   exit 2
 fi
 
@@ -48,6 +67,25 @@ ver_gt() {
 
 is_elf() {
   [ "$(od -An -N4 -tx1 "$1" 2>/dev/null | tr -d ' \n')" = "7f454c46" ]
+}
+
+# ELF e_machine（偏移 18，2 字节，大小端与本机一致：x86-64 / aarch64 都是小端）
+elf_arch() { # $1=文件 → x64 / arm64 / ia32 / unknown(...)
+  local m
+  m="$(od -An -j18 -N2 -tu2 "$1" 2>/dev/null | tr -d ' \n')"
+  case "$m" in
+    62)  echo "x64" ;;
+    183) echo "arm64" ;;
+    3)   echo "ia32" ;;
+    *)   echo "unknown(${m:-?})" ;;
+  esac
+}
+
+# 架构断言的目标文件：主程序 + better-sqlite3 原生模块。
+# 只查这两个而不是「包里所有 ELF」—— 后者会被 Electron 自带的辅助二进制、
+# 第三方 .node 等无关文件误伤（它们本来就不该出现在本项目的包里）。
+arch_targets() { # $1=解包根目录
+  find "$1" -type f \( -name 'Aurora-Music' -o -name 'better_sqlite3.node' \) -print0 2>/dev/null
 }
 
 extract_pkg() { # $1=包文件 $2=目标目录
@@ -119,6 +157,7 @@ bad_rows() { # $1=rows $2=GLIBC|GLIBCXX $3=基线  → "路径 版本"
 
 check_one() { # $1=包路径或目录
   local pkg="$1" dest="" rows="" rc=0 bad_glibc="" bad_glibcxx="" g="" gx="" p v
+  local arch_report="" arch_bad=0 f got
 
   if [ -d "$pkg" ]; then
     dest="$pkg"
@@ -131,6 +170,22 @@ check_one() { # $1=包路径或目录
     fi
   fi
 
+  if [ -n "$EXPECTED_ARCH" ]; then
+    while IFS= read -r -d '' f; do
+      got="$(elf_arch "$f")"
+      arch_report="$arch_report $(basename "$f")=$got"
+      if [ "$got" != "$EXPECTED_ARCH" ]; then
+        echo -e "${RED}✗ 架构不符（期望 $EXPECTED_ARCH，实际 $got）：${f#"$dest"/}${NC}" >&2
+        arch_bad=1
+      fi
+    done < <(arch_targets "$dest")
+    if [ -z "$arch_report" ]; then
+      echo -e "${RED}✗ 包内找不到可断言的 ELF（Aurora-Music / better_sqlite3.node）：$pkg${NC}" >&2
+      arch_bad=1
+    fi
+    [ $arch_bad -eq 0 ] || rc=1
+  fi
+
   rows="$(scan_dir "$dest" | sort -u || true)"
   g="$(max_ver "$rows" GLIBC)"
   gx="$(max_ver "$rows" GLIBCXX)"
@@ -138,7 +193,21 @@ check_one() { # $1=包路径或目录
   bad_glibcxx="$(bad_rows "$rows" GLIBCXX "$GLIBCXX_BASELINE")"
 
   echo -e "${BLUE}== $(basename "$pkg") ==${NC}"
+  if [ -n "$EXPECTED_ARCH" ]; then
+    if [ $arch_bad -eq 0 ]; then
+      echo -e "   架构：${GREEN}✓${NC} 全部为 $EXPECTED_ARCH（$arch_report ）"
+    else
+      echo -e "   架构：${RED}✗${NC} 期望 $EXPECTED_ARCH（$arch_report ）"
+    fi
+  fi
   echo "   最高需求：GLIBC ${g:-无}（基线 $GLIBC_BASELINE） / GLIBCXX ${gx:-无}（基线 $GLIBCXX_BASELINE）"
+
+  if [ -z "$rows" ]; then
+    # 常见于「在 x64 机器上检查 arm64 包」：本机 objdump 没有该架构后端，
+    # 读不出符号表，此时静默判通过等于放过一条没被验证的产物。
+    echo -e "   ${YELLOW}⚠ 未读到任何 GLIBC/GLIBCXX 符号：本机 objdump 可能不支持该 ELF 架构。"
+    echo -e "   符号基线未经验证，请在该架构的机器/容器（release.yml 的对应 job）上复查。${NC}"
+  fi
 
   if [ -n "$bad_glibc" ] || [ -n "$bad_glibcxx" ]; then
     rc=1
@@ -149,7 +218,7 @@ check_one() { # $1=包路径或目录
       [ -n "$p" ] && echo -e "   ${RED}✗ GLIBCXX_$v 超出基线：$p${NC}"
     done <<< "$bad_glibcxx"
     echo -e "   ${YELLOW}原生模块必须在基线系统里编译（见 .github/workflows/release.yml 的"
-    echo -e "   build-linux 容器），或在更老的系统上构建后重新打包。${NC}"
+    echo -e "   build-linux-x64 容器 / build-linux-arm64 runner），或在更老的系统上构建后重新打包。${NC}"
   else
     echo -e "   ${GREEN}✓ 全部落在基线内${NC}"
   fi

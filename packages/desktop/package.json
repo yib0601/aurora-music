@@ -91,24 +91,9 @@
     "buildDependenciesFromSource": false,
     "linux": {
       "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "rpm",
-          "arch": [
-            "x64"
-          ]
-        }
+        "AppImage",
+        "deb",
+        "rpm"
       ],
       "category": "AudioVideo",
       "icon": "resources/icon.png",
@@ -157,12 +142,7 @@
     },
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
+        "nsis"
       ],
       "icon": "resources/icon.ico",
       "forceCodeSigning": false,

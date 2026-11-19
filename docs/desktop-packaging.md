@@ -1,7 +1,7 @@
 # 桌面端打包约定
 
 > 记录 electron-builder 的硬约束，改动 `packages/desktop/package.json` 的 `build.*` 前先读这份。
-> Windows 见 §1-4，macOS 见 §5。
+> Windows 见 §1-4，macOS 见 §5，多架构（arm64）见 §6。
 
 ## 1. exe 必须嵌入图标与版本信息 —— 用 `signExecutable: false`，不要用 `signAndEditExecutable: false`
 
@@ -184,3 +184,129 @@ macOS runner 用自带 bash 3.2（Linux 上是 bash 5），下面两个陷阱已
   退出码洗成 0 —— 表现为「校验步骤全绿、包其实是坏的」。workflow 里断言输出含
   `✅ macOS 产物校验通过` 是第二道闸门。
 
+## 6. 多架构：Linux / Windows 的 arm64 与 x64
+
+macOS 从第一天就是双架构（§5.2），Linux 与 Windows 自 0.9.0 起也一样。三条硬约束都踩过坑：
+
+### 6.1 配置里不要写 `target.arch` 数组，架构由 CI 命令行决定
+
+`build.linux.target` / `build.win.target` 只写目标名（`"AppImage"`, `"deb"`, `"rpm"` / `"nsis"`），
+**不要**写成 `{ "target": "deb", "arch": ["x64"] }`。
+
+原因：`electron-builder --linux --arm64` 只是给 CLI 的 arch 留个位置，配置里带 `arch` 的 target
+条目仍然按配置的架构生效。两者同时存在时的实测结果（`--linux --arm64` + 配置写死 x64）：
+
+```
+• building target=AppImage arch=x64 file=release/Aurora-Music-0.8.12-arm64.AppImage
+```
+
+也就是**文件名是 arm64、内容是 x86-64**，而且 arm64 那一轮因为 types 为空回落到默认
+target 列表（含 snap），还会多打一个 `__snap-arm64` 并报 `snapcraft ENOENT`。
+macOS 从来就是这么写的（`"mac": { "target": ["dmg"] }`），三条腿保持一致。
+
+### 6.2 artifactName 必须用 `-c.artifactName` 从命令行覆盖成 `-x64` / `-arm64`
+
+`${arch}` 宏在 electron-builder 里不是 electron 的架构名，而是各格式自己的架构名
+（`builder-util/out/arch.js` 的 `getArtifactArchName`）：
+
+| 目标 | x64 展开 | arm64 展开 |
+| --- | --- | --- |
+| AppImage | `x86_64` | `arm64` |
+| deb | `amd64` | `arm64` |
+| rpm | `x86_64` | `aarch64` |
+| dmg | `x64` | `arm64` |
+
+渲染层的更新逻辑（`packages/app/src/services/update-asset.ts`）按 `process.arch` 找
+`-x64` / `-arm64` 后缀，所以 CI 里所有平台都传：
+
+```bash
+-c.artifactName='Aurora-Music-${version}-x64.${ext}'
+-c.artifactName='Aurora-Music-${version}-arm64.${ext}'
+```
+
+（macOS 是唯一可以用配置文件里 `${arch}` 宏的地方，因为它展开就是 `x64`/`arm64`。）
+
+改名会改变已发布资产的旧文件名，这一点是刻意的：x64 侧的新名字仍含 `-x64`，
+所以**已经装在用户机器上的旧版本**（0.8.x 的 includes('-x64') 逻辑）照样能挑对包；
+而如果给 x64 留无后缀名，旧客户端会 fallback 到「第一个匹配的 AppImage」，
+可能下发 arm64 包。
+
+### 6.3 Linux arm64 用原生 arm64 runner，Windows arm64 不进 `needs`
+
+`better-sqlite3` 是原生模块（v12.11.1 没有 Electron 43 / ABI 148 的 prebuild），
+必须在目标架构上编译，所以与 macOS 同一策略：每个架构跑自己的 runner。
+
+| job | runner | 关键点 |
+| --- | --- | --- |
+| `build-linux-x64` | `ubuntu-latest` + `container: ubuntu:22.04` | 锁 glibc 2.35 基线（既有做法） |
+| `build-linux-arm64` | `ubuntu-22.04-arm`（无 container） | runner 本身就是 Ubuntu 22.04 arm64，基线天然一致；job 级 container 在 arm64 上对 JS action 支持有限，不用 |
+| `build-windows-x64` | `windows-latest` | 既有做法 |
+| `build-windows-arm64` | `windows-11-arm` | `continue-on-error: true`，**不进** `create-release` 的 `needs` |
+
+arm64 打包工具链逐项确认过（electron-builder 26.15.3，缺任何一项会在打包一开始就报
+`AppImage tool ... not found` 之类）：
+
+- `app-builder-bin` 自带 `linux/arm64/app-builder`
+- `fpm` 有 `fpm-1.17.0-ruby-3.4.3-linux-arm64v8.7z`（`toolsets/linux.js` 按 `process.arch` 选）
+- AppImage 走 legacy FUSE2 路径，`appimage-12.0.1.7z` 内含 `linux-arm64/mksquashfs`
+  与 `runtime-arm64`（`7z l` 可验证）
+
+标准 arm64 runner 的磁盘比 x64 小，job 第一步先清 `/usr/share/dotnet` 等目录再装依赖。
+
+Windows arm64 单独说明：GitHub 的 arm64 Windows 标准 runner 镜像是否带 MSVC 的
+ARM64 构建工具链不由本项目控制，失败时是「原生模块编不出来」而不是配置错。
+所以它 `continue-on-error` 且不 gate 发布 —— 一个腿失败不该让整次 Release 没有产物
+（同 §5.2.1 的教训）；产物存在就并入 Release。若该腿长期红，先查 runner 镜像的
+VS 组件，再考虑改为在 x64 上交叉编译。
+
+两个已知差异，改动时别当 bug：
+
+- **arm64 AppImage 不内嵌 `lib/` 运行时库**：electron-builder 的 legacy FUSE2 路径只在
+  `arch === x64 || ia32` 时把 `lib/x64` 打进包（`targets/appimage/appImageUtil.js`），
+  arm64 目标是空的。也就是说 arm64 AppImage 依赖系统自带的 libXtst / libnss / libnotify，
+  而 x64 那份自带。桌面发行版基本都有，服务器/极简系统上优先用 deb/rpm（依赖声明齐全）。
+- **`ubuntu-22.04-arm` 是基线选择，不是随便挑的**：换到 `ubuntu-24.04-arm`（glibc 2.39）
+  会立刻顶穿基线闸门。真要换只能上 container `ubuntu:22.04`（arm64 变体）——
+  但 job 级 container 在 arm64 上对 JS action 支持有限，届时改法是把构建放进
+  `docker run` 而不是 job-level `container:`。
+
+### 6.4 校验：基线 + 架构一起卡
+
+`scripts/check-linux-baseline.sh` 的 `EXPECTED_ARCH=x64|arm64` 会额外断言包内
+`Aurora-Music` 与 `better_sqlite3.node` 的 ELF `e_machine`：
+
+```bash
+EXPECTED_ARCH=arm64 bash scripts/check-linux-baseline.sh packages/desktop/release/*-arm64.*
+```
+
+这是防「名字对、内容错」的最后一道闸门（§6.1 的情形如果不小心复发，这一步会红）。
+注意 AppImage 的解包靠它自带的 runtime 执行 `--appimage-extract`，**跨架构解不了**
+（x64 上检查 arm64 AppImage 会直接报「无法解包」），所以这一项必须在对应架构的 job 上跑。
+
+Windows 侧同理，用 `scripts/verify-win-arch.cjs` 读 PE 头的 `Machine` 字段
+（`0x8664` = x64、`0xAA64` = arm64），只读文件、不需要 wine：
+
+```bash
+node scripts/verify-win-arch.cjs packages/desktop/release/win-arm64-unpacked/Aurora-Music.exe arm64
+```
+
+两个 job 都跑它：文件名里的架构来自 `-c.artifactName`，而真实架构来自 Electron 包与
+`better-sqlite3` 的 rebuild 目标，二者本就可以独立漂移。
+
+### 6.5 本地重打 deb / rpm
+
+`build-deb.sh` / `build-rpm.sh` 用 `ARCH` 选解包目录与包内架构字段：
+
+```bash
+ARCH=x64   bash build-deb.sh   # release/linux-unpacked        → aurora-music_<v>_amd64.deb
+ARCH=arm64 bash build-deb.sh   # release/linux-arm64-unpacked  → aurora-music_<v>_arm64.deb
+ARCH=arm64 bash build-rpm.sh   # → Aurora-Music-<v>-1.aarch64.rpm
+```
+
+`ARCH` 一个变量同时决定三件事（解包目录、fpm `--architecture`、输出文件名），
+不要在命令行里只改其中一处 —— 三者错位就是「包名写 arm64、内容是 x64」的另一条路。
+
+注意本地直接 `pnpm build:desktop` / `build:dir` 产出的文件名**不带** `-x64`
+（全局 `artifactName` 仍是 `Aurora-Music-${version}.${ext}`），架构后缀只在 CI 里通过
+`-c.artifactName` 加。本地包是自用产物，不必和 Release 命名对齐；要对齐就把 CI 那条
+命令行原样贴进终端。

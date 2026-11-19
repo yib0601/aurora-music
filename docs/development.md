@@ -255,8 +255,12 @@ scope 定位是哪条链路，最后看 `crash` scope 有无 `uncaughtException`
   `electron-builder` 会**跳过 `app-dist` 的复制步骤**，可能打出数天前的旧 bundle（曾因此浪费一轮排查）。
 - **桌面**：`pnpm build:desktop`，产物在 `packages/desktop/release/`（Linux AppImage / deb、
   Windows NSIS）；RPM 用自带的 `./build-rpm.sh`（绕开 electron-builder 内置 fpm 在 Ubuntu 上的 rpmdb 问题）。
-- **发布**：推送 `v*` tag 触发 GitHub Actions 自动构建全平台产物（Windows / Linux / macOS 双架构 /
-  Android）并发布 Release，发布前自动校验 APK 签名、macOS 产物与 Linux glibc 基线。
+- **架构**：Linux / Windows / macOS 三个平台都出 arm64 与 x64 两份，产物名带 `-x64` / `-arm64`。
+  本地重打包用 `ARCH=arm64 bash build-deb.sh`（同理 `build-rpm.sh`、`scripts/build.sh`）；
+  配置与 CI 的分工见 [`desktop-packaging.md`](desktop-packaging.md) §6 —— **不要在
+  `package.json` 的 `target` 里写死 `arch` 数组**。
+- **发布**：推送 `v*` tag 触发 GitHub Actions 自动构建全平台产物（Windows / Linux / macOS 各双架构 /
+  Android）并发布 Release，发布前自动校验 APK 签名、macOS 产物、Linux glibc 基线与产物架构。
 - **发布链路的两个事实**：`ci.yml` 带 `tags-ignore: ['**']`——推 tag **不会**触发 CI，只有
   `release.yml` 会跑，想让 CI 覆盖某次改动得先推分支；`release.yml` 不跑单测，只做打包与发布，
   已存在的 Release 与产物在 tag 被强推后仍会保留。

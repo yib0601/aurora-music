@@ -5,7 +5,22 @@ set -e
 APP_NAME="Aurora-Music"
 DESKTOP_DIR="packages/desktop"
 APP_DIR="packages/app"
-SOURCE_DIR="$DESKTOP_DIR/release/linux-unpacked"
+
+# 目标架构（与 build-deb.sh / build-rpm.sh 同一套口径，三者必须一致）：
+#   ARCH      x64（默认）/ arm64
+#   EB_ARCH   electron-builder 的架构名，决定 --<arch> 与解包目录名
+#   UNPACKED  解包目录（x64 省略后缀，其余为 linux-<arch>-unpacked）
+ARCH="${ARCH:-x64}"
+case "$ARCH" in
+  x64|amd64|x86_64) EB_ARCH="x64"; UNPACKED="linux-unpacked"; RPM_ARCH="x86_64" ;;
+  arm64|aarch64)    EB_ARCH="arm64"; UNPACKED="linux-arm64-unpacked"; RPM_ARCH="aarch64" ;;
+  *)
+    echo "错误: ARCH 只支持 x64 / arm64（收到 $ARCH）" >&2
+    exit 1
+    ;;
+esac
+
+SOURCE_DIR="$DESKTOP_DIR/release/$UNPACKED"
 OUTPUT_DIR="$DESKTOP_DIR/release"
 HASH_FILE=".build-cache"
 
@@ -148,7 +163,7 @@ else
     print_step "运行 electron-builder..."
     # 禁用代理避免下载失败，使用本地缓存
     export ELECTRON_CACHE="${ELECTRON_CACHE:-$HOME/.cache/electron}"
-    (cd $DESKTOP_DIR && unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy && npx electron-builder --dir)
+    (cd $DESKTOP_DIR && unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy && npx electron-builder --dir --$EB_ARCH)
     print_ok "electron-builder 打包完成"
   fi
   save_hash "electron_build" "$DIST_HASH"
@@ -171,6 +186,6 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  构建全部完成！${NC}"
 echo -e "${GREEN}========================================${NC}"
 VERSION=$(grep '"version"' packages/desktop/package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
-echo "RPM 包: $OUTPUT_DIR/$APP_NAME-$VERSION-1.x86_64.rpm"
+echo "RPM 包: $OUTPUT_DIR/$APP_NAME-$VERSION-1.$RPM_ARCH.rpm"
 echo ""
-echo "安装命令: sudo rpm -Uvh --force --nodeps $OUTPUT_DIR/$APP_NAME-$VERSION-1.x86_64.rpm"
+echo "安装命令: sudo rpm -Uvh --force --nodeps $OUTPUT_DIR/$APP_NAME-$VERSION-1.$RPM_ARCH.rpm"

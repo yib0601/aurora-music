@@ -5,7 +5,11 @@
  * - 现在跑的就是 AppImage / 便携目录 → 继续给 AppImage；
  * - 系统包管理器装的（dnf/apt）→ 给对应原生包（rpm/deb），AppImage 仅作兜底；
  * - 判断不出发行版时保持历史行为（AppImage 优先）。
- * - macOS 只有 dmg（分 arm64/x64 两份），按 process.arch 挑本机那份。
+ * - 同一平台有两份产物时（macOS dmg、Linux AppImage/deb/rpm、Windows exe 都分
+ *   arm64 / x64），按 process.arch 挑本机那份：文件名统一带 `-arm64` / `-x64`
+ *   （release.yml 用 -c.artifactName 覆盖，因为 electron-builder 的 ${arch} 宏在
+ *   deb/rpm/AppImage 上会展开成 amd64 / aarch64 / x86_64）。
+ *   macOS 是这套命名的起点，其余平台向它看齐，否则这个纯函数就要维护第二套映射。
  *
  * 文案约定：本模块**只产出文案键，不产出句子**。
  * 展示名与覆盖安装提示都要随语言切换，若在这里拼成字符串，语言就被冻在
@@ -106,7 +110,9 @@ export function pickAsset(
     for (const kind of order) {
       if (!name.endsWith(ASSET_SUFFIX[kind])) continue
       if (!picked.has(kind)) picked.set(kind, { url, size, digest })
-      // macOS 的 dmg 分 `-arm64` / `-x64` 两份，名字里带本机架构的才是能跑的那份
+      // 双架构产物分 `-arm64` / `-x64` 两份，名字里带本机架构的才是能跑的那份。
+      // 老版本 release 没有后缀 → 命中不到就退回 picked（顺序取第一个），
+      // 这样「从旧版本升级」这一步不会因为改名而断掉。
       if (wantArch && !archMatched.has(kind) && name.includes(`-${wantArch}`)) {
         archMatched.set(kind, { url, size, digest })
       }
