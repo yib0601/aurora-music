@@ -1,6 +1,6 @@
 {
   "name": "@aurora/app",
-  "version": "0.8.14",
+  "version": "0.8.15",
   "license": "PolyForm-Noncommercial-1.0.0",
   "private": true,
   "type": "module",
