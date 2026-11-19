@@ -90,13 +90,9 @@ export function MusicHallPage() {
             icon={<Sparkles className="h-4 w-4 text-mint" strokeWidth={1.6} />}
             title={t('hall.recommend.title')}
           >
-            {recommend.loading && recommend.data.length === 0 ? (
-              <SkeletonRow />
-            ) : recommend.error ? (
-              <InlineError message={recommend.error} onRetry={() => void loadRecommend(true)} />
-            ) : recommend.data.length === 0 ? (
-              <p className="font-text text-[13px] text-white/50 py-3">{t('hall.recommend.empty')}</p>
-            ) : (
+            {/* 有缓存就先渲染缓存：后台刷新失败只会在没数据时才升级成错误态，
+                否则一次网络抖动会把整块已经能看的内容换成一条报错（见 store 的落盘口径） */}
+            {recommend.data.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {recommend.data.map((pl) => (
                   <PlaylistCard
@@ -106,6 +102,12 @@ export function MusicHallPage() {
                   />
                 ))}
               </div>
+            ) : recommend.loading ? (
+              <SkeletonRow />
+            ) : recommend.error ? (
+              <InlineError message={recommend.error} onRetry={() => void loadRecommend(true)} />
+            ) : (
+              <p className="font-text text-[13px] text-white/50 py-3">{t('hall.recommend.empty')}</p>
             )}
           </Section>
 
@@ -115,13 +117,8 @@ export function MusicHallPage() {
             title={t('hall.toplist.title')}
             className="mt-10"
           >
-            {toplists.loading && toplists.data.length === 0 ? (
-              <SkeletonRow />
-            ) : toplists.error ? (
-              <InlineError message={toplists.error} onRetry={() => void loadToplists(true)} />
-            ) : toplists.data.length === 0 ? (
-              <p className="font-text text-[13px] text-white/50 py-3">{t('hall.toplist.empty')}</p>
-            ) : (
+            {/* 与推荐歌单同一口径：数据优先，错误只填空白 */}
+            {toplists.data.length > 0 ? (
               <div className="flex flex-col gap-8">
                 {toplists.data.map((group) => (
                   <div key={`${group.groupId ?? group.groupName}`}>
@@ -141,6 +138,12 @@ export function MusicHallPage() {
                   </div>
                 ))}
               </div>
+            ) : toplists.loading ? (
+              <SkeletonRow />
+            ) : toplists.error ? (
+              <InlineError message={toplists.error} onRetry={() => void loadToplists(true)} />
+            ) : (
+              <p className="font-text text-[13px] text-white/50 py-3">{t('hall.toplist.empty')}</p>
             )}
           </Section>
         </div>
