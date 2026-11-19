@@ -182,10 +182,28 @@ async function normalizeDownloadDir(dir?: string | null): Promise<string> {
 }
 
 /**
+ * 允许读进内存做封面嵌入的音频上限。
+ *
+ * 这条链路是**全内存**的：整文件 `arrayBuffer` → `embedCoverIntoAudio` 再产出一份
+ * → `uint8ArrayToBase64` 再产出一份 base64 字符串 → Capacitor 桥接把它序列化成 JSON
+ * 传给原生，原生再 base64 解码出一份。实测（49.5MB flac，本机跑的就是这份 dist 代码）：
+ * JS 侧 RSS 峰值 313MB，base64 是 63.2M 个字符，Java 侧按 UTF-16 再翻倍。
+ *
+ * 真机现场（HONOR DNP-AN00，2026-11-19 16:47）：App 进程 Java 堆 growth limit 只有
+ * 384MB，47MB 的 flac 就崩在这里 ——
+ * `OutOfMemoryError: Failed to allocate a 150994952 byte allocation`
+ * 栈顶是 `Bridge.callPluginMethod → JSONObject.toString → StringBuilder.append`。
+ *
+ * 峰值系数约 4.6x，所以安全线定在 8MB。更大的文件跳过嵌入，封面由 UI 的在线封面
+ * 兜底（coverUrl → ensureCover），不影响播放，也不影响曲库条目。
+ */
+const EMBED_COVER_MAX_BYTES = 8 * 1024 * 1024
+
+/**
  * 把封面嵌入刚下载的音频文件（downloadOnlineTrack 的后置步骤）
  * - 读文件用 fetch(convertFileSrc) 流式读，避免 Filesystem.readFile 的 base64 OOM
  * - 封面拉取用 CapacitorHttp（原生 HTTP，不受 WebView CORS 限制）
- * - 文件超过 100MB 跳过嵌入，避免一次性 base64 写回撑爆内存
+ * - 文件超过 EMBED_COVER_MAX_BYTES 直接跳过（连读都不读），见该常量的说明
  */
 async function embedCoverIntoDownloaded(
   savePath: string,
@@ -195,13 +213,29 @@ async function embedCoverIntoDownloaded(
   // 或外置 SD 卡挂载点不同，硬编码会读到不存在的路径导致封面嵌入静默失败。
   // 统一用 Filesystem.getUri 由原生侧按实际挂载点解析。
   const { uri: abs } = await Filesystem.getUri({ path: savePath, directory: Directory.ExternalStorage })
+
+  // 先按**磁盘大小**判断，超限直接返回：这一步不读文件，避免为一个注定要跳过的
+  // 50MB 级 flac 先搬一遍内存（读进来再判断是旧写法的浪费）。
+  const sized = await Filesystem.stat({ path: savePath, directory: Directory.ExternalStorage }).catch(
+    () => null
+  )
+  if (sized && typeof sized.size === 'number' && sized.size > EMBED_COVER_MAX_BYTES) {
+    console.warn(
+      '[Mobile] 文件超过嵌封面上限，跳过（封面走在线兜底）:',
+      savePath,
+      sized.size
+    ) // i18n-exempt: 开发者日志，不进界面
+    return
+  }
+
   // 走 shared 的逐段 encode：文件名含中文/空格/`#` 时，裸路径拼进
   // convertFileSrc 生成的 URL 会被 WebView 当成 fragment 截断，fetch 到错误路径
   const fileRes = await fetch(Capacitor.convertFileSrc(encodeFilePathToUrl(abs)))
   if (!fileRes.ok) throw auroraError('runtime.error.downloadFileReadFailed', { status: fileRes.status })
   const fileData = new Uint8Array(await fileRes.arrayBuffer())
-  if (fileData.length > 100 * 1024 * 1024) {
-    console.warn('[Mobile] 文件超过 100MB，跳过封面嵌入:', savePath) // i18n-exempt: 开发者日志，不进界面
+  // stat 拿不到大小时的最后一道闸：以实际读到的字节数为准
+  if (fileData.length > EMBED_COVER_MAX_BYTES) {
+    console.warn('[Mobile] 文件超过嵌封面上限，跳过（封面走在线兜底）:', savePath) // i18n-exempt: 开发者日志，不进界面
     return
   }
 
