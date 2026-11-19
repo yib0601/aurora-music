@@ -6,6 +6,7 @@
   <strong>Aurora Music</strong> — a cross-platform music player for desktop (Linux / Windows / macOS) and Android, with one shared UI.<br/>
   The desktop app is Electron + React; the mobile app is packaged with Capacitor and hands playback to a native engine.<br/>
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue" alt="PolyForm Noncommercial License 1.0.0">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS%20%7C%20Android-lightgrey" alt="Platforms">
   &nbsp;·&nbsp; <a href="./README.md">中文说明</a>
 </p>
 
@@ -13,7 +14,7 @@
 
 ## Screenshots
 
-<p align="center"><img src="./screenshots/hall.jpg" width="760" alt="Discover"></p>
+<p align="center"><img src="./screenshots/hall.jpg" width="760" alt="Library"></p>
 
 <table align="center"><tr>
   <td><img src="./screenshots/detail.jpg" width="520" alt="Now playing"></td>
@@ -26,13 +27,30 @@
 
 ## Overview
 
-A player that brings its own library management, online search and multi-device sync: local folders and WebDAV both go into your collection, online playback uses the music source you configure, and playlists and favorites sync across devices.
+A player that brings its own library management, online search and multi-device sync: local folders, WebDAV and network storage all go into your collection, online playback uses the music source you configure, and playlists and favorites sync across devices.
 
-- **Library** — scan local folders or WebDAV media libraries, indexed progressively and playable offline
-- **Online** — search / preview / download / cache; bring your own source, either the HTTP protocol or an LX Music script, and a script-only setup can still search (built-in aggregate-search fallback)
-- **Playlists & favorites** — manage playlists, import and export M3U; sync across devices over WebDAV or direct LAN with one-tap pairing
-- **Playback** — LRC lyrics, queue with repeat / shuffle, speed control, sleep timer; configurable audio-focus behavior on both desktop and Android
-- **Consistent everywhere** — tray playback on desktop, foreground-service playback on Android; Simplified Chinese and English
+- **Library** — scan local folders, WebDAV or SMB / SFTP network storage; indexed progressively and playable offline, with a prompt (and a fresh copy) when an encrypted track turns up
+- **Online** — search / preview / download / cache; bring your own source, either an HTTP protocol source or an LX Music script, and a script-only setup can still search (built-in aggregate-search fallback), with cross-source address resolution and platform detection from the track URL
+- **Playlists & favorites** — manage playlists, import and export M3U; sync across devices over WebDAV or direct LAN, including one-tap pairing (the code never lands in your hands or on the wire), with per-track conflict handling for favorites
+- **Playback** — word-by-word LRC lyrics, spectrum visualizer, queue with repeat / shuffle, speed control, sleep timer; MPRIS and tray on desktop, foreground-service playback on Android, configurable audio-focus behavior on both
+- **Plugin system** — sources, storage and sync are all plugins; a missing capability is "method absent", never a shape check on the caller side
+- **Consistent everywhere** — one UI for desktop, phones and older in-car WebViews; Simplified Chinese and English, following the system locale
+- **Self-updating** — checks the latest GitHub release, matches the asset for your platform and verifies its sha256 before downloading
+
+---
+
+## Download
+
+Released builds live in [Releases](https://github.com/yib0601/aurora-music/releases):
+
+| Platform | Assets | Notes |
+| --- | --- | --- |
+| Linux | `.AppImage` / `.deb` / `.rpm` | AppImage is portable; the baseline is glibc 2.35 (Ubuntu 22.04) |
+| Windows | `Aurora-Music-<version>.exe` | NSIS installer, x64, install directory selectable |
+| macOS | `Aurora-Music-<version>-arm64.dmg` | Apple Silicon, ad-hoc signed — allow it once under Privacy & Security |
+| Android | `app-debug.apk` | Debug-signed; versionCode increases monotonically so it upgrades in place |
+
+"Settings → About" inside the app also checks for updates and fetches the matching asset.
 
 ---
 
@@ -46,9 +64,55 @@ pnpm dev              # desktop app (Electron + Vite HMR)
 pnpm dev:app          # web UI only
 ```
 
-Requirements: Node.js ≥ 20, pnpm ≥ 9.15; Android builds additionally need JDK 17+ and the Android SDK.
+Requirements: Node.js ≥ 20, pnpm 9.15 (pinned via `packageManager`); Android builds additionally need JDK 17+ and the Android SDK.
 
-The music-source protocol, playlist sync, plugin system, development and packaging are documented in [docs/](./docs/) (Chinese).
+Other entry points:
+
+```bash
+pnpm --filter @aurora/shared test    # source protocol, LX host and other pure logic
+pnpm --filter @aurora/app test       # renderer and mobile cache persistence
+pnpm --filter @aurora/app lint       # renderer eslint
+pnpm build:deb                       # build a deb (via build-deb.sh)
+pnpm build:android                   # build the release APK
+pnpm verify:webview                  # in-car WebView compatibility lock (build first)
+```
+
+See [docs/development.md](./docs/development.md) and [docs/desktop-packaging.md](./docs/desktop-packaging.md) for details (Chinese).
+
+---
+
+## Layout
+
+```
+packages/
+  app/       React renderer: pages, components, state, i18n bindings (desktop and mobile)
+  shared/    Cross-platform logic: source protocol, LX host, cover matching, encrypted audio, lyrics, i18n core
+  desktop/   Electron main: windows, tray, MPRIS, IPC, SQLite library
+  mobile/    Capacitor project plus the Android native playback service (Kotlin)
+docs/        Protocol and architecture documents (Chinese)
+```
+
+---
+
+## Docs
+
+| Document | What it covers |
+| --- | --- |
+| [music-sources.md](./docs/music-sources.md) | Source protocol: HTTP sources and LX scripts side by side |
+| [plugins.md](./docs/plugins.md) | Plugin contract: capability declaration and what a missing method means |
+| [plugin-system.md](./docs/plugin-system.md) | Plugin layering, origins and the install path |
+| [plugin-capabilities.md](./docs/plugin-capabilities.md) | What the host injects, and how the built-in source became a plugin |
+| [storage-protocols.md](./docs/storage-protocols.md) | Why SMB / SFTP are plugins rather than built-ins |
+| [playlist-sync.md](./docs/playlist-sync.md) | Playlist and favorite sync: WebDAV and direct LAN |
+| [i18n.md](./docs/i18n.md) | How copy is produced, passed and rendered |
+| [development.md](./docs/development.md) | Tests, lint, in-car WebView lock, packaging and release |
+| [design-system.md](./docs/design-system.md) / [style-sheet.md](./docs/style-sheet.md) | Design language and implementation-level style spec |
+
+---
+
+## Feedback
+
+Bugs and suggestions go to [Issues](https://github.com/yib0601/aurora-music/issues). For playback problems, include the track origin (local / WebDAV / which source) and the platform version — it saves a round trip.
 
 ---
 
