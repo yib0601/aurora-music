@@ -144,6 +144,7 @@
       "target": [
         "nsis"
       ],
+      "artifactName": "Aurora-Music-${version}-${arch}.${ext}",
       "icon": "resources/icon.ico",
       "forceCodeSigning": false,
       "signExecutable": false

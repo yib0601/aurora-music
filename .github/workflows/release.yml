@@ -58,10 +58,14 @@ jobs:
         run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
 
       - name: Build Windows installer (x64)
-        # artifactName 从 CLI 覆盖：electron-builder 的 ${arch} 宏在已发布资产里
-        # 必须与 macOS 的 -arm64 / -x64 命名一致，渲染层更新逻辑才能挑对本机那份
-        # （packages/app/src/services/update-asset.ts）。
-        run: pnpm --filter @aurora/desktop exec electron-builder --win --x64 --publish never -c.artifactName='Aurora-Music-${version}-x64.${ext}'
+        # 命名走 packages/desktop/package.json 的 win.artifactName：
+        # `-c.artifactName=...` 在这条 pwsh 链路上传不进去 —— PowerShell 把单引号
+        # 原样拼进参数，electron-builder 收到 `.artifactName='Aurora-…-x64.${ext}'`
+        # 后当成 --config 的文件路径去 open，直接 ENOENT 挂掉整个打包步骤
+        # （实测 run 44453264861）。Windows 的 ${arch} 宏就展开成 x64 / arm64，
+        # 与 macOS dmg 命名同源，不需要 CLI 覆盖。Linux 的 ${arch} 会变成
+        # amd64 / aarch64，那边仍用 bash 下的 CLI 覆盖（见 build-linux-* job）。
+        run: pnpm --filter @aurora/desktop exec electron-builder --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -124,7 +128,8 @@ jobs:
         run: pnpm --filter @aurora/desktop exec tsc -p tsconfig.electron.json
 
       - name: Build Windows installer (arm64)
-        run: pnpm --filter @aurora/desktop exec electron-builder --win --arm64 --publish never -c.artifactName='Aurora-Music-${version}-arm64.${ext}'
+        # 同 x64：命名由 package.json 的 win.artifactName 决定，CLI 覆盖在 pwsh 下会 ENOENT
+        run: pnpm --filter @aurora/desktop exec electron-builder --win --arm64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

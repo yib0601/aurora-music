@@ -204,7 +204,7 @@ macOS 从第一天就是双架构（§5.2），Linux 与 Windows 自 0.9.0 起�
 target 列表（含 snap），还会多打一个 `__snap-arm64` 并报 `snapcraft ENOENT`。
 macOS 从来就是这么写的（`"mac": { "target": ["dmg"] }`），三条腿保持一致。
 
-### 6.2 artifactName 必须用 `-c.artifactName` 从命令行覆盖成 `-x64` / `-arm64`
+### 6.2 artifactName 必须让产物带 `-x64` / `-arm64`：Win/mac 走配置，Linux 走 CLI
 
 `${arch}` 宏在 electron-builder 里不是 electron 的架构名，而是各格式自己的架构名
 （`builder-util/out/arch.js` 的 `getArtifactArchName`）：
@@ -214,17 +214,31 @@ macOS 从来就是这么写的（`"mac": { "target": ["dmg"] }`），三条腿�
 | AppImage | `x86_64` | `arm64` |
 | deb | `amd64` | `arm64` |
 | rpm | `x86_64` | `aarch64` |
+| nsis (win) | `x64` | `arm64` |
 | dmg | `x64` | `arm64` |
 
 渲染层的更新逻辑（`packages/app/src/services/update-asset.ts`）按 `process.arch` 找
-`-x64` / `-arm64` 后缀，所以 CI 里所有平台都传：
+`-x64` / `-arm64` 后缀。Windows 与 macOS 的 `${arch}` 正好就是这一套，所以两条腿**写在
+配置文件里**（`win.artifactName` / `mac.artifactName`）：
+
+```json
+"artifactName": "Aurora-Music-${version}-${arch}.${ext}"
+```
+
+Linux 的 `${arch}` 会变成 `amd64` / `aarch64` / `x86_64`，因此只有 Linux 两条腿在 CI 里
+用 CLI 覆盖（bash，引号安全）：
 
 ```bash
 -c.artifactName='Aurora-Music-${version}-x64.${ext}'
 -c.artifactName='Aurora-Music-${version}-arm64.${ext}'
 ```
 
-（macOS 是唯一可以用配置文件里 `${arch}` 宏的地方，因为它展开就是 `x64`/`arm64`。）
+**Windows runner 上不要用 `-c.artifactName=…`**：那条 step 默认是 pwsh，单引号会原样
+拼进参数，electron-builder 拿到 `.artifactName='Aurora-…'` 当成 `--config` 的文件路径去
+open，整条腿以 `ENOENT: .artifactName=Aurora-Music-${version}-x64.${ext}` 失败
+（实测 run 44453264861 的两条 Windows 腿都这样挂掉，`create-release` 随之 skipped）。
+要改命名就改 `win.artifactName`；确实必须走 CLI 时，得显式 `shell: bash` 并自己确认
+MSYS 的路径转换不会啃掉参数。
 
 改名会改变已发布资产的旧文件名，这一点是刻意的：x64 侧的新名字仍含 `-x64`，
 所以**已经装在用户机器上的旧版本**（0.8.x 的 includes('-x64') 逻辑）照样能挑对包；
@@ -290,8 +304,8 @@ Windows 侧同理，用 `scripts/verify-win-arch.cjs` 读 PE 头的 `Machine` �
 node scripts/verify-win-arch.cjs packages/desktop/release/win-arm64-unpacked/Aurora-Music.exe arm64
 ```
 
-两个 job 都跑它：文件名里的架构来自 `-c.artifactName`，而真实架构来自 Electron 包与
-`better-sqlite3` 的 rebuild 目标，二者本就可以独立漂移。
+两个 job 都跑它：文件名里的架构来自 `win.artifactName` 的 `${arch}` 宏，而真实架构来自
+Electron 包与 `better-sqlite3` 的 rebuild 目标，二者本就可以独立漂移。
 
 ### 6.5 本地重打 deb / rpm
 
@@ -306,7 +320,9 @@ ARCH=arm64 bash build-rpm.sh   # → Aurora-Music-<v>-1.aarch64.rpm
 `ARCH` 一个变量同时决定三件事（解包目录、fpm `--architecture`、输出文件名），
 不要在命令行里只改其中一处 —— 三者错位就是「包名写 arm64、内容是 x64」的另一条路。
 
-注意本地直接 `pnpm build:desktop` / `build:dir` 产出的文件名**不带** `-x64`
-（全局 `artifactName` 仍是 `Aurora-Music-${version}.${ext}`），架构后缀只在 CI 里通过
-`-c.artifactName` 加。本地包是自用产物，不必和 Release 命名对齐；要对齐就把 CI 那条
-命令行原样贴进终端。
+按平台看命名来源：Windows / macOS 的架构后缀写在 `package.json` 的
+`win.artifactName` / `mac.artifactName`（`${arch}` 展开就是 `x64` / `arm64`），本地
+`pnpm build:desktop` 同样会带上；Linux 的 `artifactName` 仍由 CI 的
+`-c.artifactName` 覆盖，本地 `build-deb.sh` / `build-rpm.sh` 产出的是 fpm 命名
+（`aurora-music_<v>_amd64.deb`），与 Release 里的 `-x64.deb` 不同名 —— 本地包是自用
+产物，不必对齐，要对齐就把 CI 那条命令行原样贴进终端。
