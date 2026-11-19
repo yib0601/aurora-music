@@ -479,37 +479,58 @@ export function LyricsView({
                     ? 'text-white/55'
                     : 'text-white/45'
             return (
-              <p
+              // 一行 = 主行 + 可选译文副行，外层包一层是为了让 `space-y-*` 的段间距
+              // 落在「句」上而不是落在「原文与译文之间」：副行与主行必须读成一组，
+              // 间距要比段间距明显小，否则双语歌词整块会散成一串独立句子。
+              <div
                 key={`${line.time}-${idx}`}
-                ref={(el) => {
-                  lineRefs.current[idx] = el
-                }}
-                aria-current={isActive ? 'true' : undefined}
-                className={cn(
-                  // lyric-line 提供 text-wrap:balance，把折行断点摊平，避免把词劈成两半
-                  // ⚠️ 不能写 transition-all：它会把 font-size 也纳入过渡，切行时字号在
-                  // 14 ↔ 17px 之间插值数百毫秒，全程按非整数 px 渲染（实测字形边缘明显发毛），
-                  // 且逐帧触发布局重排——「跟着歌词变糊」就是这么来的。
-                  // 只过渡颜色与发光滤镜，字号瞬时切换，文字始终按整数 px 光栅化。
-                  'lyric-line cursor-pointer leading-[1.5] transition-[color,filter] duration-300 ease-apple',
-                  isActive
-                    ? cn('lyric-active', large && 'lyric-active-lg')
-                    : cn(idleTone, large ? 'text-[16px]' : 'text-[14px]')
-                )}
+                className="cursor-pointer"
                 onClick={() => onLineClick?.(line.time)}
               >
-                {isActive ? (
-                  // 填充单元：增强 LRC 逐词元、普通 LRC 按字/词摊（见 lib/lyricFill）。
-                  // 每个单元一个 span，各自按 plan 里的区间点亮，折行也不会断。
-                  buildFillPlan(line, lyricLineWindow(lyrics, idx).end).tokens.map((token, tokenIdx) => (
-                    <span key={tokenIdx} data-lyric-fill className="lyric-word">
-                      {token}
-                    </span>
-                  ))
-                ) : (
-                  line.text
-                )}
-              </p>
+                <p
+                  ref={(el) => {
+                    lineRefs.current[idx] = el
+                  }}
+                  aria-current={isActive ? 'true' : undefined}
+                  className={cn(
+                    // lyric-line 提供 text-wrap:balance，把折行断点摊平，避免把词劈成两半
+                    // ⚠️ 不能写 transition-all：它会把 font-size 也纳入过渡，切行时字号在
+                    // 14 ↔ 17px 之间插值数百毫秒，全程按非整数 px 渲染（实测字形边缘明显发毛），
+                    // 且逐帧触发布局重排——「跟着歌词变糊」就是这么来的。
+                    // 只过渡颜色与发光滤镜，字号瞬时切换，文字始终按整数 px 光栅化。
+                    'lyric-line leading-[1.5] transition-[color,filter] duration-300 ease-apple',
+                    isActive
+                      ? cn('lyric-active', large && 'lyric-active-lg')
+                      : cn(idleTone, large ? 'text-[16px]' : 'text-[14px]')
+                  )}
+                >
+                  {isActive ? (
+                    // 填充单元：增强 LRC 逐词元、普通 LRC 按字/词摊（见 lib/lyricFill）。
+                    // 每个单元一个 span，各自按 plan 里的区间点亮，折行也不会断。
+                    buildFillPlan(line, lyricLineWindow(lyrics, idx).end).tokens.map((token, tokenIdx) => (
+                      <span key={tokenIdx} data-lyric-fill className="lyric-word">
+                        {token}
+                      </span>
+                    ))
+                  ) : (
+                    line.text
+                  )}
+                </p>
+                {line.trans ? (
+                  // 译文副行：小一号、同档透明度、**不参与逐字填充**（译文没有自己的
+                  // 逐字轴，跟着原文一起点亮会看起来像在乱唱）。当前行的译文比其它行
+                  // 亮一档，保证「读的是哪句」不丢。
+                  <p
+                    className={cn(
+                      'lyric-line mt-1 leading-[1.4] transition-[color] duration-300 ease-apple',
+                      large ? 'text-[13px]' : 'text-[12px]',
+                      isActive ? 'text-white/70' : idleTone
+                    )}
+                  >
+                    {line.trans}
+                  </p>
+                ) : null}
+              </div>
             )
           })}
         </div>

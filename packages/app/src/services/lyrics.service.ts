@@ -16,6 +16,64 @@ function lyricTagRegex(open: string, close: string): RegExp {
   return new RegExp(`${open}${TIME_TAG_BODY}${close}`, 'g')
 }
 
+/**
+ * 制作信息行的角色词（作曲 / 作词 / 制作人 …）。
+ *
+ * 为什么需要这份名单：QQ 音乐、网易云里大量带时间戳的 LRC 把制作名单也写成了
+ * 「带时间戳的歌词行」——实测某首 HOYO-MiX 的曲目在 0:03~0:09 有作曲/作词/制作人
+ * 三行、3:16 之后还有二十余行演奏/录音/混音/出品名单。旧实现只跳过 `[ti:]` / `[ar:]`
+ * 这类纯元数据行，这些行会当成唱词渲染，用户看到的就是「作曲 Composer：…」和
+ * 折行后剩下的半截人名。
+ *
+ * 名单只收**多字**角色词：`鼓` / `词` 这类单字既是角色也是正常词头
+ * （「鼓声响起」），收进这条规则会误删真正的歌词。
+ * 单字的 `词：xxx` / `曲：xxx` 是 QQ 中文曲库最常见的写法，另由
+ * `CREDIT_LINE_SHORT` 用「冒号必须紧跟」的严格形态兜住——「曲终人散：一场空」
+ * 这种正常歌词因此不会被误删。
+ *
+ * 名单来自实测样本（2026-11-19 抓 QQ legacy 接口，Ed Sheeran / BTS / 米津玄師
+ * 三首的完整 LRC）：`Lyrics by` / `Composed by` / `Produced by` / `Drums` /
+ * `Percussion` / `Bass Guitar` / `Synth Bass` / `Synths` / `Pads` / `Piano` /
+ * `Electric Guitars` / `Programmed Horns` / `词：` / `曲：`。遇到新写法在这里补词。
+ */
+const CREDIT_ROLES = [
+  '作曲', '作词', '作詞', '填词', '填詞', '编曲', '編曲', '制作', '制作人', '製作', '製作人',
+  '监制', '監製', '出品', '出品人', '发行', '發行', '厂牌', '廠牌', '统筹', '統籌', '企划', '企劃',
+  '录音', '錄音', '录音师', '錄音師', '混音', '母带', '母帶', '后期', '後期',
+  '吉他', '贝斯', '貝斯', '鼓手', '键盘', '鍵盤', '合成器', '弦乐', '弦樂', '和声', '和聲',
+  '配唱', '人声', '人聲', '演奏', '指挥', '指揮', '封面', '设计', '設計',
+  'Composer', 'Composers', 'Composed', 'Lyricist', 'Lyricists', 'Lyrics',
+  'Arranger', 'Arrangement', 'Arranged', 'Producer', 'Produced', 'Production', 'Executive',
+  'Mixing', 'Mix', 'Mastered', 'Mastering', 'Master', 'Recording', 'Recorded',
+  'Guitar', 'Guitars', 'Electric', 'Acoustic', 'Bass', 'Drums', 'Percussion',
+  'Piano', 'Keyboard', 'Keyboards', 'Synth', 'Synths', 'Pads', 'Programmed',
+  'Strings', 'Horns', 'Trumpet', 'Saxophone', 'Flute', 'Violin', 'Cello',
+  'Chorus', 'Choir', 'Vocal', 'Vocals', 'Backing', 'Background', 'Live', 'Conductor', 'Engineer',
+  'Written', 'Words', 'Music', 'Artwork', 'Design', 'Designer', 'Illustration',
+  'Photography', 'Publisher', 'Label',
+]
+
+/**
+ * 制作信息行判据：行首是角色词 + 靠前位置有冒号。
+ *
+ * 冒号是**硬条件**：只按词头匹配会把「作词为我的你」这类正常歌词行误删。
+ * 角色词与冒号之间容许 28 个字符，用来吃下「混音工程师 Mixing Engineer：」
+ * 这种中英混排、带职级后缀的写法。反过来，没有冒号的制作行（`作曲 温菁`）
+ * 宁可漏过滤也不猜——误删一句真歌词比多留一行制作信息更糟。
+ *
+ * 冒号之外还认「空格 + 破折号 + 空格」这一种分隔（实测 QQ 样本
+ * `Recording Engineer - Pdogg @ Dogg Bounce`）。只在**行首就是角色词**时才生效，
+ * 因此误伤面仅限于「整句歌词恰好以制作角色词开头、且紧跟空格破折号」这种写法，
+ * 比放开任意分隔符小得多；`Love - 是一场梦` 这类普通歌词不受影响。
+ */
+const CREDIT_LINE = new RegExp(
+  String.raw`^\s*(?:${CREDIT_ROLES.join('|')})[^:：]{0,28}(?:[:：]|\s[-–—]\s)`,
+  'i'
+)
+
+/** 单字角色词（`词：` / `曲：`）只在冒号紧跟时才算制作行，见 CREDIT_ROLES 的注释 */
+const CREDIT_LINE_SHORT = /^\s*[词曲]\s*[:：]/
+
 function tagToSeconds(minute: string, second: string, fraction?: string): number {
   // `.5` = 500ms、`.05` = 50ms：与 LRC 的「小数秒」语义对齐（右侧补零到三位）
   const millis = fraction ? Number.parseInt(fraction.padEnd(3, '0').slice(0, 3), 10) : 0
@@ -87,6 +145,8 @@ export function parseLRC(content: string): LyricLine[] {
 
     const text = rawLine.replace(lineTag, '').replace(wordTag, '').trim()
     if (!text) continue
+    // 制作信息行不是唱词：带时间戳也跳过（判据见 CREDIT_LINE / CREDIT_LINE_SHORT）
+    if (CREDIT_LINE.test(text) || CREDIT_LINE_SHORT.test(text)) continue
 
     const lineTags = [...rawLine.matchAll(lineTag)]
     const wordTags = [...rawLine.matchAll(wordTag)]
@@ -123,20 +183,39 @@ export function parseLRC(content: string): LyricLine[] {
 
   result.sort((a, b) => a.time - b.time)
 
+  // 双语折叠：同时间戳的两条，第二条是译文。
+  //
+  // 为什么要折叠而不是照旧平铺：平铺把译文渲染成与原文**同样字号**的下一段，
+  // 读起来像「多唱了一句」，也分不清哪行是原文；折叠后由渲染层作小字副行。
+  // 只收「恰好两条且文本不同」的组：三条及以上同时间戳说明是多人对唱或数据
+  // 重复，译文归属不明确，宁可按行平铺也不猜。
+  const folded: LyricLine[] = []
+  for (let start = 0; start < result.length; ) {
+    let end = start + 1
+    while (end < result.length && result[end].time === result[start].time) end++
+    const second = result[start + 1]
+    if (end - start === 2 && second.text !== result[start].text) {
+      folded.push({ ...result[start], trans: second.text })
+    } else {
+      for (let i = start; i < end; i++) folded.push(result[i])
+    }
+    start = end
+  }
+
   // 回填行结束时刻：同时间的多条（原文 + 译文）属于一组，整组共用下一条的起始时间。
   // 最后一行没有下一行，留 undefined 交给渲染层按窗口估计。
   let groupStart = 0
-  while (groupStart < result.length) {
+  while (groupStart < folded.length) {
     let groupEnd = groupStart + 1
-    while (groupEnd < result.length && result[groupEnd].time === result[groupStart].time) groupEnd++
-    const nextTime = groupEnd < result.length ? result[groupEnd].time : undefined
+    while (groupEnd < folded.length && folded[groupEnd].time === folded[groupStart].time) groupEnd++
+    const nextTime = groupEnd < folded.length ? folded[groupEnd].time : undefined
     if (nextTime !== undefined) {
-      for (let i = groupStart; i < groupEnd; i++) result[i].endTime = nextTime
+      for (let i = groupStart; i < groupEnd; i++) folded[i].endTime = nextTime
     }
     groupStart = groupEnd
   }
 
-  return result
+  return folded
 }
 
 function withWords(time: number, text: string, words: LyricWord[] | null): LyricLine {

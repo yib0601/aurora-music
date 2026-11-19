@@ -100,9 +100,80 @@ describe('parseLRC：逐字时间轴（增强 LRC）', () => {
     expect(lines.every((line) => line.words === undefined)).toBe(true)
   })
 
-  it('同一时间的多条（原文 + 译文）共用下一行起点', () => {
+  it('同一时间的第二条作为译文折进主行，不再多出一行', () => {
     const lines = parseLRC('[00:01.00]原文\n[00:01.00]translation\n[00:04.00]下一句')
-    expect(lines.map((line) => line.endTime)).toEqual([4, 4, undefined])
+    expect(lines).toHaveLength(2)
+    expect(lines[0].text).toBe('原文')
+    expect(lines[0].trans).toBe('translation')
+    expect(lines[0].endTime).toBe(4)
+    expect(lines[1].trans).toBeUndefined()
+  })
+
+  it('同时间戳的三条不折叠（归属不明确，按行平铺）', () => {
+    const lines = parseLRC('[00:01.00]甲\n[00:01.00]乙\n[00:01.00]丙')
+    expect(lines).toHaveLength(3)
+    expect(lines.every((line) => line.trans === undefined)).toBe(true)
+  })
+
+  it('同时间戳但文本相同不折叠（数据重复，不当译文）', () => {
+    const lines = parseLRC('[00:01.00]副歌\n[00:01.00]副歌')
+    expect(lines).toHaveLength(2)
+    expect(lines.every((line) => line.trans === undefined)).toBe(true)
+  })
+})
+
+describe('parseLRC：制作信息行过滤', () => {
+  it('带时间戳的中英混排制作行被丢弃，真歌词保留', () => {
+    const lines = parseLRC(
+      [
+        '[00:03.78]作曲 Composer：温菁 Jing.W (HOYO-MiX)',
+        '[00:09.38]制作人 Producer：宫奇Gon (HOYO-MiX) / 温菁 Jing.W (HOYO-MiX)',
+        '[00:23.33]I woke up to the fire,',
+        '[03:16.00]混音工程师 Mixing Engineer：张三',
+      ].join('\n')
+    )
+    expect(lines.map((line) => line.text)).toEqual(['I woke up to the fire,'])
+  })
+
+  it('没有冒号的角色词行不当制作行（宁可漏过滤，不误删歌词）', () => {
+    const lines = parseLRC('[00:01.00]作曲 温菁\n[00:04.00]监制着夜色的风')
+    expect(lines).toHaveLength(2)
+  })
+
+  it('单字角色词只在冒号紧跟时过滤（「曲终人散：」这类正常歌词保留）', () => {
+    const lines = parseLRC('[00:01.00]词：米津玄師\n[00:02.00]曲：米津玄師\n[00:04.00]曲终人散：一场空')
+    expect(lines.map((line) => line.text)).toEqual(['曲终人散：一场空'])
+  })
+
+  it('实测样本：QQ 英文曲目的制作名单整段过滤，正文不受影响', () => {
+    // 2026-11-19 抓自 c.y.qq.com legacy 接口的真实 LRC 片段（BTS《Dynamite》）
+    const lines = parseLRC(
+      [
+        '[00:00.00]Dynamite - BTS',
+        '[00:02.10]Lyrics by：David Stewart/Jessica Agombar',
+        '[00:03.10]Composed by：David Stewart/Jessica Agombar',
+        '[00:04.10]Produced by：David Stewart (David Stewart/Jessica Agombar)',
+        '[00:05.10]Drums：David Stewart',
+        '[00:06.10]Percussion：David Stewart',
+        '[00:07.10]Bass Guitar：David Stewart',
+        '[00:08.10]Synth Bass：David Stewart',
+        '[00:09.10]Synths：David Stewart',
+        '[00:10.10]Pads：David Stewart',
+        '[00:11.10]Programmed Horns：David Stewart',
+        '[00:11.60]Background Vocals：David Stewart',
+        '[00:12.00]Live Horns：Johnny Thurkell',
+        '[00:12.30]Recording Engineer - Pdogg @ Dogg Bounce',
+        "[00:14.10]Love - 是一场梦",
+        "[00:13.10]'Cause I, I, I'm in the stars tonight",
+      ].join('\n')
+    )
+    // 曲名行（`Dynamite - BTS`）不是制作信息，但它会随正片一起显示——这是既有行为，
+    // 本次只收制作名单，不动曲名行
+    expect(lines.map((line) => line.text)).toEqual([
+      'Dynamite - BTS',
+      "'Cause I, I, I'm in the stars tonight",
+      'Love - 是一场梦',
+    ])
   })
 })
 

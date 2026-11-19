@@ -102,3 +102,27 @@ describe('LyricsView：切歌不闪错行 / 隐藏实例不烧帧（回归哨兵
     expect(source).toMatch(/if \(!activeRef\.current\) return/)
   })
 })
+
+describe('LyricsView：双语歌词副行（结构哨兵）', () => {
+  const transAt = source.indexOf('{line.trans ? (')
+  const fillAt = source.indexOf('buildFillPlan(')
+  const groupAt = source.indexOf('className="cursor-pointer"')
+
+  it('译文存在时渲染独立副行（不是拼进主行文本）', () => {
+    expect(transAt).toBeGreaterThan(-1)
+    // 副行自带小字号：主行 narrow 14 / large 16，副行 narrow 12 / large 13。
+    // 若副行字号与主行一致，双语歌词会读成「多唱了一句」而不是对照。
+    expect(source).toMatch(/large \? 'text-\[13px\]' : 'text-\[12px\]'/)
+  })
+
+  it('译文不参与逐字填充（填充块在前，译文块在它之后）', () => {
+    // 译文没有自己的逐字轴：塞进 buildFillPlan 的 token 流会按原文的节奏乱点亮
+    expect(fillAt).toBeGreaterThan(-1)
+    expect(transAt).toBeGreaterThan(fillAt)
+  })
+
+  it('主行与译文包在同一层里（段间距落在句上，而不是劈开原文与译文）', () => {
+    expect(groupAt).toBeGreaterThan(-1)
+    expect(transAt).toBeGreaterThan(groupAt)
+  })
+})

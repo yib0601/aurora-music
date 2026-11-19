@@ -435,6 +435,7 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | | `.apple-press` | 只做 `:active` 的 `scale(.96)` 按压反馈，**不碰背景与描边** |
 | **分隔与滚动** | `.hairline`（847）/ `.scrollbar-thin`（854）/ `.scrollbar-hide`（852） | 发丝边走 `--surface-card-border`；细滚动条 3px |
 | **歌词** | `.lyric-line`（1194）/ `.lyric-active`（1198）/ `.lyric-active-lg`（1215） | `.lyric-line` 给出 `text-wrap: balance` 均衡折行断点；高亮为渐变文字 + **`drop-shadow` 双层发光**（不可改回 `text-shadow`，会从透明笔画内部透出来把字糊掉）；浅色主题整体翻转为深墨→青 |
+| **歌词译文副行** | `LyricsView.tsx` 的 `line.trans` 分支（无独立 class，复用 `.lyric-line`） | 窄栏 12px / 宽栏 13px、`mt-1`、透明度跟所在行同档（当前行 `/70`）；**不参与**逐字填充，与主行包在同一层里，段间距只落在句与句之间 |
 | **黑胶** | `.vinyl-disc`（1005） | 详情页旋转封面 |
 | **窗口** | `.titlebar-drag` / `.titlebar-no-drag` | Electron 拖拽区控制 |
 
