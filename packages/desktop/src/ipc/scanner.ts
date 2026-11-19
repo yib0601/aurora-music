@@ -7,7 +7,7 @@ import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
 import { registerCoverFile } from './mediaCache'
 import { isUsableCoverFile } from './coverFile'
-import { auroraError, searchOnlineTracks, fetchWithTimeout, isTimeoutError, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate, PLACEHOLDER_ARTISTS, parseEncryptedAudioName, isEncryptedAudioName } from '@aurora/shared'
+import { auroraError, searchOnlineTracks, fetchWithTimeout, isTimeoutError, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate, PLACEHOLDER_ARTISTS, parseEncryptedAudioName, isEncryptedAudioName, isIncompleteScanRecord } from '@aurora/shared'
 import type { OnlineSearchOptions, EncryptedAudioFile } from '@aurora/shared'
 
 /** 在线封面下载超时：封面是可选增强，等太久不如放着让下次重试 */
@@ -101,10 +101,13 @@ async function processFile(
       // 文件未变化（大小一致）直接复用，保留播放统计/收藏等用户数据；
       // 文件被修改（重新打标签/替换）则继续往下重新解析
       if (existing.fileSize === stat.size) {
-        // 老版本未按「艺术家 - 歌名」拆分文件名留下的占位记录，
-        // 重扫时补一次重解析修正元数据（幂等，修正后即不再触发）
+        // 两类**存量脏记录**即使文件没变也要重解析一次（幂等，修好即不再触发）：
+        // - 老版本未按「艺术家 - 歌名」拆分文件名留下的占位记录（artist 为哨兵值）；
+        // - 扫描跑在下载写完之前留下的毫秒级时长记录（`isIncompleteScanRecord`，
+        //   与移动端同一口径）。后者在桌面端多由「文件变大」兜住，但大小没变而
+        //   时长残次的记录只能靠这条判据捞回来。
         const legacyUntagged = existing.artist === '未知艺术家' && existing.title.includes('-') // i18n-exempt: 落库哨兵值，参与匹配
-        if (!legacyUntagged) return existing
+        if (!legacyUntagged && !isIncompleteScanRecord(existing)) return existing
       }
     }
 

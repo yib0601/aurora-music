@@ -119,6 +119,7 @@ export {
 } from './fileUrl'
 export { embedCoverIntoAudio, detectImageMime, sniffAudioContainer } from './embedCover'
 export type { EmbedMeta, EmbedCover, AudioContainer } from './embedCover'
+export { isIncompleteScanRecord, MIN_PLAUSIBLE_TRACK_SECONDS } from './scanRepair'
 export {
   detectEncryptedAudioName,
   isEncryptedAudioName,

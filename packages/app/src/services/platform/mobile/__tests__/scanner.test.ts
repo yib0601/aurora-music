@@ -27,6 +27,12 @@ const state = vi.hoisted(() => ({
   inserted: [] as string[],
   /** 已在库中的 path：getTrackByPath 命中即复用 */
   existing: new Set<string>(),
+  /** 指定 path 的已入库记录（覆盖默认构造，供「残次记录自愈」用例注入毫秒级时长） */
+  existingRecords: new Map<string, Track>(),
+  /** 文件名 → 字节数（Filesystem.stat 返回），未列出的按 1024 */
+  fileSizes: new Map<string, number>(),
+  /** 模拟「无标签」的文件名集合：parseBlob 返回空 title/artist（下载来源常见） */
+  untagged: new Set<string>(),
   /** 让指定 path 的 insertTrack 抛错 */
   insertFails: new Set<string>(),
   /** 让指定 path 的 getTrackByPath 抛错（模拟读库失败） */
@@ -81,6 +87,10 @@ vi.mock('@capacitor/filesystem', () => ({
     async getUri({ path }: { path: string }) {
       return { uri: `file:///data/user/0/com.aurora.music/files/${path}` }
     },
+    async stat({ path }: { path: string }) {
+      const name = path.split('/').pop() || path
+      return { size: state.fileSizes.get(name) ?? 1024 }
+    },
     async writeFile({ path, data }: { path: string; data: string }) {
       state.coverWrites.push(path)
       // 用封面数据内容反查源文件名：并发交错下也能准确判定是谁在落封面
@@ -124,10 +134,11 @@ vi.mock('music-metadata-browser', () => ({
       state.coverDataOwner.set(b64, name)
       picture = [{ data, format: 'image/jpeg' }]
     }
+    const untagged = state.untagged.has(name)
     return {
       common: {
-        title: `标题-${name}`,
-        artist: '歌手',
+        title: untagged ? undefined : `标题-${name}`,
+        artist: untagged ? undefined : '歌手',
         album: state.albumOf(name),
         track: {},
         picture,
@@ -161,7 +172,23 @@ const dbDouble = {
   async getTrackByPath(path: string) {
     if (state.lookupFails.has(path)) throw new Error('DB 读取失败')
     if (!state.existing.has(path)) return null
-    return { id: `existing-${path}`, path, title: `旧-${path}`, artist: '旧', album: '旧', addedAt: 1, playCount: 0, liked: false }
+    const injected = state.existingRecords.get(path)
+    if (injected) return { ...injected }
+    // duration / fileSize 必须给出「正常值」：判据 `isIncompleteScanRecord` 会把
+    // 缺时长的记录当成残次，夹具不给值的话「已入库即复用」的既有语义会被自愈逻辑
+    // 静默改写成「重解析」，用例就失去了它本来的区分力
+    return {
+      id: `existing-${path}`,
+      path,
+      title: `旧-${path}`,
+      artist: '旧',
+      album: '旧',
+      duration: 300,
+      fileSize: 1024,
+      addedAt: 1,
+      playCount: 0,
+      liked: false,
+    }
   },
   async insertTrack(track: { path: string }) {
     if (state.insertFails.has(track.path)) throw new Error('insert 失败')
@@ -214,6 +241,9 @@ beforeEach(() => {
   state.readDelay = new Map()
   state.inserted = []
   state.existing = new Set()
+  state.existingRecords = new Map()
+  state.fileSizes = new Map()
+  state.untagged = new Set()
   state.insertFails = new Set()
   state.lookupFails = new Set()
   state.failParse = new Set()
@@ -294,6 +324,82 @@ describe('移动端 scanFolder：并发化后的行为等价性', () => {
     // 只有新文件被解析与入库
     expect(state.parseCount.has('old.mp3')).toBe(false)
     expect(state.inserted).toEqual(['Music/new.mp3'])
+  })
+
+  it('残次记录自愈：下载没写完就被扫到的毫秒级时长，重扫时重解析并沿用原 id 与播放数据', async () => {
+    // 夹具的文件系统替身只支持单层目录（readdir 只列直接子项），用扁平路径表达同一场景
+    const dirty = 'Music/李晓杰,DJ小鱼儿 - 朋友的酒 (ＤJ小鱼儿版).m4a'
+    state.files = [dirty]
+    state.existing.add(dirty)
+    // 真机现场：只读到 32 帧，且历史记录从未落过 fileSize
+    state.existingRecords.set(dirty, {
+      id: 'dirty-id',
+      path: dirty,
+      title: '李晓杰,DJ小鱼儿 - 朋友的酒 (ＤJ小鱼儿版)',
+      artist: '未知艺术家',
+      album: '未知专辑',
+      duration: 0.743,
+      addedAt: 1_786_000_000_000,
+      playCount: 7,
+      liked: true,
+    })
+
+    const scanner = await loadScanner()
+    const out = await scanner.scanFolder(ROOT, dbDouble)
+
+    // 真的重解析了（而不是把 0:00 原样返回）
+    expect(state.parseCount.get('李晓杰,DJ小鱼儿 - 朋友的酒 (ＤJ小鱼儿版).m4a')).toBe(1)
+    // 覆写同一条记录（insertTrack 按 path upsert）
+    expect(state.inserted).toEqual([dirty])
+
+    const track = out[0]
+    // id 沿用：封面文件名与 UI 里那条记录的身份都挂在 id 上
+    expect(track.id).toBe('dirty-id')
+    // 时长按完整文件重新解析（替身固定 100 秒）
+    expect(track.duration).toBe(100)
+    // 用户数据不丢
+    expect(track.playCount).toBe(7)
+    expect(track.liked).toBe(true)
+    expect(track.addedAt).toBe(1_786_000_000_000)
+    // 落上 fileSize：真·短音频下次扫描不会再被判成残次
+    expect(track.fileSize).toBe(1024)
+  })
+
+  it('落过 fileSize 的极短记录（铃声/提示音）不当作残次记录，不重解析', async () => {
+    const ringtone = 'Music/提示音.mp3'
+    state.files = [ringtone]
+    state.existing.add(ringtone)
+    state.existingRecords.set(ringtone, {
+      id: 'ringtone-id',
+      path: ringtone,
+      title: '提示音',
+      artist: '系统',
+      album: '铃声',
+      duration: 2,
+      fileSize: 24_000,
+      addedAt: 1,
+      playCount: 3,
+      liked: false,
+    })
+
+    const scanner = await loadScanner()
+    const out = await scanner.scanFolder(ROOT, dbDouble)
+
+    expect(state.parseCount.size).toBe(0)
+    expect(state.inserted).toEqual([])
+    expect(out[0].id).toBe('ringtone-id')
+  })
+
+  it('无标签文件按「艺术家 - 歌名」拆文件名（与桌面端同一口径）', async () => {
+    const name = '李晓杰,DJ小鱼儿 - 朋友的酒 (ＤJ小鱼儿版).m4a'
+    state.files = [`Music/${name}`]
+    state.untagged.add(name)
+
+    const scanner = await loadScanner()
+    const out = await scanner.scanFolder(ROOT, dbDouble)
+
+    expect(out[0].artist).toBe('李晓杰,DJ小鱼儿')
+    expect(out[0].title).toBe('朋友的酒 (ＤJ小鱼儿版)')
   })
 
   it('全部文件都已入库时不解析任何文件、不写库，仍返回全部记录', async () => {

@@ -1,5 +1,11 @@
 import { Filesystem, Directory } from '@capacitor/filesystem'
-import { encodeFilePathToUrl, auroraError, parseEncryptedAudioName, isEncryptedAudioName } from '@aurora/shared'
+import {
+  encodeFilePathToUrl,
+  auroraError,
+  parseEncryptedAudioName,
+  isEncryptedAudioName,
+  isIncompleteScanRecord,
+} from '@aurora/shared'
 import type { EncryptedAudioFile } from '@aurora/shared'
 import * as mm from 'music-metadata-browser'
 import type { Track } from '@/types'
@@ -84,6 +90,21 @@ interface ParsedFile {
 }
 
 /**
+ * 取文件字节数，落库供 `isIncompleteScanRecord` 区分「真·短音频」与「下载没写完就被
+ * 扫到的残次记录」。只在解析（新文件 / 自愈重解析）时调用一次，复用路径不碰磁盘。
+ * 取不到就留 undefined —— 判定会把「无 fileSize + 极短时长」当作待自愈，代价是多解析一次。
+ */
+async function readFileSize(filePath: string): Promise<number | undefined> {
+  try {
+    const { size } = await Filesystem.stat({ path: filePath, directory: Directory.ExternalStorage })
+    return typeof size === 'number' && size > 0 ? size : undefined
+  } catch (err) {
+    console.warn('[Mobile] 取文件大小失败，按未知处理:', filePath, err)
+    return undefined
+  }
+}
+
+/**
  * 解析单个文件的元数据（**只读文件 + 落本曲自有封面，不碰数据库**）。
  *
  * 与 db 解耦是并发的前提：并发只覆盖「读 blob + 解析标签 + 写封面文件」这段真正的耗时
@@ -91,7 +112,7 @@ interface ParsedFile {
  * 没有本机可验证的保障（真机才跑得起来），不为一次扫描提速去赌它。
  * 查重（getTrackByPath）同样属于读库，也留在 scanFolder 的串行阶段。
  */
-async function parseNewFile(filePath: string): Promise<ParsedFile | null> {
+async function parseNewFile(filePath: string, existing?: Track): Promise<ParsedFile | null> {
   try {
     const fileName = filePath.split('/').pop() || filePath
 
@@ -115,13 +136,28 @@ async function parseNewFile(filePath: string): Promise<ParsedFile | null> {
       return null
     }
 
-    const title = metadata.common.title || fileName.replace(/\.[^.]+$/, '')
+    const stem = fileName.replace(/\.[^.]+$/, '')
+    let title = metadata.common.title || stem
+    let artist = metadata.common.artist || ''
+    if (!artist) {
+      // 与桌面端同一口径（packages/desktop/src/ipc/scanner.ts）：没有艺术家标签时按
+      // 「艺术家 - 歌名」的文件名惯例拆分。不拆会让 artist 恒为「未知艺术家」，
+      // 在线封面/歌词的按名匹配整体失效（音乐平台下载的文件名基本都是这个形状）。
+      const split = stem.match(/^(.{1,50}?)\s*-\s*(.{1,100})$/)
+      if (split) {
+        artist = split[1].trim()
+        if (!metadata.common.title) title = split[2].trim()
+      }
+    }
     // 无标签时的落库占位值保持中文原样：它参与 shared/coverMatch 的
     // PLACEHOLDER_ARTISTS 匹配（判定「歌手未知」以放宽封面匹配），翻译它等于改匹配规则
-    const artist = metadata.common.artist || '未知艺术家' // i18n-exempt: 参与匹配的领域占位值
+    if (!artist) artist = '未知艺术家' // i18n-exempt: 参与匹配的领域占位值
     const album = metadata.common.album || '未知专辑' // i18n-exempt: 参与匹配的领域占位值
 
-    const trackId = crypto.randomUUID()
+    // 自愈重解析时沿用原 id：封面文件名与 UI 里那条记录的身份都挂在 id 上，
+    // 换 id 会让同一条记录在界面上断成两条（insertTrack 按 path upsert，DB 侧本就
+    // 保住原 id 与播放统计，这里让内存对象与库里保持同一份事实）
+    const trackId = existing?.id ?? crypto.randomUUID()
     let coverPath: string | undefined
 
     // 专辑级封面复用键：仅在专辑与艺术家标签都真实存在时才启用。
@@ -160,12 +196,13 @@ async function parseNewFile(filePath: string): Promise<ParsedFile | null> {
       genre: metadata.common.genre?.[0],
       duration: metadata.format.duration || 0,
       trackNumber: typeof metadata.common.track.no === 'number' ? metadata.common.track.no : undefined,
-      coverPath,
-      // 移动端拿 fileSize 需额外 stat，跳过避免重复 IO（与桌面端一致保留此字段，置为 undefined）
-      fileSize: undefined,
-      addedAt: Date.now(),
-      playCount: 0,
-      liked: false,
+      // 重解析时保留上次提取到的封面：本次文件仍无内嵌图就继续沿用旧的
+      coverPath: coverPath ?? existing?.coverPath,
+      fileSize: await readFileSize(filePath),
+      addedAt: existing?.addedAt ?? Date.now(),
+      lastPlayedAt: existing?.lastPlayedAt,
+      playCount: existing?.playCount ?? 0,
+      liked: existing?.liked ?? false,
     }
     return { track, albumKey, coverPlan }
   } catch (err) {
@@ -372,7 +409,12 @@ export async function scanFolder(
       await flush()
       continue
     }
-    if (existing) {
+    // 命中即复用**除了**残次记录：下载工具先建文件再灌字节，扫描若落在那个窗口里，
+    // 解析只看得到开头几帧，时长会落成毫秒级（真机实测 0.023 / 0.048 / 0.743 秒），
+    // 文件随后下载完整，这条记录却会永久停在 0:00 —— 手机端没有桌面端那条「大小变了
+    // 就重解析」的兜底，用户重扫多少次都修不好。这里就地重解析覆写（insertTrack 按
+    // path upsert，id 与播放统计由 parseNewFile 沿用旧值），让存量脏数据自愈。
+    if (existing && !isIncompleteScanRecord(existing)) {
       existingTrack[i] = existing
       settled[i] = true
       await flush()
@@ -382,7 +424,7 @@ export async function scanFolder(
     parseJobs.push(
       (async () => {
         try {
-          parsed[i] = await parseNewFile(files[i])
+          parsed[i] = await parseNewFile(files[i], existing ?? undefined)
           needsInsert[i] = true
           // 解析失败且文件名带平台加密标记：上报给 UI 供「按名重下」，
           // 不进曲库（内容解不开，进了也播不了）。并发顺序无关紧要
