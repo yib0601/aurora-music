@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0A0A0A" />
+    <meta name="theme-color" content="#08090C" />
     <title>Aurora Music</title>
     <script>
       // 首屏脚本（React 挂载前执行）：语言 + 主题。
@@ -87,7 +87,9 @@
           // 必须与 dark 类同步设置，否则首屏会缺少 DS token 导致样式闪烁
           document.documentElement.setAttribute('data-ds-theme', isDark ? 'dark' : 'light')
           var meta = document.querySelector('meta[name="theme-color"]')
-          if (meta) meta.setAttribute('content', isDark ? '#0A0A0A' : '#F9F8F8')
+          // 与 globals.css 的 --fc-bg / --ambient-base 同值（深色 #08090C、浅色 #EBEEF2）：
+          // 浏览器地址栏/系统栏底色与画布不同色时，滚动到顶会露出一道异色边
+          if (meta) meta.setAttribute('content', isDark ? '#08090C' : '#EBEEF2')
         } catch (e) {
           // 存储不可用（隐私模式 / 坏 JSON）：同样回落到「跟随系统」，
           // 与上面 try 分支和 App.tsx 的默认判定保持一条口径

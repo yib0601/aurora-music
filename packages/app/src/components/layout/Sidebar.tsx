@@ -74,8 +74,8 @@ const navLinkClass = (isActive: boolean, spaced = false) =>
     'nav-link group relative flex items-center gap-3 h-10 px-3 rounded-ds-media text-[14px] font-normal tracking-[-0.224px] transition-[background,color,box-shadow] duration-200 ease-mineradio border',
     spaced && 'mt-3',
     isActive
-      ? 'nav-link-active bg-mint/[0.09] border-mint/[0.12] text-white font-medium'
-      : 'border-transparent text-white/65 hover:text-white/95 hover:bg-white/[0.045]',
+      ? 'nav-link-active bg-mint/[0.13] border-mint/[0.22] text-white font-medium'
+      : 'border-transparent text-white/70 hover:text-white hover:bg-white/[0.06]',
   )
 
 /**
@@ -219,8 +219,8 @@ export function Sidebar() {
               cn(
                 'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media min-w-0 transition-all duration-200 ease-mineradio border',
                 isActive
-                  ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
-                  : 'border-transparent text-white/65 hover:text-white hover:bg-white/[0.045]'
+                  ? 'bg-white/[0.09] border-white/[0.14] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.07)]'
+                  : 'border-transparent text-white/70 hover:text-white hover:bg-white/[0.06]'
               )
             }
           >
@@ -229,7 +229,7 @@ export function Sidebar() {
               strokeWidth={1.5}
             />
             <span className="truncate text-[13px] tracking-[-0.224px]">{t('nav.item.liked')}</span>
-            <span className="text-[11px] text-white/65 ml-auto tabular-nums font-semibold">
+            <span className="text-[11px] text-white/70 ml-auto tabular-nums font-semibold">
               {likedCount}
             </span>
           </NavLink>
@@ -260,14 +260,14 @@ export function Sidebar() {
                       cn(
                         'group flex items-center gap-2.5 h-9 px-3 rounded-ds-media flex-1 min-w-0 transition-all duration-200 ease-mineradio border',
                         isActive
-                          ? 'bg-white/[0.07] border-white/[0.10] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.06)]'
-                          : 'border-transparent text-white/65 hover:text-white hover:bg-white/[0.045]'
+                          ? 'bg-white/[0.09] border-white/[0.14] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.07)]'
+                          : 'border-transparent text-white/70 hover:text-white hover:bg-white/[0.06]'
                       )
                     }
                   >
                     <ListMusic className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint group-aria-[current=page]:opacity-100" strokeWidth={1.5} />
                     <span className="truncate text-[13px] tracking-[-0.224px]">{pl.name}</span>
-                    <span className="text-[11px] text-white/65 ml-auto tabular-nums font-semibold">
+                    <span className="text-[11px] text-white/70 ml-auto tabular-nums font-semibold">
                       {pl.trackIds.length}
                     </span>
                   </NavLink>
@@ -309,7 +309,7 @@ export function Sidebar() {
       </div>
 
       {/* 版本号：品牌名与版本号是产品标识串，不进字典（与 nav.brand.name 同源） */}
-      <div className="px-4 py-3 border-t border-white/5">
+      <div className="px-4 py-3 border-t border-white/[0.07]">
         <p className="font-text text-[11px] text-white/65 tracking-[-0.12px]">
           {t('shell.brand.full')} v{APP_VERSION}
         </p>

@@ -25,6 +25,13 @@ const config: Config = {
       //    后出现的规则胜出 —— 这正是 `short:` 能盖掉 `lg:` 的机制（如详情页
       //    `lg:flex-col short:flex-row`）。改动本对象的键顺序前先读这段。
       screens: {
+        /** 大屏档：≥1500px 宽（1080p@125% 全屏、2K 窗口），控件整体放大一档。
+         *  必须写成具名 screen 而不是 `min-[1500px]:`：本对象的 short/squat/ultrawide
+         *  是 raw 对象形态，Tailwind 3 一旦检测到 screens 含对象就**整体禁用**
+         *  min-* 与 max-* 变体（构建只给一条 warn，class 静默不生成）。此前 41 处
+         *  min-[1500px]: 全部落空，播放条的「大屏放大一档」从未生效。
+         *  位置在三个 raw 档之前：宽度档先出，高度/比例档后出仍能盖掉它。 */
+        wide: '1500px',
         /** 矮屏：≤780px 可用高度（车机 720p、窗口最小高度、手机横屏） */
         short: { raw: `(max-height: ${SHORT_VIEWPORT_MAX_HEIGHT}px)` },
         /** 极矮屏：≤560px 可用高度（手机横屏一档） */

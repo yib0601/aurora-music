@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, useRef, useCallback, memo, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Search as SearchIcon, Play, Plus, ListEnd, Music2, Heart, Loader2, Cloud, HardDrive, History, X, Download } from 'lucide-react'
+import { Search as SearchIcon, Play, Plus, ListEnd, Heart, Loader2, Cloud, HardDrive, History, X, Download } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
+import { CoverPlaceholder } from '@/components/common/CoverPlaceholder'
 import { EmptyTitle } from '@/components/PageHeading'
 import { cn, formatTime, isDesktop } from '@/lib/utils'
 import { NAV_LABEL_KEYS, ROUTES } from '@/lib/routes'
@@ -257,7 +258,7 @@ const OnlineResultRow = memo(function OnlineResultRow({
             {track.coverUrl ? (
               <img src={track.coverUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover product-shadow" referrerPolicy="no-referrer" />
             ) : (
-              <Music2 className="h-4 w-4 text-white/30" strokeWidth={1.6} />
+              <CoverPlaceholder title={track.title} artist={track.artist} />
             )}
           </div>
           <div className="flex-1 min-w-0">

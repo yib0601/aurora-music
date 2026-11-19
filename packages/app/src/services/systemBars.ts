@@ -5,7 +5,7 @@
  * Capacitor 的 StatusBar 插件配置只在 `load()` 时应用一次，且 Android 端的
  * 系统栏默认跟随系统主题：深色播放器下会留下**顶部一道系统浅色条**，
  * 与 app 近黑背景形成割裂（真机截图实测状态栏 #757575、导航栏 #FAFAFA，
- * 而 app 背景是 #0A0A0A）。主题切换后也不会自愈，必须在每次主题变更时同步。
+ * 而 app 背景是 #08090C）。主题切换后也不会自愈，必须在每次主题变更时同步。
  *
  * ── 语义（容易写反，务必对齐官方定义）──
  *   Style.Light = 浅色图标 → 用于**深色**背景
@@ -21,8 +21,8 @@
  * 直接静默返回，不做任何降级。
  */
 
-const BG_DARK = '#0A0A0A'
-const BG_LIGHT = '#F9F8F8'
+const BG_DARK = '#08090C'
+const BG_LIGHT = '#EBEEF2'
 
 interface StatusBarPlugin {
   setStyle(options: { style: string }): Promise<void>

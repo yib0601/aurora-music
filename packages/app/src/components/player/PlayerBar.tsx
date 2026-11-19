@@ -137,7 +137,10 @@ function CompactBar({
       onClick={openNowPlaying}
       role="button"
       aria-label={t('player.bar.expand')}
-      className="glass-saved-panel rounded-[16px] border border-white/[0.07] pl-2 pr-1.5 py-1.5 flex items-center gap-0.5 relative overflow-hidden cursor-pointer active:bg-white/[0.03] transition-colors"
+      // 材质与完整档同源（.player-console 持实色底 + 发丝边）：两档只是宽度取舍，
+      // 不该是两种观感。按下反馈用 transform 而非 active:bg-*——后者是 background
+      // 简写，会整体顶掉控制台实色底，按下瞬间整条透出背景。
+      className="player-console glass-saved-panel rounded-[16px] pl-2 pr-1.5 py-1.5 flex items-center gap-0.5 relative overflow-hidden cursor-pointer active:scale-[0.99] transition-transform duration-150"
     >
       {/* 顶部进度细线：左右各内缩 16px，避开 16px 圆角弧线——原先 inset-x-0
           让线头正好切在弧线上，像卡片边缘崩了一角 */}
@@ -161,10 +164,10 @@ function CompactBar({
           />
         </div>
         <div className="min-w-0 flex flex-col gap-px">
-          <p className="text-[13px] font-medium text-white/[0.94] truncate tracking-[-0.224px]">
+          <p className="text-[13px] font-medium text-white/[0.96] truncate tracking-[-0.224px]">
             {currentTrack?.title || t('player.state.notPlaying')}
           </p>
-          <p className="text-[10.5px] text-white/60 truncate tracking-[-0.12px]">
+          <p className="text-[10.5px] text-white/70 truncate tracking-[-0.12px]">
             {currentTrack?.artist || t('player.state.idle')}
           </p>
         </div>
@@ -193,7 +196,7 @@ function CompactBar({
         )}
       </button>
       <button
-        className="w-11 h-11 flex items-center justify-center rounded-full text-white/80 active:scale-90 transition disabled:opacity-35 disabled:pointer-events-none"
+        className="w-11 h-11 flex items-center justify-center rounded-full text-white/85 active:scale-90 transition disabled:opacity-35 disabled:pointer-events-none"
         onClick={(e) => {
           e.stopPropagation()
           onNext()
@@ -207,7 +210,7 @@ function CompactBar({
       <button
         className={cn(
           'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
-          showQueuePanel ? 'text-mint' : 'text-white/55',
+          showQueuePanel ? 'text-mint' : 'text-white/65',
         )}
         onClick={(e) => {
           // 同完整档：阻止冒泡，避免刚打开的浮层被 document 外部点击监听立刻关掉
@@ -301,10 +304,10 @@ function FullBar({
   const playModeActive = shuffleMode === 'on' || repeatMode !== 'off'
 
   return (
-    <div className="player-console glass-saved-panel rounded-[24px] px-6 min-[1500px]:px-8 py-2 min-[1500px]:py-3 flex flex-col gap-1.5 min-[1500px]:gap-2">
+    <div className="player-console glass-saved-panel rounded-[24px] px-6 wide:px-8 py-2 wide:py-3 flex flex-col gap-1.5 wide:gap-2">
       {/* 进度条 - 居中 */}
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[11px] min-[1500px]:text-[12px] text-white/55 w-12 text-right tabular-nums">
+        <span className="font-mono text-[11px] wide:text-[12px] text-white/70 w-12 text-right tabular-nums">
           {formatTime(displayedProgress)}
         </span>
         <div className="flex-1 relative flex items-center">
@@ -325,7 +328,7 @@ function FullBar({
             style={{ '--seek': `${progressPercent}%` } as React.CSSProperties}
           />
         </div>
-        <span className="font-mono text-[11px] min-[1500px]:text-[12px] text-white/55 w-12 tabular-nums">
+        <span className="font-mono text-[11px] wide:text-[12px] text-white/70 w-12 tabular-nums">
           {formatTime(duration)}
         </span>
       </div>
@@ -338,7 +341,7 @@ function FullBar({
           <button
             onClick={() => currentTrack && openSongDetail(currentTrack.id)}
             title={t('player.track.viewDetail')}
-            className="w-[40px] h-[40px] min-[1500px]:w-12 min-[1500px]:h-12 rounded-[10px] flex-shrink-0 overflow-hidden bg-white/[0.04] flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
+            className="w-[40px] h-[40px] wide:w-12 wide:h-12 rounded-[10px] flex-shrink-0 overflow-hidden bg-white/[0.04] flex items-center justify-center cursor-pointer transition-transform duration-200 ease-apple hover:scale-105"
             style={{
               boxShadow:
                 '0 2px 6px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.06)',
@@ -357,17 +360,17 @@ function FullBar({
             onClick={() => currentTrack && openSongDetail(currentTrack.id)}
             title={currentTrack ? t('player.track.viewDetail') : undefined}
           >
-            <p className="text-[12.5px] min-[1500px]:text-[14px] font-medium text-white/[0.92] truncate transition-colors hover:text-white">
+            <p className="text-[12.5px] wide:text-[14px] font-medium text-white/[0.96] truncate transition-colors hover:text-white">
               {currentTrack?.title || t('player.state.notPlaying')}
             </p>
-            <p className="text-[10.5px] min-[1500px]:text-[12px] text-white/65 truncate">
+            <p className="text-[10.5px] wide:text-[12px] text-white/70 truncate">
               {currentTrack?.artist || t('player.state.idleHint')}
             </p>
           </button>
         </div>
 
         {/* 中列：播放控制（shuffle / prev / play / next / queue） */}
-        <div className="flex items-center gap-2 min-[1500px]:gap-2.5 justify-center">
+        <div className="flex items-center gap-2 wide:gap-2.5 justify-center">
           <button
             className={cn(
               'btn-icon btn-xl',
@@ -385,13 +388,13 @@ function FullBar({
             )}
           >
             {shuffleMode === 'on' ? (
-              <Shuffle className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+              <Shuffle className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
             ) : repeatMode === 'one' ? (
-              <Repeat1 className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+              <Repeat1 className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
             ) : repeatMode === 'all' ? (
-              <Repeat className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+              <Repeat className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
             ) : (
-              <Shuffle className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+              <Shuffle className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
             )}
           </button>
           <button
@@ -399,21 +402,21 @@ function FullBar({
             onClick={onPrevious}
             disabled={!currentTrack}
           >
-            <SkipBack className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+            <SkipBack className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
           </button>
           {/* 主播放按钮：圆形实心 mint（44×44），DS 的 pill 语义 + 项目品牌色 */}
           <button
-            className="play-fab w-[44px] h-[44px] min-[1500px]:w-[52px] min-[1500px]:h-[52px] rounded-full bg-mint flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none shadow-[0_2px_6px_rgba(0,0,0,.18),inset_0_1px_0_rgba(255,255,255,.18)] transition-transform duration-200 ease-apple hover:scale-[1.03]"
+            className="play-fab w-[44px] h-[44px] wide:w-[52px] wide:h-[52px] rounded-full bg-mint flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none shadow-[0_4px_12px_-6px_rgba(var(--fc-accent-rgb),.18),0_1px_4px_rgba(15,23,42,.10),inset_0_1px_0_rgba(255,255,255,.26)] dark:shadow-[0_4px_14px_-4px_rgba(var(--fc-accent-rgb),.42),0_2px_6px_rgba(0,0,0,.24),inset_0_1px_0_rgba(255,255,255,.22)] transition-transform duration-200 ease-apple hover:scale-[1.03]"
             onClick={onTogglePlay}
             disabled={!currentTrack}
             style={{ color: 'rgb(var(--tw-mint-fg))' }}
           >
             {resolving ? (
-              <Loader2 className="h-[18px] w-[18px] min-[1500px]:h-[22px] min-[1500px]:w-[22px] animate-spin" strokeWidth={2} />
+              <Loader2 className="h-[18px] w-[18px] wide:h-[22px] wide:w-[22px] animate-spin" strokeWidth={2} />
             ) : isPlaying ? (
-              <Pause className="h-[18px] w-[18px] min-[1500px]:h-[22px] min-[1500px]:w-[22px]" fill="currentColor" strokeWidth={1.5} />
+              <Pause className="h-[18px] w-[18px] wide:h-[22px] wide:w-[22px]" fill="currentColor" strokeWidth={1.5} />
             ) : (
-              <Play className="h-[18px] w-[18px] ml-0.5 min-[1500px]:h-[22px] min-[1500px]:w-[22px]" fill="currentColor" strokeWidth={1.5} />
+              <Play className="h-[18px] w-[18px] ml-0.5 wide:h-[22px] wide:w-[22px]" fill="currentColor" strokeWidth={1.5} />
             )}
           </button>
           <button
@@ -421,7 +424,7 @@ function FullBar({
             onClick={onNext}
             disabled={!currentTrack}
           >
-            <SkipForward className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+            <SkipForward className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
           </button>
           <button
             className={cn(
@@ -437,7 +440,7 @@ function FullBar({
             }}
             title={t('player.queue.toggle')}
           >
-            <ListMusic className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+            <ListMusic className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
           </button>
           {/* 播放系列操作（速度 / 睡眠定时器）：与队列并列的次级入口。
               速度项在移动端由组件内部按能力隐藏（原生桥无变速通道） */}
@@ -452,12 +455,12 @@ function FullBar({
             title={muted || volume === 0 ? t('player.volume.unmute') : t('player.volume.mute')}
           >
             {muted || volume === 0 ? (
-              <VolumeX className="h-[14px] w-[14px] min-[1500px]:h-4 min-[1500px]:w-4" strokeWidth={1.5} />
+              <VolumeX className="h-[14px] w-[14px] wide:h-4 wide:w-4" strokeWidth={1.5} />
             ) : (
-              <Volume2 className="h-[14px] w-[14px] min-[1500px]:h-4 min-[1500px]:w-4" strokeWidth={1.5} />
+              <Volume2 className="h-[14px] w-[14px] wide:h-4 wide:w-4" strokeWidth={1.5} />
             )}
           </button>
-          <div className="w-24 min-[1500px]:w-32 h-4 min-[1500px]:h-5 flex items-center">
+          <div className="w-24 wide:w-32 h-4 wide:h-5 flex items-center">
             <input
               type="range"
               min={0}

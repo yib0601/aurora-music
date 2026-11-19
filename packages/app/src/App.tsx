@@ -831,7 +831,9 @@ function AppLayout() {
       // 主题切换后不会自愈，必须在每次主题变更时同步。插件不存在时静默跳过
       syncSystemBars(isDark)
       const meta = document.querySelector('meta[name="theme-color"]')
-      if (meta) meta.setAttribute('content', isDark ? '#0A0A0A' : '#F9F8F8')
+      // 与 index.html 首帧脚本、globals.css 的 --fc-bg 同值。这里每次主题变更都会
+      // 重写 meta，写旧值等于把首帧脚本刚校正过的颜色又改回去（状态栏与画布割裂）。
+      if (meta) meta.setAttribute('content', isDark ? '#08090C' : '#EBEEF2')
     }
     if (theme === 'dark') {
       apply(true)
@@ -1090,10 +1092,10 @@ function AppLayout() {
           <aside
             className={cn(
               'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
-              // 弱化分割线：去掉右侧 hairline 与玻璃顶边高亮，
-              // 侧栏靠玻璃底色与内容区自然区分，不再用线条切割
-              // （顶边高亮由 glass-flush-top 移除，否则裸露成窗口上沿白线）
-              'glass-regular glass-flush-top shadow-none',
+              // 侧栏与内容区之间保留一条发丝边：玻璃底改为实色后两区明度差已经稳定，
+              // 但「差一档灰」在浅色主题与暖色封面下仍可能读不出边界，1px 描边把它钉死。
+              // （顶边高亮仍由 glass-flush-top 移除，否则裸露成窗口上沿白线）
+              'glass-regular glass-flush-top shadow-none border-r border-white/[0.07]',
               isSongDetail ? 'w-0' : 'w-56',
             )}
           >
@@ -1237,7 +1239,7 @@ function AppLayout() {
                   'absolute left-1/2 -translate-x-1/2 z-30',
                   mobile
                     ? 'bottom-[calc(10px+env(safe-area-inset-bottom))] w-[calc(100%-32px)]'
-                    : 'bottom-3 w-[clamp(360px,calc(100%-48px),640px)] min-[1500px]:w-[clamp(360px,calc(100%-48px),720px)]',
+                    : 'bottom-3 w-[clamp(360px,calc(100%-48px),640px)] wide:w-[clamp(360px,calc(100%-48px),720px)]',
                 )}
               >
                 {/* 播放队列浮层：挂在播放条容器内（右缘对齐播放条、悬浮其上），
@@ -1277,8 +1279,8 @@ function AppLayout() {
               <aside
                 className={cn(
                   'flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-apple',
-                  // 与左侧栏一致：弱化分割线，靠玻璃底色区分区域
-                  'glass-regular glass-flush-top shadow-none',
+                  // 与左侧栏一致：实色玻璃底 + 一条发丝边把区域边界钉死
+                  'glass-regular glass-flush-top shadow-none border-l border-white/[0.07]',
                   currentTrack && !isSongDetail ? 'w-72' : 'w-0',
                   'hidden lg:block',
                 )}

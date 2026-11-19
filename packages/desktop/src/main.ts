@@ -184,7 +184,9 @@ function createWindow() {
     // 改为非透明 + 不透明背景色，毛玻璃效果通过 CSS backdrop-filter 在渲染层实现。
     transparent: false,
     frame: false,
-    backgroundColor: '#0a0a0f',
+    // 与渲染层画布同源（globals.css 的 --fc-bg 深色档）：窗口底色比画布亮或暗
+    // 都会在首帧与缩放露底时读成一道异色边
+    backgroundColor: '#08090C',
     hasShadow: true,
     thickFrame: false,
     roundedCorners: true,

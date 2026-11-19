@@ -55,13 +55,13 @@
   :root {
     /* ===== Mineradio 配色（深色优先）· 中性灰阶对齐 DS =====
      * DS: 页面底 #0a0a0a；表面为半透明白叠加 hsla(0,0%,100%,.06/.04/.02/.015/.12) */
-    --fc-bg: #0A0A0A;
-    --fc-paper: #121212;
+    --fc-bg: #08090C;
+    --fc-paper: #101318;
     --fc-ink: #FFFFFF;
-    --fc-ink-2: #D6D6D6;
-    --fc-muted: #8C8C8C;
-    --fc-hair: #1F1F1F;
-    --fc-hair-2: #2E2E2E;
+    --fc-ink-2: #DEE3EA;
+    --fc-muted: #9BA4B0;
+    --fc-hair: #23272E;
+    --fc-hair-2: #333941;
     /* 品牌主交互色：保留 Mineradio mint（项目品牌识别，语义为「交互」） */
     --fc-accent: #00F5D4;
     --fc-accent-hov: #00E0BE;
@@ -107,8 +107,8 @@
      * 而不是靠「谁更黑」。
      * ⚠️ 上层浮层仍压得更暗一点点（.20 vs .16），因为浮层背后可能是
      *    任意内容（歌词、封面），需要略强的可读性兜底。 */
-    --glass-regular-bg: linear-gradient(rgba(255,255,255,.055), rgba(255,255,255,.045)), rgba(0, 6, 14, .17);
-    --glass-floating-bg: linear-gradient(rgba(255,255,255,.045), rgba(255,255,255,.045)), rgba(0, 8, 18, .24);
+    --glass-regular-bg: linear-gradient(rgba(255,255,255,.045), rgba(255,255,255,.028)), rgba(10, 13, 18, .72);
+    --glass-floating-bg: linear-gradient(rgba(255,255,255,.05), rgba(255,255,255,.035)), rgba(8, 11, 16, .80);
     --glass-floating-border: rgba(255,255,255,.16);
     --glass-floating-shadow: 0 16px 48px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.20);
     /* 液态玻璃浮层的投影：比普通 glass-floating 更深、更收，
@@ -129,22 +129,20 @@
      * 窗口上沿的白线，只保留底部柔折返光。见 .glass-flush-top。 */
     --glass-liquid-edge-flush-top: inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
 
-    /* 表面层（DS 中性灰阶：surface-1 hsla(0,0%,100%,.06) / surface-2 .04）
-     * ⚠️ 卡片的底色必须与玻璃族同源（低 alpha 冷黑压暗 + 白提亮），不能是「半透明中性灰」：
-     * 旧值 rgba(34,34,34,.62)→rgba(16,16,16,.72) 以 62~72% 的权重把背后色场换成灰色，
-     * 卡片于是呈现自己的深灰而不是背景的色相 —— 落在青蓝色场上就是一块「颜色突变」的黑板
-     * （设计系统 §3.3：表面一律用半透明白/黑叠加，写死灰会露出色块边界）。
-     * 现对齐 --glass-regular-bg（rgba(0,6,14,.17)）的哲学，压暗略强一档（卡片承载文字更多）。 */
-    --surface-card-bg: rgba(255,255,255,.06);
-    --surface-card-border: rgba(255,255,255,.08);
-    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.075), rgba(255,255,255,.05)), rgba(0, 8, 18, .26);
-    --surface-tile-2-bg: linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.06)), rgba(0, 8, 18, .30);
+    /* 表面层：四级明度阶梯（画布 → 侧栏 → 卡片 → 浮起）。
+     * 色场收进角落后，卡片不再需要「让色场透上来」——内容区背后已经是实色画布，
+     * 半透明灰只会让卡片与画布糊在一起。这里改用高不透明度的冷灰实色 + 极淡白渐变，
+     * 明度差由 token 保证，而不是依赖背后恰好有光。
+     * 实测合成值（画布 #08090C 上）：侧栏 ≈ #14171B、卡片 ≈ #1C1F23、浮起 ≈ #23272E。 */
+    --surface-card-bg: rgba(255,255,255,.045);
+    --surface-card-border: rgba(255,255,255,.09);
+    --surface-tile-1-bg: linear-gradient(150deg, rgba(255,255,255,.055), rgba(255,255,255,.028)), rgba(16, 19, 24, .88);
+    --surface-tile-2-bg: linear-gradient(150deg, rgba(255,255,255,.07), rgba(255,255,255,.04)), rgba(22, 26, 32, .92);
     --surface-tile-fg: #ffffff;
-    /* DS 阴影哲学：暗色下「阴影」改用内高光（--ds-shadow-card 暗色值）。
-     * 外投影画在半透明卡片背后，会从卡片底缘裸进卡片间隙，
-     * 在色场背景上形成一条比背景更暗的圆角色带（设置页卡片间最明显），故暗色只留内高光。 */
-    --card-utility-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-    --card-utility-hover-shadow: 0 14px 34px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
+    /* 暗色下卡片可以有真实外投影了：背后是实色画布而非色场，
+     * 投影不会再「裸进卡片间隙形成更暗的圆角色带」（旧注释里的顾虑随色场收敛一起消失）。 */
+    --card-utility-shadow: 0 2px 8px rgba(0,0,0,.28), 0 10px 28px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.06);
+    --card-utility-hover-shadow: 0 6px 16px rgba(0,0,0,.34), 0 18px 44px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.10);
 
     --btn-icon-color: rgba(255,255,255,.70);
     --btn-icon-hover-color: #ffffff;
@@ -226,14 +224,21 @@
     --r-ds-sm: 8px;
     --r-ds-pill: 100px;
 
-    /* Saved 玻璃面板/按钮系统（通透化：模糊提到 24px 量级 + 加强内高光与饱和） */
-    --saved-panel-glass-bg: rgba(255,255,255,.05);
-    --saved-panel-glass-filter: blur(24px) saturate(1.6) brightness(1.05);
+    /* Saved 玻璃面板/按钮系统。
+     * ⚠️ 播放条必须有**自己的实色底**：`.player-console` 的 background 会整条覆盖
+     * `.glass-saved-panel` 的 background（同层、后者在文件里更靠后），旧值只写了
+     * 一层 7.5%→4% 的白渐变，等于把玻璃底完全丢掉 —— 播放条因此只剩「透明白 + 模糊」，
+     * 在色场上就是一条洗白的雾带，控件对比度全被吃掉。现由 --player-console-bg 供底。 */
+    --saved-panel-glass-bg: linear-gradient(rgba(255,255,255,.05), rgba(255,255,255,.03)), rgba(14, 17, 22, .86);
+    --saved-panel-glass-filter: blur(24px) saturate(1.5) brightness(1.04);
     /* 播放条玻璃：厚度层（上锐下柔）+ 落地投影。
      * 它是主界面最显眼的玻璃，用完整的 --glass-liquid-edge 强度。 */
-    --saved-panel-glass-shadow: 0 8px 32px rgba(0,0,0,.30), inset 0 1px 0 0 rgba(255,255,255,.34), inset 0 -1.5px 1px -1px rgba(255,255,255,.18);
+    --saved-panel-glass-shadow: 0 10px 40px rgba(0,0,0,.42), 0 2px 10px rgba(0,0,0,.28), inset 0 1px 0 0 rgba(255,255,255,.30), inset 0 -1.5px 1px -1px rgba(255,255,255,.16);
     --saved-panel-glass-radius: 100px;
-    --saved-button-glass-bg: rgba(255,255,255,.05);
+    /* 完整档播放条的底色：比侧栏/卡片再亮一档，是画面里最「实」的表面。
+     * 顶部略亮的斜向渐变给出受光面，底不透明度 .92 保证控件在任何封面色上都有稳定对比。 */
+    --player-console-bg: linear-gradient(150deg, rgba(255,255,255,.075), rgba(255,255,255,.03) 62%), rgba(20, 24, 30, .92);
+    --saved-button-glass-bg: rgba(255,255,255,.06);
     --saved-button-glass-filter: blur(20px) saturate(1.5) brightness(1.05);
     --saved-button-glass-svg-filter: url(#mineradio-control-glass-filter) saturate(1);
     --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 4px 14px rgba(0,0,0,.26);
@@ -249,20 +254,18 @@
     --ease-mineradio-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
     /* ===== ambient 色场（封面色驱动，默认品牌 mint + 深蓝） =====
-     * 通透感公式：玻璃 = 背后可折射的色彩 x 折射率。blur() 作用在近纯黑上
-     * 数学上等于无效果，因此这里必须给出「值得被折射」的高不透明度色场。
-     * 色值区间对齐参考站实测的三层极光（#1A3870 / #2D5F9E / #4A8AC4，
-     * opacity .3/.4/.2，blur 80/100/60px），本项目保留 mint 品牌色相。
-     * 注意参考站用的是「不透明色 + 元素 opacity」，本项目用「带 alpha 的色」。
-     * alpha 是实测标定的：参考站色场亮度 L≈0.05~0.069，
-     * 早先 .50/.62/.48 实测到 L≈0.07~0.11（过亮 1.6×），故回调至此。 */
-    --ambient-from: rgba(0, 214, 186, 0.34);
-    --ambient-to: rgba(20, 92, 158, 0.50);
-    --ambient-glow: rgba(74, 140, 200, 0.38);
-    /* 色场底层：给纯黑页面一个「有颜色的底」，让叠加色斑有基色可混。
-     * 这一点是通透感的隐形前提：纯黑底会把半透明色斑的饱和度吃掉大半。 */
-    --ambient-base: #0a1524;
-    /* 色场整体不透明度（原 0.7 偏弱，抬到 1 让色斑足量透出） */
+     * ⚠️ 色场是**角落辉光**，不是全屏雾。旧版三层色斑各自 inset:-20% 铺满视口，
+     * 叠加后整个画面被冲成一片青蓝雾：侧栏与内容区失去边界、次级文字对比度被吃掉、
+     * 播放条玻璃背后没有明暗差因而「洗白」。现在把每层收进一个角落，
+     * 画面中心保持 --ambient-base 的实色，玻璃只在边缘有光可折射。
+     * alpha 同步下调：收小面积后单位面积的光强不变，但总光通量大幅下降，
+     * 不再需要靠低 alpha 去抵消「铺满」带来的累积亮度。 */
+    --ambient-from: rgba(0, 214, 186, 0.22);
+    --ambient-to: rgba(28, 96, 168, 0.30);
+    --ambient-glow: rgba(74, 140, 200, 0.20);
+    /* 色场底层 = 页面实色底。与 --fc-bg 同值，保证色斑之外的区域就是设计规定的画布色，
+     * 而不是「另一个更亮的蓝底」——后者正是侧栏/内容分不开的根因。 */
+    --ambient-base: #08090C;
     --ambient-strength: 1;
 
     --tile-border-rgb: 255 255 255;
@@ -330,14 +333,16 @@
     --tw-coral: 226 59 82;
     --tw-mint-fg: 255 255 255;
 
-    /* DS: 页面底 #f9f8f8；表面为半透明白/黑叠加 */
-    --fc-bg: #F9F8F8;
+    /* 浅色画布：冷调纸灰。比旧值 #F9F8F8 更冷、更暗一档，
+     * 这样白色卡片/侧栏才能「浮起来」——旧值与白表面只差 6 个亮度级，
+     * 叠上青色色场后两者几乎同色，层级完全塌掉。 */
+    --fc-bg: #EBEEF2;
     --fc-paper: #FFFFFF;
-    --fc-ink: #1E232C;
-    --fc-ink-2: #3C424C;
-    --fc-muted: #5C636E;
-    --fc-hair: #E5E5E5;
-    --fc-hair-2: #D4D4D4;
+    --fc-ink: #14181F;
+    --fc-ink-2: #333A45;
+    --fc-muted: #525A67;
+    --fc-hair: #DCE1E8;
+    --fc-hair-2: #C6CDD7;
     /* 品牌主交互色：mint 浅底加深版（保留品牌识别） */
     --fc-accent: #009C88;
     --fc-accent-hov: #008574;
@@ -372,8 +377,8 @@
      * 深色的压暗上限更保守：regular 收到 .40 后，黑字在受光场上仍 >7:1。
      * floating/popover 原先 .68/.70 远超 regular，浮层反而最不透；
      * 现收敛到与 regular 同量级（仅高一点保证弹层可读性）。 */
-    --glass-regular-bg: rgba(255,255,255,.40);
-    --glass-floating-bg: rgba(255,255,255,.56);
+    --glass-regular-bg: rgba(255,255,255,.72);
+    --glass-floating-bg: rgba(255,255,255,.86);
     --glass-floating-border: rgba(0,0,0,.08);
     --glass-floating-shadow: 0 16px 44px rgba(20,40,70,.14), inset 0 1px 0 rgba(255,255,255,.9);
     /* 浅色下投影必须更轻更散：暗投影落在亮背景上极易显脏，
@@ -389,34 +394,37 @@
     --glass-liquid-edge: inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
     --glass-liquid-edge-flush-top: inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
 
-    --saved-panel-glass-bg: rgba(255,255,255,.42);
-    --saved-panel-glass-shadow: 0 8px 24px rgba(20,40,70,.10), inset 0 1px 0 0 rgba(255,255,255,.90), inset 0 -1.5px 1px -1px rgba(255,255,255,.55);
-    --saved-button-glass-bg: rgba(255,255,255,.44);
-    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 4px 14px rgba(20,40,70,.10);
-    --saved-button-glass-hover-bg: rgba(255,255,255,.62);
-    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.92), 0 6px 18px rgba(20,40,70,.12);
+    --saved-panel-glass-bg: rgba(255,255,255,.82);
+    --saved-panel-glass-shadow: 0 10px 34px rgba(20,40,70,.16), 0 2px 8px rgba(20,40,70,.08), inset 0 1px 0 0 rgba(255,255,255,.95), inset 0 -1.5px 1px -1px rgba(255,255,255,.6);
+    /* 浅色播放条底：与深色同一职责（见 :root 处注释）——必须是实色白，
+     * 否则 .player-console 覆盖掉玻璃底后只剩一层透明白，控件在浅底上辨不出。 */
+    --player-console-bg: linear-gradient(150deg, rgba(255,255,255,.96), rgba(255,255,255,.88) 62%);
+    --saved-button-glass-bg: rgba(255,255,255,.62);
+    --saved-button-glass-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 4px 14px rgba(20,40,70,.10);
+    --saved-button-glass-hover-bg: rgba(255,255,255,.82);
+    --saved-button-glass-hover-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 6px 18px rgba(20,40,70,.12);
 
-    /* 表面分层（DS 浅色：白底叠加 + 黑发丝边）
-     * 同样不能盖死色场：旧值 .90/.94 白比浮层（--glass-liquid-bg .72/.60）还实，
-     * 层级倒挂且把青蓝背景换成纯白板。现对齐玻璃族的提亮量级。 */
-    --surface-card-bg: rgba(255,255,255,.80);
-    --surface-card-border: rgba(0,0,0,.06);
-    --surface-tile-1-bg: linear-gradient(142deg, rgba(255,255,255,.74), rgba(255,255,255,.64));
-    --surface-tile-2-bg: linear-gradient(145deg, rgba(255,255,255,.80), rgba(255,255,255,.70));
-    --surface-tile-fg: #1E232C;
+    /* 表面分层（浅色）：画布 #EBEEF2 → 侧栏白 .72 → 卡片白 .92 → 浮起纯白。
+     * 色场收进角落后内容区背后是实色画布，卡片可以接近纯白而不必「让色场透上来」，
+     * 明度差因此稳定存在，不再依赖背后恰好有光。 */
+    --surface-card-bg: rgba(255,255,255,.92);
+    --surface-card-border: rgba(20,30,45,.08);
+    --surface-tile-1-bg: linear-gradient(150deg, rgba(255,255,255,.95), rgba(255,255,255,.88));
+    --surface-tile-2-bg: linear-gradient(150deg, #ffffff, #fbfcfd);
+    --surface-tile-fg: #14181F;
     --tile-border-rgb: 0 0 0;
-    --card-utility-shadow: 0 12px 32px rgba(0,0,0,.07), inset 0 1px 0 rgba(255,255,255,.9);
-    --card-utility-hover-shadow: 0 16px 44px rgba(0,0,0,.10), 0 0 0 1px rgba(var(--fc-accent-rgb),.20), inset 0 1px 0 rgba(255,255,255,.95);
+    --card-utility-shadow: 0 1px 3px rgba(20,30,45,.06), 0 8px 24px rgba(20,30,45,.08), inset 0 1px 0 rgba(255,255,255,.9);
+    --card-utility-hover-shadow: 0 4px 12px rgba(20,30,45,.10), 0 18px 44px rgba(20,30,45,.13), 0 0 0 1px rgba(var(--fc-accent-rgb),.22), inset 0 1px 0 rgba(255,255,255,.95);
 
-    --btn-icon-color: rgba(30,35,44,.75);
-    --btn-icon-hover-color: #1E232C;
-    --btn-icon-hover-bg: rgba(30,35,44,.06);
-    --btn-pearl-color: rgba(30,35,44,.82);
+    --btn-icon-color: rgba(20,24,31,.72);
+    --btn-icon-hover-color: #14181F;
+    --btn-icon-hover-bg: rgba(20,24,31,.06);
+    --btn-pearl-color: rgba(20,24,31,.82);
 
-    --hero-color: rgba(30,35,44,.98);
-    --track-fill: rgba(0,0,0,.08);
-    --scrollbar-thumb: rgba(0,0,0,.18);
-    --scrollbar-thumb-hover: rgba(0,0,0,.32);
+    --hero-color: rgba(20,24,31,.98);
+    --track-fill: rgba(20,30,45,.10);
+    --scrollbar-thumb: rgba(20,30,45,.20);
+    --scrollbar-thumb-hover: rgba(20,30,45,.34);
 
     --titlebar-btn-bg: rgba(0,0,0,.004);
     --titlebar-btn-fg: rgba(30,35,44,.70);
@@ -427,15 +435,13 @@
     --titlebar-btn-hover-shadow: 0 4px 12px rgba(0,0,0,.07);
     --titlebar-hover-accent: #8a6320;
 
-    /* ambient 色场：浅色下同样需要足够强度，否则白底玻璃无内容可折射。
-     * 但浅色是「越加越亮」：alpha 过高会把底色冲到 L≈0.88，
-     * 白玻璃叠在近白场上等于消失。故浅色色斑必须比深色明显更轻。
-     * 色相与深色一致（mint → 辅助蓝），浅色下改用同色相的浅淡版本，
-     * 不再用与体系无关的香槟金。 */
-    --ambient-from: rgba(0, 176, 152, 0.22);
-    --ambient-to: rgba(77, 159, 216, 0.26);
-    --ambient-glow: rgba(56, 170, 235, 0.18);
-    --ambient-base: #eef3fa;
+    /* ambient 色场（浅色）：与深色同一策略——收进角落，中心留实色画布。
+     * 浅色是「越加越亮」，铺满时白玻璃叠在近白场上等于消失；
+     * 收小面积后 alpha 反而可以略提，让角落的光真正看得见。 */
+    --ambient-from: rgba(0, 176, 152, 0.20);
+    --ambient-to: rgba(77, 159, 216, 0.24);
+    --ambient-glow: rgba(56, 170, 235, 0.16);
+    --ambient-base: #EBEEF2;
     --ambient-strength: 1;
   }
 }
@@ -471,13 +477,13 @@ html:not(.dark) input[type='range']::-webkit-slider-thumb {
  * 无需逐个修改组件里的 text-white 透明度类。
  * 注意：只覆盖纯文本颜色类（text-white/xx），不动背景/边框等叠层。 */
 html:not(.dark) .text-white\/30,
-html:not(.dark) .text-white\/35 { color: rgb(var(--tw-white) / .52); }
+html:not(.dark) .text-white\/35 { color: rgb(var(--tw-white) / .58); }
 html:not(.dark) .text-white\/40,
-html:not(.dark) .text-white\/45 { color: rgb(var(--tw-white) / .62); }
+html:not(.dark) .text-white\/45 { color: rgb(var(--tw-white) / .67); }
 html:not(.dark) .text-white\/50,
-html:not(.dark) .text-white\/55 { color: rgb(var(--tw-white) / .72); }
-html:not(.dark) .text-white\/60 { color: rgb(var(--tw-white) / .78); }
-html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
+html:not(.dark) .text-white\/55 { color: rgb(var(--tw-white) / .75); }
+html:not(.dark) .text-white\/60 { color: rgb(var(--tw-white) / .81); }
+html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .88); }
 
 @layer base {
   * {
@@ -771,8 +777,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     transition: transform .22s var(--ease-mineradio), border-color .22s, box-shadow .22s;
   }
   .card-utility:hover {
-    transform: translateY(-2px);
-    border-color: rgb(var(--tw-white) / .14);
+    transform: translateY(-3px);
+    border-color: rgb(var(--tw-white) / .16);
     box-shadow: var(--card-utility-hover-shadow);
   }
 
@@ -840,6 +846,18 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     border: 1px solid var(--surface-card-border);
     border-radius: var(--r-lg);
     box-shadow: var(--card-utility-shadow);
+  }
+
+  /* 可点列表卡片的悬停：与 .card-utility 同一档上浮 + 描边提亮。
+   * 刻意不写进 .card-solid——它同样包裹详情页里不可点的静态内容块，
+   * 给那些块加上浮会暗示错误的可交互性。无 backdrop-filter，滚动时不重采样。 */
+  .card-tappable {
+    transition: transform .22s var(--ease-mineradio), background-color .22s, border-color .22s, box-shadow .22s;
+  }
+  .card-tappable:hover {
+    transform: translateY(-3px);
+    border-color: rgb(var(--tw-white) / .16);
+    box-shadow: var(--card-utility-hover-shadow);
   }
 
   /* 静态列表卡片：与 card-utility 同材质，但 hover 不上浮——
@@ -1177,8 +1195,8 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .85); }
     background: var(--fc-accent);
   }
   .player-console {
-    border: 1px solid rgb(var(--tw-white) / .10);
-    background: linear-gradient(135deg, rgb(var(--tw-white) / .075), rgb(var(--tw-white) / .04));
+    border: 1px solid rgb(var(--tw-white) / .12);
+    background: var(--player-console-bg);
   }
 
   /* 主播放按钮（移动端迷你条 44px / 全屏页 64px 共用）
@@ -1781,26 +1799,34 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
  * 因此 .ambient-blob 一族**不得**再引入 filter；若将来确需模糊，
  * 只能加在「绝对静止、无动画」的元素上。 */
 
-/* 主色斑：跟随封面主色，承担「一条可见的光带」的角色。
- * inset:-20% 让色斑溢出容器，避免边缘露出直角。 */
+/* ===== 色斑几何：角落辉光，不是全屏雾 =====
+ * 三层各自锚在一个角落，半径收到视口的三到四成，画面中心保持 --ambient-base 实色。
+ * 位置不是随便挑的，而是对着「哪里有玻璃」放的：
+ *   primary  → 左上：侧栏全高贴在左缘，需要一条可折射的光
+ *   secondary→ 右下：右侧 Now Playing 瓷砖同理
+ *   glow     → 左下偏中：悬浮播放条落在这里，玻璃背后得有明暗差
+ * 内容区（画面中部）因此不被色场冲刷，卡片与文字的对比度不再被背景吃掉。
+ *
+ * inset 用 0 而非 -20%：渐变在 76% 处就已全透明，漂移子层的 scale(1.08)
+ * 溢出部分由根容器 overflow-hidden 裁掉，不会露出直角边。 */
 .ambient-blob--primary {
-  inset: -20%;
-  background: radial-gradient(circle at 18% 45%,
+  inset: 0;
+  background: radial-gradient(ellipse 40% 44% at 6% 4%,
     var(--ambient-from) 0%,
-    color-mix(in srgb, var(--ambient-from) 62%, transparent) 30%,
-    color-mix(in srgb, var(--ambient-from) 22%, transparent) 54%,
-    transparent 76%);
+    color-mix(in srgb, var(--ambient-from) 58%, transparent) 32%,
+    color-mix(in srgb, var(--ambient-from) 20%, transparent) 56%,
+    transparent 78%);
   opacity: calc(var(--ambient-strength) * 0.95);
 }
 .ambient-blob--primary > .ambient-blob__drift {
   animation: ambient-drift-a 34s ease-in-out infinite alternate;
 }
-/* 次色斑：跟随封面次色，与主色斑拉开位置形成横向色相渐变 */
+/* 次色斑：右下角，与主色斑对角呼应，形成跨画面的色相过渡 */
 .ambient-blob--secondary {
-  inset: -20%;
-  background: radial-gradient(ellipse 46% 62% at 78% 62%,
+  inset: 0;
+  background: radial-gradient(ellipse 42% 46% at 96% 96%,
     var(--ambient-to) 0%,
-    color-mix(in srgb, var(--ambient-to) 60%, transparent) 32%,
+    color-mix(in srgb, var(--ambient-to) 58%, transparent) 32%,
     color-mix(in srgb, var(--ambient-to) 20%, transparent) 56%,
     transparent 78%);
   opacity: calc(var(--ambient-strength) * 1);
@@ -1808,16 +1834,16 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
 .ambient-blob--secondary > .ambient-blob__drift {
   animation: ambient-drift-b 46s ease-in-out infinite alternate;
 }
-/* 高光斑：最亮的一层，位于画面中部偏下，是「通透感」的亮度来源。
- * 没有这一层时，前两层只是「有色」，透不出「有光」。 */
+/* 高光斑：播放条正后方偏左。它是播放条玻璃「有光可折射」的唯一来源，
+ * 因此刻意压在底部而不是画面中部——中部要留给内容。 */
 .ambient-blob--glow {
-  inset: -20%;
-  background: radial-gradient(ellipse 58% 40% at 50% 72%,
+  inset: 0;
+  background: radial-gradient(ellipse 46% 26% at 38% 100%,
     var(--ambient-glow) 0%,
-    color-mix(in srgb, var(--ambient-glow) 58%, transparent) 30%,
-    color-mix(in srgb, var(--ambient-glow) 18%, transparent) 52%,
-    transparent 74%);
-  opacity: calc(var(--ambient-strength) * 0.85);
+    color-mix(in srgb, var(--ambient-glow) 56%, transparent) 30%,
+    color-mix(in srgb, var(--ambient-glow) 18%, transparent) 54%,
+    transparent 76%);
+  opacity: calc(var(--ambient-strength) * 0.9);
 }
 .ambient-blob--glow > .ambient-blob__drift {
   animation: ambient-drift-c 40s ease-in-out infinite alternate;
@@ -1833,15 +1859,17 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
   border-radius: inherit;
   will-change: transform;
 }
-/* 底层色阶：从顶部到底部做一个极轻的明度爬升，
- * 让画面有「纵深」而不是均匀一块；透明到色，不引入新色相。 */
+/* 底层色阶：只在底部留一层极轻的明度爬升，给画面一点纵深。
+ * 旧值从 62% 高度就开始铺色，等于给整个下半屏罩了第二层雾；
+ * 现在起点推到 82%，且色标强度减半——纵深还在，但不再冲刷内容。 */
 .ambient-blob--depth {
   inset: 0;
   border-radius: 0;
   background: linear-gradient(180deg,
     transparent 0%,
-    color-mix(in srgb, var(--ambient-to) 22%, transparent) 62%,
-    color-mix(in srgb, var(--ambient-glow) 30%, transparent) 100%);
+    transparent 82%,
+    color-mix(in srgb, var(--ambient-to) 12%, transparent) 92%,
+    color-mix(in srgb, var(--ambient-glow) 16%, transparent) 100%);
   filter: none;
   opacity: var(--ambient-strength);
 }
@@ -1910,28 +1938,29 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
  *
  * 旧实现给当前行整块套一层竖向渐变 + 双层发光，信息量只有「哪一行」，唱到句中的
  * 进度完全看不出来。现在当前行的文字由 `.lyric-word` 绘制：一个**硬停点**横向渐变，
- * `--lp`（0..1）右边的部分是「未唱」，左边是「已唱」。
+ * `--lp-pct`（`0%`..`100%` 的字符串）右边的部分是「未唱」，左边是「已唱」。
  *
  * ⚠️ 刷新频率与发光成本耦合：`.lyric-active` 的 drop-shadow 包着这些会变的字形，
- * `--lp` 每写一次，该行就要重新栅格化并重算一次双层 drop-shadow。所以写入频率
+ * `--lp-pct` 每写一次，该行就要重新栅格化并重算一次双层 drop-shadow。所以写入频率
  * 受 LyricsView 的 KARAOKE_MIN_INTERVAL_MS（50ms）约束 —— 改小它会线性放大这份开销，
  * 调参时必须同步评估低端机帧率。
  *
  * 为什么用 background-clip:text 而不是再叠一层亮字：
  *   叠层要求两层排版完全一致，折行位置一旦差一个像素就会出重影；而 background-clip
- *   只有一个文本层，折行、居中、字重全都天然对齐。代价是 `--lp` 每变一次该行字形
+ *   只有一个文本层，折行、居中、字重全都天然对齐。代价是 `--lp-pct` 每变一次该行字形
  *   就要重新光栅化，所以 LyricsView 把刷新限到 20fps（见 KARAOKE_MIN_INTERVAL_MS）。
  *
- * 未写 `--lp` 时按 1 处理：无逐字轴、以及 JS 还没写第一帧时都应该是「整行点亮」。
+ * 未写 `--lp-pct` 时按 100% 处理：无逐字轴、以及 JS 还没写第一帧时都应该是「整行点亮」。
  * 暂停**不**回退成整行点亮——停在半句正好告诉用户「唱到这里停了」，那是有用的信息。
  *
- * ⚠️ 先写一条不带停点的兜底声明。它兜的是**解析期**风险：运行时若不认
- * `calc(var(--lp) * 100%)` 这种停点写法，第二条声明会被整条丢弃，此时兜底仍给出
- * 一整行实色亮字，不会出现「声明无效 + 文字填充色透明 = 当前行消失」。
- * 它**不**兜「`--lp` 被写入非法值」：那时 background-image 在 computed-value 阶段
+ * ⚠️ 先写一条不带停点的兜底声明。它兜的是**解析期**风险：若引擎不认
+ * 带变量停点的渐变（老 Chromium 对 `calc()` 停点与双位置色标都会整条丢弃），
+ * 第二条声明会被丢掉，此时兜底仍给出一整行实色亮字，不会出现
+ * 「声明无效 + 文字填充色透明 = 当前行消失」。
+ * 它**不**兜「`--lp-pct` 被写入非法值」：那时 background-image 在 computed-value 阶段
  * 变成 none，而 -webkit-text-fill-color 仍是 transparent，整行会不可见。
- * 这一路径当前不可达——`--lp` 只有 LyricsView 的帧循环写入
- * （`progress.toFixed(3)`，值域 0..1）。若将来允许主题/插件写 `--lp`，
+ * 这一路径当前不可达——`--lp-pct` 只有 LyricsView 的帧循环写入
+ * （`(progress * 100).toFixed(1) + '%'`，值域 `0.0%`..`100.0%`）。若将来允许主题/插件写它，
  * 必须在写入侧校验，而不是指望这里的兜底声明。
  */
 
@@ -1945,10 +1974,17 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
      0.60 只比邻行淡一档，仍与已唱近白拉开足够差距。 */
   --lyric-dim: rgba(255, 255, 255, 0.60);
   background-image: linear-gradient(90deg, var(--lyric-lit) 0%, var(--lyric-lit) 100%);
+  /* ⚠️ 只用**单位置色标**，且停点一律取「已算好的百分比变量」`--lp-pct`。
+   * 不用 `calc(var(--lp) * 100%)`、也不用 `颜色 0 calc(...) 100%` 这种双位置写法：
+   * 老 Chromium/WebView（车机那类 Chrome 8x 引擎）会把整条声明判无效丢弃，于是只剩
+   * 上一条兜底 —— 手机端逐字填充彻底失效，当前行永远整行一次点亮，看上去就是旧版高亮。
+   * 百分比由 LyricsView 的帧循环写入（`99.0%` 这种字符串），CSS 只负责拼。 */
   background-image: linear-gradient(
     90deg,
-    var(--lyric-lit) 0 calc(var(--lp, 1) * 100%),
-    var(--lyric-dim) calc(var(--lp, 1) * 100%) 100%
+    var(--lyric-lit) 0%,
+    var(--lyric-lit) var(--lp-pct, 100%),
+    var(--lyric-dim) var(--lp-pct, 100%),
+    var(--lyric-dim) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -1969,6 +2005,29 @@ input[type='range'].volume-bar::-webkit-slider-thumb {
 /* 大字号模式（歌曲详情页宽栏 / 移动端全屏页）：放大当前行，填充宽屏空间 */
 .lyric-active-lg {
   font-size: 22px;
+}
+
+/* 手机全屏页（窄视口）：当前行的发光收敛到单层。
+ *
+ * 两层 drop-shadow 要模糊两遍合成后的整行字形，而 `--lp-pct` 每 50ms 变一次就要重算
+ * 一遍（见上方成本说明）。桌面 GPU 合成扛得住，手机 WebView 上这份开销直接换成掉帧，
+ * 同时两层青白光晕叠在 22px 汉字上、四周糊出一圈白雾，笔画反而变钝。
+ * 单层的做法在窄屏上更锐利，也省掉一半滤镜。
+ * 用 max-width 而不是靠 JS 判断：这里只影响观感与成本，不需要参与渲染决策。 */
+@media (max-width: 520px) {
+  .lyric-active,
+  .lyric-active-lg {
+    filter: drop-shadow(0 0 12px rgba(168, 246, 255, 0.22));
+  }
+  /* 当前行在手机上更容易折行（408 CSS px、20 字左右的长句就断）。
+   * 折行后行内行距 = 字号 × line-height：22px × 1.5 = 33px，与段距 36px 只差 3px，
+   * 于是「同一句折出的两半」和「相邻两句」间距几乎相等 —— 整行唱完后四条行糊成
+   * 一块文字墙，语义分组消失。把窄屏当前行收到 20px / 行距 1.35（27px），
+   * 与段距 36px 拉开到 1.33 倍，同时仍比非当前行（16px）大 25%，焦点不丢。 */
+  .lyric-active-lg {
+    font-size: 20px;
+    line-height: 1.35;
+  }
 }
 
 /* ===== 性能降级开关 =====

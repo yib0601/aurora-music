@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   FolderOpen, List, Grid3X3, Music as MusicIcon, Play,
-  RefreshCw, ArrowUp, ArrowDown, ChevronLeft, Check, User, Disc3,
+  RefreshCw, ArrowUp, ArrowDown, ChevronLeft, Check, User,
   AlertTriangle, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,7 @@ import { PageLayout } from '@/components/PageLayout'
 import { PageTitle, PageSubtitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
+import { CoverPlaceholder } from '@/components/common/CoverPlaceholder'
 import { toast } from '@/components/common/Toast'
 import { useDisplayTracks } from '@/hooks/useDisplayTracks'
 import { DuplicateSummaryHover } from '@/components/common/DuplicateInfo'
@@ -464,7 +465,9 @@ export function LibraryPage() {
                 className="w-full h-full object-cover product-shadow"
                 fallback={
                   type === 'album' ? (
-                    <Disc3 className="h-8 w-8 text-white/20" strokeWidth={1.5} />
+                    // 专辑缺封面走统一占位（专辑名首字 + 稳定配色）：整屏专辑共用
+                    // 一个唱片图标会被读成加载失败。艺术家仍用 User——那是语义占位
+                    <CoverPlaceholder title={g.name} />
                   ) : (
                     <User className="h-8 w-8 text-white/20" strokeWidth={1.5} />
                   )

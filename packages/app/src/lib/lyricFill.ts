@@ -32,9 +32,23 @@ export interface LyricFillPlan {
 }
 
 /** 中文/日文歌的平均吞吐（字/秒），用于给没有逐字轴的整行估时长 */
-const CHARS_PER_SECOND = 4.2
+const CHARS_PER_SECOND = 3.0
 /** 一行至少铺开这么久，避免两字短句一闪而过 */
 const MIN_SING_SECONDS = 0.9
+/**
+ * 填充至少覆盖行窗口的这么多。
+ *
+ * 只按估算时长填（旧实现）时，慢歌里一句 14 字跨 8 秒、估算只要 3.3 秒，于是每句
+ * 唱到三分之一就已经整行全亮、剩下 4.7 秒纹丝不动 —— 用户读到的就是「当前行整块
+ * 亮了」，与没有逐字填充的旧版观感完全一样（移动端全屏页行宽大、字少，尤其明显）。
+ * 留 10% 给「唱完后的收尾」，其余时间按匀速铺满，任何时刻的高亮比例都对应行内进度。
+ */
+const FILL_COVER_RATIO = 0.9
+/**
+ * 填充时长上限（秒）。长间奏、纯器乐段的下一句时间戳可能隔开几十秒，
+ * 不封顶就会把一句拖成十几秒的慢动作；超过它的部分保持「本行已唱完」。
+ */
+const MAX_FILL_SECONDS = 9
 /** 单元的最小权重：纯标点不能被摊成零时长，否则永远停在未唱色 */
 const MIN_TOKEN_WEIGHT = 0.5
 /** 增强 LRC 最后一个词元的收尾时长：它后面没有时间戳，直接借用下一行会拖得很长 */
@@ -139,8 +153,13 @@ export function buildFillPlan(line: LyricLine, endTime: number): LyricFillPlan {
 
   const weights = tokens.map(tokenWeight)
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1
+  const lineGap = Math.max(0.3, lineEnd - line.time)
   const estimate = Math.max(MIN_SING_SECONDS, visibleChars(line.text) / CHARS_PER_SECOND)
-  const duration = Math.max(0.3, Math.min(lineEnd - line.time, estimate))
+  // 三者取中：贴住行窗口（别早早亮完）、不短于估算（唱得比估时慢时也别拖）、封顶
+  const duration = Math.max(
+    0.3,
+    Math.min(lineGap, Math.max(estimate, lineGap * FILL_COVER_RATIO), MAX_FILL_SECONDS)
+  )
 
   const segments: LyricFillSegment[] = []
   let consumed = 0

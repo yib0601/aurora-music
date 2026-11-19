@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   Play,
   Loader2,
-  Music2,
   TrendingUp,
   Sparkles,
   RefreshCw,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-react'
 import { PageLayout } from '@/components/PageLayout'
 import { SubPageTitle } from '@/components/PageHeading'
+import { CoverPlaceholder } from '@/components/common/CoverPlaceholder'
 import { useBindScrollElement } from '@/components/VirtualTrackTable'
 import { HallEmpty } from '@/pages/MusicHallPage'
 import { cn, formatTime } from '@/lib/utils'
@@ -416,7 +416,7 @@ export function MusicHallDetailPage() {
                           </>
                         )}
                       </span>
-                      <RowCover url={row.coverUrl} />
+                      <RowCover url={row.coverUrl} title={row.title} artist={row.artist} />
                       {/* 歌名与歌手**同组左对齐**：此前歌手单占一列、被 flex-1 顶到中间，
                           与歌名之间空出一大片，一行读起来像被切成互不相干的三段 */}
                       <span className="flex-1 min-w-0">
@@ -453,15 +453,17 @@ export function MusicHallDetailPage() {
  * 行封面：36px 圆角方块。
  *
  * 缺封面（老音源只回歌名歌手、Meting 兜底、榜单预览条目）与加载失败都退化成**同尺寸**
- * 的音符占位块——尺寸必须一致，否则一列里有图没图参差不齐，比不放图更难看。
+ * 的占位块——尺寸必须一致，否则一列里有图没图参差不齐，比不放图更难看。
+ * 占位走 CoverPlaceholder（歌名首字 + 稳定配色）而不是统一音符：一张榜单里成片
+ * 无封面条目共用同一个图标，整列会被读成加载失败（见 AGENTS.md 的占位约定）。
  */
-function RowCover({ url }: { url?: string }) {
+function RowCover({ url, title, artist }: { url?: string; title?: string; artist?: string }) {
   const [failed, setFailed] = useState(false)
-  const box = 'w-9 h-9 rounded-ds-sm flex-shrink-0 bg-white/[0.06]'
+  const box = 'w-9 h-9 rounded-ds-sm flex-shrink-0 overflow-hidden bg-white/[0.06]'
   if (!url || failed) {
     return (
-      <span className={cn(box, 'flex items-center justify-center')}>
-        <Music2 className="h-3.5 w-3.5 text-white/30" strokeWidth={1.5} />
+      <span className={box}>
+        <CoverPlaceholder title={title} artist={artist} />
       </span>
     )
   }
@@ -519,7 +521,7 @@ function DetailHero({
     // 窄容器（手机）由 .hall-hero 的容器查询改成纵向堆叠：132px 封面 + 20px 间距横向
     // 摆开时标题列只剩约 214px（歌单名几乎全部截断），操作按钮也会被挤到换行（见 globals.css）
     <div className="hall-hero flex items-end gap-5 mb-6">
-      <HeroCover covers={covers} />
+      <HeroCover covers={covers} title={title} />
       <div className="min-w-0 flex-1 pb-0.5">
         <SubPageTitle className="truncate flex items-center gap-2">
           {icon}
@@ -538,10 +540,10 @@ function DetailHero({
  * Hero 封面：132px 圆角方块。
  *
  * 四张以上不同封面 → 2x2 拼图（3px 缝，中间那道十字分割让它读起来像是「多张图的集合」
- * 而不是一张被划花的图）；一到三张 → 单图铺满；一张都没有 → 同尺寸音符占位块。
- * 三种形态**外框尺寸完全一致**，切换数据源时页面不会跳。
+ * 而不是一张被划花的图）；一到三张 → 单图铺满；一张都没有 → 同尺寸占位块（歌单名首字 +
+ * 稳定配色，见 CoverPlaceholder）。三种形态**外框尺寸完全一致**，切换数据源时页面不会跳。
  */
-function HeroCover({ covers }: { covers: string[] }) {
+function HeroCover({ covers, title }: { covers: string[]; title?: string }) {
   // hall-hero__cover 供 .hall-hero 的容器查询在窄档缩小封面（见 globals.css）；
   // 三个形态共用同一个 box 常量，尺寸因此始终一致，切换数据源时页面不会跳
   const box = 'hall-hero__cover w-[132px] h-[132px] flex-shrink-0 rounded-ds-panel overflow-hidden bg-white/[0.05]'
@@ -556,8 +558,8 @@ function HeroCover({ covers }: { covers: string[] }) {
   }
   if (covers.length > 0) return <CoverTile url={covers[0]} className={box} />
   return (
-    <div className={cn(box, 'flex items-center justify-center border border-white/[0.06]')}>
-      <Music2 className="h-9 w-9 text-white/25" strokeWidth={1.2} />
+    <div className={cn(box, 'border border-white/[0.06]')}>
+      <CoverPlaceholder title={title} />
     </div>
   )
 }

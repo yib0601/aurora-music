@@ -87,7 +87,7 @@ export function PlaybackExtrasMenu({ align = 'end' }: { align?: 'start' | 'cente
           title={t('player.rate.label')}
           aria-label={t('player.rate.label')}
         >
-          <Gauge className="h-[16px] w-[16px] min-[1500px]:h-[18px] min-[1500px]:w-[18px]" strokeWidth={1.5} />
+          <Gauge className="h-[16px] w-[16px] wide:h-[18px] wide:w-[18px]" strokeWidth={1.5} />
           {/* 睡眠定时器在跑时的存在感标记：菜单收起后，用户仍需知道有个定时器在倒计时 */}
           {sleepActive && (
             <span

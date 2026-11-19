@@ -203,6 +203,35 @@ const insetFocusOk = legacyRules.some(
 if (insetFocusOk) ok('存在旧语法可解析的 .inset-field:focus（输入框聚焦反馈车机可用）')
 else fail('产物 CSS 里没有单独的 `.inset-field:focus` 规则——车机上输入框聚焦没有任何反馈')
 
+// 断言：歌词逐字填充的硬停点只能用「已经算好的百分比变量」，不得出现 calc()。
+// 车机/旧 WebView 对 `calc(var(--lp) * 100%)` 停点、以及双位置色标
+// （`颜色 0 calc(...) 100%`）都是整条声明丢弃，只剩「整行实色」那条兜底 ——
+// 表现就是手机端当前行永远一次性整行点亮，看起来跟没有逐字填充的旧版一模一样。
+// 现行写法：LyricsView 写 `--lp-pct: 37.5%`，CSS 用四个单位置色标拼出来。
+const lyricWordBlocks = [...css.matchAll(/\.lyric-word\s*\{([^}]*)\}/g)].map((m) => m[1])
+const lyricFillBlock = lyricWordBlocks.find((body) => body.includes('background-image'))
+if (!lyricFillBlock) {
+  fail(
+    '产物 CSS 里没有带 background-image 的 `.lyric-word` 规则 ——\n' +
+      '  当前行逐字填充的填充单元样式丢了，歌词会退回「整行渐变字」。'
+  )
+} else if (/calc\(/.test(lyricFillBlock)) {
+  fail(
+    '`.lyric-word` 的渐变停点又用上 calc() 了 ——\n' +
+      '  车机/旧 WebView 会把这条声明整条丢弃，手机端当前行退化成整行一次点亮（旧版观感）。\n' +
+      '  停点请写成 `var(--lp-pct, 100%)`，值由 LyricsView 的帧循环以百分比字符串写入。'
+  )
+} else if (!/var\(--lp-pct/.test(lyricFillBlock)) {
+  fail(
+    '`.lyric-word` 的渐变停点没有用 `--lp-pct` ——\n' +
+      '  没有这个变量，逐字填充永远停在「整行点亮」。'
+  )
+} else if (!/linear-gradient\(90deg,\s*var\(--lyric-lit\) 0%,\s*var\(--lyric-lit\) 100%\)/.test(css)) {
+  fail('`.lyric-word` 缺「整行实色」兜底声明 —— 引擎不支持变量停点时当前行会整行不可见')
+} else {
+  ok('歌词逐字填充的停点走百分比变量（无 calc，车机可解析；整行实色兜底在位）')
+}
+
 // ── 渲染对照（--render） ────────────────────────────────────────────────────
 if (wantRender) {
   let chromeOk = true

@@ -14,5 +14,5 @@
   浅色主题下深色导航栏也是系统级常见形态，不做动态翻转。
 -->
 <resources>
-    <color name="aurora_window_bg">#0A0A0A</color>
+    <color name="aurora_window_bg">#08090C</color>
 </resources>

@@ -24,7 +24,7 @@ SVG_FULL="$RES/icon-full.svg"    # 全幅版：Android 自适应图标前景
 # 三层色块跳变（--check 会把这三处一起卡住）：
 #   packages/mobile/android/app/src/main/res/values/colors.xml  (aurora_window_bg)
 #   packages/mobile/capacitor.config.ts                         (SplashScreen.backgroundColor)
-SPLASH_BG='#0A0A0A'
+SPLASH_BG='#08090C'
 
 declare -A ICON_SIZE=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
 DENSITIES=(mdpi hdpi xhdpi xxhdpi xxxhdpi)

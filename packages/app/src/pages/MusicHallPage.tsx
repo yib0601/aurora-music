@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, Compass, RefreshCw, Music2, TrendingUp, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Compass, RefreshCw, TrendingUp, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
 import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
+import { CoverPlaceholder } from '@/components/common/CoverPlaceholder'
 import { cn } from '@/lib/utils'
 import { NAV_LABEL_KEYS, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
 import { useMusicHallStore, hallUnavailableReason } from '@/stores/musicHallStore'
@@ -162,8 +163,8 @@ function Section({
   return (
     <section className={className}>
       <div className="flex items-center gap-2.5 mb-4">
-        <span className="text-white/55">{icon}</span>
-        <h2 className="font-display text-[17px] font-semibold text-white/[0.92] tracking-[-0.3px]">{title}</h2>
+        {icon}
+        <h2 className="font-display text-[19px] font-semibold text-white tracking-[-0.4px]">{title}</h2>
       </div>
       {children}
     </section>
@@ -182,7 +183,7 @@ function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpe
     <button
       type="button"
       onClick={onOpen}
-      className="group playlist-card card-solid rounded-ds-panel p-3 text-left transition-[background,border-color,box-shadow] duration-200 ease-mineradio hover:bg-white/[0.06] border border-white/[0.06] hover:border-white/[0.14]"
+      className="group playlist-card card-solid card-tappable rounded-ds-panel p-3 text-left hover:bg-white/[0.06] border border-white/[0.06]"
     >
       <div className="relative aspect-square rounded-ds-media overflow-hidden bg-white/[0.05] mb-3">
         {cover && !failed ? (
@@ -195,9 +196,9 @@ function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpe
             className="media-card-image w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-white/25">
-            <Music2 className="h-8 w-8" strokeWidth={1.2} />
-          </div>
+          // 上游歌单封面缺失时走统一占位（名称首字 + 稳定配色）：一屏几十张卡片
+          // 共用同一个音符图标会被读成「整页加载失败」，见 AGENTS.md 的占位约定
+          <CoverPlaceholder title={playlist.name} artist={playlist.creatorName} />
         )}
         <span className="card-affordance absolute right-2.5 top-2.5" aria-hidden="true">
           <ArrowUpRight className="h-4 w-4" strokeWidth={1.7} />
@@ -226,7 +227,7 @@ function ToplistCard({ board, onOpen }: { board: ToplistBrief; onOpen: () => voi
     <button
       type="button"
       onClick={onOpen}
-      className="group card-solid rounded-ds-panel p-4 text-left transition-colors duration-200 ease-mineradio hover:bg-white/[0.08] border border-white/[0.06] hover:border-white/[0.12]"
+      className="group card-solid card-tappable rounded-ds-panel p-4 text-left hover:bg-white/[0.08] border border-white/[0.06]"
     >
       <div className="flex items-center justify-between gap-2 mb-3">
         <p className="font-text text-[14px] font-semibold text-white/92 tracking-[-0.2px] truncate">
@@ -332,8 +333,8 @@ export function HallEmpty({
     <div className="flex-1 flex flex-col items-center justify-center">
       <div className="relative mb-6">
         <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
-        <div className="relative w-[120px] h-[120px] rounded-ds-card bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
-          <Compass className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
+        <div className="card-solid relative w-[120px] h-[120px] rounded-ds-card flex items-center justify-center">
+          <Compass className="h-[52px] w-[52px] text-mint/70" strokeWidth={1} />
         </div>
       </div>
       <EmptyTitle>{title}</EmptyTitle>

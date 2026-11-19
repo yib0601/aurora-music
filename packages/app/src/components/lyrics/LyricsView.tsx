@@ -296,7 +296,12 @@ export function LyricsView({
             continue
           }
           write.values[i] = progress
-          span.style.setProperty('--lp', progress.toFixed(3))
+          // ⚠️ 写**百分比**而不是 0..1 的数：CSS 侧不再做 `calc(var(--lp) * 100%)`。
+          // 带 calc 的双位置色标（`var(--c) 0 calc(...) 100%`）在旧 Chromium/WebView 上
+          // 会被整条丢弃，回落到「整行实色」那条兜底 —— 表现为手机端歌词只有整行一次性
+          // 点亮，逐字填充完全看不见（与旧版高亮一模一样）。把算好的 `%` 直接交出去，
+          // CSS 侧就只剩单位置色标这种 CSS3 时代就有的语法。
+          span.style.setProperty('--lp-pct', `${(progress * 100).toFixed(1)}%`)
         }
       }
 
