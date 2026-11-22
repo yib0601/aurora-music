@@ -1303,10 +1303,10 @@ function AppLayout() {
                     </button>
 
                     <div className="text-center">
-                      <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/[0.94]">
+                      <p className="font-display font-semibold truncate text-[17px] tracking-[-0.374px] text-white/95">
                         {currentTrack?.title || t('shell.chrome.nowPlayingEmpty')}
                       </p>
-                      <p className="font-text text-[13px] text-white/60 truncate mt-1.5 tracking-[-0.16px]">
+                      <p className="font-text text-[13px] text-white/65 truncate mt-1.5 tracking-[-0.16px]">
                         {currentTrack?.artist || t('shell.chrome.nowPlayingHint')}
                       </p>
                     </div>
@@ -1354,12 +1354,12 @@ function AppLayout() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
           <div className="w-full max-w-[340px] rounded-ds-card bg-canvas-paper border border-white/10 p-6 flex flex-col items-center text-center shadow-ds-dropdown">
             <div className="w-14 h-14 rounded-full bg-mint/10 border border-mint/20 flex items-center justify-center mb-4">
-              <ShieldAlert className="h-7 w-7 text-mint" strokeWidth={1.6} />
+              <ShieldAlert className="h-7 w-7 text-mint-text" strokeWidth={1.6} />
             </div>
-            <h2 className="font-display text-[17px] font-bold text-white/96 tracking-[-0.3px]">
+            <h2 className="font-display text-[17px] font-bold text-white/95 tracking-[-0.3px]">
               {t('shell.permission.title')}
             </h2>
-            <p className="font-text text-[13px] text-white/60 leading-relaxed mt-2 mb-6 tracking-[-0.15px]">
+            <p className="font-text text-[13px] text-white/65 leading-relaxed mt-2 mb-6 tracking-[-0.15px]">
               {t('shell.permission.description')}
             </p>
             <button
@@ -1370,7 +1370,7 @@ function AppLayout() {
             </button>
             <button
               onClick={() => setNeedsStoragePermission(false)}
-              className="w-full h-10 mt-2 text-white/50 text-[13px] hover:text-white/80 active:scale-[0.98] transition"
+              className="w-full h-10 mt-2 text-white/50 text-[13px] hover:text-white/85 active:scale-[0.98] transition"
             >
               {t('shell.permission.later')}
             </button>

@@ -26,7 +26,7 @@ import { useDownloadOnlineTrack } from '@/hooks/useDownloadOnlineTrack'
 import { isDownloadableOnlineTrack } from '@/lib/onlineTrack'
 import { useGoBack, useOpenSongDetail } from '@/lib/navigation'
 // 歌曲详情页没有独立页头：本页唯一的 h1 是黑胶旁的歌名，故用一级页头档
-import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
+import { PageTitle, EmptyText, EmptyTitle, GroupLabel } from '@/components/PageHeading'
 import { CoverImage } from '@/components/common/CoverImage'
 import {
   canRevealInFolder,
@@ -125,7 +125,7 @@ function TrackLyrics({ track, onLineClick, className, large }: { track: Track; o
 
   if (lrc === null) {
     return (
-      <p className="font-text text-[14px] text-white/30 py-10 text-center tracking-[-0.15px]">
+      <p className="font-text text-[14px] text-white/50 py-10 text-center tracking-[-0.15px]">
         {t('player.lyrics.searching')}
       </p>
     )
@@ -315,11 +315,11 @@ export function SongDetailPage() {
           <div className="relative mb-6">
             <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
             <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
-              <Music2 className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
+              <Music2 className="h-[52px] w-[52px] text-mint-text/60" strokeWidth={1} />
             </div>
           </div>
           <EmptyTitle>{tracks.length === 0 ? t('player.detail.loading') : t('player.detail.notFound')}</EmptyTitle>
-          <EmptyText className="text-white/40">
+          <EmptyText className="text-white/50">
             {tracks.length === 0
               ? t('player.detail.loadingHint', { library: t('nav.item.library') })
               : t('player.detail.removed')}
@@ -348,7 +348,7 @@ export function SongDetailPage() {
           onClick={goBack}
           aria-label={t('common.action.back')}
           title={t('common.action.back')}
-          className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-[calc(var(--titleband-h)+16px)] z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors duration-200 ease-apple"
+          className="glass-saved-button absolute left-2 md:left-4 top-2 md:top-[calc(var(--titleband-h)+16px)] z-10 w-10 h-10 rounded-full flex items-center justify-center text-white/85 hover:text-white transition-colors duration-200 ease-apple"
         >
           <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={1.6} />
         </button>
@@ -373,14 +373,14 @@ export function SongDetailPage() {
 
           {/* 标题 + 操作 + 属性（宽屏左栏内整体居中） */}
           <div className="flex-1 min-w-0 flex flex-col items-center md:items-start text-center md:text-left lg:items-center lg:text-center">
-            <p className="inline-flex items-center gap-1.5 font-text text-[11px] font-semibold uppercase tracking-[0.16em] text-mint/80 mb-3">
+            <p className="inline-flex items-center gap-1.5 font-text text-[11px] font-semibold uppercase tracking-[0.16em] text-mint-text/80 mb-3">
               <Radio className="h-3 w-3" strokeWidth={1.8} />
               {t('player.detail.tagline', { source: sourceName(track, librarySources, t) })}
             </p>
             <PageTitle className="break-words">{track.title}</PageTitle>
-            <p className="font-text text-[15px] md:text-[16px] text-white/55 mt-2 tracking-[-0.224px]">
+            <p className="font-text text-[15px] md:text-[16px] text-white/65 mt-2 tracking-[-0.224px]">
               {track.artist}
-              {track.album ? <span className="text-white/45"> · {track.album}</span> : null}
+              {track.album ? <span className="text-white/50"> · {track.album}</span> : null}
             </p>
 
             {/* 操作按钮 */}
@@ -490,8 +490,8 @@ export function SongDetailPage() {
                     key={label}
                     className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-3 rounded-full bg-white/[0.04] border border-white/[0.08]"
                   >
-                    <Icon className="h-3.5 w-3.5 text-mint/60 flex-shrink-0" strokeWidth={1.6} />
-                    <span className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{t(label)}</span>
+                    <Icon className="h-3.5 w-3.5 text-mint-text/60 flex-shrink-0" strokeWidth={1.6} />
+                    <span className="font-text text-[11px] text-white/50 tracking-[-0.12px]">{t(label)}</span>
                     <span className="font-text text-[12px] font-semibold text-white/85 tracking-[-0.12px]">{value}</span>
                   </span>
                 ))}
@@ -525,7 +525,7 @@ export function SongDetailPage() {
         <section className="mt-6 md:mt-8">
           <button
             onClick={() => setShowMoreInfo((v) => !v)}
-            className="inline-flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/50 hover:text-mint transition-colors duration-200 ease-apple"
+            className="inline-flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/50 hover:text-mint-text transition-colors duration-200 ease-apple"
           >
             <ChevronDown
               className={cn('h-3.5 w-3.5 transition-transform duration-200', showMoreInfo && 'rotate-180')}
@@ -538,9 +538,9 @@ export function SongDetailPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-5">
                 {statItems.map(({ icon: Icon, label, value }) => (
                   <div key={label} className="flex items-center gap-3 min-w-0">
-                    <Icon className="h-4 w-4 text-mint/60 flex-shrink-0" strokeWidth={1.5} />
+                    <Icon className="h-4 w-4 text-mint-text/60 flex-shrink-0" strokeWidth={1.5} />
                     <div className="min-w-0">
-                      <p className="font-text text-[11px] text-white/40 tracking-[-0.12px]">{t(label)}</p>
+                      <p className="font-text text-[11px] text-white/50 tracking-[-0.12px]">{t(label)}</p>
                       <p className="font-text text-[14px] font-semibold text-white/90 truncate tracking-[-0.224px]">
                         {value}
                       </p>
@@ -549,7 +549,7 @@ export function SongDetailPage() {
                 ))}
               </div>
               {track.path && (
-                <p className="flex items-center gap-1.5 mt-4 font-text text-[12px] text-white/40 tracking-[-0.12px]">
+                <p className="flex items-center gap-1.5 mt-4 font-text text-[12px] text-white/50 tracking-[-0.12px]">
                   {track.sourceId ? (
                     <Cloud className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.5} />
                   ) : (
@@ -565,9 +565,9 @@ export function SongDetailPage() {
         {/* 同专辑歌曲：独立成行，置于歌词下方 */}
         {albumTracks.length > 0 && (
           <section className="mt-8 md:mt-10">
-            <h2 className="font-text text-[12px] font-semibold text-white/55 uppercase tracking-wider mb-3">
+            <GroupLabel className="block mb-3">
               {t('player.detail.fromAlbum', { album: track.album })}
-            </h2>
+            </GroupLabel>
             <div className="card-solid overflow-hidden">
               <div className="max-h-[340px] md:max-h-[420px] overflow-y-auto scrollbar-thin">
                 {/* ⚠️ 回调参数不叫 t：会把上面 useT() 的翻译函数遮蔽掉，
@@ -583,10 +583,10 @@ export function SongDetailPage() {
                       usePlayerStore.getState().playQueue(albumTracks, idx)
                     }}
                   >
-                    <span className="font-text text-[12px] text-white/35 w-5 text-right group-hover:hidden tabular-nums tracking-[-0.12px]">
+                    <span className="font-text text-[12px] text-white/50 w-5 text-right group-hover:hidden tabular-nums tracking-[-0.12px]">
                       {idx + 1}
                     </span>
-                    <Play className="w-3.5 h-3.5 hidden group-hover:block text-mint" strokeWidth={1.8} />
+                    <Play className="w-3.5 h-3.5 hidden group-hover:block text-mint-text" strokeWidth={1.8} />
                     {/* 封面图标 → 进入详情 */}
                     <button
                       onClick={(e) => {
@@ -608,16 +608,16 @@ export function SongDetailPage() {
                       <p
                         className={cn(
                           'font-text text-[14px] font-semibold truncate tracking-[-0.224px]',
-                          albumTrack.id === track.id ? 'text-mint' : 'text-white/92'
+                          albumTrack.id === track.id ? 'text-mint-text' : 'text-white/90'
                         )}
                       >
                         {albumTrack.title}
                       </p>
-                      <p className="font-text text-[12px] text-white/45 truncate tracking-[-0.12px]">
+                      <p className="font-text text-[12px] text-white/50 truncate tracking-[-0.12px]">
                         {albumTrack.artist}
                       </p>
                     </button>
-                    <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
+                    <span className="font-text text-[12px] text-white/50 tabular-nums w-10 text-right tracking-[-0.12px]">
                       {formatTime(albumTrack.duration)}
                     </span>
                   </div>

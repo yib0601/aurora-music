@@ -90,7 +90,7 @@ export function LanPairDialogHost() {
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">{t('sync.pair.title')}</DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60 break-words">
+          <DialogDescription className="font-text text-caption text-white/65 break-words">
             {t('sync.pair.requestDesc', { name: request?.deviceName ?? '' })}
           </DialogDescription>
         </DialogHeader>
@@ -98,7 +98,7 @@ export function LanPairDialogHost() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 px-4 text-white/60 hover:text-white/90"
+            className="h-9 px-4 text-white/65 hover:text-white/90"
             disabled={busy}
             onClick={() => answer(false)}
           >

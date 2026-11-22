@@ -76,7 +76,7 @@ export function DuplicateDetails({ groups, intro }: {
   return (
     <div className="glass-floating rounded-[10px] p-3">
       {intro && (
-        <p className="font-text text-[12px] text-white/55 mb-2 leading-relaxed">{intro}</p>
+        <p className="font-text text-[12px] text-white/65 mb-2 leading-relaxed">{intro}</p>
       )}
       <ul className="space-y-2 max-h-72 overflow-y-auto scrollbar-thin">
         {groups.map((g) => (
@@ -107,7 +107,7 @@ export function DuplicateSummaryHover({ hidden, groups }: {
   const t = useT()
   return (
     <span
-      className="ml-2 text-white/35 cursor-help underline decoration-dotted decoration-white/20 underline-offset-4"
+      className="ml-2 text-white/50 cursor-help underline decoration-dotted decoration-white/20 underline-offset-4"
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
@@ -139,7 +139,7 @@ export const DuplicateBadge = memo(function DuplicateBadge({
       onDoubleClick={(e) => e.stopPropagation()}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.12] px-1.5 py-[1px] font-text text-[10px] text-white/55 cursor-help"
+      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.12] px-1.5 py-[1px] font-text text-[10px] text-white/65 cursor-help"
     >
       <Copy className="h-2.5 w-2.5" strokeWidth={1.8} />
       {t('library.duplicate.badge')}

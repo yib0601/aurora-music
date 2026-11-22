@@ -44,12 +44,12 @@ export function LxProbeResult({ result }: { result: SourceProbeResult }) {
             {/* 平台名：探测层给的是**文案键**（LX_PLATFORM_LABEL_KEYS），
                 取值必须在渲染期做 —— 直接渲染会露出 `core.platform.kw`。
                 能力描述走字典 */}
-            <span className="font-text text-[10px] text-white/80">{t(row.labelKey)}</span>
-            <span className="font-text text-[10px] text-white/55">
+            <span className="font-text text-[10px] text-white/85">{t(row.labelKey)}</span>
+            <span className="font-text text-[10px] text-white/65">
               {row.searchable ? t('sources.probe.searchAndResolve') : t('sources.probe.resolveOnly')}
             </span>
             {row.qualityCount > 0 && (
-              <span className="font-text text-[10px] text-white/35">
+              <span className="font-text text-[10px] text-white/50">
                 {t('sources.probe.qualityCount', { count: row.qualityCount })}
               </span>
             )}
@@ -57,7 +57,7 @@ export function LxProbeResult({ result }: { result: SourceProbeResult }) {
         ))}
       </div>
       {info?.packed && (
-        <p className="font-text text-caption text-white/35">{t('sources.probe.packed')}</p>
+        <p className="font-text text-caption text-white/50">{t('sources.probe.packed')}</p>
       )}
     </div>
   )
@@ -118,7 +118,7 @@ export function LxScriptProbe({
              这一行的下限 ≈266px。洛雪源卡片在 320 逻辑像素的弹窗里只剩约 244px，
              缺 min-w-0 就会把卡片撑破，进而把外层的 overflow-y-auto 撑成横向可拖
              （与 pluginConfigCards 卡片改名输入框同一条修法）。 */
-          className={`inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/70 ${invalid ? 'is-invalid' : ''}`}
+          className={`inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/85 ${invalid ? 'is-invalid' : ''}`}
         />
         <Button
           variant="secondary"
@@ -138,7 +138,7 @@ export function LxScriptProbe({
         /* 探测结论是**结构化信封**（AURORA_ERR:{code,params}）或第三方自由文本：
            直接渲染会把 JSON 摊在界面上，必须过 renderError 按当前语言渲染 */
         <p
-          className={`font-text text-caption mt-1 truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}
+          className={`font-text text-caption mt-1 truncate ${probe.ok ? 'text-mint-text/80' : 'text-coral/80'}`}
           title={renderError(probe.message, t)}
         >
           {renderError(probe.message, t)}

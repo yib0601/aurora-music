@@ -106,7 +106,7 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
               disabled={busy}
               rows={7}
               placeholder={t('library.import.textPlaceholder')}
-              className="w-full resize-none bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3 py-2.5 font-text text-[13px] text-white/85 outline-none focus:bg-white/[0.06] focus:border-white/[0.18] transition-colors duration-200 placeholder:text-white/25"
+              className="w-full resize-none bg-white/[0.03] border border-white/[0.08] rounded-[10px] px-3 py-2.5 font-text text-[13px] text-white/85 outline-none focus:bg-white/[0.06] focus:border-white/[0.18] transition-colors duration-200 placeholder:text-white/50"
             />
             <Input
               value={playlistName}
@@ -115,7 +115,7 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
               placeholder={t('library.import.namePlaceholder', { name: t('library.playlist.defaultImportName') })}
             />
             <div className="flex items-center justify-between gap-3">
-              <p className="font-text text-[11px] text-white/35 leading-snug flex-1">
+              <p className="font-text text-[11px] text-white/50 leading-snug flex-1">
                 {t('library.import.notice')}
               </p>
               {phase === 'parsing' ? (
@@ -162,19 +162,19 @@ export function PlaylistImportDialog({ open, onOpenChange }: PlaylistImportDialo
                 return (
                   <div key={i} className="flex items-center gap-2.5 px-3 py-2 border-b border-white/[0.05] last:border-0">
                     {isSearching ? (
-                      <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-mint/70" strokeWidth={1.6} />
+                      <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-mint-text/70" strokeWidth={1.6} />
                     ) : matched ? (
-                      <FileText className="h-3.5 w-3.5 flex-shrink-0 text-mint/80" strokeWidth={1.6} />
+                      <FileText className="h-3.5 w-3.5 flex-shrink-0 text-mint-text/80" strokeWidth={1.6} />
                     ) : (
                       <Link2 className="h-3.5 w-3.5 flex-shrink-0 text-white/30" strokeWidth={1.6} />
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="font-text text-[13px] text-white/85 truncate">{song.title}</p>
                       {song.artist && (
-                        <p className="font-text text-[11px] text-white/40 truncate">{song.artist}</p>
+                        <p className="font-text text-[11px] text-white/50 truncate">{song.artist}</p>
                       )}
                     </div>
-                    <span className="font-text text-[11px] text-white/35 flex-shrink-0">
+                    <span className="font-text text-[11px] text-white/50 flex-shrink-0">
                       {matched ? t('common.label.local') : phase === 'importing' ? t('library.import.matching') : t('common.label.online')}
                     </span>
                   </div>

@@ -26,7 +26,7 @@ import { usePlaylistStore } from '@/stores/playlistStore'
 import { cn } from '@/lib/utils'
 import { GRID_GAP, getGridColumnCount } from '@/lib/gridLayout'
 import { PageLayout } from '@/components/PageLayout'
-import { PageTitle, PageSubtitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
+import { PageTitle, PageSubtitle, EmptyText, EmptyTitle, SectionTitle } from '@/components/PageHeading'
 import { platform } from '@/services/platform'
 import { CoverImage } from '@/components/common/CoverImage'
 import { CoverPlaceholder } from '@/components/common/CoverPlaceholder'
@@ -536,16 +536,16 @@ export function LibraryPage() {
                     {(Object.keys(SORT_LABEL_KEYS) as SortField[]).map((field) => (
                       <DropdownMenuItem key={field} onSelect={(e) => e.preventDefault()} onClick={() => setSortBy(field)}>
                         <span className="flex-1">{t(SORT_LABEL_KEYS[field])}</span>
-                        {sortBy === field && <Check className="h-3.5 w-3.5 text-mint" strokeWidth={2} />}
+                        {sortBy === field && <Check className="h-3.5 w-3.5 text-mint-text" strokeWidth={2} />}
                       </DropdownMenuItem>
                     ))}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={(e) => e.preventDefault()} onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
                       <span className="flex-1">{sortOrder === 'asc' ? t('library.sort.asc') : t('library.sort.desc')}</span>
                       {sortOrder === 'asc' ? (
-                        <ArrowUp className="h-3.5 w-3.5 text-mint" strokeWidth={2} />
+                        <ArrowUp className="h-3.5 w-3.5 text-mint-text" strokeWidth={2} />
                       ) : (
-                        <ArrowDown className="h-3.5 w-3.5 text-mint" strokeWidth={2} />
+                        <ArrowDown className="h-3.5 w-3.5 text-mint-text" strokeWidth={2} />
                       )}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -592,7 +592,7 @@ export function LibraryPage() {
             <p className="font-text text-[13px] font-semibold text-white/85">
               {t('library.encrypted.bannerTitle', { count: encryptedFiles.length })}
             </p>
-            <p className="font-text text-[11px] text-white/45 leading-snug mt-1">
+            <p className="font-text text-[11px] text-white/50 leading-snug mt-1">
               {t('library.encrypted.bannerHint')}
             </p>
           </div>
@@ -616,11 +616,11 @@ export function LibraryPage() {
           <div className="relative mb-6">
             <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
             <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
-              <MusicIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
+              <MusicIcon className="h-[52px] w-[52px] text-mint-text/60" strokeWidth={1} />
             </div>
           </div>
           <EmptyTitle>{t('library.empty.title')}</EmptyTitle>
-          <EmptyText className="text-white/40">
+          <EmptyText className="text-white/50">
             {t('library.empty.hint')}
           </EmptyText>
           <button
@@ -663,9 +663,7 @@ export function LibraryPage() {
               <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
             </button>
             <div className="min-w-0 flex-1">
-              <h2 className="font-display text-[18px] md:text-[20px] font-semibold text-white truncate tracking-[-0.3px]">
-                {unknownLabel(activeGroup.name)}
-              </h2>
+              <SectionTitle className="truncate">{unknownLabel(activeGroup.name)}</SectionTitle>
               <p className="font-text text-[12px] text-white/50 truncate mt-0.5">
                 {activeGroup.subtitle
                   ? t('library.group.albumSubtitle', {

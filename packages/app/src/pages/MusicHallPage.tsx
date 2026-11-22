@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowUpRight, Compass, RefreshCw, TrendingUp, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/components/PageLayout'
-import { PageTitle, EmptyText, EmptyTitle } from '@/components/PageHeading'
+import { PageTitle, EmptyText, EmptyTitle, SectionTitle, GroupLabel } from '@/components/PageHeading'
 import { CoverPlaceholder } from '@/components/common/CoverPlaceholder'
 import { cn } from '@/lib/utils'
 import { NAV_LABEL_KEYS, LIBRARY_ROUTE, ROUTE_BUILDERS, ROUTES } from '@/lib/routes'
@@ -87,7 +87,7 @@ export function MusicHallPage() {
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 -mr-2">
           {/* ── 推荐歌单 ── */}
           <Section
-            icon={<Sparkles className="h-4 w-4 text-mint" strokeWidth={1.6} />}
+            icon={<Sparkles className="h-4 w-4 text-mint-text" strokeWidth={1.6} />}
             title={t('hall.recommend.title')}
           >
             {/* 有缓存就先渲染缓存：后台刷新失败只会在没数据时才升级成错误态，
@@ -113,7 +113,7 @@ export function MusicHallPage() {
 
           {/* ── 排行榜 ── */}
           <Section
-            icon={<TrendingUp className="h-4 w-4 text-mint" strokeWidth={1.6} />}
+            icon={<TrendingUp className="h-4 w-4 text-mint-text" strokeWidth={1.6} />}
             title={t('hall.toplist.title')}
             className="mt-10"
           >
@@ -122,10 +122,10 @@ export function MusicHallPage() {
               <div className="flex flex-col gap-8">
                 {toplists.data.map((group) => (
                   <div key={`${group.groupId ?? group.groupName}`}>
-                    <h3 className="font-text text-[12px] font-semibold text-white/65 uppercase tracking-wider mb-3">
+                    <GroupLabel className="block mb-3">
                       {/* 组名由音源服务提供；上游缺名时数据层给空串（不再烧「榜单」这类展示名），这里补字典兜底 */}
                       {group.groupName || t('hall.toplist.fallbackName')}
-                    </h3>
+                    </GroupLabel>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                       {group.toplists.map((board) => (
                         <ToplistCard
@@ -167,7 +167,7 @@ function Section({
     <section className={className}>
       <div className="flex items-center gap-2.5 mb-4">
         {icon}
-        <h2 className="font-display text-[19px] font-semibold text-white tracking-[-0.4px]">{title}</h2>
+        <SectionTitle>{title}</SectionTitle>
       </div>
       {children}
     </section>
@@ -207,10 +207,10 @@ function PlaylistCard({ playlist, onOpen }: { playlist: RecommendPlaylist; onOpe
           <ArrowUpRight className="h-4 w-4" strokeWidth={1.7} />
         </span>
       </div>
-      <p className="font-text text-[13px] text-white/90 leading-snug line-clamp-2 tracking-[-0.2px]">
+      <p className="font-text text-[14px] font-medium text-white/90 leading-snug line-clamp-2 tracking-[-0.2px]">
         {playlist.name}
       </p>
-      <p className="font-text text-[11px] text-white/45 mt-1 truncate tracking-[-0.12px]">
+      <p className="font-text text-[12px] text-white/65 mt-1 truncate tracking-[-0.12px]">
         {playlist.listenNum
           ? // count 只用于选复数形态，plays 是已按语言压缩的显示值（万 / 亿 与 K / M 不同形）
             t('hall.recommend.plays', {
@@ -233,17 +233,17 @@ function ToplistCard({ board, onOpen }: { board: ToplistBrief; onOpen: () => voi
       className="group card-solid card-tappable rounded-ds-panel p-4 text-left hover:bg-white/[0.08] border border-white/[0.06]"
     >
       <div className="flex items-center justify-between gap-2 mb-3">
-        <p className="font-text text-[14px] font-semibold text-white/92 tracking-[-0.2px] truncate">
+        <p className="font-text text-[14px] font-medium text-white/90 tracking-[-0.2px] truncate">
           {board.name}
         </p>
         {board.updateTime && (
-          <span className="font-text text-[11px] text-white/40 flex-shrink-0 tabular-nums">
+          <span className="font-text text-[12px] text-white/50 flex-shrink-0 tabular-nums">
             {board.updateTime}
           </span>
         )}
       </div>
       {board.songs.length === 0 ? (
-        <p className="font-text text-[12px] text-white/40 py-1">{t('hall.toplist.viewFull')}</p>
+        <p className="font-text text-[12px] text-white/50 py-1">{t('hall.toplist.viewFull')}</p>
       ) : (
         <ol className="flex flex-col gap-1.5">
           {board.songs.slice(0, 3).map((song, i) => (
@@ -262,16 +262,19 @@ function PreviewRow({ song, index }: { song: ToplistPreviewSong; index: number }
     <li className="flex items-center gap-2 min-w-0">
       <span
         className={cn(
-          'font-text text-[11px] tabular-nums w-4 flex-shrink-0',
-          highlight ? 'text-mint font-semibold' : 'text-white/40'
+          'font-text text-[12px] tabular-nums w-4 flex-shrink-0',
+          highlight ? 'text-mint-text font-semibold' : 'text-white/50'
         )}
       >
         {song.rank || index + 1}
       </span>
-      <span className="font-text text-[12px] text-white/75 truncate flex-1 tracking-[-0.15px]">
+      {/* 榜内预览的前三首是**卡片正文**：字号比卡片标题小一档、比注脚大一档（13px），
+          否则一屏 30 张榜单卡里的 90 行歌名会全部退化成 11~12px 的细灰线，
+          读起来像「加载中的占位」而不是歌名。 */}
+      <span className="font-text text-[13px] text-white/85 truncate flex-1 tracking-[-0.15px]">
         {song.title}
       </span>
-      <span className="font-text text-[11px] text-white/40 truncate max-w-[40%] tracking-[-0.12px]">
+      <span className="font-text text-[12px] text-white/65 truncate max-w-[40%] tracking-[-0.12px]">
         {song.artist}
       </span>
     </li>
@@ -307,11 +310,11 @@ function InlineError({ message, onRetry }: { message: string; onRetry: () => voi
   const t = useT()
   return (
     <div className="inset-note flex items-center justify-between gap-3 px-4 py-3">
-      <span className="font-text text-[12px] text-white/60 truncate">{message}</span>
+      <span className="font-text text-[12px] text-white/65 truncate">{message}</span>
       <button
         type="button"
         onClick={onRetry}
-        className="font-text text-[12px] text-mint hover:text-mint/80 flex-shrink-0 transition-colors"
+        className="font-text text-[12px] text-mint-text hover:text-mint-text/80 flex-shrink-0 transition-colors"
       >
         {t('common.action.retry')}
       </button>
@@ -337,7 +340,7 @@ export function HallEmpty({
       <div className="relative mb-6">
         <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
         <div className="card-solid relative w-[120px] h-[120px] rounded-ds-card flex items-center justify-center">
-          <Compass className="h-[52px] w-[52px] text-mint/70" strokeWidth={1} />
+          <Compass className="h-[52px] w-[52px] text-mint-text/70" strokeWidth={1} />
         </div>
       </div>
       <EmptyTitle>{title}</EmptyTitle>

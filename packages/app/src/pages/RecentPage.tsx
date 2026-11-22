@@ -89,7 +89,7 @@ export function RecentPage() {
           <div className="relative mb-6">
             <div className="absolute -inset-16 bg-gradient-to-b from-mint/[0.06] to-transparent rounded-full blur-3xl" />
             <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
-              <Clock className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
+              <Clock className="h-[52px] w-[52px] text-mint-text/60" strokeWidth={1} />
             </div>
           </div>
           <EmptyTitle>{t('library.recent.empty.title')}</EmptyTitle>
@@ -154,7 +154,7 @@ export function RecentPage() {
                               <span className="block font-semibold text-[14px] truncate text-white">{track.title}</span>
                               {/* 移动端隐藏艺术家列，改为标题下方第二行展示；
                                   宽屏但容器窄（车机竖屏、窄窗口）时同样由容器查询接管 */}
-                              <span className="track-artist-inline block md:hidden text-[12px] text-white/40 truncate mt-0.5">{track.artist}</span>
+                              <span className="track-artist-inline block md:hidden text-[12px] text-white/50 truncate mt-0.5">{track.artist}</span>
                             </div>
                           </div>
                         </td>

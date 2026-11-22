@@ -151,12 +151,12 @@ export function UpdateDownloadDialog() {
 
         {phase === 'downloading' && (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 font-text text-[13px] text-white/80">
-              <Loader2 className="h-4 w-4 animate-spin text-mint" strokeWidth={1.8} />
+            <div className="flex items-center gap-2 font-text text-[13px] text-white/85">
+              <Loader2 className="h-4 w-4 animate-spin text-mint-text" strokeWidth={1.8} />
               {t('update.dialog.downloading')}
               <span className="ml-auto flex items-baseline gap-2">
                 {speedText ? <span className="text-[11px] text-white/50">{speedText}</span> : null}
-                {percent !== null ? <span className="text-mint">{percent}%</span> : null}
+                {percent !== null ? <span className="text-mint-text">{percent}%</span> : null}
               </span>
             </div>
             {/* 进度条：无 Content-Length 时退化为不确定动画 */}
@@ -170,7 +170,7 @@ export function UpdateDownloadDialog() {
                 <div className="h-full w-1/3 rounded-full bg-mint animate-pulse" />
               )}
             </div>
-            <p className="font-text text-[11px] text-white/45">
+            <p className="font-text text-[11px] text-white/50">
               {formatBytes(received)}
               {total ? ` / ${formatBytes(total)}` : ''}
               {route ? <span className="ml-2">· {route}</span> : null}
@@ -195,14 +195,14 @@ export function UpdateDownloadDialog() {
         {phase === 'done' && filePath && (
           <div className="space-y-3">
             <div className="flex items-start gap-2.5 rounded-[10px] border border-mint/20 bg-mint/[0.06] px-3.5 py-3">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint" strokeWidth={1.8} />
+              <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint-text" strokeWidth={1.8} />
               <div className="min-w-0">
                 <p className="font-text text-[13px] text-white/90">{t('update.dialog.done')}</p>
-                <p className="mt-0.5 break-all font-text text-[11px] leading-4 text-white/45">{filePath}</p>
+                <p className="mt-0.5 break-all font-text text-[11px] leading-4 text-white/50">{filePath}</p>
               </div>
             </div>
             {task && INSTALL_HINT_KEYS[task.kind] && (
-              <p className="font-text text-[11px] leading-4 text-white/45">{t(INSTALL_HINT_KEYS[task.kind])}</p>
+              <p className="font-text text-[11px] leading-4 text-white/50">{t(INSTALL_HINT_KEYS[task.kind])}</p>
             )}
             <div className="flex justify-end gap-2 pt-1">
               {/* 「打开文件夹」依赖桌面端 shell.showItemInFolder；移动端无对等能力，隐藏 */}

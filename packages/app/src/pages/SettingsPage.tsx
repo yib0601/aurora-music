@@ -3,7 +3,7 @@ import { Monitor, Moon, Sun, FolderOpen, Trash2, RefreshCw, Download, CheckCircl
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PageLayout } from '@/components/PageLayout'
-import { PageTitle } from '@/components/PageHeading'
+import { PageTitle, CardTitle } from '@/components/PageHeading'
 import { useLibraryStore, defaultAudioCacheLimitMB } from '@/stores/libraryStore'
 import { useAudioDevices } from '@/hooks/useAudioDevices'
 import { setOutputDevice } from '@/services/audio.service'
@@ -372,14 +372,15 @@ function SettingRow({
 }
 
 /**
- * 设置分区：卡片 + 标题 + 滚动锚点。
- * 标题从 21px/600 收到 15px/500 —— 分区标题只需"比行标签大一档"，靠字号而非加粗建层级，
- * 中文笔画密，21px 粗体连排五个会把整页压成一片黑。
+ * 设置分区：卡片 + 标题 + 滚动锚点。标题走 `SectionTitle`（与音乐库、我的音乐、
+ * 详情页同档的唯一事实源）。此前这里是手写的 15px/500 —— 与音乐库同角色标题的 19px/600
+ * 差出 4px 与一整个字重，切到设置页时「分区这一层」突然缩水变小灰，是层级漂移的
+ * 主要来源之一。
  */
 function SettingsSection({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
     <section id={settingsSectionId(id)} data-settings-section={id} className="card-list p-2 pb-3 scroll-mt-2">
-      <h2 className="px-3 pt-3 pb-1 font-display text-[15px] font-medium tracking-[-0.2px] text-white/90">{title}</h2>
+      <CardTitle as="h3" className="px-3 pt-3 pb-1">{title}</CardTitle>
       <div className="space-y-1">{children}</div>
     </section>
   )
@@ -757,7 +758,7 @@ export function SettingsPage() {
                             document.documentElement.classList.toggle('dark', prefersDark)
                           }
                         }}
-                        className={`pill pill-md ${theme === value ? 'pill-mint' : 'pill-soft'}`}
+                        className={`pill pill-md ${theme === value ? 'pill-choice' : 'pill-soft'}`}
                       >
                         <Icon className="h-4 w-4" strokeWidth={1.6} />
                         {t(labelKey)}
@@ -784,7 +785,7 @@ export function SettingsPage() {
                       aria-pressed={language === value}
                       onClick={() => setLanguage(value)}
                       className={`pill pill-md ${
-                        language === value ? 'pill-mint' : 'pill-soft'
+                        language === value ? 'pill-choice' : 'pill-soft'
                       }`}
                     >
                       {languageOptionLabel(value, locale)}
@@ -804,7 +805,7 @@ export function SettingsPage() {
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
-                          className="inset-field group flex h-9 w-[220px] items-center justify-between gap-2 px-3 font-text text-caption text-white/80"
+                          className="inset-field group flex h-9 w-[220px] items-center justify-between gap-2 px-3 font-text text-caption text-white/85"
                         >
                           <span className="truncate text-left">
                             {devices.find((d) => d.deviceId === selectedDeviceId)?.label ??
@@ -822,7 +823,7 @@ export function SettingsPage() {
                           >
                             <span className="truncate">{d.label}</span>
                             {d.deviceId === selectedDeviceId && (
-                              <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-mint" strokeWidth={2} />
+                              <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-mint-text" strokeWidth={2} />
                             )}
                           </DropdownMenuItem>
                         ))}
@@ -867,7 +868,7 @@ export function SettingsPage() {
                         type="button"
                         aria-pressed={audioFocusBehavior === value}
                         onClick={() => handleAudioFocusChange(value)}
-                        className={`pill pill-md ${audioFocusBehavior === value ? 'pill-mint' : 'pill-soft'}`}
+                        className={`pill pill-md ${audioFocusBehavior === value ? 'pill-choice' : 'pill-soft'}`}
                       >
                         {t(audioFocusLabelKey[value])}
                       </button>
@@ -894,12 +895,12 @@ export function SettingsPage() {
                   <div className="space-y-2">
                     {scanFolders.map((folder) => (
                       <div key={folder} className="inset-row flex items-center justify-between px-3 py-2.5">
-                        <span className="font-text text-caption truncate flex-1 mr-2 text-white/80">{folder}</span>
+                        <span className="font-text text-caption truncate flex-1 mr-2 text-white/85">{folder}</span>
                         <Button
                           variant="ghost"
                           size="icon"
                           title={t('settings.library.scanDirs.removeTitle', { library: libraryLabel })}
-                          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
+                          className="h-7 w-7 rounded-[8px] text-white/50 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
                           onClick={() => handleRemoveFolder(folder)}
                         >
                           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -930,7 +931,7 @@ export function SettingsPage() {
                     <button
                       key={value}
                       onClick={() => setDownloadQuality(value)}
-                      className={`pill pill-md ${downloadQuality === value ? 'pill-mint' : 'pill-soft'}`}
+                      className={`pill pill-md ${downloadQuality === value ? 'pill-choice' : 'pill-soft'}`}
                     >
                       {t(downloadQualityLabelKey[value])}
                     </button>
@@ -956,7 +957,7 @@ export function SettingsPage() {
                   </>
                 }
               >
-                <p className="inset-note font-text text-caption text-white/55 px-3 py-2 truncate font-mono">
+                <p className="inset-note font-text text-caption text-white/65 px-3 py-2 truncate font-mono">
                   {downloadDirLabel}
                 </p>
               </SettingRow>
@@ -978,7 +979,8 @@ export function SettingsPage() {
                           })
                     }
                   >
-                    {/* 档位胶囊：预设 GB 档 + 「不限制」，同一套视觉权重，选中态一律 pill-mint。
+                    {/* 档位胶囊：预设 GB 档 + 「不限制」，同一套视觉权重，选中态一律 pill-choice
+                        （弱色相描边，不用实心 pill-mint —— 理由见 globals.css .pill-choice）。
                         选中判据直接比对落库的 MB，手填值恰好等于某档位时该档位也会亮起。 */}
                     <div className="flex flex-wrap items-center gap-2">
                       {GB_PRESETS.map((gb) => {
@@ -989,7 +991,7 @@ export function SettingsPage() {
                             type="button"
                             onClick={() => handleSelectCacheLimit(presetMB)}
                             className={`pill pill-md ${
-                              audioCacheLimitMB === presetMB ? 'pill-mint' : 'pill-soft'
+                              audioCacheLimitMB === presetMB ? 'pill-choice' : 'pill-soft'
                             }`}
                           >
                             {cacheLimitLabel(presetMB)}
@@ -999,7 +1001,7 @@ export function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => handleSelectCacheLimit(0)}
-                        className={`pill pill-md ${audioCacheLimitMB === 0 ? 'pill-mint' : 'pill-soft'}`}
+                        className={`pill pill-md ${audioCacheLimitMB === 0 ? 'pill-choice' : 'pill-soft'}`}
                       >
                         {t('settings.storage.cache.unlimited')}
                       </button>
@@ -1007,13 +1009,13 @@ export function SettingsPage() {
 
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {/* 状态胶囊只在「值不属于任何预设档」时出现（手填值、或移动端 0.5 GB 这类平台默认）：
-                          预设档与「不限制」已由上一行承担选中态，再点一个同文案的绿胶囊，
-                          就是同一件事说两遍，还看不出该看哪一行。任何时刻只有一个 mint。 */}
+                          预设档与「不限制」已由上一行承担选中态，再点一个同文案的高亮胶囊，
+                          就是同一件事说两遍，还看不出该看哪一行。整组同一时刻只有一个选中标记。 */}
                       {!isPresetCacheLimit && (
                         <button
                           type="button"
                           onClick={() => cacheLimitInputRef.current?.focus()}
-                          className="pill pill-md pill-mint"
+                          className="pill pill-md pill-choice"
                         >
                           {audioCacheLimitCustomMB
                             ? t('settings.storage.cache.custom', { value: cacheLimitLabel(audioCacheLimitMB) })
@@ -1053,7 +1055,7 @@ export function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-9 px-3 text-white/60 hover:text-coral hover:bg-coral/10"
+                        className="h-9 px-3 text-white/65 hover:text-coral hover:bg-coral/10"
                         onClick={handleClearCache}
                         disabled={cacheUsage.count === 0}
                         title={t('settings.storage.cache.clearTitle')}
@@ -1110,7 +1112,7 @@ export function SettingsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-9 px-3 text-white/60"
+                      className="h-9 px-3 text-white/65"
                       title={t('settings.about.repoTitle')}
                       onClick={() => openExternalUrl(REPO_URL)}
                     >
@@ -1128,9 +1130,9 @@ export function SettingsPage() {
                   <div className="flex items-center justify-between bg-mint/[0.06] border border-mint/20 rounded-[10px] px-3.5 py-3">
                     <div className="min-w-0 mr-3">
                       <p className="font-text text-caption-strong text-white/90">
-                        {t('settings.about.newVersion')} <span className="text-mint font-semibold">v{updateInfo.version}</span>
+                        {t('settings.about.newVersion')} <span className="text-mint-text font-semibold">v{updateInfo.version}</span>
                       </p>
-                      <p className="font-text text-caption text-white/55 mt-0.5 truncate">
+                      <p className="font-text text-caption text-white/65 mt-0.5 truncate">
                         {downloadPhase === 'downloading'
                           ? t('settings.about.downloading')
                           : downloadPhase === 'done'
@@ -1172,15 +1174,15 @@ export function SettingsPage() {
 
                 {updateState === 'latest' && (
                   <div className="inset-note flex items-center gap-2 px-3 py-2.5">
-                    <CheckCircle2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
-                    <p className="font-text text-caption text-white/70">{t('settings.about.latest')}</p>
+                    <CheckCircle2 className="h-4 w-4 text-mint-text flex-shrink-0" strokeWidth={1.6} />
+                    <p className="font-text text-caption text-white/85">{t('settings.about.latest')}</p>
                   </div>
                 )}
 
                 {updateState === 'error' && (
                   <div className="inset-note flex items-center gap-2 px-3 py-2.5">
                     <AlertCircle className="h-4 w-4 text-coral flex-shrink-0" strokeWidth={1.6} />
-                    <p className="font-text text-caption text-white/70">
+                    <p className="font-text text-caption text-white/85">
                       {updateError
                         ? t('settings.about.checkFailed', { reason: updateError })
                         : t('settings.about.checkFailedFallback')}
@@ -1219,13 +1221,13 @@ export function SettingsPage() {
                       而路径需要在他切换到聊天窗口时仍然可见 */}
                   {logExportPath && (
                     <div className="flex items-center gap-2">
-                      <p className="font-text text-caption text-mint/80 truncate" title={logExportPath}>
+                      <p className="font-text text-caption text-mint-text/80 truncate" title={logExportPath}>
                         {logExportPath}
                       </p>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 flex-shrink-0 px-2 text-white/60"
+                        className="h-7 flex-shrink-0 px-2 text-white/65"
                         onClick={() => {
                           void copyText(logExportPath).then((copied) => {
                             if (copied) toast(t('settings.diagnostics.export.copied'))
@@ -1246,7 +1248,7 @@ export function SettingsPage() {
                     label={t('settings.diagnostics.reveal.label')}
                     hint={t('settings.diagnostics.reveal.hint')}
                     control={
-                      <Button variant="ghost" size="sm" className="h-9 px-3 text-white/60" onClick={handleRevealLogs}>
+                      <Button variant="ghost" size="sm" className="h-9 px-3 text-white/65" onClick={handleRevealLogs}>
                         <FolderOpen className="h-4 w-4 mr-2" strokeWidth={1.6} />
                         {t('settings.diagnostics.reveal.button')}
                       </Button>

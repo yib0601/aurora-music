@@ -328,7 +328,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
                 {sourceName && (
                   <span
                     title={t('library.source.fromNetworkStorage', { name: sourceName })}
-                    className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-mint/[0.08] border border-mint/20 px-1.5 py-[1px] font-text text-[10px] text-mint/85 tracking-[-0.1px]"
+                    className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-mint/[0.08] border border-mint/20 px-1.5 py-[1px] font-text text-[10px] text-mint-text/85 tracking-[-0.1px]"
                   >
                     <Cloud className="h-2.5 w-2.5" strokeWidth={1.8} />
                     {/* 窄列放不下来源名，只留图标；宽屏才展开文字 */}
@@ -339,7 +339,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
               {/* 艺术家第二行：移动端本就展示；桌面端容器收窄到 779px 以下时
                   艺术家列收起，由 globals.css 的容器查询把它打开（.track-row-grid 后代
                   选择器 + 双类，足以压过 Tailwind 的 md:hidden） */}
-              <span className="track-artist-inline block md:hidden font-text text-[12px] text-white/40 truncate mt-0.5 tracking-[-0.12px]">
+              <span className="track-artist-inline block md:hidden font-text text-[12px] text-white/50 truncate mt-0.5 tracking-[-0.12px]">
                 {track.artist}
               </span>
             </div>
@@ -351,7 +351,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
           </div>
           {/* track-col-album：容器过窄时整列隐藏（见 globals.css 的容器查询档位），
               这是「把宽度让给标题」的最后手段——专辑列是可省的，标题不是 */}
-          <div className="hidden md:block track-col-album px-3 font-text text-white/45 text-[14px] truncate tracking-[-0.224px]">
+          <div className="hidden md:block track-col-album px-3 font-text text-white/50 text-[14px] truncate tracking-[-0.224px]">
             {track.album}
           </div>
           <div className="flex items-center justify-center">
@@ -369,7 +369,7 @@ export const VirtualTrackRow = memo(function VirtualTrackRow({
               />
             </button>
           </div>
-          <div className="px-1.5 md:px-3 text-right font-text text-white/45 text-[12px] md:text-[13px] tabular-nums tracking-[-0.12px]">
+          <div className="px-1.5 md:px-3 text-right font-text text-white/50 text-[12px] md:text-[13px] tabular-nums tracking-[-0.12px]">
             {formatTime(track.duration)}
           </div>
           {/* 行尾「更多操作」：只在桌面显示（触屏端整行点击即播，且窄列塞不下）。
@@ -447,11 +447,11 @@ export const VirtualTrackTable = memo(function VirtualTrackTable({
     <>
       {/* 表头：移动端隐藏（列表语义已由双行布局表达） */}
       <div className={cn('hidden md:grid items-center border-b border-white/[0.08]', GRID_TEMPLATE)}>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">{t('common.label.title')}</div>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-artist">{t('common.label.artist')}</div>
-        <div className="text-left py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px] track-col-album">{t('common.label.album')}</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">{t('common.label.title')}</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px] track-col-artist">{t('common.label.artist')}</div>
+        <div className="text-left py-2 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px] track-col-album">{t('common.label.album')}</div>
         <div />
-        <div className="text-right py-2 px-3 font-semibold text-white/45 text-[12px] tracking-[-0.12px]">{t('common.label.duration')}</div>
+        <div className="text-right py-2 px-3 font-semibold text-white/50 text-[12px] tracking-[-0.12px]">{t('common.label.duration')}</div>
         <div />
       </div>
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>

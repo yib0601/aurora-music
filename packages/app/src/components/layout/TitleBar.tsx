@@ -71,7 +71,7 @@ export function TitleBar({ trailing }: { trailing?: ReactNode }) {
   // 圆角对齐 DS media 档（10px），hover 叠加极轻 surface 而非色块
   const btnBase =
     'w-[38px] h-[30px] rounded-ds-media flex items-center justify-center ' +
-    'text-white/70 hover:text-white hover:bg-white/[0.06] ' +
+    'text-white/85 hover:text-white hover:bg-white/[0.06] ' +
     'transition-all active:scale-95'
 
   return (

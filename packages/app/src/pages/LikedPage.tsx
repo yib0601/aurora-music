@@ -138,7 +138,7 @@ export function LikedPage() {
                           <div className="min-w-0">
                             <span className="block font-semibold text-[14px] truncate text-white">{track.title}</span>
                             {/* 移动端 / 窄容器隐藏艺术家列，改为标题下方第二行展示 */}
-                            <span className="track-artist-inline block md:hidden text-[12px] text-white/40 truncate mt-0.5">{track.artist}</span>
+                            <span className="track-artist-inline block md:hidden text-[12px] text-white/50 truncate mt-0.5">{track.artist}</span>
                           </div>
                         </div>
                       </td>

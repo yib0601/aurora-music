@@ -37,25 +37,25 @@ const buttonVariants = cva(
         //   2) 本项目 Tailwind 的 backdrop-blur-* 只写 --tw-backdrop-blur 变量，不含
         //      backdrop-filter 声明，必须额外挂 .backdrop-filter 才会真正落地。
         secondary:
-          'bg-mint/[0.06] text-mint border border-mint/30 rounded-ds-pill text-[14px] font-medium tracking-[-0.224px] backdrop-filter backdrop-blur-[12px] hover:bg-mint/[0.10] hover:border-mint/45',
+          'bg-mint/[0.06] text-mint-text border border-mint/30 rounded-ds-pill text-[14px] font-medium tracking-[-0.224px] backdrop-filter backdrop-blur-[12px] hover:bg-mint/[0.10] hover:border-mint/45',
         // utility: DS 的次级玻璃胶囊，圆角对齐 panel(16px) -> media(10px) 档
         utility:
-          'bg-white/[0.06] text-white/[0.86] border border-white/10 rounded-ds-media text-[14px] font-medium tracking-[-0.224px] hover:bg-white/[0.10] hover:border-white/[0.16] hover:-translate-y-px',
+          'bg-white/[0.06] text-white/90 border border-white/10 rounded-ds-media text-[14px] font-medium tracking-[-0.224px] hover:bg-white/[0.10] hover:border-white/[0.16] hover:-translate-y-px',
         // pearl: 对应 DS `.ds-btn-liquid` —— 液体玻璃（DS 量级 blur 10px + 内高光 + 轻投影）
         // 原变体只写 backdrop-blur-[12px] 而本项目 Tailwind 未给该键附带 backdrop-filter，
         // 故补 .backdrop-filter 让模糊真正生效（实测原写法 computed = none）；10px 对齐 DS .ds-btn-liquid
         pearl:
-          'bg-[rgba(0,0,0,.10)] backdrop-filter backdrop-blur-[10px] saturate-[1.8] text-white/[0.86] border-0 rounded-ds-input text-[13px] font-medium tracking-[-0.12px] shadow-[inset_0_1px_1px_rgba(255,255,255,.34),0_2px_8px_rgba(0,0,0,.18)] hover:bg-[rgba(255,255,255,.055)] hover:shadow-[inset_0_1px_1px_rgba(255,255,255,.42),0_4px_12px_rgba(0,0,0,.22)] hover:-translate-y-px',
+          'bg-[rgba(0,0,0,.10)] backdrop-filter backdrop-blur-[10px] saturate-[1.8] text-white/90 border-0 rounded-ds-input text-[13px] font-medium tracking-[-0.12px] shadow-[inset_0_1px_1px_rgba(255,255,255,.34),0_2px_8px_rgba(0,0,0,.18)] hover:bg-[rgba(255,255,255,.055)] hover:shadow-[inset_0_1px_1px_rgba(255,255,255,.42),0_4px_12px_rgba(0,0,0,.22)] hover:-translate-y-px',
         // ghost: 全透明弱行动，仅 hover 显形（对应 DS `.ds-btn-ghost`，字重 400）
-        ghost: 'bg-transparent text-white/70 font-normal hover:bg-white/[0.06] hover:text-white rounded-ds-sm',
+        ghost: 'bg-transparent text-white/85 font-normal hover:bg-white/[0.06] hover:text-white rounded-ds-sm',
         // destructive: 珊瑚红实心 pill（沿用既有语义色，材质对齐 DS 实心按钮）
         destructive:
           'bg-coral text-white rounded-ds-pill text-[14px] font-medium tracking-[-0.224px] hover:bg-coral/90 hover:-translate-y-px',
         // link: 纯文字按钮，品牌色（对应 DS `.ds-btn-text`）
-        link: 'bg-transparent text-mint font-normal underline-offset-4 hover:underline rounded-none',
+        link: 'bg-transparent text-mint-text font-normal underline-offset-4 hover:underline rounded-none',
         // outline: 对应 DS 的 1px 发丝描边次级按钮（不填充，仅描边）
         outline:
-          'bg-transparent border border-white/10 text-white/80 rounded-ds-sm text-[14px] font-normal hover:bg-white/[0.05] hover:border-white/[0.18]',
+          'bg-transparent border border-white/10 text-white/85 rounded-ds-sm text-[14px] font-normal hover:bg-white/[0.05] hover:border-white/[0.18]',
       },
       size: {
         // 统一三档高度：xs 28 / md 36 / lg 44（与 globals.css 的 .pill-* 一致）

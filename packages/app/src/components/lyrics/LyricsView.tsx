@@ -442,7 +442,7 @@ export function LyricsView({
             className={cn('text-white/30', large ? 'h-7 w-7' : 'h-6 w-6')}
             strokeWidth={1.4}
           />
-          <p className={cn('text-white/30', large ? 'text-[15px]' : 'text-[13px]')}>
+          <p className={cn('text-white/50', large ? 'text-[15px]' : 'text-[13px]')}>
             {loading ? t('player.lyrics.searching') : t('player.lyrics.empty')}
           </p>
         </div>
@@ -468,8 +468,10 @@ export function LyricsView({
             const distance = Math.abs(idx - activeIdx)
             // 非当前行按与当前行的距离分三级透明度。activeIdx < 0（前奏，还没进入第一句）
             // 时没有聚焦行，统一走中档——否则整块歌词会一起落到最远档，看上去像没有歌词。
-            // ⚠️ 透明度取值必须落在 globals.css 浅色主题可读性分档里（/45 /55 /70），
-            // 否则浅底上会退化成对比度不足的浅灰墨
+            // ⚠️ 这三档**不复用** PageHeading 的正文阶梯：歌词的层级由「距离」表达，
+            //    相邻行必须比远处的行明显亮，而字面内容是同一句诗歌、没有语义层级可用。
+            //    取值必须与 globals.css 的 --lyric-dim 配套（浅色主题 /55→.62 那组），
+            //    改动时两边一起动，否则浅底上会出现「正在唱的一句反而最淡」。
             const idleTone =
               activeIdx < 0
                 ? 'text-white/55'

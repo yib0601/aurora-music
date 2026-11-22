@@ -74,10 +74,10 @@ export function PluginAuthRow({ plugin }: { plugin: { id: string; displayNameKey
   const tone = authStateTone(auth)
   const toneCls =
     tone === 'ok'
-      ? 'text-mint'
+      ? 'text-mint-text'
       : tone === 'warn'
         ? 'text-coral/80'
-        : 'text-white/45'
+        : 'text-white/50'
 
   return (
     <div className="bg-white/[0.03] border border-white/[0.06] rounded-[10px] px-3.5 py-3 space-y-2.5">
@@ -94,7 +94,7 @@ export function PluginAuthRow({ plugin }: { plugin: { id: string; displayNameKey
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 px-2 text-white/55"
+            className="h-8 px-2 text-white/65"
             title={t('sources.auth.refresh')}
             onClick={() => void refresh()}
             disabled={busy}
@@ -105,7 +105,7 @@ export function PluginAuthRow({ plugin }: { plugin: { id: string; displayNameKey
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-white/55"
+              className="h-8 px-2 text-white/65"
               title={t('sources.auth.logout')}
               onClick={() => void handleLogout()}
               disabled={busy}
@@ -117,14 +117,14 @@ export function PluginAuthRow({ plugin }: { plugin: { id: string; displayNameKey
       </div>
 
       <div>
-        <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.auth.inputLabel')}</p>
+        <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.auth.inputLabel')}</p>
         <div className="flex items-center gap-1.5">
           <input
             type="password"
             value={input}
             autoComplete="off"
             onChange={(e) => setInput(e.target.value)}
-            className="inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/70"
+            className="inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/85"
           />
           <Button
             variant="secondary"
@@ -137,9 +137,9 @@ export function PluginAuthRow({ plugin }: { plugin: { id: string; displayNameKey
             {t('sources.auth.submit')}
           </Button>
         </div>
-        <p className="font-text text-caption text-white/35 mt-1">{t('sources.auth.inputHint')}</p>
+        <p className="font-text text-caption text-white/50 mt-1">{t('sources.auth.inputHint')}</p>
         {message && (
-          <p className={`font-text text-caption mt-1 ${message.ok ? 'text-mint/80' : 'text-coral/80'}`}>
+          <p className={`font-text text-caption mt-1 ${message.ok ? 'text-mint-text/80' : 'text-coral/80'}`}>
             {message.text}
           </p>
         )}

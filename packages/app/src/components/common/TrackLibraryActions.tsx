@@ -105,7 +105,7 @@ export function RemoveTrackConfirmHost() {
           <DialogDescription>{t('library.action.removeFromLibraryHint')}</DialogDescription>
         </DialogHeader>
         {pending && (
-          <p className="font-text text-[13px] text-white/70 truncate" title={pending.title}>
+          <p className="font-text text-[13px] text-white/85 truncate" title={pending.title}>
             {pending.title}
           </p>
         )}

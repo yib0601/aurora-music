@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Heart, Clock, ListMusic, Settings, Plus, MoreHorizontal, Trash2, Pencil, Upload, FileText, Link2, Library, Radio } from 'lucide-react'
 import { BrandMark } from '@/components/common/BrandMark'
+import { GroupLabel } from '@/components/PageHeading'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { NAV_LABEL_KEYS, ROUTES, visibleNavItems, type NavItem } from '@/lib/routes'
@@ -139,7 +140,7 @@ export function Sidebar() {
       <div className="flex items-center gap-3 px-4 pb-6 pt-5">
         <BrandMark className="h-10 w-10" />
         <div className="flex flex-col">
-          <span className="font-display font-semibold text-[16px] tracking-[-0.32px] text-white/[0.96] leading-tight">
+          <span className="font-display font-semibold text-[16px] tracking-[-0.32px] text-white/95 leading-tight">
             {t('nav.brand.name')}
           </span>
           <span className="font-text text-[11px] text-white/65 leading-tight mt-0.5">
@@ -152,14 +153,14 @@ export function Sidebar() {
       <nav className="flex flex-col gap-px px-3 mt-1">
         {items.map(({ to, icon: Icon, labelKey }) => (
           <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive)}>
-            <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
+            <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint-text" strokeWidth={1.5} />
             {t(labelKey)}
           </NavLink>
         ))}
         {/* 设置：应用配置，不属于内容项，用间距区隔 */}
         {footerItems.map(({ to, icon: Icon, labelKey }) => (
           <NavLink key={to} to={to} className={({ isActive }) => navLinkClass(isActive, true)}>
-            <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint" strokeWidth={1.5} />
+            <Icon className="h-[15px] w-[15px] group-aria-[current=page]:text-mint-text" strokeWidth={1.5} />
             {t(labelKey)}
           </NavLink>
         ))}
@@ -172,9 +173,7 @@ export function Sidebar() {
       */}
       <div className="mt-5 flex-1 flex flex-col min-h-0 px-3">
         <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="font-text text-[11px] font-semibold text-white/65 uppercase tracking-wider">
-            {t('nav.item.playlists')}
-          </span>
+          <GroupLabel>{t('nav.item.playlists')}</GroupLabel>
           <div className="flex items-center gap-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -225,11 +224,11 @@ export function Sidebar() {
             }
           >
             <Heart
-              className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint group-aria-[current=page]:opacity-100"
+              className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint-text group-aria-[current=page]:opacity-100"
               strokeWidth={1.5}
             />
             <span className="truncate text-[13px] tracking-[-0.224px]">{t('nav.item.liked')}</span>
-            <span className="text-[11px] text-white/70 ml-auto tabular-nums font-semibold">
+            <span className="text-[11px] text-white/85 ml-auto tabular-nums font-semibold">
               {likedCount}
             </span>
           </NavLink>
@@ -265,9 +264,9 @@ export function Sidebar() {
                       )
                     }
                   >
-                    <ListMusic className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint group-aria-[current=page]:opacity-100" strokeWidth={1.5} />
+                    <ListMusic className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-aria-[current=page]:text-mint-text group-aria-[current=page]:opacity-100" strokeWidth={1.5} />
                     <span className="truncate text-[13px] tracking-[-0.224px]">{pl.name}</span>
-                    <span className="text-[11px] text-white/70 ml-auto tabular-nums font-semibold">
+                    <span className="text-[11px] text-white/85 ml-auto tabular-nums font-semibold">
                       {pl.trackIds.length}
                     </span>
                   </NavLink>
@@ -277,7 +276,7 @@ export function Sidebar() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="rounded-ds-sm opacity-0 group-hover:opacity-100 text-white/40 hover:text-white flex-shrink-0"
+                      className="rounded-ds-sm opacity-0 group-hover:opacity-100 text-white/50 hover:text-white flex-shrink-0"
                     >
                       <MoreHorizontal className="h-3 w-3" strokeWidth={1.5} />
                     </Button>

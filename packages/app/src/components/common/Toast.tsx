@@ -77,9 +77,9 @@ export function ToastHost() {
           {item.type === 'error' ? (
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-coral" strokeWidth={1.8} />
           ) : item.type === 'info' ? (
-            <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-mint/80" strokeWidth={1.8} />
+            <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-mint-text/80" strokeWidth={1.8} />
           ) : (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint" strokeWidth={1.8} />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-mint-text" strokeWidth={1.8} />
           )}
           <p className="min-w-0 whitespace-pre-line break-all font-text text-[13px] leading-5 text-white/85">
             {item.message}

@@ -83,6 +83,9 @@ const config: Config = {
           'accent-2': 'var(--fc-accent-2)',
         },
         mint: 'rgb(var(--tw-mint) / <alpha-value>)',
+        // mint 作**文字色**：深色主题与 mint 同值，浅色主题压暗一档（#00806F）
+        // 以保证 on 白底 ≥5:1。填充/描边仍用 mint，两者只在浅色下分叉。
+        'mint-text': 'rgb(var(--tw-mint-text) / <alpha-value>)',
         // mint 按钮/徽章上的前景色：深色主题深墨字、浅色主题白字（随 --tw-mint-fg 翻转）
         'mint-fg': 'rgb(var(--tw-mint-fg) / <alpha-value>)',
         coral: 'rgb(var(--tw-coral) / <alpha-value>)',

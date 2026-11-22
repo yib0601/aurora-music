@@ -279,7 +279,7 @@ export function PluginManagerPanel() {
     typeof platform.listStoragePlugins === 'function' && storagePluginIds === null
   if (entries === null || storageIdsPending) {
     return (
-      <div className="flex items-center gap-2 text-white/45 font-text text-caption py-2">
+      <div className="flex items-center gap-2 text-white/50 font-text text-caption py-2">
         <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.6} />
         {t('common.state.loading')}
       </div>
@@ -294,15 +294,15 @@ export function PluginManagerPanel() {
       {/* ─── 已安装 ─── */}
       <section className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="font-text text-caption-strong text-white/80">
+          <p className="font-text text-caption-strong text-white/85">
             {t('sources.plugins.installed')}
-            <span className="text-white/40 ml-1.5">{installed.length}</span>
+            <span className="text-white/50 ml-1.5">{installed.length}</span>
           </p>
           <div className="flex items-center gap-1.5">
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-white/55"
+              className="h-8 px-2 text-white/65"
               title={t('sources.plugins.openDir')}
               onClick={() => void openPluginDir()}
             >
@@ -311,7 +311,7 @@ export function PluginManagerPanel() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-white/55"
+              className="h-8 px-2 text-white/65"
               title={t('sources.auth.refresh')}
               onClick={() => void refresh()}
               disabled={busy}
@@ -322,7 +322,7 @@ export function PluginManagerPanel() {
         </div>
 
         {installed.length === 0 ? (
-          <p className="font-text text-caption text-white/40 py-1.5">{t('sources.plugins.listEmpty')}</p>
+          <p className="font-text text-caption text-white/50 py-1.5">{t('sources.plugins.listEmpty')}</p>
         ) : (
           <div className="space-y-2">
             {installed.map((entry) => (
@@ -379,14 +379,14 @@ export function PluginManagerPanel() {
 
           {showUrlForm && (
             <div className="bg-white/[0.03] border border-white/[0.06] rounded-[10px] px-3.5 py-3 space-y-2">
-              <p className="font-text text-caption text-white/60">{t('sources.plugins.urlLabel')}</p>
+              <p className="font-text text-caption text-white/65">{t('sources.plugins.urlLabel')}</p>
               <div className="flex items-center gap-1.5">
                 <input
                   type="url"
                   value={url}
                   onChange={(event) => setUrl(event.target.value)}
                   placeholder={t('sources.plugins.urlPlaceholder')}
-                  className="inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/70"
+                  className="inset-field flex-1 min-w-0 px-2.5 py-1.5 font-text text-caption text-white/85"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -400,7 +400,7 @@ export function PluginManagerPanel() {
                   {t('sources.plugins.install')}
                 </Button>
               </div>
-              <p className="font-text text-caption text-white/35">{t('sources.plugins.installHint')}</p>
+              <p className="font-text text-caption text-white/50">{t('sources.plugins.installHint')}</p>
             </div>
           )}
 
@@ -414,15 +414,15 @@ export function PluginManagerPanel() {
               }`}
             >
               <p
-                className={`font-text text-caption ${message.ok ? 'text-mint/90' : 'text-coral/90'}`}
+                className={`font-text text-caption ${message.ok ? 'text-mint-text/90' : 'text-coral/90'}`}
               >
                 {message.text}
               </p>
               {message.issues && message.issues.length > 0 && (
                 <ul className="mt-1.5 space-y-1">
                   {message.issues.map((issue, index) => (
-                    <li key={index} className="font-text text-caption text-white/55">
-                      {issue.field && <span className="text-white/40 mr-1">{issue.field}</span>}
+                    <li key={index} className="font-text text-caption text-white/65">
+                      {issue.field && <span className="text-white/50 mr-1">{issue.field}</span>}
                       {issue.message}
                     </li>
                   ))}
@@ -439,9 +439,9 @@ export function PluginManagerPanel() {
           由 `entry.removable` 决定。 */}
       {builtin.length > 0 && (
         <section className="space-y-2">
-          <p className="font-text text-caption-strong text-white/60">
+          <p className="font-text text-caption-strong text-white/65">
             {t('sources.plugins.builtin')}
-            <span className="text-white/30 ml-1.5">{builtin.length}</span>
+            <span className="text-white/50 ml-1.5">{builtin.length}</span>
           </p>
           <div className="space-y-2">
             {builtin.map((entry) => (
@@ -466,7 +466,7 @@ export function PluginManagerPanel() {
           <p className="font-text text-caption-strong text-coral/80">
             {t('sources.plugins.listBroken', { count: broken.length })}
           </p>
-          <p className="font-text text-caption text-white/40">{t('sources.plugins.brokenHint')}</p>
+          <p className="font-text text-caption text-white/50">{t('sources.plugins.brokenHint')}</p>
           <div className="space-y-1.5">
             {broken.map((item) => (
               <div
@@ -474,10 +474,10 @@ export function PluginManagerPanel() {
                 className="flex items-start justify-between gap-2 bg-coral/[0.05] border border-coral/15 rounded-[8px] px-3 py-2"
               >
                 <div className="min-w-0">
-                  <p className="font-text text-caption text-white/70 truncate" title={item.path}>
+                  <p className="font-text text-caption text-white/85 truncate" title={item.path}>
                     {item.path}
                   </p>
-                  <p className="font-text text-caption text-white/45 mt-0.5">
+                  <p className="font-text text-caption text-white/50 mt-0.5">
                     {describeBrokenReason(item.message, t)}
                   </p>
                 </div>
@@ -505,9 +505,9 @@ export function PluginManagerPanel() {
         <section className="space-y-2">
           <p className="font-text text-caption-strong text-coral/80">
             {t('sources.plugins.startupFailedList')}
-            <span className="text-white/30 ml-1.5">{failures.length}</span>
+            <span className="text-white/50 ml-1.5">{failures.length}</span>
           </p>
-          <p className="font-text text-caption text-white/40">
+          <p className="font-text text-caption text-white/50">
             {t('sources.plugins.startupFailedHint')}
           </p>
           <div className="space-y-1.5">
@@ -516,11 +516,11 @@ export function PluginManagerPanel() {
                 key={`${failure.stage}:${failure.id}:${index}`}
                 className="bg-coral/[0.05] border border-coral/15 rounded-[8px] px-3 py-2"
               >
-                <p className="font-text text-caption text-white/70 truncate" title={failure.id}>
+                <p className="font-text text-caption text-white/85 truncate" title={failure.id}>
                   {/* 连 id 都取不到时显示阶段名：空行会让用户以为列表坏了 */}
                   {failure.id || failure.stage}
                 </p>
-                <p className="font-text text-caption text-white/45 mt-0.5 break-all">
+                <p className="font-text text-caption text-white/50 mt-0.5 break-all">
                   {describeFailureReason(failure, t)}
                 </p>
               </div>
@@ -535,19 +535,19 @@ export function PluginManagerPanel() {
           title={t('sources.plugins.install')}
           body={
             <div className="space-y-2">
-              <p className="font-text text-caption text-white/60 break-all">{pending.url}</p>
-              <p className="font-text text-caption-strong text-white/80 mt-2">
+              <p className="font-text text-caption text-white/65 break-all">{pending.url}</p>
+              <p className="font-text text-caption-strong text-white/85 mt-2">
                 {t('sources.plugins.permissionTitle')}
               </p>
               {/* 安装前还没解析清单，域名只能装完才知道 —— 所以这里说的是
                   "这份清单会申请网络访问，装完在列表里能看到具体域名"。
                   不假装列出来：列不出就是列不出。 */}
               <ul className="space-y-1 pl-4 list-disc">
-                <li className="font-text text-caption text-white/60">
+                <li className="font-text text-caption text-white/65">
                   {t('sources.plugins.permissionNetwork', { hosts: t('sources.plugins.pendingHosts') })}
                 </li>
               </ul>
-              <p className="font-text text-caption text-white/35">{t('sources.plugins.installHint')}</p>
+              <p className="font-text text-caption text-white/50">{t('sources.plugins.installHint')}</p>
             </div>
           }
           confirmLabel={t('sources.plugins.install')}
@@ -577,7 +577,7 @@ export function PluginManagerPanel() {
             name: displayNameOf(confirmUninstall, t),
           })}
           body={
-            <p className="font-text text-caption text-white/60">{t('sources.plugins.uninstallConfirmBody')}</p>
+            <p className="font-text text-caption text-white/65">{t('sources.plugins.uninstallConfirmBody')}</p>
           }
           confirmLabel={t('sources.plugins.uninstall')}
           cancelLabel={t('common.action.cancel')}
@@ -645,11 +645,11 @@ function PluginEntryCard({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="font-text text-caption-strong text-white/90 truncate">{name}</p>
-            <span className="font-text text-[10px] text-white/35 px-1.5 py-0.5 rounded bg-white/[0.06]">
+            <span className="font-text text-[10px] text-white/50 px-1.5 py-0.5 rounded bg-white/[0.06]">
               v{entry.version}
             </span>
             {entry.provenance === 'builtin' && (
-              <span className="font-text text-[10px] text-white/35 px-1.5 py-0.5 rounded bg-white/[0.06]">
+              <span className="font-text text-[10px] text-white/50 px-1.5 py-0.5 rounded bg-white/[0.06]">
                 {t('sources.plugins.builtin')}
               </span>
             )}
@@ -660,7 +660,7 @@ function PluginEntryCard({
           {/* 「已配 N 条」：配置搬进面板之后，卡片上若一点痕迹都没有，用户会以为
               之前配的东西丢了。数字是最短的反证，且不泄露任何配置内容 */}
           {summary && (summary.sources > 0 || summary.librarySources > 0) && (
-            <p className="font-text text-[10px] text-white/40 mt-1">
+            <p className="font-text text-[10px] text-white/50 mt-1">
               {[
                 summary.sources > 0 ? t('sources.config.countSources', { count: summary.sources }) : '',
                 summary.librarySources > 0
@@ -674,7 +674,7 @@ function PluginEntryCard({
           {capabilities.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap mt-1.5">
               {capabilities.map((label) => (
-                <span key={label} className="font-text text-[10px] text-white/45 px-1.5 py-0.5 rounded bg-white/[0.05]">
+                <span key={label} className="font-text text-[10px] text-white/50 px-1.5 py-0.5 rounded bg-white/[0.05]">
                   {label}
                 </span>
               ))}
@@ -684,7 +684,7 @@ function PluginEntryCard({
           {permissions.length > 0 && (
             <ul className="mt-1.5 space-y-0.5">
               {permissions.map((line) => (
-                <li key={line} className="font-text text-[10px] text-white/35">
+                <li key={line} className="font-text text-[10px] text-white/50">
                   {line}
                 </li>
               ))}
@@ -692,14 +692,14 @@ function PluginEntryCard({
           )}
           {/* 停用态说明：只说"已停用"不够，用户要知道"什么不再工作、有没有被删掉" */}
           {!enabled && onToggle && (
-            <p className="font-text text-[10px] text-white/40 mt-1.5">
+            <p className="font-text text-[10px] text-white/50 mt-1.5">
               {t('sources.plugins.disabledHint')}
             </p>
           )}
           {/* 存储插件在**这一端**跑不动（移动端的 SFTP / SMB）：必须说出来。
               否则用户只看到"这张卡片少了齿轮"，会当成按钮漏做（曾是这样被报上来的） */}
           {entry.domain === 'storage' && !onConfigure && (
-            <p className="font-text text-[10px] text-white/40 mt-1.5">
+            <p className="font-text text-[10px] text-white/50 mt-1.5">
               {t('sources.plugins.unsupportedHere')}
             </p>
           )}
@@ -709,7 +709,7 @@ function PluginEntryCard({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-white/45 hover:text-mint shrink-0"
+              className="h-8 px-2 text-white/50 hover:text-mint-text shrink-0"
               title={t('sources.config.open')}
               aria-label={t('sources.config.open')}
               disabled={busy}
@@ -744,7 +744,7 @@ function PluginEntryCard({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-white/45 hover:text-coral shrink-0"
+              className="h-8 px-2 text-white/50 hover:text-coral shrink-0"
               title={t('sources.plugins.uninstall')}
               disabled={busy}
               onClick={onUninstall}
@@ -792,7 +792,7 @@ function ConfirmDialog({
         <p className="font-text text-caption-strong text-white/90">{title}</p>
         <div>{body}</div>
         <div className="flex items-center justify-end gap-2 pt-1">
-          <Button variant="ghost" size="sm" className="h-9 px-3.5 text-white/60" onClick={onCancel} disabled={busy}>
+          <Button variant="ghost" size="sm" className="h-9 px-3.5 text-white/65" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </Button>
           <Button

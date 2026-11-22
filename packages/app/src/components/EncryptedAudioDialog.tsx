@@ -126,7 +126,7 @@ export function EncryptedAudioDialog({ open, onOpenChange }: EncryptedAudioDialo
     }
     switch (result.outcome) {
       case 'done':
-        return <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-mint/80" strokeWidth={1.6} />
+        return <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-mint-text/80" strokeWidth={1.6} />
       case 'failed':
         return <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-red-400/80" strokeWidth={1.6} />
       default:
@@ -188,7 +188,7 @@ export function EncryptedAudioDialog({ open, onOpenChange }: EncryptedAudioDialo
                 return (
                   <div key={file.path} className="flex items-start gap-2.5 px-3 py-2 border-b border-white/[0.05] last:border-0">
                     {running && !results[file.path] ? (
-                      <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-mint/70" strokeWidth={1.6} />
+                      <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-mint-text/70" strokeWidth={1.6} />
                     ) : (
                       iconFor(file)
                     )}
@@ -196,18 +196,18 @@ export function EncryptedAudioDialog({ open, onOpenChange }: EncryptedAudioDialo
                       <p className="font-text text-[13px] text-white/85 truncate">
                         {file.title || baseNameOf(file.path)}
                       </p>
-                      <p className="font-text text-[11px] text-white/40 truncate">
+                      <p className="font-text text-[11px] text-white/50 truncate">
                         {[file.artist, familyLabel(file.family), formatSize(file.size)]
                           .filter(Boolean)
                           .join(' · ')}
                       </p>
                       {status.detail && (
-                        <p className="font-text text-[11px] text-white/30 truncate" title={status.detail}>
+                        <p className="font-text text-[11px] text-white/50 truncate" title={status.detail}>
                           {status.detail}
                         </p>
                       )}
                     </div>
-                    <span className="font-text text-[11px] text-white/45 flex-shrink-0 max-w-[96px] text-right">
+                    <span className="font-text text-[11px] text-white/50 flex-shrink-0 max-w-[96px] text-right">
                       {status.text}
                     </span>
                   </div>

@@ -83,7 +83,7 @@ export function PlaybackExtrasMenu({ align = 'end' }: { align?: 'start' | 'cente
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className={cn('btn-icon btn-xl relative', anyActive && 'text-mint')}
+          className={cn('btn-icon btn-xl relative', anyActive && 'text-mint-text')}
           title={t('player.rate.label')}
           aria-label={t('player.rate.label')}
         >
@@ -134,7 +134,7 @@ export function PlaybackExtrasMenu({ align = 'end' }: { align?: 'start' | 'cente
           {t('player.sleep.label')}
         </DropdownMenuLabel>
         {sleepActive && (
-          <DropdownMenuLabel className="!py-1 !text-[11px] !font-normal text-mint/90">
+          <DropdownMenuLabel className="!py-1 !text-[11px] !font-normal text-mint-text/90">
             {t('player.sleep.active', { time: formatSleepRemaining(remainingMs) })}
           </DropdownMenuLabel>
         )}

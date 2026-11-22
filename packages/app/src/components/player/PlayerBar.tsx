@@ -164,10 +164,10 @@ function CompactBar({
           />
         </div>
         <div className="min-w-0 flex flex-col gap-px">
-          <p className="text-[13px] font-medium text-white/[0.96] truncate tracking-[-0.224px]">
+          <p className="text-[13px] font-medium text-white/95 truncate tracking-[-0.224px]">
             {currentTrack?.title || t('player.state.notPlaying')}
           </p>
-          <p className="text-[10.5px] text-white/70 truncate tracking-[-0.12px]">
+          <p className="text-[11px] text-white/65 truncate tracking-[-0.12px]">
             {currentTrack?.artist || t('player.state.idle')}
           </p>
         </div>
@@ -210,7 +210,7 @@ function CompactBar({
       <button
         className={cn(
           'w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full active:scale-90 transition',
-          showQueuePanel ? 'text-mint' : 'text-white/65',
+          showQueuePanel ? 'text-mint-text' : 'text-white/65',
         )}
         onClick={(e) => {
           // 同完整档：阻止冒泡，避免刚打开的浮层被 document 外部点击监听立刻关掉
@@ -307,7 +307,7 @@ function FullBar({
     <div className="player-console glass-saved-panel rounded-[24px] px-6 wide:px-8 py-2 wide:py-3 flex flex-col gap-1.5 wide:gap-2">
       {/* 进度条 - 居中 */}
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[11px] wide:text-[12px] text-white/70 w-12 text-right tabular-nums">
+        <span className="font-mono text-[11px] wide:text-[12px] text-white/85 w-12 text-right tabular-nums">
           {formatTime(displayedProgress)}
         </span>
         <div className="flex-1 relative flex items-center">
@@ -328,7 +328,7 @@ function FullBar({
             style={{ '--seek': `${progressPercent}%` } as React.CSSProperties}
           />
         </div>
-        <span className="font-mono text-[11px] wide:text-[12px] text-white/70 w-12 tabular-nums">
+        <span className="font-mono text-[11px] wide:text-[12px] text-white/85 w-12 tabular-nums">
           {formatTime(duration)}
         </span>
       </div>
@@ -360,10 +360,10 @@ function FullBar({
             onClick={() => currentTrack && openSongDetail(currentTrack.id)}
             title={currentTrack ? t('player.track.viewDetail') : undefined}
           >
-            <p className="text-[12.5px] wide:text-[14px] font-medium text-white/[0.96] truncate transition-colors hover:text-white">
+            <p className="text-[13px] wide:text-[14px] font-medium text-white/95 truncate transition-colors hover:text-white">
               {currentTrack?.title || t('player.state.notPlaying')}
             </p>
-            <p className="text-[10.5px] wide:text-[12px] text-white/70 truncate">
+            <p className="text-[11px] wide:text-[12px] text-white/65 truncate">
               {currentTrack?.artist || t('player.state.idleHint')}
             </p>
           </button>
@@ -374,7 +374,7 @@ function FullBar({
           <button
             className={cn(
               'btn-icon btn-xl',
-              playModeActive && 'text-mint',
+              playModeActive && 'text-mint-text',
             )}
             onClick={onCyclePlayMode}
             title={t(

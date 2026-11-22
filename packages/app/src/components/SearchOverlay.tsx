@@ -59,9 +59,9 @@ const ROW_INDEX_CLASS = 'w-6 flex-shrink-0 hidden sm:flex items-center justify-c
 const BADGE_CLASS =
   'flex items-center gap-1 flex-shrink-0 max-w-[140px] font-text text-[10px] border rounded-[8px] px-1.5 py-px tracking-[-0.1px]'
 /** 本地来源徽章：mint 调，一眼认出「这首在我库里」 */
-const BADGE_LOCAL_CLASS = cn(BADGE_CLASS, 'text-mint/70 border-mint/20 bg-mint/[0.05]')
+const BADGE_LOCAL_CLASS = cn(BADGE_CLASS, 'text-mint-text/70 border-mint/20 bg-mint/[0.05]')
 /** 在线来源徽章：中性色，只承载源名 */
-const BADGE_ONLINE_CLASS = cn(BADGE_CLASS, 'text-white/35 border-white/[0.08]')
+const BADGE_ONLINE_CLASS = cn(BADGE_CLASS, 'text-white/50 border-white/[0.08]')
 
 interface LocalResultRowProps {
   track: Track
@@ -115,10 +115,10 @@ const LocalResultRow = memo(function LocalResultRow({
         >
           {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
           <span className={ROW_INDEX_CLASS}>
-            <span className="font-text text-[12px] text-white/35 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
+            <span className="font-text text-[12px] text-white/50 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
               {idx + 1}
             </span>
-            <Play className="w-3 h-3 absolute text-mint opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
+            <Play className="w-3 h-3 absolute text-mint-text opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
           </span>
           <div
             onClick={(e) => {
@@ -134,10 +134,10 @@ const LocalResultRow = memo(function LocalResultRow({
             />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-text text-[14px] font-semibold truncate text-white/92 tracking-[-0.224px]">{track.title}</p>
+            <p className="font-text text-[14px] font-semibold truncate text-white/90 tracking-[-0.224px]">{track.title}</p>
             <p className="font-text text-[12px] text-white/50 truncate tracking-[-0.12px]">{track.artist}</p>
           </div>
-          <span className="font-text text-[12px] text-white/35 truncate max-w-32 hidden md:block tracking-[-0.12px]">
+          <span className="font-text text-[12px] text-white/50 truncate max-w-32 hidden md:block tracking-[-0.12px]">
             {track.album}
           </span>
           {/* 来源徽章：与在线行同构，标出「本地」；窄屏只留图标省宽度 */}
@@ -145,7 +145,7 @@ const LocalResultRow = memo(function LocalResultRow({
             <HardDrive className="h-2.5 w-2.5 flex-shrink-0" strokeWidth={1.8} />
             <span className="hidden sm:block">{t('common.label.local')}</span>
           </span>
-          <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
+          <span className="font-text text-[12px] text-white/50 tabular-nums w-10 text-right tracking-[-0.12px]">
             {formatTime(track.duration)}
           </span>
           {/* 收藏按钮：与在线行的下载按钮同规则常驻显示——
@@ -249,10 +249,10 @@ const OnlineResultRow = memo(function OnlineResultRow({
         >
           {/* 序号/播放图标叠放在固定宽度容器内切换，避免 hover 时布局抖动 */}
           <span className={ROW_INDEX_CLASS}>
-            <span className="font-text text-[12px] text-white/35 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
+            <span className="font-text text-[12px] text-white/50 tabular-nums tracking-[-0.12px] transition-opacity duration-150 group-hover:opacity-0">
               {flatIdx + 1}
             </span>
-            <Play className="w-3 h-3 absolute text-mint opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
+            <Play className="w-3 h-3 absolute text-mint-text opacity-0 transition-opacity duration-150 group-hover:opacity-100" strokeWidth={1.8} />
           </span>
           <div className="w-10 h-10 rounded-[10px] bg-white/[0.04] flex items-center justify-center flex-shrink-0 overflow-hidden">
             {track.coverUrl ? (
@@ -262,10 +262,10 @@ const OnlineResultRow = memo(function OnlineResultRow({
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-text text-[14px] font-semibold truncate text-white/92 tracking-[-0.224px]">{track.title}</p>
+            <p className="font-text text-[14px] font-semibold truncate text-white/90 tracking-[-0.224px]">{track.title}</p>
             <p className="font-text text-[12px] text-white/50 truncate tracking-[-0.12px]">{track.artist}</p>
           </div>
-          <span className="font-text text-[12px] text-white/35 truncate max-w-32 hidden md:block tracking-[-0.12px]">
+          <span className="font-text text-[12px] text-white/50 truncate max-w-32 hidden md:block tracking-[-0.12px]">
             {track.album}
           </span>
           {/* 来源徽章：同栏多源混排时靠它区分来源（与本地行「本地」徽章同构）；
@@ -276,11 +276,11 @@ const OnlineResultRow = memo(function OnlineResultRow({
           </span>
           {/* 音频实际来源后端标识（源提供 qualitySource 时展示，便于识别跨平台拼贴数据） */}
           {track.onlineAudioSource && (
-            <span className="font-text text-[10px] text-white/30 border border-white/[0.08] rounded-[8px] px-1.5 py-px hidden lg:block flex-shrink-0">
+            <span className="font-text text-[10px] text-white/50 border border-white/[0.08] rounded-[8px] px-1.5 py-px hidden lg:block flex-shrink-0">
               {track.onlineAudioSource}
             </span>
           )}
-          <span className="font-text text-[12px] text-white/35 tabular-nums w-10 text-right tracking-[-0.12px]">
+          <span className="font-text text-[12px] text-white/50 tabular-nums w-10 text-right tracking-[-0.12px]">
             {formatTime(track.duration)}
           </span>
           {/* 下载按钮：常驻显示（搜索场景下下载是主要动作，不藏在 hover 里）；
@@ -295,8 +295,8 @@ const OnlineResultRow = memo(function OnlineResultRow({
             className={cn(
               'h-7 w-7 flex items-center justify-center rounded-[10px] transition-colors duration-200 ease-apple',
               isDownloading
-                ? 'text-mint cursor-default'
-                : 'text-white/40 hover:text-mint hover:bg-mint/[0.075]'
+                ? 'text-mint-text cursor-default'
+                : 'text-white/50 hover:text-mint-text hover:bg-mint/[0.075]'
             )}
           >
             {isDownloading ? (
@@ -693,7 +693,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       <div className="relative mt-[7vh] w-[calc(100%-2rem)] max-w-2xl max-h-[72vh] flex flex-col glass-liquid rounded-[16px] overflow-hidden animate-in fade-in-0 duration-200">
         {/* 搜索输入行 */}
         <div className="flex items-center gap-3 h-14 px-4 flex-shrink-0 border-b border-white/[0.08]">
-          <SearchIcon className="h-[18px] w-[18px] text-mint/70 flex-shrink-0" strokeWidth={1.6} />
+          <SearchIcon className="h-[18px] w-[18px] text-mint-text/70 flex-shrink-0" strokeWidth={1.6} />
           <input
             ref={inputRef}
             type="text"
@@ -701,7 +701,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
-            className="flex-1 min-w-0 bg-transparent outline-none font-text text-[15px] text-white/92 placeholder:text-white/28 tracking-[-0.224px]"
+            className="flex-1 min-w-0 bg-transparent outline-none font-text text-[15px] text-white/90 placeholder:text-white/50 tracking-[-0.224px]"
           />
           {query && (
             <button
@@ -710,12 +710,12 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 inputRef.current?.focus()
               }}
               title={t('common.action.clear')}
-              className="h-7 w-7 flex items-center justify-center rounded-full text-white/35 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple flex-shrink-0"
+              className="h-7 w-7 flex items-center justify-center rounded-full text-white/50 hover:text-white/85 hover:bg-white/[0.08] transition-colors duration-150 ease-apple flex-shrink-0"
             >
               <X className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
           )}
-          <kbd className="hidden sm:flex items-center h-7 px-2 rounded-[10px] bg-white/[0.06] border border-white/[0.08] font-text text-[11px] text-white/40 flex-shrink-0">
+          <kbd className="hidden sm:flex items-center h-7 px-2 rounded-[10px] bg-white/[0.06] border border-white/[0.08] font-text text-[11px] text-white/50 flex-shrink-0">
             Esc
           </kbd>
         </div>
@@ -729,11 +729,11 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 <div className="relative mb-5">
                   <div className="absolute -inset-10 bg-gradient-to-b from-mint/10 to-transparent rounded-full blur-3xl" />
                   <div className="relative w-[120px] h-[120px] rounded-[24px] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
-                    <SearchIcon className="h-[52px] w-[52px] text-mint/60" strokeWidth={1} />
+                    <SearchIcon className="h-[52px] w-[52px] text-mint-text/60" strokeWidth={1} />
                   </div>
                 </div>
                 <EmptyTitle>{t('search.overlay.emptyTitle')}</EmptyTitle>
-                <p className="font-text text-[13px] text-white/40 tracking-[-0.15px]">
+                <p className="font-text text-[13px] text-white/50 tracking-[-0.15px]">
                   {t('search.overlay.emptyDesc', { library: t(NAV_LABEL_KEYS.library) })}
                 </p>
               </div>
@@ -741,13 +741,13 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
               /* 历史搜索：有记录时空态展示，点击回搜，支持单条删除与一键清空 */
               <section className="px-2">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/40 tracking-[-0.12px]">
+                  <h2 className="flex items-center gap-1.5 font-text text-[12px] font-semibold text-white/50 tracking-[-0.12px]">
                     <History className="h-3.5 w-3.5" strokeWidth={1.8} />
                     {t('search.overlay.historyTitle')}
                   </h2>
                   <button
                     onClick={clearSearchHistory}
-                    className="font-text text-[12px] text-white/35 hover:text-white/70 transition-colors duration-200 ease-apple tracking-[-0.12px]"
+                    className="font-text text-[12px] text-white/50 hover:text-white/85 transition-colors duration-200 ease-apple tracking-[-0.12px]"
                   >
                     {t('common.action.clear')}
                   </button>
@@ -759,14 +759,14 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                       className="group flex items-center gap-1 h-7 pl-3 pr-1 rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.1] transition-colors duration-200 ease-apple cursor-pointer"
                       onClick={() => handleHistoryClick(item)}
                     >
-                      <span className="font-text text-[13px] text-white/75 tracking-[-0.15px] max-w-48 truncate">{item}</span>
+                      <span className="font-text text-[13px] text-white/85 tracking-[-0.15px] max-w-48 truncate">{item}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
                           removeSearchHistory(item)
                         }}
                         title={t('search.overlay.historyRemove')}
-                        className="h-5 w-5 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 hover:bg-white/[0.08] transition-colors duration-150 ease-apple"
+                        className="h-5 w-5 flex items-center justify-center rounded-full text-white/50 hover:text-white/85 hover:bg-white/[0.08] transition-colors duration-150 ease-apple"
                       >
                         <X className="h-3 w-3" strokeWidth={2} />
                       </button>
@@ -827,13 +827,13 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                   本地结果不再有「仅显示前 N 条」提示——已改为滚动分页展开，无截断 */}
               <div className="px-2 pt-2 space-y-1">
                 {!onlineLoading && localResults.length === 0 && onlineTracks.length === 0 && (
-                  <p className="py-3 text-center font-text text-[13px] text-white/35 tracking-[-0.15px]">
+                  <p className="py-3 text-center font-text text-[13px] text-white/50 tracking-[-0.15px]">
                     {t('search.overlay.noMatch', { query })}
                   </p>
                 )}
                 {enabledSourceCount === 0 ? (
                   <div className="py-2 flex flex-col items-center gap-3">
-                    <p className="font-text text-[13px] text-white/35 tracking-[-0.15px] text-center">
+                    <p className="font-text text-[13px] text-white/50 tracking-[-0.15px] text-center">
                       {t('search.overlay.noSource')}
                     </p>
                     <button
@@ -841,7 +841,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                         navigate(ROUTES.settings)
                         onClose()
                       }}
-                      className="pill pill-md pill-soft text-mint"
+                      className="pill pill-md pill-soft text-mint-text"
                     >
                       {t('search.overlay.goSettings')}
                     </button>
@@ -852,15 +852,15 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                   </p>
                 ) : onlineLoading ? (
                   <div className="py-3 flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 text-mint/60 animate-spin" strokeWidth={1.5} />
-                    <span className="font-text text-[13px] text-white/40 tracking-[-0.15px]">
+                    <Loader2 className="h-4 w-4 text-mint-text/60 animate-spin" strokeWidth={1.5} />
+                    <span className="font-text text-[13px] text-white/50 tracking-[-0.15px]">
                       {t('search.overlay.searching')}
                     </span>
                   </div>
                 ) : onlineTracks.length === 0 ? (
                   /* 仅当本地已命中、只是在线没搜到时才提示，避免与上方空态重复 */
                   localResults.length > 0 && (
-                    <p className="py-3 text-center font-text text-[12px] text-white/30 tracking-[-0.12px]">
+                    <p className="py-3 text-center font-text text-[12px] text-white/50 tracking-[-0.12px]">
                       {t('search.overlay.onlineEmpty')}
                     </p>
                   )

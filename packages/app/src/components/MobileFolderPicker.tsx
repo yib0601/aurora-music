@@ -98,16 +98,16 @@ export function MobileFolderPicker({
       <DialogContent className="w-[92vw] max-w-md h-[75vh] max-h-[640px] flex flex-col p-0 gap-0">
         <DialogHeader className="px-5 pt-5 pb-3">
           <DialogTitle className="text-white">{titleText}</DialogTitle>
-          <p className="font-text text-caption text-white/60 mt-1">
+          <p className="font-text text-caption text-white/65 mt-1">
             {descriptionText}
           </p>
         </DialogHeader>
 
         {/* 面包屑 */}
-        <div className="flex items-center gap-1 px-5 pb-2 text-caption text-white/70 overflow-x-auto scrollbar-thin">
+        <div className="flex items-center gap-1 px-5 pb-2 text-caption text-white/85 overflow-x-auto scrollbar-thin">
           <button
             onClick={() => { setCurrentPath(''); loadDir('') }}
-            className="font-text hover:text-mint transition-colors whitespace-nowrap"
+            className="font-text hover:text-mint-text transition-colors whitespace-nowrap"
           >
             {t('library.folderPicker.storage')}
           </button>
@@ -118,7 +118,7 @@ export function MobileFolderPicker({
                 <ChevronRight className="h-3.5 w-3.5 text-white/40" strokeWidth={1.8} />
                 <button
                   onClick={() => { setCurrentPath(p); loadDir(p) }}
-                  className="font-text hover:text-mint transition-colors truncate max-w-[120px]"
+                  className="font-text hover:text-mint-text transition-colors truncate max-w-[120px]"
                 >
                   {seg}
                 </button>
@@ -135,7 +135,7 @@ export function MobileFolderPicker({
               {t('common.state.loading')}
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center h-full text-white/60 gap-3 px-6 text-center">
+            <div className="flex flex-col items-center justify-center h-full text-white/65 gap-3 px-6 text-center">
               <AlertCircle className="h-8 w-8 text-coral" strokeWidth={1.6} />
               <p className="font-text text-caption">{error}</p>
               <Button variant="secondary" size="sm" className="h-9 px-3.5" onClick={() => loadDir(currentPath)}>
@@ -146,7 +146,7 @@ export function MobileFolderPicker({
             <div className="flex flex-col items-center justify-center h-full text-white/50 gap-2 px-6 text-center">
               <Folder className="h-8 w-8" strokeWidth={1.6} />
               <p className="font-text text-caption">{t('library.folderPicker.noSubfolders')}</p>
-              <p className="font-text text-caption text-white/40">
+              <p className="font-text text-caption text-white/50">
                 {t('library.folderPicker.emptyHint', { label: confirmText })}
               </p>
             </div>
@@ -156,7 +156,7 @@ export function MobileFolderPicker({
                 <li>
                   <button
                     onClick={handleBack}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-ds-media hover:bg-white/[0.06] transition-colors text-white/60"
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-ds-media hover:bg-white/[0.06] transition-colors text-white/65"
                   >
                     <ChevronLeft className="h-4 w-4" strokeWidth={1.8} />
                     <span className="font-text text-caption">{t('library.folderPicker.up')}</span>
@@ -169,8 +169,8 @@ export function MobileFolderPicker({
                     onClick={() => handleEnter(e.name)}
                     className="w-full flex items-center gap-3 px-3 py-3 rounded-ds-media bg-white/[0.03] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.14] transition-all duration-200 ease-mineradio"
                   >
-                    <Folder className="h-5 w-5 text-mint/80 flex-shrink-0" strokeWidth={1.6} />
-                    <span className="font-text text-caption text-white/[0.90] truncate flex-1 text-left">
+                    <Folder className="h-5 w-5 text-mint-text/80 flex-shrink-0" strokeWidth={1.6} />
+                    <span className="font-text text-caption text-white/90 truncate flex-1 text-left">
                       {e.name}
                     </span>
                     <ChevronRight className="h-4 w-4 text-white/30 flex-shrink-0" strokeWidth={1.8} />
@@ -183,13 +183,13 @@ export function MobileFolderPicker({
 
         {/* 底部操作 */}
         <DialogFooter className="px-5 py-4 border-t border-white/[0.08] flex items-center justify-between gap-3 sm:justify-between">
-          <span className="font-text text-caption text-white/60 truncate flex-1">
+          <span className="font-text text-caption text-white/65 truncate flex-1">
             {t('library.folderPicker.current', {
               path: currentPath || t('library.folderPicker.storage'),
             })}
           </span>
           <div className="flex gap-2 flex-shrink-0">
-            <Button variant="ghost" size="sm" onClick={onClose} className="h-9 px-3.5 text-white/70">
+            <Button variant="ghost" size="sm" onClick={onClose} className="h-9 px-3.5 text-white/85">
               {t('common.action.cancel')}
             </Button>
             <Button

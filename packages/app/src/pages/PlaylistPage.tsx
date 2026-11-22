@@ -87,7 +87,7 @@ export function PlaylistPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-white/50">
         <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
-          <ListMusic className="h-16 w-16 mb-4 text-mint" strokeWidth={1.5} />
+          <ListMusic className="h-16 w-16 mb-4 text-mint-text" strokeWidth={1.5} />
           <p className="text-tagline text-white mb-3">{t('library.playlist.notFound')}</p>
           <Button variant="link" onClick={() => navigate(LIBRARY_ROUTE)}>
             {t('library.action.backToLibrary', { label: t(NAV_LABEL_KEYS.library) })}
@@ -158,7 +158,7 @@ export function PlaylistPage() {
         </div>
         <div className="flex items-center gap-6 max-w-4xl">
           <div className="w-44 h-44 rounded-[24px] glass-regular border border-white/[0.08] flex items-center justify-center flex-shrink-0">
-            <ListMusic className="h-20 w-20 text-mint" strokeWidth={1.3} />
+            <ListMusic className="h-20 w-20 text-mint-text" strokeWidth={1.3} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-text text-caption text-white/50 mb-2">{t('library.playlist.title')}</p>
@@ -229,7 +229,7 @@ export function PlaylistPage() {
           <div className="flex flex-col items-center justify-center py-24">
             <div className="card-utility p-lg flex flex-col items-center text-center max-w-sm">
               <div className="w-20 h-20 rounded-[16px] glass-regular border border-white/[0.08] flex items-center justify-center mb-5">
-                <Music2 className="h-10 w-10 text-mint" strokeWidth={1.5} />
+                <Music2 className="h-10 w-10 text-mint-text" strokeWidth={1.5} />
               </div>
               <p className="text-tagline text-white mb-1">{t('library.playlist.emptyTitle')}</p>
               <p className="font-text text-caption text-white/50">
@@ -272,11 +272,11 @@ export function PlaylistPage() {
                         <span className="w-1 bg-mint rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
                       </div>
                     ) : isCurrentTrack(track.id) ? (
-                      <Play className="h-3.5 w-3.5 text-mint" strokeWidth={1.8} />
+                      <Play className="h-3.5 w-3.5 text-mint-text" strokeWidth={1.8} />
                     ) : (
                       <>
                         <span className="group-hover:hidden">{idx + 1}</span>
-                        <Play className="h-3.5 w-3.5 hidden group-hover:block text-mint" strokeWidth={1.8} />
+                        <Play className="h-3.5 w-3.5 hidden group-hover:block text-mint-text" strokeWidth={1.8} />
                       </>
                     )}
                   </div>
@@ -291,7 +291,7 @@ export function PlaylistPage() {
                       <p
                         className={cn(
                           'font-text text-caption truncate font-semibold',
-                          isCurrentTrack(track.id) ? 'text-mint' : 'text-white'
+                          isCurrentTrack(track.id) ? 'text-mint-text' : 'text-white'
                         )}
                       >
                         {track.title}
@@ -313,7 +313,7 @@ export function PlaylistPage() {
                       }}
                       className={cn(
                         'h-7 w-7 flex items-center justify-center rounded-[8px] hover:bg-white/[0.06] transition-colors duration-200 ease-apple',
-                        likedTracks.has(track.id) ? 'text-coral' : 'text-white/40'
+                        likedTracks.has(track.id) ? 'text-coral' : 'text-white/50'
                       )}
                     >
                       <Heart

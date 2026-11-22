@@ -124,7 +124,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <button
           onClick={onClose}
           aria-label={t('player.nowPlaying.collapse')}
-          className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 active:text-white active:bg-white/[0.07] active:scale-95 transition"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/85 active:text-white active:bg-white/[0.07] active:scale-95 transition"
         >
           <ChevronDown className="h-[22px] w-[22px]" strokeWidth={1.9} />
         </button>
@@ -147,7 +147,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
               onClose()
             }}
             aria-label={t('player.queue.title')}
-            className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 active:text-white active:bg-white/[0.07] active:scale-95 transition"
+            className="w-11 h-11 flex items-center justify-center rounded-full text-white/85 active:text-white active:bg-white/[0.07] active:scale-95 transition"
           >
             <ListMusic className="h-[21px] w-[21px]" strokeWidth={1.7} />
           </button>
@@ -196,10 +196,10 @@ export function MobileNowPlaying({ open, onClose }: Props) {
 
       {/* 标题区：歌名是画面第二焦点，曲目信息层级用字号+透明度两档表达 */}
       <div className="relative px-10 pt-5 short:pt-3 text-center">
-        <p className="font-display text-[19px] font-semibold text-white/[0.96] tracking-[-0.4px] truncate">
+        <p className="font-display text-[19px] font-semibold text-white/95 tracking-[-0.4px] truncate">
           {currentTrack?.title || t('player.state.notPlaying')}
         </p>
-        <p className="mt-1 text-[12.5px] text-white/55 truncate tracking-[-0.1px]">
+        <p className="mt-1 text-[13px] text-white/65 truncate tracking-[-0.1px]">
           {currentTrack?.artist || t('player.state.idleHint')}
         </p>
       </div>
@@ -226,7 +226,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
         <div className="flex items-center gap-2.5">
           <span
             ref={timeRef}
-            className="min-w-[34px] text-right text-[11.5px] text-white/45 tabular-nums"
+            className="min-w-[34px] text-right text-[11px] text-white/50 tabular-nums"
           >
             0:00
           </span>
@@ -246,7 +246,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
             onPointerCancel={onSeekCommit}
             className="seek-bar seek-lg flex-1 cursor-pointer disabled:opacity-40"
           />
-          <span className="min-w-[34px] text-[11.5px] text-white/45 tabular-nums">
+          <span className="min-w-[34px] text-[11px] text-white/50 tabular-nums">
             {formatTime(duration)}
           </span>
         </div>
@@ -261,7 +261,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
           aria-label={t('player.mode.label')}
           className={cn(
             'w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition',
-            playModeActive ? 'text-mint' : 'text-white/55',
+            playModeActive ? 'text-mint-text' : 'text-white/65',
           )}
         >
           {shuffleMode === 'on' ? (
@@ -278,7 +278,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
           onClick={() => usePlayerStore.getState().previous()}
           disabled={!hasTrack}
           aria-label={t('common.action.previous')}
-          className="w-12 h-12 flex items-center justify-center rounded-full text-white/[0.88] active:scale-90 transition disabled:opacity-35"
+          className="w-12 h-12 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-35"
         >
           <SkipBack className="h-[23px] w-[23px]" fill="currentColor" strokeWidth={1.2} />
         </button>
@@ -303,7 +303,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
           onClick={() => usePlayerStore.getState().next()}
           disabled={!hasTrack}
           aria-label={t('common.action.next')}
-          className="w-12 h-12 flex items-center justify-center rounded-full text-white/[0.88] active:scale-90 transition disabled:opacity-35"
+          className="w-12 h-12 flex items-center justify-center rounded-full text-white/90 active:scale-90 transition disabled:opacity-35"
         >
           <SkipForward className="h-[23px] w-[23px]" fill="currentColor" strokeWidth={1.2} />
         </button>
@@ -313,7 +313,7 @@ export function MobileNowPlaying({ open, onClose }: Props) {
           aria-label={isLiked ? t('player.like.remove') : t('player.like.add')}
           className={cn(
             'w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition disabled:opacity-35',
-            isLiked ? 'text-coral' : 'text-white/55',
+            isLiked ? 'text-coral' : 'text-white/65',
           )}
         >
           <Heart className={cn('h-[21px] w-[21px]', isLiked && 'fill-coral')} strokeWidth={1.8} />

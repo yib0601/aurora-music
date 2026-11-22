@@ -74,6 +74,9 @@
 > ⚠️ 注意 `tailwind.config.ts` 的 `borderRadius` / `spacing` 是**扁平静态刻度**，必须写平铺 key
 > （`'ds-pill': '100px'`）；写成 `ds: { pill: ... }` 不会生成任何 class——这是实测过的坑。
 
+> 本轮新增的 `--tw-mint-text`（mint 作文字色时用，浅色主题压暗为 `#00806F`）同样写在
+> `:root` 与 `html:not(.dark)` 两块里，取值不同是刻意的（详见 §2.2 与设计系统 §2.3.1）。
+
 ### 2.2 双 token 块同步铁律
 
 `globals.css` 有**两个独立 token 块**，主题感知变量必须**同时改两处**，否则「一种主题正常、另一种崩掉」：
@@ -428,6 +431,7 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | **表面** | `.surface-canvas/paper/card/tile-1/tile-2`（631–635） | 平铺叠色，无浮起关系 |
 | **卡内元素** | `.inset-field`（664）/ `.inset-row`（699）/ `.inset-note`（708） | 卡片内部不再给每个元素画描边（否则是「卡里再套一张卡」）。控件：`white/.05` 填充 + **透明边**，hover 显 `.10` 弱边、focus / focus-visible 提亮到 `.08` 并显一层**中性白边**（`white/.18`，浅色 `.26`，**不染 mint**）、`[data-state=open]` 才染 mint（展开属选中语义）、校验失败用 `.is-invalid`；行：静止完全透明、hover 浮出 `white/.04`；信息块：只留 `.04` 填充、不带交互态（不可点就不该有 hover 反馈）。浮层（`.glass-liquid` 内）填充提至 `.07` |
 | **胶囊** | `.pill`（815）+ `.pill-sm/md/lg`（826–828） | `9999px` 全圆角；高度 28 / 36 / 44px |
+| | `.pill-choice` | **选项组选中态**：`rgb(--tw-mint / .10)` 底 + 1px `--tw-mint / .42` 描边 + mint 文字；浅色主题前景降级为 `/92` 中性色（设计系统 §4.1.1）。与 `.pill-mint`（行动按钮，实心）严格分工 |
 | | `.pill-mint`（829）/ `.pill-soft`（836） | mint 实心 + 上浮；浅灰描边款 |
 | **分段控件** | `.segmented`（786）/ `.segmented-item`（798）/ `.is-on`（812） | 28px 高，`--r-ds-input` 外圆角 + `--r-ds-sm` 内圆角；选中项 mint 填充 |
 | **滑杆** | `.seek-bar`（897）/ `.volume-bar`（947）/ `.seek-lg` / `.volume-xl` | mint 渐变填充 + 发光滑块 |
@@ -458,6 +462,13 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | `.text-micro` | 10.5px | 650 | — | +0.7px + `uppercase` |
 
 `body` 默认：`14px / 1.47 / -0.1px`，`-webkit-font-smoothing: antialiased`，`user-select: none`。
+
+> 上表是 `.text-*` 语义类。**界面里的标题层级另有六档常量**（见 §8.1）：
+> `PageTitle` / `SubPageTitle` / `SectionTitle` / `CardTitle` / `GroupLabel` / `EmptyTitle`，
+> 定义在 `components/PageHeading.tsx`，这是界面标题的**唯一事实源**。
+> 文字 alpha 同样只有五档：`/95`(标题) `/90`(强调) `/85`(正文) `/65`(次要) `/50`(元信息)，
+> 图标/装饰可用 `/40`。⚠️ Tailwind 只生成 **5 的倍数**透明度：写 `text-white/96`
+> 不会报错、也不会生成任何 CSS，颜色**静默回落**给继承值——这是排查过的一个真实故障。
 
 字体栈：`"Noto Sans SC","PingFang SC","HarmonyOS Sans SC","Alibaba PuHuiTi","Inter",…`。
 **不引入风格来源站的品牌字体**（商业授权风险，且不含中文字形），原因见 `design-system.md` §11.1。
@@ -515,6 +526,8 @@ glass-regular  glass-floating  glass-liquid  glass-saved-panel  glass-saved-butt
 | **验证** | ✅ `pnpm --filter @aurora/app build`（`tsc` + `vite build`）通过，exit 0；全仓 grep 无残留引用 |
 | **本次去框验证** | ✅ `npx tsc --noEmit -p packages/app/tsconfig.json` exit 0、无输出；`grep -c "bg-white/\[0\.03\]"` 在 `SettingsPage.tsx` 为 0；双主题截图复核（顶部 / 在线源 / 下载卡 / 弹窗 / 行 hover 态） |
 | **卡片表面归入玻璃族**：`--surface-tile-1/2-bg` | ✅ 旧值为不透明中性灰（深色 `rgba(34,34,34,.62)→rgba(16,16,16,.72)`、浅色近白 `.90→.94`），与同页玻璃家族（低 alpha 冷黑 + 白色提亮）形成突兀色差。改为 §3.3/§2.5 口径：深色 `白色 .075→.05 渐变 + rgba(0,8,18,.26/.30)` 底、浅色 `白色 .74→.64 / .80→.70`（环境色透出）。影响面为全部 `card-utility` / `card-solid` 消费点（设置页 6 卡、音乐库网格卡、歌单空态、歌曲详情卡）；深色正文对比 ≈11.8:1、浅色 ≈14.6:1，双主题截图验证设置页与歌单空态均无突变 |
+| **视觉层级收敛（字号 + 文字透明度 + 选中态）** | ✅ ① 分区标题此前四处各写一份（音乐库 19px/600 纯白、我的音乐分组 18→20px、设置分区 15px/500、详情页栏目 11px/600 大写），收口为 `PageHeading.tsx` 的 `SectionTitle`(17→19) / `CardTitle`(15) / `GroupLabel`(12)；② 文字 alpha 从 26 种收敛到 5 档（95/90/85/65/50，图标 40），全站 300 余处替换，实测两套主题 AA 不达标数由 9→0（浅色 4→0）；③ 亚像素字号 10.5/11.5/12.5 清零；④ 新增 `.pill-choice`，设置页四组选项的选中态不再用实心 `pill-mint`（mint 面积 5.5%→1.2%）；⑤ 新增 `--tw-mint-text`（浅色压暗为 #00806F），修掉「mint 当文字色」在浅底 3.29:1 的历史缺陷；⑥ `--tw-mint-fg` 浅色档由白改深墨（白字 on #009C88 仅 3.44:1） |
+| **⚠️ 排查过的一个静默故障** | `text-white/96` 这类**非 5 倍数**的透明度 Tailwind 不生成任何 CSS（不报错），颜色静默回落成继承值——本次归一过程中实际踩到（页头一度丢掉显式颜色）。已全量改为 `/95`，并在 §8 加警示 |
 
 ---
 

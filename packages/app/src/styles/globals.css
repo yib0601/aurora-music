@@ -83,6 +83,8 @@
      * mint / coral 在浅色主题下加深以保证浅底对比度 */
     --tw-white: 255 255 255;
     --tw-mint: 0 245 212;
+    /* mint 作**文字色**时的独立令牌（浅色主题下需压暗，见下方浅色块的说明） */
+    --tw-mint-text: 0 245 212;
     --tw-coral: 255 83 103;
     /* mint 按钮上的前景色：深色主题 mint 很亮用深墨字，浅色主题 mint 加深后用白字 */
     --tw-mint-fg: 3 6 8;
@@ -330,8 +332,19 @@
 
     --tw-white: 23 25 29;
     --tw-mint: 0 156 136;
+    /* mint 作文字色：品牌薄荷绿 #009C88 在白底上只有 3.29:1（design-system §4.4 已禁止
+     * 把它当正文/文字色）。这里给「文字用 mint」一个压暗一档的同色相值 #00806F：
+     * 实测 on #FAFAFA 5.19:1、on #FFFFFF 5.46:1，达 AA；白字 on 它 5.46:1，也达 AA。
+     * 填充仍走 --tw-mint（品牌原值），两者只在浅色主题下不同。 */
+    --tw-mint-text: 0 128 111;
     --tw-coral: 226 59 82;
-    --tw-mint-fg: 255 255 255;
+    /* mint 填充上的前景色：**深墨**而不是白。
+     * 白字 on #009C88 实测 3.44:1，低于 AA —— 上一版把浅色档设成白字，
+     * 于是浅色主题里所有 mint 填充块（分段控件选中项、pill-mint、胶囊标签）
+     * 的文字都不达标；深墨 #030608 on 同一个底是 5.91:1，两种主题都成立。
+     * 这也让 .btn-primary 里那条「刻意硬编码 #030608」的历史特例不再必要
+     * （保留不动，两者现在同值）。 */
+    --tw-mint-fg: 3 6 8;
 
     /* 浅色画布：冷调纸灰。比旧值 #F9F8F8 更冷、更暗一档，
      * 这样白色卡片/侧栏才能「浮起来」——旧值与白表面只差 6 个亮度级，
@@ -1054,7 +1067,11 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .88); }
     border: 1px solid rgb(var(--tw-white) / .10);
     border-radius: 7px;
     background: rgb(var(--tw-white) / .05);
-    color: rgb(var(--tw-white) / .42);
+    /* 键帽文字 /42 → /65：它落在**页面底**上——深色主题下是全套配色里最暗的一档
+     * （#08090C），浅色主题下是最亮的一档（#FAFAFA），两个方向上 /42 都只有 ~4:1，
+     * 是全站唯一跌破 AA 4.5 的文字，偏偏每屏都能看到。
+     * /65 实测：深色 8.2:1、浅色 5.2:1，两套主题都达标，且仍明显弱于占位文案（/78）。 */
+    color: rgb(var(--tw-white) / .65);
     /* kbd 的 UA 默认是 monospace：等宽字体在 11px 下字距过松（「C t r l K」），
      * 摆在中文字号旁像另一套排版。键帽跟正文同字体，只靠描边和底表达「可按键」。 */
     font-family: inherit;
@@ -1258,6 +1275,33 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .88); }
   }
   .pill-soft:hover { background: rgb(var(--tw-white) / .09); border-color: rgb(var(--tw-white) / .16); transform: translateY(-1px); }
   .pill-soft:active { transform: scale(.96); }
+
+  /* 选项组选中态（**不是**行动按钮）。
+   *
+   * 为什么不能直接用 pill-mint：mint 实心的语义是「这是本屏该按的那个按钮」。
+   * 设置页一屏里同时有主题 / 语言 / 音频焦点 / 音质四组选项，每组各有一个选中项，
+   * 四块实心 mint 并在同一列（实测占屏 5.5%），色相总量压过页头的字号，
+   * 眼睛第一落点是那四块绿而不是「设置」这个标题——层级被色相顶翻了。
+   * design-system.md §4.1 的判定是：一屏 mint 超过一个小按钮的面积就是过度使用。
+   *
+   * 选中态改走「色相只在 1px 描边 + 文字上」：描边是结构（告诉你在哪一档），
+   * 填充是强度（告诉你可以按）。选项组只需要前者。面积从 ~3000px² 降到 ~200px²，
+   * 且与侧栏选中态（低透底 + mint 竖条）保持同一种「弱色相」语汇。
+   * 前景用 mint 而非白：深色下 #00F5D4 在 4% 白底上 ≈ 12:1，浅色下 #009C88 ≈ 3.2:1
+   * —— 浅色时降级为「mint 描边 + 常规正文色」，见下方的浅色覆盖。 */
+  .pill-choice {
+    background: rgb(var(--tw-mint) / .10);
+    color: rgb(var(--tw-mint));
+    border: 1px solid rgb(var(--tw-mint) / .42);
+  }
+  .pill-choice:hover { background: rgb(var(--tw-mint) / .15); border-color: rgb(var(--tw-mint) / .58); }
+  .pill-choice:active { transform: scale(.96); }
+  /* 浅色主题：#009C88 作文字 only 3.2:1，降为中性正文色，色相只留描边 */
+  html:not(.dark) .pill-choice {
+    background: rgba(0, 156, 136, .10);
+    color: rgb(var(--tw-white) / .92);
+    border-color: rgba(0, 156, 136, .46);
+  }
 
   .link { color: var(--fc-accent); text-decoration: none; transition: opacity .2s; }
   .link:hover { text-shadow: 0 0 14px rgb(var(--tw-mint) / .20); }

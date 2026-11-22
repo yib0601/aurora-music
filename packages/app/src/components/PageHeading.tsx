@@ -26,11 +26,51 @@ import { cn } from '@/lib/utils'
  * 新页面一律用 `PageTitle` / `SubPageTitle`，不要再写裸的字号类名。
  */
 export const PAGE_TITLE_CLASS =
-  'font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.55px] text-white/[0.96] leading-tight'
+  'font-display text-[24px] md:text-[32px] font-semibold tracking-[-0.55px] text-white/95 leading-tight'
 
 /** 二级页头（详情页 / 播放列表等带返回入口的页面）字号档 */
 export const SUB_PAGE_TITLE_CLASS =
-  'font-display text-[22px] md:text-[28px] font-semibold tracking-[-0.45px] text-white/[0.96] leading-tight'
+  'font-display text-[22px] md:text-[28px] font-semibold tracking-[-0.45px] text-white/95 leading-tight'
+
+/**
+ * 分区标题档（页面内二级标题：推荐歌单 / 排行榜 / 设置分区 / 分组详情）。
+ *
+ * **为什么需要这一档**：页头有事实源（本文件），但页头之下那一层此前是四处各写一份——
+ * 音乐库 19px/600 纯白、我的音乐分组 18→20px/600 纯白、设置分区 15px/500 `/90`、
+ * 详情页栏目名 11px/600 大写 `/55`。同一视觉角色横跨 11~20px，切页时「这一层」的字高
+ * 与亮度都在变，读起来像四个软件拼在一起。
+ *
+ * **收敛到 17→19px/600**：与一级页头（24→32）保持约 1.7x 档差，与卡片标题（13~14）
+ * 保持 1.3x 以上。字重跟随页头的 600（理由同页头：中文笔画密，700 在深色底上糊）。
+ * 颜色 `/90` 而不是纯白——分区标题是「内容层的最高级」，不该和页头抢同一个白。
+ *
+ * 全大写小字的分组名（侧栏「歌单」、榜单组名）不走这一档：它们是**标签**不是标题，
+ * 见下面 `GROUP_LABEL_CLASS`。
+ */
+export const SECTION_TITLE_CLASS =
+  'font-display text-[17px] md:text-[19px] font-semibold text-white/90 tracking-[-0.4px] leading-snug'
+
+/**
+ * 卡片标题档（**卡片内部**的最高一级：设置分区、榜单卡名、插件卡名）。
+ *
+ * 与 `SECTION_TITLE_CLASS` 分开是必要的，不是重复：分区标题在页面里出现 2~3 次、
+ * 每次后面跟一大块内容；卡片标题在一屏里连排 6~8 个，字号再大一档整页就会被
+ * 一片粗字压成灰板（设置页此前从 21px 收到 15px 就是撞过这个墙）。
+ * 所以两档的差别在**字号与上下文密度**，不在语义：都表达「这一块叫什么」。
+ *
+ * 15px/600/`/90`：与卡片正文（13~14px/400）差出字重 + 1px，靠字重建层级而不是靠
+ * 越来越大——中文笔画密，加粗比放大更省纵向空间。
+ */
+export const CARD_TITLE_CLASS =
+  'font-text text-[15px] font-semibold text-white/90 tracking-[-0.2px] leading-tight'
+
+/**
+ * 分组标签档（全大写小字：侧栏「歌单」、榜单组名）。与散落的 `11px//65`、`12px//65`、
+ * `12px//55` 统一为 **12px / 600 / `/65` / 大写 + 宽字距**。
+ * 12px 而非 11px：大写字母 x-height 小，11px 下夹在中文里会显得残缺。
+ */
+export const GROUP_LABEL_CLASS =
+  'font-text text-[12px] font-semibold text-white/65 uppercase tracking-wider'
 
 /**
  * 页头副标题档。颜色固定 `text-white/65`。
@@ -69,6 +109,29 @@ export function SubPageTitle({ children, className }: TitleProps) {
 /** 页头副标题（标题下那一行说明/计数） */
 export function PageSubtitle({ children, className }: TitleProps) {
   return <p className={cn(PAGE_SUBTITLE_CLASS, 'mt-1', className)}>{children}</p>
+}
+
+/** 分区标题（全大写小字区段名之外，页面内的二级标题） */
+export function SectionTitle({
+  children,
+  className,
+  as: Tag = 'h2',
+}: TitleProps & { as?: 'h2' | 'h3' }) {
+  return <Tag className={cn(SECTION_TITLE_CLASS, className)}>{children}</Tag>
+}
+
+/** 卡片标题（卡片内部最高一级，如设置分区） */
+export function CardTitle({
+  children,
+  className,
+  as: Tag = 'h2',
+}: TitleProps & { as?: 'h2' | 'h3' }) {
+  return <Tag className={cn(CARD_TITLE_CLASS, className)}>{children}</Tag>
+}
+
+/** 分组标签（全大写小字：「歌单」「巅峰榜」这类区块名） */
+export function GroupLabel({ children, className }: TitleProps) {
+  return <span className={cn(GROUP_LABEL_CLASS, className)}>{children}</span>
 }
 
 /** 空态标题（图标 + 一句主文案 + 一句说明 + 动作按钮的空态块） */

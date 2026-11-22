@@ -230,7 +230,7 @@ export function PluginSettingsDialog({
           </DialogHeader>
           <p className="font-text text-caption text-white/50">{t('sources.config.noConfig')}</p>
           <DialogFooter>
-            <Button variant="ghost" size="sm" className="h-9 px-4 text-white/70" onClick={() => onOpenChange(false)}>
+            <Button variant="ghost" size="sm" className="h-9 px-4 text-white/85" onClick={() => onOpenChange(false)}>
               {t('common.action.close')}
             </Button>
           </DialogFooter>
@@ -243,7 +243,7 @@ export function PluginSettingsDialog({
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <p className="font-text text-caption-strong text-white/85">{title}</p>
-        <p className="font-text text-caption text-white/45 mt-0.5">{hint}</p>
+        <p className="font-text text-caption text-white/50 mt-0.5">{hint}</p>
       </div>
       {action && <div className="flex-shrink-0">{action}</div>}
     </div>
@@ -255,7 +255,7 @@ export function PluginSettingsDialog({
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white text-tagline">
-              <Settings2 className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.7} />
+              <Settings2 className="h-4 w-4 text-mint-text flex-shrink-0" strokeWidth={1.7} />
               {/* 标题文字包一层并允许断词：插件名可能是第三方清单里的超长串，
                   匿名 flex 子项的最小宽度取整串宽度，会把弹窗顶出屏幕 */}
               <span className="min-w-0 break-words">{t('sources.config.title', { name: displayName })}</span>
@@ -287,7 +287,7 @@ export function PluginSettingsDialog({
                   </Button>
                 )}
                 {bundle.sources.length === 0 ? (
-                  <p className="font-text text-caption text-white/40 py-1.5">{t('sources.config.sourceEmpty')}</p>
+                  <p className="font-text text-caption text-white/50 py-1.5">{t('sources.config.sourceEmpty')}</p>
                 ) : (
                   <div className="space-y-2">
                     {bundle.sources.map((source) => (
@@ -326,12 +326,12 @@ export function PluginSettingsDialog({
                 {storageMetaLoading ? (
                   // 字段声明还没到：显示加载态。渲染成"没有网络存储"或空编辑表单都是错的
                   // —— 前者否认已有配置，后者给人一个存不下去的表单
-                  <p className="flex items-center gap-2 font-text text-caption text-white/45 py-1.5">
+                  <p className="flex items-center gap-2 font-text text-caption text-white/50 py-1.5">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.6} />
                     {t('common.state.loading')}
                   </p>
                 ) : bundle.librarySources.length === 0 ? (
-                  <p className="font-text text-caption text-white/40 py-1.5">{t('sources.config.storageEmpty')}</p>
+                  <p className="font-text text-caption text-white/50 py-1.5">{t('sources.config.storageEmpty')}</p>
                 ) : (
                   <div className="space-y-2">
                     {bundle.librarySources.map((source) => (
@@ -375,7 +375,7 @@ export function PluginSettingsDialog({
           </div>
 
           <DialogFooter>
-            <Button variant="ghost" size="sm" className="h-9 px-4 text-white/70" onClick={() => onOpenChange(false)}>
+            <Button variant="ghost" size="sm" className="h-9 px-4 text-white/85" onClick={() => onOpenChange(false)}>
               {t('common.action.close')}
             </Button>
           </DialogFooter>

@@ -9,6 +9,7 @@ import { PlaylistImportDialog } from '@/components/PlaylistImportDialog'
 import { CreatePlaylistDialog } from '@/components/layout/CreatePlaylistDialog'
 import { usePlaylistStore } from '@/stores/playlistStore'
 import { useUIStore } from '@/stores/uiStore'
+import { GroupLabel } from '@/components/PageHeading'
 import { useT } from '@/i18n'
 import { BrandMark } from '@/components/common/BrandMark'
 
@@ -110,14 +111,14 @@ export function MobileNav({ children }: { children?: ReactNode }) {
         <button
           onClick={() => setOpen(true)}
           aria-label={t('shell.nav.openMenu')}
-          className="w-10 h-10 flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition"
+          className="w-10 h-10 flex items-center justify-center rounded-full text-white/85 hover:text-white hover:bg-white/10 active:scale-95 transition"
         >
           <Menu className="h-5 w-5" strokeWidth={1.8} />
         </button>
         {/* 顶栏展示品牌名而非页面标题：页面内容区已有同名大标题，重复展示显得冗余 */}
         <span className="flex items-center gap-2">
           <BrandMark className="h-7 w-7" />
-          <span className="font-display text-[15px] font-semibold text-white/[0.90] tracking-[-0.2px]">
+          <span className="font-display text-[15px] font-semibold text-white/90 tracking-[-0.2px]">
             {t('nav.brand.name')}
           </span>
         </span>
@@ -142,13 +143,13 @@ export function MobileNav({ children }: { children?: ReactNode }) {
         )}
       >
         <div className="flex items-center justify-between pl-4 pr-2 h-[calc(3rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] shrink-0">
-          <span className="font-display font-semibold text-[16px] text-white/[0.96] tracking-[-0.2px]">
+          <span className="font-display font-semibold text-[16px] text-white/95 tracking-[-0.2px]">
             {t('shell.brand.full')}
           </span>
           <button
             onClick={() => setOpen(false)}
             aria-label={t('shell.nav.closeMenu')}
-            className="w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-95 transition"
+            className="w-9 h-9 flex items-center justify-center rounded-full text-white/65 hover:text-white hover:bg-white/10 active:scale-95 transition"
           >
             <X className="h-5 w-5" strokeWidth={1.8} />
           </button>
@@ -157,13 +158,13 @@ export function MobileNav({ children }: { children?: ReactNode }) {
         <nav className="flex flex-col gap-px px-3 mt-2 shrink-0">
           {items.map(({ to, icon: Icon, labelKey }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive)}>
-              <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
+              <Icon className="h-5 w-5 group-aria-[current=page]:text-mint-text" strokeWidth={1.6} />
               {t(labelKey)}
             </NavLink>
           ))}
           {footerItems.map(({ to, icon: Icon, labelKey }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => drawerLinkClass(isActive, true)}>
-              <Icon className="h-5 w-5 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
+              <Icon className="h-5 w-5 group-aria-[current=page]:text-mint-text" strokeWidth={1.6} />
               {t(labelKey)}
             </NavLink>
           ))}
@@ -176,9 +177,7 @@ export function MobileNav({ children }: { children?: ReactNode }) {
         */}
         <div className="mt-3 flex-1 flex flex-col min-h-0 px-3">
           <div className="flex items-center justify-between px-3 py-1.5 shrink-0">
-            <span className="font-text text-[11px] font-semibold text-white/65 uppercase tracking-wider">
-              {t('nav.item.playlists')}
-            </span>
+            <GroupLabel>{t('nav.item.playlists')}</GroupLabel>
             {/*
               新建歌单：位置与语义对齐桌面侧栏（分组标题右侧的 +）。
               必须先 setOpen(false) 再开对话框——抽屉是 z-[70]，Dialog 的遮罩/内容是
@@ -207,7 +206,7 @@ export function MobileNav({ children }: { children?: ReactNode }) {
             onClick={() => setOpen(false)}
             className={({ isActive }) => cn(drawerLinkClass(isActive), 'min-w-0 shrink-0')}
           >
-            <Heart className="h-5 w-5 shrink-0 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
+            <Heart className="h-5 w-5 shrink-0 group-aria-[current=page]:text-mint-text" strokeWidth={1.6} />
             <span className="truncate">{t('nav.item.liked')}</span>
             <span className="text-[11px] text-white/65 ml-auto tabular-nums font-semibold">
               {likedCount}
@@ -225,7 +224,7 @@ export function MobileNav({ children }: { children?: ReactNode }) {
                   onClick={() => setOpen(false)}
                   className={({ isActive }) => cn(drawerLinkClass(isActive), 'min-w-0')}
                 >
-                  <ListMusic className="h-5 w-5 shrink-0 group-aria-[current=page]:text-mint" strokeWidth={1.6} />
+                  <ListMusic className="h-5 w-5 shrink-0 group-aria-[current=page]:text-mint-text" strokeWidth={1.6} />
                   <span className="truncate">{pl.name}</span>
                   <span className="text-[11px] text-white/65 ml-auto tabular-nums font-semibold">
                     {pl.trackIds.length}
@@ -244,7 +243,7 @@ export function MobileNav({ children }: { children?: ReactNode }) {
               setOpen(false)
               setShowImportDialog(true)
             }}
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-ds-panel text-[14px] tracking-[-0.2px] text-white/70 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-ds-panel text-[14px] tracking-[-0.2px] text-white/85 hover:text-white hover:bg-white/[0.05] transition-all duration-200 text-left"
           >
             <Link2 className="h-5 w-5" strokeWidth={1.6} />
             {t('shell.playlist.importLink')}

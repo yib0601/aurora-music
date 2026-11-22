@@ -71,14 +71,14 @@ export function UpdateBanner({
   if (variant === 'compact') {
     return (
       <div className="flex items-center gap-1 rounded-full border border-mint/20 bg-mint/[0.06] pl-3 pr-1 h-9 backdrop-blur-ds">
-        <ArrowDownCircle className="h-[18px] w-[18px] text-mint flex-shrink-0" strokeWidth={1.6} />
+        <ArrowDownCircle className="h-[18px] w-[18px] text-mint-text flex-shrink-0" strokeWidth={1.6} />
         <p className="font-text text-[13px] text-white/85 tracking-[-0.15px] whitespace-nowrap">
-          {t('update.banner.newVersionCompact')} <span className="text-mint font-semibold">v{info.version}</span>
+          {t('update.banner.newVersionCompact')} <span className="text-mint-text font-semibold">v{info.version}</span>
         </p>
         <button
           onClick={handleDownload}
           title={downloadTitle}
-          className="ml-1 flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.1] px-3 h-7 flex items-center gap-1.5 font-text text-[13px] text-mint hover:bg-mint/20 transition-colors whitespace-nowrap"
+          className="ml-1 flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.1] px-3 h-7 flex items-center gap-1.5 font-text text-[13px] text-mint-text hover:bg-mint/20 transition-colors whitespace-nowrap"
         >
           <Download className="h-3.5 w-3.5" strokeWidth={2} />
           {t(downloading ? 'update.banner.opened' : 'update.banner.download')}
@@ -97,10 +97,10 @@ export function UpdateBanner({
   return (
     <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 mb-3">
       <div className="flex items-center gap-3 rounded-[10px] border border-mint/20 bg-mint/[0.06] px-4 py-2.5 backdrop-blur-ds">
-      <ArrowDownCircle className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
+      <ArrowDownCircle className="h-5 w-5 text-mint-text flex-shrink-0" strokeWidth={1.6} />
       {/* 新版本号与当前版本号同句：英文语序不同，整句 + 两个占位符，不拆开拼 */}
       <p className="font-text text-[13px] text-white/85 tracking-[-0.15px] min-w-0 flex-1 truncate">
-        {t('update.banner.newVersionFull')} <span className="text-mint font-semibold">v{info.version}</span>
+        {t('update.banner.newVersionFull')} <span className="text-mint-text font-semibold">v{info.version}</span>
         {/* 小屏空间有限，隐藏当前版本信息，优先保证新版本号完整展示 */}
         <span className="text-white/50 hidden md:inline">
           {t('update.banner.currentVersion', { version: APP_VERSION })}
@@ -108,7 +108,7 @@ export function UpdateBanner({
       </p>
       {/* 标出将下载的包类型：dnf 系给 RPM、apt 系给 DEB、便携版给 AppImage */}
       {info.assetLabel && (
-        <span className="flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.08] px-2 py-0.5 font-text text-[11px] text-mint/90">
+        <span className="flex-shrink-0 rounded-full border border-mint/25 bg-mint/[0.08] px-2 py-0.5 font-text text-[11px] text-mint-text/90">
           {t(info.assetLabel)}
         </span>
       )}

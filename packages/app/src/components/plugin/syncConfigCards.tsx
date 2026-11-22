@@ -39,7 +39,7 @@ interface CredentialView {
 const EMPTY_CREDENTIAL: CredentialView = { saved: false, encryptionAvailable: true }
 
 /** 卡片与弹窗共用的输入框样式（与存储卡片同一套 token） */
-const INPUT_CLS = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
+const INPUT_CLS = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/85'
 
 const DIRECTION_OPTIONS: readonly SyncDirection[] = ['bidirectional', 'pullOnly', 'pushOnly']
 
@@ -279,7 +279,7 @@ export function SyncConfigCard({
   })()
 
   const toneCls =
-    stateLine.tone === 'bad' ? 'text-coral/80' : stateLine.tone === 'ok' ? 'text-mint/80' : 'text-white/40'
+    stateLine.tone === 'bad' ? 'text-coral/80' : stateLine.tone === 'ok' ? 'text-mint-text/80' : 'text-white/50'
 
   const credentialLabel = credential.saved
     ? credential.encryptionAvailable
@@ -290,7 +290,7 @@ export function SyncConfigCard({
   return (
     <div className="inset-row px-3.5 py-3">
       <div className="flex items-center gap-2">
-        <DirectionIcon direction={config.direction} className="h-4 w-4 text-mint flex-shrink-0" />
+        <DirectionIcon direction={config.direction} className="h-4 w-4 text-mint-text flex-shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="font-text text-caption-strong text-white/85 truncate">{config.name}</p>
           <p className="font-text text-caption text-white/50 truncate">{subtitle}</p>
@@ -316,7 +316,7 @@ export function SyncConfigCard({
             variant="ghost"
             size="icon"
             title={t('common.action.edit')}
-            className="h-7 w-7 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
+            className="h-7 w-7 rounded-[8px] text-white/50 hover:text-mint-text hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
             <Pencil className="h-4 w-4" strokeWidth={1.6} />
@@ -326,7 +326,7 @@ export function SyncConfigCard({
           variant="ghost"
           size="icon"
           title={t('sync.config.delete')}
-          className="h-7 w-7 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
+          className="h-7 w-7 rounded-[8px] text-white/50 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -347,7 +347,7 @@ export function SyncConfigCard({
 
           {/* 方向：三个选项各自带一句说明。用一排按钮而不是下拉 —— 三项且语义要解释 */}
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sync.config.directionLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sync.config.directionLabel')}</p>
             <div className="flex flex-wrap items-center gap-1.5">
               {DIRECTION_OPTIONS.map((option) => (
                 <button
@@ -356,8 +356,8 @@ export function SyncConfigCard({
                   onClick={() => setDirectionDraft(option)}
                   className={`flex items-center rounded-[8px] px-2.5 py-1.5 font-text text-caption transition-colors duration-200 ease-mineradio ${
                     directionDraft === option
-                      ? 'bg-mint/15 text-mint'
-                      : 'bg-white/[0.04] text-white/55 hover:bg-white/[0.08] hover:text-white/80'
+                      ? 'bg-mint/15 text-mint-text'
+                      : 'bg-white/[0.04] text-white/65 hover:bg-white/[0.08] hover:text-white/85'
                   }`}
                 >
                   <DirectionIcon direction={option} />
@@ -365,7 +365,7 @@ export function SyncConfigCard({
                 </button>
               ))}
             </div>
-            <p className="font-text text-caption text-white/40 mt-1">{t(DIRECTION_HINT_KEYS[directionDraft])}</p>
+            <p className="font-text text-caption text-white/50 mt-1">{t(DIRECTION_HINT_KEYS[directionDraft])}</p>
           </div>
 
           {fields.map((field) =>
@@ -383,7 +383,7 @@ export function SyncConfigCard({
                 <div className="flex items-center gap-2 mt-1">
                   <p
                     className={`font-text text-caption ${
-                      credential.encryptionAvailable ? 'text-white/40' : 'text-coral/70'
+                      credential.encryptionAvailable ? 'text-white/50' : 'text-coral/70'
                     }`}
                   >
                     {credentialLabel}
@@ -399,7 +399,7 @@ export function SyncConfigCard({
                           refreshCredential()
                         })
                       }
-                      className="font-text text-caption text-white/40 hover:text-coral/80 underline underline-offset-2"
+                      className="font-text text-caption text-white/50 hover:text-coral/80 underline underline-offset-2"
                     >
                       {t('sources.webdav.clearCredential')}
                     </button>
@@ -417,7 +417,7 @@ export function SyncConfigCard({
                   autoComplete="off"
                   aria-label={t(field.labelKey)}
                 />
-                {field.hintKey && <p className="font-text text-caption text-white/40 mt-1">{t(field.hintKey)}</p>}
+                {field.hintKey && <p className="font-text text-caption text-white/50 mt-1">{t(field.hintKey)}</p>}
               </div>
             )
           )}
@@ -439,15 +439,15 @@ export function SyncConfigCard({
                 }`}
               />
             </button>
-            <p className="font-text text-caption text-white/70">{t('sync.config.autoSync')}</p>
+            <p className="font-text text-caption text-white/85">{t('sync.config.autoSync')}</p>
           </div>
-          <p className="font-text text-caption text-white/40">{t('sync.config.autoSyncHint')}</p>
+          <p className="font-text text-caption text-white/50">{t('sync.config.autoSyncHint')}</p>
 
           <div className="flex items-center justify-end gap-2">
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-3 text-white/60 hover:text-white/90"
+              className="h-8 px-3 text-white/65 hover:text-white/90"
               onClick={() => setEditing(false)}
             >
               {t('sync.config.cancel')}
@@ -481,14 +481,14 @@ export function SyncConfigCard({
                 {testing ? t('sync.card.testing') : t('sync.card.test')}
               </Button>
             )}
-            <p className="font-text text-caption text-white/40">{t('sync.card.direction', { direction: directionLabel })}</p>
+            <p className="font-text text-caption text-white/50">{t('sync.card.direction', { direction: directionLabel })}</p>
           </div>
           <p className={`mt-1.5 font-text text-caption truncate ${toneCls}`} title={stateLine.text}>
             {state === 'ok' && !errorPayload && !testMessage ? `${t(STATE_LABEL_KEYS.ok)} · ` : ''}
             {stateLine.text}
           </p>
           {hasPasswordField && !plugin?.capabilities.includes('probe') && credential.saved && (
-            <p className="mt-0.5 font-text text-caption text-white/30 truncate">{credentialLabel}</p>
+            <p className="mt-0.5 font-text text-caption text-white/50 truncate">{credentialLabel}</p>
           )}
         </>
       )}
@@ -576,7 +576,7 @@ export function SyncConfigAddDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">{t('sync.panel.addTitle')}</DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60">
+          <DialogDescription className="font-text text-caption text-white/65">
             {t('sync.panel.description')}
           </DialogDescription>
         </DialogHeader>
@@ -585,7 +585,7 @@ export function SyncConfigAddDialog({
           {/* 多个同步方式时才需要选；只有一个（桌面端默认就是这两个）直接省掉这一步 */}
           {plugins.length > 1 && (
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">{t('sync.panel.title')}</p>
+              <p className="font-text text-caption text-white/65 mb-1.5">{t('sync.panel.title')}</p>
               <div className="flex flex-wrap items-center gap-1.5">
                 {plugins.map((item) => (
                   <button
@@ -597,8 +597,8 @@ export function SyncConfigAddDialog({
                     }}
                     className={`rounded-[8px] px-2.5 py-1.5 font-text text-caption transition-colors duration-200 ease-mineradio ${
                       plugin?.id === item.id
-                        ? 'bg-mint/15 text-mint'
-                        : 'bg-white/[0.04] text-white/55 hover:bg-white/[0.08] hover:text-white/80'
+                        ? 'bg-mint/15 text-mint-text'
+                        : 'bg-white/[0.04] text-white/65 hover:bg-white/[0.08] hover:text-white/85'
                     }`}
                   >
                     {t(item.displayNameKey)}
@@ -606,13 +606,13 @@ export function SyncConfigAddDialog({
                 ))}
               </div>
               {plugin?.descriptionKey && (
-                <p className="font-text text-caption text-white/40 mt-1">{t(plugin.descriptionKey)}</p>
+                <p className="font-text text-caption text-white/50 mt-1">{t(plugin.descriptionKey)}</p>
               )}
             </div>
           )}
 
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sync.config.nameLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sync.config.nameLabel')}</p>
             <input
               type="text"
               value={name}
@@ -627,7 +627,7 @@ export function SyncConfigAddDialog({
             const error = fieldErrorOf(field, raw, t)
             return (
               <div key={field.key}>
-                <p className="font-text text-caption text-white/60 mb-1.5">{t(field.labelKey)}</p>
+                <p className="font-text text-caption text-white/65 mb-1.5">{t(field.labelKey)}</p>
                 <input
                   type={field.kind === 'password' ? 'password' : 'text'}
                   inputMode={field.kind === 'port' ? 'numeric' : undefined}
@@ -637,13 +637,13 @@ export function SyncConfigAddDialog({
                   className={`${INPUT_CLS} ${error ? 'is-invalid' : ''}`}
                   autoComplete={field.kind === 'password' ? 'new-password' : 'off'}
                 />
-                {field.hintKey && <p className="font-text text-caption text-white/40 mt-1">{t(field.hintKey)}</p>}
+                {field.hintKey && <p className="font-text text-caption text-white/50 mt-1">{t(field.hintKey)}</p>}
               </div>
             )
           })}
 
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sync.config.directionLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sync.config.directionLabel')}</p>
             <div className="flex flex-wrap items-center gap-1.5">
               {DIRECTION_OPTIONS.map((option) => (
                 <button
@@ -652,8 +652,8 @@ export function SyncConfigAddDialog({
                   onClick={() => setDirection(option)}
                   className={`flex items-center rounded-[8px] px-2.5 py-1.5 font-text text-caption transition-colors duration-200 ease-mineradio ${
                     direction === option
-                      ? 'bg-mint/15 text-mint'
-                      : 'bg-white/[0.04] text-white/55 hover:bg-white/[0.08] hover:text-white/80'
+                      ? 'bg-mint/15 text-mint-text'
+                      : 'bg-white/[0.04] text-white/65 hover:bg-white/[0.08] hover:text-white/85'
                   }`}
                 >
                   <DirectionIcon direction={option} />
@@ -661,7 +661,7 @@ export function SyncConfigAddDialog({
                 </button>
               ))}
             </div>
-            <p className="font-text text-caption text-white/40 mt-1">{t(DIRECTION_HINT_KEYS[direction])}</p>
+            <p className="font-text text-caption text-white/50 mt-1">{t(DIRECTION_HINT_KEYS[direction])}</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -680,16 +680,16 @@ export function SyncConfigAddDialog({
                 }`}
               />
             </button>
-            <p className="font-text text-caption text-white/70">{t('sync.config.autoSync')}</p>
+            <p className="font-text text-caption text-white/85">{t('sync.config.autoSync')}</p>
           </div>
-          <p className="font-text text-caption text-white/40">{t('sync.config.autoSyncHint')}</p>
+          <p className="font-text text-caption text-white/50">{t('sync.config.autoSyncHint')}</p>
         </div>
 
         <DialogFooter>
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 px-4 text-white/60 hover:text-white/90"
+            className="h-9 px-4 text-white/65 hover:text-white/90"
             onClick={() => onOpenChange(false)}
           >
             {t('sync.config.cancel')}

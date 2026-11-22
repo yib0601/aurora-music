@@ -165,15 +165,15 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
   }
 
   if (!supported) {
-    return <p className="font-text text-caption text-white/45 py-1.5">{t('sync.panel.unsupported')}</p>
+    return <p className="font-text text-caption text-white/50 py-1.5">{t('sync.panel.unsupported')}</p>
   }
 
   return (
     <div className="space-y-3">
       {mine.length === 0 ? (
         <div className="inset-row px-3.5 py-3">
-          <p className="font-text text-caption-strong text-white/80">{t('sync.panel.emptyTitle')}</p>
-          <p className="font-text text-caption text-white/45 mt-0.5">{t('sync.panel.emptyDesc')}</p>
+          <p className="font-text text-caption-strong text-white/85">{t('sync.panel.emptyTitle')}</p>
+          <p className="font-text text-caption text-white/50 mt-0.5">{t('sync.panel.emptyDesc')}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -197,7 +197,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-3 text-white/60 hover:text-white/90"
+          className="h-8 px-3 text-white/65 hover:text-white/90"
           onClick={() => void syncAllNow()}
         >
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.6} />
@@ -206,8 +206,8 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
       </div>
 
       {/* 冲突与隐私各一句：这两件事用户不读文档也该知道 */}
-      <p className="font-text text-caption text-white/35">{t('sync.panel.conflictNote')}</p>
-      <p className="font-text text-caption text-white/35">{t('sync.panel.privacyNote')}</p>
+      <p className="font-text text-caption text-white/50">{t('sync.panel.conflictNote')}</p>
+      <p className="font-text text-caption text-white/50">{t('sync.panel.privacyNote')}</p>
 
       {/* ─── 本机服务 ─── */}
       {isLanPlugin && (
@@ -215,7 +215,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="font-text text-caption-strong text-white/85">{t('sync.server.title')}</p>
-              <p className="font-text text-caption text-white/45 mt-0.5">{t('sync.server.enableHint')}</p>
+              <p className="font-text text-caption text-white/50 mt-0.5">{t('sync.server.enableHint')}</p>
             </div>
             <button
               type="button"
@@ -237,16 +237,16 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
           </div>
 
           {status?.running && status.port ? (
-            <p className="font-text text-caption text-mint/80">
+            <p className="font-text text-caption text-mint-text/80">
               {t('sync.server.running', { port: status.port })}
             </p>
           ) : (
-            <p className="font-text text-caption text-white/40">{t('sync.server.stopped')}</p>
+            <p className="font-text text-caption text-white/50">{t('sync.server.stopped')}</p>
           )}
 
           {status && (
             <div className="inset-row px-3 py-2.5">
-              <p className="font-text text-caption text-white/60">{t('sync.server.codeLabel')}</p>
+              <p className="font-text text-caption text-white/65">{t('sync.server.codeLabel')}</p>
               <div className="mt-1 flex items-center gap-2">
                 <code className="font-mono text-caption text-white/85 tracking-wider">
                   {codeVisible ? status.code : t('sync.server.codeHidden')}
@@ -255,7 +255,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
                   <button
                     type="button"
                     onClick={() => setCodeVisible(true)}
-                    className="font-text text-caption text-white/40 hover:text-mint underline underline-offset-2"
+                    className="font-text text-caption text-white/50 hover:text-mint-text underline underline-offset-2"
                   >
                     {t('sync.server.codeHidden')}
                   </button>
@@ -264,7 +264,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
                     <button
                       type="button"
                       onClick={handleCopyCode}
-                      className="flex items-center gap-1 font-text text-caption text-white/40 hover:text-mint"
+                      className="flex items-center gap-1 font-text text-caption text-white/50 hover:text-mint-text"
                     >
                       <Copy className="h-3 w-3" strokeWidth={1.6} />
                       {t('sync.server.copy')}
@@ -272,15 +272,15 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
                     <button
                       type="button"
                       onClick={handleRotate}
-                      className="font-text text-caption text-white/40 hover:text-coral underline underline-offset-2"
+                      className="font-text text-caption text-white/50 hover:text-coral underline underline-offset-2"
                     >
                       {t('sync.server.rotate')}
                     </button>
                   </>
                 )}
               </div>
-              <p className="font-text text-caption text-white/35 mt-1">{t('sync.server.codeHint')}</p>
-              <p className="font-text text-caption text-white/30 mt-0.5">{t('sync.server.plaintextNote')}</p>
+              <p className="font-text text-caption text-white/50 mt-1">{t('sync.server.codeHint')}</p>
+              <p className="font-text text-caption text-white/50 mt-0.5">{t('sync.server.plaintextNote')}</p>
             </div>
           )}
         </section>
@@ -300,10 +300,10 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
               {lan.scanning ? t('sync.discover.scanning') : t('sync.discover.scan')}
             </Button>
           </div>
-          <p className="font-text text-caption text-white/40">{t('sync.discover.pairHint')}</p>
+          <p className="font-text text-caption text-white/50">{t('sync.discover.pairHint')}</p>
 
           {lan.peers.length === 0 ? (
-            <p className="font-text text-caption text-white/40 py-1.5">{t('sync.discover.empty')}</p>
+            <p className="font-text text-caption text-white/50 py-1.5">{t('sync.discover.empty')}</p>
           ) : (
             <div className="space-y-2">
               {lan.peers.map((peer) => {
@@ -312,7 +312,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
                   <div key={`${peer.deviceId}:${peer.host}:${peer.port}`} className="inset-row px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <ShieldCheck
-                        className={`h-4 w-4 flex-shrink-0 ${online ? 'text-mint' : 'text-white/30'}`}
+                        className={`h-4 w-4 flex-shrink-0 ${online ? 'text-mint-text' : 'text-white/30'}`}
                         strokeWidth={1.6}
                       />
                       <div className="min-w-0 flex-1">
@@ -334,7 +334,7 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
                       {/* 手动填码退路：老版本对端、配对反复失败、或发现被防火墙挡掉时仍能配 */}
                       <button
                         type="button"
-                        className="font-text text-caption text-white/40 hover:text-mint underline underline-offset-2 flex-shrink-0"
+                        className="font-text text-caption text-white/50 hover:text-mint-text underline underline-offset-2 flex-shrink-0"
                         disabled={!online}
                         onClick={() => setPeerTarget(peer)}
                       >
@@ -383,12 +383,12 @@ export function PlaylistSyncPanel({ pluginId }: { pluginId: string }) {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white text-tagline">{t('sync.pair.title')}</DialogTitle>
-            <DialogDescription className="font-text text-caption text-white/60 break-words">
+            <DialogDescription className="font-text text-caption text-white/65 break-words">
               {t('sync.pair.waiting', { name: pairingPeer?.deviceName ?? '' })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center justify-end">
-            <Button variant="ghost" size="sm" className="h-9 px-4 text-white/60 hover:text-white/90" onClick={() => setPairingPeer(null)}>
+            <Button variant="ghost" size="sm" className="h-9 px-4 text-white/65 hover:text-white/90" onClick={() => setPairingPeer(null)}>
               {t('sync.config.cancel')}
             </Button>
           </div>
@@ -439,7 +439,7 @@ function AddPeerDialog({
     setName(peer?.deviceName ?? '')
   }, [peer])
 
-  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
+  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/85'
   const canAdd = code.trim().length > 0 && name.trim().length > 0
 
   return (
@@ -447,17 +447,17 @@ function AddPeerDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">{t('sync.discover.add')}</DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60 break-words">
+          <DialogDescription className="font-text text-caption text-white/65 break-words">
             {peer ? `${peer.deviceName} · ${peer.host}:${peer.port}` : ''}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sync.config.nameLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sync.config.nameLabel')}</p>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
           </div>
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sync.lan.codeLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sync.lan.codeLabel')}</p>
             <input
               type="text"
               value={code}
@@ -466,14 +466,14 @@ function AddPeerDialog({
               className={inputCls}
               autoComplete="off"
             />
-            <p className="font-text text-caption text-white/40 mt-1">{t('sync.lan.codeHint')}</p>
+            <p className="font-text text-caption text-white/50 mt-1">{t('sync.lan.codeHint')}</p>
           </div>
         </div>
         <DialogFooter>
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 px-4 text-white/60 hover:text-white/90"
+            className="h-9 px-4 text-white/65 hover:text-white/90"
             onClick={() => onOpenChange(false)}
           >
             {t('sync.config.cancel')}
@@ -511,7 +511,7 @@ function DeleteConfigDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-tagline">{t('sync.config.deleteTitle')}</DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60 break-words">
+          <DialogDescription className="font-text text-caption text-white/65 break-words">
             {config ? `${config.name} · ${t('sync.config.deleteDesc')}` : ''}
           </DialogDescription>
         </DialogHeader>
@@ -519,7 +519,7 @@ function DeleteConfigDialog({
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 px-4 text-white/60 hover:text-white/90"
+            className="h-9 px-4 text-white/65 hover:text-white/90"
             onClick={() => onOpenChange(false)}
           >
             {t('sync.config.cancel')}

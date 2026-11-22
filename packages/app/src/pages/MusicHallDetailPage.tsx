@@ -283,13 +283,13 @@ export function MusicHallDetailPage() {
   return (
     <PageLayout header={<BackBar onBack={goBack} />}>
       {loading && rows.length === 0 ? (
-        <div className="flex items-center justify-center py-20 text-white/40">
+        <div className="flex items-center justify-center py-20 text-white/50">
           <Loader2 className="h-5 w-5 animate-spin" strokeWidth={1.6} />
         </div>
       ) : error ? (
         // 错误态必须能给重试入口：上游偶发超时/限流时，用户不该被迫退出再进
         <div className="inset-note flex items-center justify-between gap-3 px-4 py-3">
-          <span className="font-text text-[12px] text-white/60 truncate">{error}</span>
+          <span className="font-text text-[12px] text-white/65 truncate">{error}</span>
           <button
             type="button"
             className="btn-icon flex-shrink-0"
@@ -319,9 +319,9 @@ export function MusicHallDetailPage() {
               title={title}
               icon={
                 isToplist ? (
-                  <TrendingUp className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
+                  <TrendingUp className="h-5 w-5 text-mint-text flex-shrink-0" strokeWidth={1.6} />
                 ) : (
-                  <Sparkles className="h-5 w-5 text-mint flex-shrink-0" strokeWidth={1.6} />
+                  <Sparkles className="h-5 w-5 text-mint-text flex-shrink-0" strokeWidth={1.6} />
                 )
               }
               covers={heroCovers}
@@ -348,7 +348,7 @@ export function MusicHallDetailPage() {
 
             {/* 列头：长列表没有列头时，每一行都是一段无从对齐的裸文本；有了它整块
                 才读成一张表。宽度与行内的三列严格一致（w-6 / w-9 / flex-1 / w-12） */}
-            <div className="flex items-center gap-3 px-2 pb-2 mb-1 border-b border-white/[0.06] font-text text-[12px] text-white/35">
+            <div className="flex items-center gap-3 px-2 pb-2 mb-1 border-b border-white/[0.06] font-text text-[12px] text-white/50">
               <span className="w-6 flex-shrink-0 text-center">#</span>
               <span className="w-9 flex-shrink-0" />
               <span className="flex-1">{t('hall.detail.column.song')}</span>
@@ -396,20 +396,20 @@ export function MusicHallDetailPage() {
                       {/* 序号列兼作播放键：hover 时序号让位给播放三角，这是「这一行可点」最省地方的暗示 */}
                       <span className="w-6 flex-shrink-0 flex items-center justify-center">
                         {isCurrent ? (
-                          <Volume2 className="h-3.5 w-3.5 text-mint" strokeWidth={1.8} />
+                          <Volume2 className="h-3.5 w-3.5 text-mint-text" strokeWidth={1.8} />
                         ) : (
                           <>
                             <span
                               className={cn(
                                 'font-text text-[12px] tabular-nums group-hover:hidden',
                                 // 前三名高亮只对榜单成立：歌单的序号只是行号，没有名次语义
-                                isToplist && row.rank <= 3 ? 'text-mint font-semibold' : 'text-white/40'
+                                isToplist && row.rank <= 3 ? 'text-mint-text font-semibold' : 'text-white/50'
                               )}
                             >
                               {row.rank}
                             </span>
                             <Play
-                              className="hidden group-hover:block h-3.5 w-3.5 text-mint"
+                              className="hidden group-hover:block h-3.5 w-3.5 text-mint-text"
                               strokeWidth={1.8}
                               fill="currentColor"
                             />
@@ -423,17 +423,17 @@ export function MusicHallDetailPage() {
                         <span
                           className={cn(
                             'block font-text text-body truncate tracking-[-0.2px]',
-                            isCurrent ? 'text-mint' : 'text-white/88'
+                            isCurrent ? 'text-mint-text' : 'text-white/90'
                           )}
                         >
                           {row.title}
                         </span>
-                        <span className="block font-text text-caption text-white/45 truncate tracking-[-0.12px] mt-0.5">
+                        <span className="block font-text text-caption text-white/50 truncate tracking-[-0.12px] mt-0.5">
                           {row.artist}
                         </span>
                       </span>
                       {hasDuration && (
-                        <span className="font-text text-caption text-white/35 tabular-nums w-12 text-right flex-shrink-0">
+                        <span className="font-text text-caption text-white/50 tabular-nums w-12 text-right flex-shrink-0">
                           {row.duration > 0 ? formatTime(row.duration) : '--:--'}
                         </span>
                       )}

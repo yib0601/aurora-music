@@ -63,7 +63,7 @@ export type LibrarySourceStatus = { loading?: boolean; ok?: boolean; message?: s
  * 候选项来自探测结论（整张平台表，判定口径见 lxSourceForm 的 lxPlatformChoices）；
  * 还没探测过时只能看到已保存的那一项 —— 不能让用户因为没点「测试」而以为值丢了。
  */
-const lxSelectCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70 cursor-pointer'
+const lxSelectCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/85 cursor-pointer'
 
 function LxPlatformField({
   result,
@@ -97,7 +97,7 @@ function LxPlatformField({
         ))}
         {orphan && <option value={orphan}>{t(lxPlatformLabelKey(orphan))}</option>}
       </select>
-      <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.lxPlatformHint')}</p>
+      <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.lxPlatformHint')}</p>
     </div>
   )
 }
@@ -293,7 +293,7 @@ export function SourceConfigCard({
     setEditing(false)
   }
 
-  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
+  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/85'
 
   return (
     <div className={`inset-row px-3.5 py-3 ${enabled ? '' : 'opacity-55'}`}>
@@ -324,13 +324,13 @@ export function SourceConfigCard({
             <span className="flex items-center gap-1 flex-shrink-0">
               {isLx ? (
                 <>
-                  <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
+                  <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint-text/80">
                     {t('sources.capability.lxScript')}
                   </span>
                   {/* 认领了平台才多说一句：这类脚本大多只能取址，标出它认领谁，
                       用户才知道「其他源搜到的这个平台的歌会走它」 */}
                   {claimedPlatform && (
-                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/55">
+                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/65">
                       {t('sources.form.lxPlatformBadge', {
                         platform: t(lxPlatformLabelKey(claimedPlatform)),
                       })}
@@ -339,19 +339,19 @@ export function SourceConfigCard({
                 </>
               ) : isPlaylist ? (
                 sourceUrl.trim() && (
-                  <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
+                  <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint-text/80">
                     {t('sources.capability.playlist')}
                   </span>
                 )
               ) : (
                 <>
                   {sourceUrl.trim() && (
-                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint/80">
+                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-mint/10 text-mint-text/80">
                       {t('sources.capability.search')}
                     </span>
                   )}
                   {(playlistUrl || '').trim() && (
-                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/55">
+                    <span className="font-text text-[10px] leading-none px-1.5 py-1 rounded-[6px] bg-white/[0.06] text-white/65">
                       {t('sources.capability.playlist')}
                     </span>
                   )}
@@ -380,7 +380,7 @@ export function SourceConfigCard({
             variant="ghost"
             size="icon"
             title={t('common.action.edit')}
-            className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
+            className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/50 hover:text-mint-text hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
             <Pencil className="h-4 w-4" strokeWidth={1.6} />
@@ -390,7 +390,7 @@ export function SourceConfigCard({
           variant="ghost"
           size="icon"
           title={t('common.action.remove')}
-          className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
+          className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/50 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -409,7 +409,7 @@ export function SourceConfigCard({
                 onChange={(e) => setLinkDraft(e.target.value)}
                 className={inputCls}
               />
-              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.playlistUrlHint')}</p>
+              <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.playlistUrlHint')}</p>
             </div>
           ) : isLx ? (
             /* 洛雪脚本源：只有一条脚本链接 + 可选请求头，端点与密钥那套对它不适用 */
@@ -426,7 +426,7 @@ export function SourceConfigCard({
                 error={lxLinkError}
                 compact
               />
-              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.scriptHint')}</p>
+              <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.scriptHint')}</p>
               {/* 探测成功后才给选，或已有保存值（此时即便没探测也要能看见、能改） */}
               {(lxProbe.ok && lxProbe.result) || platformDraft ? (
                 <LxPlatformField result={lxProbe.result} value={platformDraft} onChange={setPlatformDraft} />
@@ -451,13 +451,13 @@ export function SourceConfigCard({
                 {linkError ? (
                   <p className="font-text text-caption text-coral/70 mt-1">{renderError(linkError, t)}</p>
                 ) : isService ? (
-                  <p className="font-text text-caption text-mint/70 mt-1">
+                  <p className="font-text text-caption text-mint-text/70 mt-1">
                     {parsed?.apiKey ? t('sources.form.sourceDetectedWithKey') : t('sources.form.sourceDetected')}
                   </p>
                 ) : parsed ? (
-                  <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.templateDetected')}</p>
+                  <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.templateDetected')}</p>
                 ) : (
-                  <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.sourceHint')}</p>
+                  <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.sourceHint')}</p>
                 )}
               </div>
 
@@ -477,7 +477,7 @@ export function SourceConfigCard({
                   {playlistError ? (
                     <p className="font-text text-caption text-coral/70 mt-1">{renderError(playlistError, t)}</p>
                   ) : (
-                    <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.playlistHint')}</p>
+                    <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.playlistHint')}</p>
                   )}
                 </div>
               )}
@@ -501,7 +501,7 @@ export function SourceConfigCard({
                   {probe.message && (
                     /* min-w-0：与左侧 flex-shrink-0 的测试按钮并排，缺了它 truncate 不生效
                        —— flex 子项的自动最小尺寸就是整句文本的宽度，窄屏会被它顶出卡片 */
-                    <p className={`min-w-0 font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}>
+                    <p className={`min-w-0 font-text text-caption truncate ${probe.ok ? 'text-mint-text/80' : 'text-coral/80'}`}>
                       {renderError(probe.message, t)}
                     </p>
                   )}
@@ -511,13 +511,13 @@ export function SourceConfigCard({
                 <div className="mt-2 space-y-0.5">
                   {/* 先回显软件从这条链接里提取出的服务地址：用户填的可能是裸域名、
                       带 key 的域名，或一条完整端点地址，不写清楚他会以为判定错了 */}
-                  <p className="font-text text-caption text-white/35 truncate">
+                  <p className="font-text text-caption text-white/50 truncate">
                     {t('sources.form.previewService', { url: parsed?.baseUrl ?? '' })}
                   </p>
-                  <p className="font-text text-caption text-white/35 truncate">
+                  <p className="font-text text-caption text-white/50 truncate">
                     {t('sources.form.previewSearch', { url: maskPreview(compactEndpointUrl(preview.search)) })}
                   </p>
-                  <p className="font-text text-caption text-white/35 truncate">
+                  <p className="font-text text-caption text-white/50 truncate">
                     {t('sources.form.previewPlaylist', { url: maskPreview(compactEndpointUrl(preview.playlist)) })}
                   </p>
                 </div>
@@ -530,7 +530,7 @@ export function SourceConfigCard({
             <button
               type="button"
               onClick={() => setShowHeaders((v) => !v)}
-              className="font-text text-caption text-white/45 hover:text-white/70 transition-colors duration-200"
+              className="font-text text-caption text-white/50 hover:text-white/85 transition-colors duration-200"
             >
               {t('sources.form.headersLabel')}
             </button>
@@ -556,7 +556,7 @@ export function SourceConfigCard({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-3 text-white/60 hover:text-white/90"
+              className="h-8 px-3 text-white/65 hover:text-white/90"
               onClick={() => setEditing(false)}
             >
               {t('common.action.cancel')}
@@ -754,7 +754,7 @@ export function SourceConfigAddDialog({
     onOpenChange(false)
   }
 
-  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
+  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/85'
 
   return (
     <Dialog
@@ -769,7 +769,7 @@ export function SourceConfigAddDialog({
           <DialogTitle className="text-white text-tagline">
             {isLx ? t('sources.form.titleLx') : isPlaylist ? t('sources.form.playlistUrlLabel') : t('sources.form.title')}
           </DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60">
+          <DialogDescription className="font-text text-caption text-white/65">
             {isLx
               ? t('sources.form.descLx')
               : isPlaylist
@@ -779,7 +779,7 @@ export function SourceConfigAddDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.nameLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.form.nameLabel')}</p>
             <input
               type="text"
               value={name}
@@ -797,7 +797,7 @@ export function SourceConfigAddDialog({
 
           {isPlaylist ? (
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.playlistUrlLabel')}</p>
+              <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.form.playlistUrlLabel')}</p>
               <input
                 type="text"
                 value={linkDraft}
@@ -805,11 +805,11 @@ export function SourceConfigAddDialog({
                 onChange={(e) => setLinkDraft(e.target.value)}
                 className={inputCls}
               />
-              <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.playlistUrlHint')}</p>
+              <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.playlistUrlHint')}</p>
             </div>
           ) : isLx ? (
             <div>
-              <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.scriptLabel')}</p>
+              <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.form.scriptLabel')}</p>
               <LxScriptProbe
                 url={linkDraft}
                 headers={headers}
@@ -821,7 +821,7 @@ export function SourceConfigAddDialog({
                 error={lxLinkError}
               />
               {!lxLinkError && (
-                <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.scriptHint')}</p>
+                <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.scriptHint')}</p>
               )}
               {/* 探测成功后才出现：平台表来自脚本自报，没探测就无从列出候选 */}
               {(lxProbe.ok && lxProbe.result) || lxPlatform ? (
@@ -831,7 +831,7 @@ export function SourceConfigAddDialog({
           ) : (
             <>
               <div>
-                <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.sourceLabel')}</p>
+                <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.form.sourceLabel')}</p>
                 <input
                   type="text"
                   value={linkDraft}
@@ -846,19 +846,19 @@ export function SourceConfigAddDialog({
                 {linkError ? (
                   <p className="font-text text-caption text-coral/70 mt-1">{renderError(linkError, t)}</p>
                 ) : isService ? (
-                  <p className="font-text text-caption text-mint/70 mt-1">
+                  <p className="font-text text-caption text-mint-text/70 mt-1">
                     {parsed?.apiKey ? t('sources.form.sourceDetectedWithKey') : t('sources.form.sourceDetected')}
                   </p>
                 ) : parsed ? (
-                  <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.templateDetected')}</p>
+                  <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.templateDetected')}</p>
                 ) : (
-                  <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.sourceHint')}</p>
+                  <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.sourceHint')}</p>
                 )}
               </div>
               {/* 歌单解析接口只在接口模板形态下手填：服务地址形态的该端点由软件派生 */}
               {showPlaylist && (
                 <div>
-                  <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.playlistLabel')}</p>
+                  <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.form.playlistLabel')}</p>
                   <input
                     type="text"
                     value={playlistUrl}
@@ -869,7 +869,7 @@ export function SourceConfigAddDialog({
                   {playlistError ? (
                     <p className="font-text text-caption text-coral/70 mt-1">{renderError(playlistError, t)}</p>
                   ) : (
-                    <p className="font-text text-caption text-white/35 mt-1">{t('sources.form.playlistHintDialog')}</p>
+                    <p className="font-text text-caption text-white/50 mt-1">{t('sources.form.playlistHintDialog')}</p>
                   )}
                 </div>
               )}
@@ -891,20 +891,20 @@ export function SourceConfigAddDialog({
                       {probe.loading ? t('sources.probe.testing') : t('sources.probe.testConnection')}
                     </Button>
                     {probe.message && (
-                      <p className={`font-text text-caption truncate ${probe.ok ? 'text-mint/80' : 'text-coral/80'}`}>
+                      <p className={`font-text text-caption truncate ${probe.ok ? 'text-mint-text/80' : 'text-coral/80'}`}>
                         {renderError(probe.message, t)}
                       </p>
                     )}
                   </div>
                   {preview && (
                     <div className="space-y-0.5">
-                      <p className="font-text text-caption text-white/35 truncate">
+                      <p className="font-text text-caption text-white/50 truncate">
                         {t('sources.form.previewService', { url: parsed?.baseUrl ?? '' })}
                       </p>
-                      <p className="font-text text-caption text-white/35 truncate">
+                      <p className="font-text text-caption text-white/50 truncate">
                         {t('sources.form.previewSearch', { url: maskKey(compactEndpointUrl(preview.search)) })}
                       </p>
-                      <p className="font-text text-caption text-white/35 truncate">
+                      <p className="font-text text-caption text-white/50 truncate">
                         {t('sources.form.previewPlaylist', { url: maskKey(compactEndpointUrl(preview.playlist)) })}
                       </p>
                     </div>
@@ -915,7 +915,7 @@ export function SourceConfigAddDialog({
           )}
 
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.form.headersLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.form.headersLabel')}</p>
             <textarea
               value={headersDraft}
               placeholder={'{"Authorization": "Bearer ..."}'}
@@ -931,7 +931,7 @@ export function SourceConfigAddDialog({
           </div>
         </div>
         <DialogFooter className="sm:space-x-2">
-          <Button variant="ghost" size="sm" className="h-9 px-3.5 text-white/70" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" size="sm" className="h-9 px-3.5 text-white/85" onClick={() => onOpenChange(false)}>
             {t('common.action.cancel')}
           </Button>
           <Button
@@ -1046,7 +1046,7 @@ export function StorageConfigCard({
     setEditing(false)
   }
 
-  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
+  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/85'
 
   /** 卡片副标题：插件展示名 + 各字段摘要（不含口令），用户一眼能分辨是哪台设备 */
   const subtitle = plugin
@@ -1076,7 +1076,7 @@ export function StorageConfigCard({
   return (
     <div className="inset-row px-3.5 py-3">
       <div className="flex items-center gap-2">
-        <Cloud className="h-4 w-4 text-mint flex-shrink-0" strokeWidth={1.6} />
+        <Cloud className="h-4 w-4 text-mint-text flex-shrink-0" strokeWidth={1.6} />
         <div className="min-w-0 flex-1">
           <p className="font-text text-caption-strong text-white/85 truncate">{source.name}</p>
           <p className="font-text text-caption text-white/50 truncate">{subtitle}</p>
@@ -1102,7 +1102,7 @@ export function StorageConfigCard({
             variant="ghost"
             size="icon"
             title={t('common.action.edit')}
-            className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-mint hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
+            className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/50 hover:text-mint-text hover:bg-mint/10 transition-colors duration-200 ease-mineradio"
             onClick={startEditing}
           >
             <Pencil className="h-4 w-4" strokeWidth={1.6} />
@@ -1112,7 +1112,7 @@ export function StorageConfigCard({
           variant="ghost"
           size="icon"
           title={t('sources.webdav.removeTitle', { library: t(NAV_LABEL_KEYS.library) })}
-          className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/40 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
+          className="h-7 w-7 flex-shrink-0 rounded-[8px] text-white/50 hover:text-coral hover:bg-coral/10 transition-colors duration-200 ease-mineradio"
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
@@ -1142,7 +1142,7 @@ export function StorageConfigCard({
                 <div className="flex items-center gap-2 mt-1">
                   <p
                     className={`font-text text-caption ${
-                      credential.encryptionAvailable ? 'text-white/40' : 'text-coral/70'
+                      credential.encryptionAvailable ? 'text-white/50' : 'text-coral/70'
                     }`}
                   >
                     {credentialLabel}
@@ -1155,7 +1155,7 @@ export function StorageConfigCard({
                           if (state) setCredential(state)
                         })
                       }
-                      className="font-text text-caption text-white/40 hover:text-coral/80 underline underline-offset-2"
+                      className="font-text text-caption text-white/50 hover:text-coral/80 underline underline-offset-2"
                     >
                       {t('sources.webdav.clearCredential')}
                     </button>
@@ -1178,7 +1178,7 @@ export function StorageConfigCard({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-3 text-white/60 hover:text-white/90"
+              className="h-8 px-3 text-white/65 hover:text-white/90"
               onClick={() => setEditing(false)}
             >
               {t('common.action.cancel')}
@@ -1207,7 +1207,7 @@ export function StorageConfigCard({
             {t('sources.webdav.scan')}
           </Button>
           {status.message && (
-            <p className={`font-text text-caption truncate ${status.ok ? 'text-mint/80' : 'text-coral/80'}`}>
+            <p className={`font-text text-caption truncate ${status.ok ? 'text-mint-text/80' : 'text-coral/80'}`}>
               {status.message}
             </p>
           )}
@@ -1296,7 +1296,7 @@ export function StorageConfigAddDialog({
     onOpenChange(false)
   }
 
-  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/70'
+  const inputCls = 'inset-field w-full px-2.5 py-1.5 font-text text-caption text-white/85'
 
   return (
     <Dialog
@@ -1311,13 +1311,13 @@ export function StorageConfigAddDialog({
           <DialogTitle className="text-white text-tagline">
             {plugin ? t(plugin.displayNameKey) : t('sources.webdav.title')}
           </DialogTitle>
-          <DialogDescription className="font-text text-caption text-white/60">
+          <DialogDescription className="font-text text-caption text-white/65">
             {plugin?.descriptionKey ? t(plugin.descriptionKey) : t('sources.webdav.desc')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <p className="font-text text-caption text-white/60 mb-1.5">{t('sources.webdav.nameLabel')}</p>
+            <p className="font-text text-caption text-white/65 mb-1.5">{t('sources.webdav.nameLabel')}</p>
             <input
               type="text"
               value={name}
@@ -1331,7 +1331,7 @@ export function StorageConfigAddDialog({
             const error = fieldError(field, raw)
             return (
               <div key={field.key}>
-                <p className="font-text text-caption text-white/60 mb-1.5">{t(field.labelKey)}</p>
+                <p className="font-text text-caption text-white/65 mb-1.5">{t(field.labelKey)}</p>
                 <input
                   type={field.kind === 'password' ? 'password' : 'text'}
                   value={raw}
@@ -1340,20 +1340,20 @@ export function StorageConfigAddDialog({
                   className={`${inputCls} ${error ? 'is-invalid' : ''}`}
                   autoComplete={field.kind === 'password' ? 'new-password' : 'off'}
                 />
-                {field.hintKey && <p className="font-text text-caption text-white/40 mt-1">{t(field.hintKey)}</p>}
+                {field.hintKey && <p className="font-text text-caption text-white/50 mt-1">{t(field.hintKey)}</p>}
               </div>
             )
           })}
           {/* 口令去向的说明：与协议无关，由表单统一给出（不是某个字段的 hint） */}
           {fields.some((f) => f.kind === 'password') && (
-            <p className="font-text text-caption text-white/40">{t('sources.webdav.credentialHint')}</p>
+            <p className="font-text text-caption text-white/50">{t('sources.webdav.credentialHint')}</p>
           )}
         </div>
         <DialogFooter>
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 px-4 text-white/60 hover:text-white/90"
+            className="h-9 px-4 text-white/65 hover:text-white/90"
             onClick={() => onOpenChange(false)}
           >
             {t('common.action.cancel')}
