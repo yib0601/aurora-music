@@ -85,6 +85,19 @@ function tmpDir(): string {
   return dir
 }
 
+/**
+ * 把文件的 mtime 拨回 30 秒前，模拟「早已落盘完成」。
+ *
+ * 扫描器有一条**静默期**闸门（shared/encryptedAudio 的 `isStillDownloading`）：
+ * mtime 在 ENCRYPTED_SETTLE_MS 内的文件视为「平台正在写」，本次不上报。
+ * 测试里刚 writeFileSync 出来的文件正好落在窗口内，因此凡是要断言「会上报」的
+ * 夹具都必须先过这一道——否则测的就不是识别逻辑，而是时钟。
+ */
+function settle(filePath: string, ageMs = 30_000): void {
+  const when = new Date(Date.now() - ageMs)
+  fs.utimesSync(filePath, when, when)
+}
+
 afterEach(() => {
   if (dir) fs.rmSync(dir, { recursive: true, force: true })
   vi.clearAllMocks()
@@ -93,8 +106,10 @@ afterEach(() => {
 describe('scanFolder 的加密文件上报', () => {
   it('密文文件被认出并上报，且不进曲库；同目录的正常文件照常入库', async () => {
     const root = tmpDir()
-    fs.writeFileSync(path.join(root, '陈奕迅 - 十年 [mqms2].mflac0.flac'), cipherBuffer())
+    const cipher = path.join(root, '陈奕迅 - 十年 [mqms2].mflac0.flac')
+    fs.writeFileSync(cipher, cipherBuffer())
     fs.writeFileSync(path.join(root, '晴天.wav'), wavBuffer())
+    settle(cipher)
 
     const hits: EncryptedAudioFile[] = []
     const tracks = await scanFolder(
@@ -173,7 +188,9 @@ describe('importAudioFile', () => {
 describe('裸加密扩展名的收集', () => {
   it('`.mflac`（PC 端命名，没有追加容器后缀）同样被收集并上报', async () => {
     const root = tmpDir()
-    fs.writeFileSync(path.join(root, '陈奕迅 - 十年.mflac'), cipherBuffer())
+    const cipher = path.join(root, '陈奕迅 - 十年.mflac')
+    fs.writeFileSync(cipher, cipherBuffer())
+    settle(cipher)
 
     const hits: EncryptedAudioFile[] = []
     await scanFolder(
@@ -185,5 +202,130 @@ describe('裸加密扩展名的收集', () => {
 
     expect(hits).toHaveLength(1)
     expect(hits[0]).toMatchObject({ family: 'qqmusic', token: 'mflac', title: '十年', artist: '陈奕迅' })
+  })
+})
+
+describe('「仍在下载」的文件不上报（批量替换期间的核心安全闸门）', () => {
+  /**
+   * 为什么这组必须存在：QQ 音乐 / 本应用自己下载时，目录里先出现的就是最终文件名，
+   * 而加密标记就写在名字里。若照常上报，用户会在下载进行中看到一批「待处理」，
+   * 点「替换」就把正在写的文件移进回收站 —— 平台的下载直接报废，且不可恢复
+   * （文件半截，回收站里也没有完整版）。
+   */
+
+  it('名字带 .part 的中间文件既不入库、也不上报成全集的成员', async () => {
+    const root = tmpDir()
+    // 名字里加密标记齐全，只有末尾的 .part 说明它还在写
+    const mid = path.join(root, '陈奕迅 - 十年 [mqms2].mflac0.flac.part')
+    fs.writeFileSync(mid, cipherBuffer())
+    settle(mid)
+
+    const hits: EncryptedAudioFile[] = []
+    const tracks = await scanFolder(
+      root,
+      path.join(root, '.userdata'),
+      undefined,
+      (file) => hits.push(file)
+    )
+
+    expect(tracks).toEqual([])
+    expect(hits).toEqual([])
+  })
+
+  it('刚写完（mtime 在静默期内）的密文本次不上报，静默期过后才上报', async () => {
+    const root = tmpDir()
+    const cipher = path.join(root, '陈奕迅 - 十年 [mqms2].mflac0.flac')
+    fs.writeFileSync(cipher, cipherBuffer())
+    // 不 settle：mtime 就是现在，处于静默期内
+
+    const firstRound: EncryptedAudioFile[] = []
+    await scanFolder(root, path.join(root, '.userdata'), undefined, (f) => firstRound.push(f))
+    expect(firstRound).toEqual([])
+
+    // 模拟「平台写完了，过了静默期，下次扫描」
+    settle(cipher)
+    const secondRound: EncryptedAudioFile[] = []
+    await scanFolder(root, path.join(root, '.userdata'), undefined, (f) => secondRound.push(f))
+    expect(secondRound).toHaveLength(1)
+    expect(secondRound[0]).toMatchObject({ token: 'mflac0', title: '十年' })
+  })
+
+  it('正常音频即使刚写完也照常入库（静默期只作用于「解析失败 + 认得出加密标记」这条窄路）', async () => {
+    const root = tmpDir()
+    // 不 settle：正常文件不该被静默期拖住
+    fs.writeFileSync(path.join(root, '晴天.wav'), wavBuffer())
+
+    const tracks = await scanFolder(root, path.join(root, '.userdata'))
+
+    expect(tracks.map((t) => t.title)).toEqual(['晴天'])
+  })
+})
+
+/**
+ * 「被静默期挡下的文件」必须能被调用方看见。
+ *
+ * 端侧靠这一条回调决定要不要安排补扫：一批下载里**最后一首**写完后再没有任何
+ * 文件事件，不补扫它就要等到下次启动或手动重扫才出现在「待处理」里。
+ * 而 `none`（真损坏）与 `deferred`（还在写）必须区分清楚——判反了会让一批坏文件
+ * 把补扫额度耗光，真正在下载的文件反而补不上。
+ */
+describe('静默期挡下的文件通过 onDeferredEncrypted 上报', () => {
+  it('刚写完的密文走 deferred，不进上报全集', async () => {
+    const root = tmpDir()
+    const cipher = path.join(root, '陈奕迅 - 十年 [mqms2].mflac0.flac')
+    fs.writeFileSync(cipher, cipherBuffer())
+    // 不 settle：mtime 就是现在
+
+    const reported: EncryptedAudioFile[] = []
+    const deferred: string[] = []
+    await scanFolder(
+      root,
+      path.join(root, '.userdata'),
+      undefined,
+      (f) => reported.push(f),
+      (p) => deferred.push(p)
+    )
+
+    expect(reported).toEqual([])
+    expect(deferred).toEqual([cipher])
+  })
+
+  it('真损坏的文件（认不出加密标记）走 none：既不上报也不推迟，否则会白耗补扫额度', async () => {
+    const root = tmpDir()
+    fs.writeFileSync(path.join(root, '坏文件.flac'), cipherBuffer(2048))
+    // 不 settle，保证「不走 deferred」不是被静默期碰巧挡下的结果
+
+    const reported: EncryptedAudioFile[] = []
+    const deferred: string[] = []
+    await scanFolder(
+      root,
+      path.join(root, '.userdata'),
+      undefined,
+      (f) => reported.push(f),
+      (p) => deferred.push(p)
+    )
+
+    expect(reported).toEqual([])
+    expect(deferred).toEqual([])
+  })
+
+  it('已过静默期的密文走 encrypted，不会被重复算成 deferred（两者互斥）', async () => {
+    const root = tmpDir()
+    const cipher = path.join(root, '陈奕迅 - 十年 [mqms2].mflac0.flac')
+    fs.writeFileSync(cipher, cipherBuffer())
+    settle(cipher)
+
+    const reported: EncryptedAudioFile[] = []
+    const deferred: string[] = []
+    await scanFolder(
+      root,
+      path.join(root, '.userdata'),
+      undefined,
+      (f) => reported.push(f),
+      (p) => deferred.push(p)
+    )
+
+    expect(reported).toHaveLength(1)
+    expect(deferred).toEqual([])
   })
 })

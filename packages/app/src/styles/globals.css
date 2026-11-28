@@ -920,6 +920,26 @@ html:not(.dark) .text-white\/70 { color: rgb(var(--tw-white) / .88); }
   /* 校验失败：只在出错时显形 */
   .inset-field.is-invalid { border-color: rgb(var(--tw-coral) / .55); }
 
+  /* ===== 多选框（加密音频批量替换的列表选择）=====
+   * 原生 `<input type=checkbox>` 的勾选色由 `accent-color` 决定（Chrome 93+），
+   * 车机老 WebView（84–87）不认这个属性，会落成系统默认的蓝。
+   * 所以不写 `accent-mint` 这类 Tailwind 工具类，而是：
+   *   1. 显式给尺寸与 cursor —— 列表行里的复选框必须可点得出面积；
+   *   2. `accent-color` 只作为**现代引擎上的着色**，老引擎退回默认色即可
+   *      （功能完全不受影响，只是少了品牌青）；
+   *   3. 聚焦环只写 `:focus`（理由同 .inset-field：`:focus-visible` 会拖垮整条规则）。 */
+  .enc-check {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: rgb(var(--tw-mint));
+  }
+  .enc-check:focus {
+    outline: 1px solid rgb(var(--tw-mint) / .55);
+    outline-offset: 1px;
+  }
+  .enc-check:disabled { cursor: default; }
+
   /* 浅色主题下白描边翻转为深墨，同一档 alpha 在浅底上偏淡，提一档
    * （同样只写 `:focus`，理由见上一条） */
   html:not(.dark) .inset-field:focus { border-color: rgb(var(--tw-white) / .26); }

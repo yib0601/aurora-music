@@ -5,6 +5,8 @@ import {
   parseEncryptedAudioName,
   isEncryptedAudioName,
   isIncompleteScanRecord,
+  isInProgressDownloadName,
+  isStillDownloading,
 } from '@aurora/shared'
 import type { EncryptedAudioFile } from '@aurora/shared'
 import * as mm from 'music-metadata-browser'
@@ -35,6 +37,9 @@ async function walkDir(dirPath: string, files: string[] = []): Promise<string[]>
     if (entry.type === 'directory' && !entry.name.startsWith('.')) {
       await walkDir(fullPath, files)
     } else if (entry.type === 'file') {
+      // 下载器正在写的中间文件直接跳过：既别当曲目解析，也别当加密文件上报
+      // （见 shared/encryptedAudio 的 isInProgressDownloadName）
+      if (isInProgressDownloadName(entry.name)) continue
       const ext = entry.name.split('.').pop()?.toLowerCase()
       // 裸加密扩展名（`.mflac` / `.mgg` / `.qmcflac`）也要收：解析必然失败，
       // 但正是那条失败路径才能把它上报成「加密音频」（见 encryptedFileOf）
@@ -226,16 +231,46 @@ const SCAN_CONCURRENCY = 4
  * 与桌面端同一判据（shared/encryptedAudio），只在解析失败处调用：
  * 这类文件扩展名合法、内容不是容器，唯一可靠线索是文件名里的平台标记。
  * 返回 null 表示不是加密文件，维持旧行为——静默跳过。
+ *
+ * **仍在下载的文件一律不上报**（`isStillDownloading`）：QQ 音乐等平台写盘时
+ * 目录里已经是最终文件名，字节还没写完；把它上报成「待处理」，用户点「替换」
+ * 就会把正在写的文件移进隔离目录，平台下载直接报废。名字带 `.part` 之类的
+ * 一眼能挡；直接写最终名的写入方只能靠 mtime 静默期判定（多一次 stat，
+ * 且只在「解析失败 + 名字认得出」这条窄路上发生）。
  */
-function encryptedFileOf(filePath: string): EncryptedAudioFile | null {
+/**
+ * 一个解析失败的文件，在「加密识别」这一步的三种归宿。
+ *
+ * 分 `deferred` 出来的理由与桌面端一致：调用方要区分「这不是加密文件（真损坏）」
+ * 与「看起来是加密文件但还在写」——后者再等一会儿就会变成待处理项，值得补扫一次。
+ */
+type EncryptedFileProbe =
+  | { kind: 'none' }
+  | { kind: 'deferred' }
+  | { kind: 'encrypted'; file: EncryptedAudioFile }
+
+async function encryptedFileOf(filePath: string): Promise<EncryptedFileProbe> {
   const parsed = parseEncryptedAudioName(filePath)
-  if (!parsed) return null
+  if (!parsed) return { kind: 'none' }
+  let mtimeMs: number | undefined
+  try {
+    const stat = await Filesystem.stat({ path: filePath, directory: Directory.ExternalStorage })
+    mtimeMs = typeof stat.mtime === 'number' ? stat.mtime : undefined
+  } catch {
+    // 取不到 mtime 就不做静默期判断：宁可本次上报（用户还能取消），
+    // 也不要因为一次 stat 失败让真正的加密文件永远不出现
+    mtimeMs = undefined
+  }
+  if (isStillDownloading(filePath.split('/').pop() || filePath, mtimeMs)) return { kind: 'deferred' }
   return {
-    path: filePath,
-    family: parsed.family,
-    token: parsed.token,
-    title: parsed.title,
-    artist: parsed.artist,
+    kind: 'encrypted',
+    file: {
+      path: filePath,
+      family: parsed.family,
+      token: parsed.token,
+      title: parsed.title,
+      artist: parsed.artist,
+    },
   }
 }
 
@@ -262,7 +297,8 @@ export async function scanFolder(
   rootPath: string,
   db: MobileDatabase,
   onTrack?: (track: Track) => void,
-  onEncryptedFile?: (file: EncryptedAudioFile) => void
+  onEncryptedFile?: (file: EncryptedAudioFile) => void,
+  onDeferredEncrypted?: (filePath: string) => void
 ): Promise<Track[]> {
   console.log('[Mobile] scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
@@ -429,8 +465,11 @@ export async function scanFolder(
           // 解析失败且文件名带平台加密标记：上报给 UI 供「按名重下」，
           // 不进曲库（内容解不开，进了也播不了）。并发顺序无关紧要
           if (!parsed[i]) {
-            const encrypted = encryptedFileOf(files[i])
-            if (encrypted) onEncryptedFile?.(encrypted)
+            const probe = await encryptedFileOf(files[i])
+            if (probe.kind === 'encrypted') onEncryptedFile?.(probe.file)
+            // 还在静默期：本次不上报，但告诉调用方「等一会儿它就会出现」，
+            // 由调用方安排补扫（移动端没有目录 watcher，不补就只能等手动重扫）
+            else if (probe.kind === 'deferred') onDeferredEncrypted?.(files[i])
           }
         } finally {
           settled[i] = true

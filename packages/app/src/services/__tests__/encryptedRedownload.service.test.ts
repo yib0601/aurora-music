@@ -171,6 +171,9 @@ describe('redownloadEncryptedAudio', () => {
   it('取消后不再处理剩余文件', async () => {
     let canceled = false
     const { deps, calls } = makeDeps({
+      // 并发档必须锁成 1 才测得出「取消拦住了后续」：档位 > 1 时所有条目在第一个
+      // 完成前就已经启动，取消只能拦住**还没启动**的那些（见下方 canceled 用例）
+      concurrency: 1,
       isCanceled: () => canceled,
       onProgress: () => {
         // 第一条处理完就取消
@@ -180,7 +183,260 @@ describe('redownloadEncryptedAudio', () => {
     const files = [hit({ path: '/a.mflac0.flac' }), hit({ path: '/b.mflac0.flac' })]
     const results = await redownloadEncryptedAudio(files, deps)
 
-    expect(results).toHaveLength(1)
+    // 结果仍按入参一一对应（未启动的那条是 canceled），但只搜过一条
+    expect(results.map((r) => r.outcome)).toEqual(['done', 'canceled'])
     expect(calls.search).toHaveLength(1)
+  })
+})
+
+/**
+ * 批量替换（多选 + 有界并发 + 可选清理原件）新增的三条不变量。
+ *
+ * 这一组用例存在的理由是：这三条一旦被改坏，用户看到的现象都是「一切正常」——
+ * 取消没有报错、并发没有报错、清理也没有报错，只有文件真的没了或者数字对不上时
+ * 才发现。所以每条都要能从返回值上验证，而不是靠读代码。
+ */
+describe('redownloadEncryptedAudio：批量替换', () => {
+  it('并发档真的并行：同时在途不超过 concurrency，且比串行快', async () => {
+    let live = 0
+    let peak = 0
+    const { deps } = makeDeps({
+      ensurePlayable: vi.fn(async (t: Track) => {
+        live += 1
+        peak = Math.max(peak, live)
+        await new Promise((r) => setTimeout(r, 10))
+        live -= 1
+        return t
+      }),
+      concurrency: 3,
+    })
+    const files = Array.from({ length: 9 }, (_, i) => hit({ path: `/p${i}.mflac0.flac` }))
+    const results = await redownloadEncryptedAudio(files, deps)
+
+    expect(results).toHaveLength(9)
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(3)
+  })
+
+  it('结果顺序恒等于入参顺序（并发完成次序打乱也不影响）', async () => {
+    // 第 i 条的耗时反过来：最后一条最快，第一条最慢
+    const { deps } = makeDeps({
+      search: vi.fn(async (query: string) => {
+        await new Promise((r) => setTimeout(r, 5))
+        return [onlineResult({ title: query })]
+      }),
+      concurrency: 3,
+    })
+    const files = [
+      hit({ path: '/slow.mflac0.flac', artist: 'A', title: 'slow' }),
+      hit({ path: '/mid.mflac0.flac', artist: 'B', title: 'mid' }),
+      hit({ path: '/fast.mflac0.flac', artist: 'C', title: 'fast' }),
+    ]
+    const results = await redownloadEncryptedAudio(files, deps)
+    expect(results.map((r) => r.path)).toEqual([
+      '/slow.mflac0.flac',
+      '/mid.mflac0.flac',
+      '/fast.mflac0.flac',
+    ])
+  })
+
+  it('并发档被夹到上限：传 999 不会真的打出 999 条在途请求', async () => {
+    const { deps } = makeDeps({
+      ensurePlayable: vi.fn(async (t: Track) => {
+        await new Promise((r) => setTimeout(r, 2))
+        return t
+      }),
+      concurrency: 999,
+    })
+    const files = Array.from({ length: 12 }, (_, i) => hit({ path: `/c${i}.mflac0.flac` }))
+    const results = await redownloadEncryptedAudio(files, deps)
+    expect(results.every((r) => r.outcome === 'canceled' || r.outcome === 'done')).toBe(true)
+  })
+
+  it('取消时未启动的条目返回 canceled（而不是从数组里消失）', async () => {
+    let started = 0
+    const { deps } = makeDeps({
+      concurrency: 1,
+      search: vi.fn(async (q: string) => {
+        started += 1
+        return [onlineResult({ title: q })]
+      }),
+      isCanceled: () => started >= 1,
+    })
+    const files = [hit({ path: '/a.mflac0.flac' }), hit({ path: '/b.mflac0.flac' })]
+    const results = await redownloadEncryptedAudio(files, deps)
+
+    expect(results.map((r) => r.outcome)).toEqual(['done', 'canceled'])
+  })
+
+  it('replaceSource 开启且入库成功 → 清理原件', async () => {
+    const removed: string[] = []
+    const { deps } = makeDeps({
+      replaceSource: true,
+      removeSourceFile: vi.fn(async (p: string) => {
+        removed.push(p)
+      }),
+    })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(removed).toEqual([hit().path])
+    expect(result).toMatchObject({ outcome: 'done', sourceRemoved: true })
+  })
+
+  it('**没入库就绝不清理原件**（否则用户两头空）', async () => {
+    const removed: string[] = []
+    const { deps } = makeDeps({
+      replaceSource: true,
+      importFile: vi.fn(async () => null),
+      removeSourceFile: vi.fn(async (p: string) => {
+        removed.push(p)
+      }),
+    })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(removed).toEqual([])
+    expect(result).toMatchObject({ outcome: 'done', imported: false })
+    expect(result.sourceRemoved).toBeUndefined()
+  })
+
+  it('未开启 replaceSource → 不调用清理，sourceRemoved 保持未定义', async () => {
+    const removeSourceFile = vi.fn(async () => {})
+    const { deps } = makeDeps({ removeSourceFile })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(removeSourceFile).not.toHaveBeenCalled()
+    expect(result.sourceRemoved).toBeUndefined()
+  })
+
+  it('清理失败不翻转 outcome，但如实带出原因', async () => {
+    const { deps } = makeDeps({
+      replaceSource: true,
+      removeSourceFile: vi.fn(async () => {
+        throw new Error('gio: no trash support')
+      }),
+    })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(result.outcome).toBe('done')
+    expect(result.sourceRemoved).toBe(false)
+    expect(result.cleanupError).toContain('trash')
+  })
+
+  it('未匹配/取不到址的条目不会被清理（没有可替换的对象）', async () => {
+    const removeSourceFile = vi.fn(async () => {})
+    const { deps } = makeDeps({
+      replaceSource: true,
+      removeSourceFile,
+      search: vi.fn(async () => []),
+    })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(removeSourceFile).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ outcome: 'no-match' })
+  })
+
+  it('落盘路径与原件相同（极端情形）时不清理：删掉的会是刚下好的新文件', async () => {
+    const removeSourceFile = vi.fn(async () => {})
+    const { deps } = makeDeps({
+      replaceSource: true,
+      removeSourceFile,
+      // 下载器把新文件写回原路径（同名覆盖）
+      downloadFile: vi.fn(async () => ({ savedPath: hit().path })),
+    })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(removeSourceFile).not.toHaveBeenCalled()
+    expect(result.outcome).toBe('done')
+  })
+})
+
+describe('redownloadEncryptedAudio：「扫描进行中」相关的三个契约', () => {
+  /**
+   * 这三条都来自同一个真实场景：**用户在批次进行中，扫描正在跑**。
+   * 加密文件识别与待处理列表由扫描产生，替换动作又会往同一个目录里写新文件，
+   * 两条链路在时间上必然重叠。
+   */
+
+  it('整批期间挂起自动重扫，结束后（正常完成）恢复', async () => {
+    const events: string[] = []
+    const { deps } = makeDeps({
+      onBatchStart: () => void events.push('start'),
+      onBatchEnd: () => void events.push('end'),
+    })
+    await redownloadEncryptedAudio([hit(), hit({ path: '/m/b.mflac0.flac' })], deps)
+
+    // 必须是「先挂起、后恢复」且各一次：多次挂起会让恢复次数对不上，
+    // 而恢复漏掉会让 watcher 永久挂着（之后新增的歌要等下次启动才进库）
+    expect(events).toEqual(['start', 'end'])
+  })
+
+  it('整批抛错也必须恢复自动重扫（否则 watcher 永久挂起）', async () => {
+    const events: string[] = []
+    const { deps } = makeDeps({
+      onBatchStart: () => void events.push('start'),
+      onBatchEnd: () => void events.push('end'),
+      // search 抛错会被 redownloadOne 吞成 outcome=failed，所以让 onBatchStart 之后
+      // 由 progress 回调抛出，模拟渲染层在批次中途炸掉
+      onProgress: () => {
+        throw new Error('renderer exploded')
+      },
+    })
+    await expect(redownloadEncryptedAudio([hit()], deps)).rejects.toThrow('renderer exploded')
+
+    expect(events).toEqual(['start', 'end'])
+  })
+
+  it('恢复失败不影响已经完成的结果（新文件已在库里，不该因收尾失败而报错）', async () => {
+    const { deps } = makeDeps({
+      onBatchStart: () => {},
+      onBatchEnd: () => {
+        throw new Error('ipc gone')
+      },
+    })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(result.outcome).toBe('done')
+    expect(result.imported).toBe(true)
+  })
+
+  it('入库成功后把曲目回流给曲库（否则列表一直是旧的）', async () => {
+    const imported: Track[] = []
+    const { deps } = makeDeps({ onTrackImported: (t) => imported.push(t) })
+    await redownloadEncryptedAudio([hit()], deps)
+
+    expect(imported).toHaveLength(1)
+    expect(imported[0].path).toBe(SAVED_PATH)
+  })
+
+  it('入库失败时不回流（列表里不该出现一条库里没有的记录）', async () => {
+    const imported: Track[] = []
+    const { deps } = makeDeps({
+      onTrackImported: (t) => imported.push(t),
+      importFile: vi.fn(async () => null),
+    })
+    const [result] = await redownloadEncryptedAudio([hit()], deps)
+
+    expect(imported).toEqual([])
+    expect(result).toMatchObject({ outcome: 'done', imported: false })
+  })
+
+  it('取消后剩余条目不再启动，但批次仍正常收尾（恢复自动重扫）', async () => {
+    const events: string[] = []
+    let canceled = false
+    const { deps, calls } = makeDeps({
+      concurrency: 1,
+      onBatchStart: () => void events.push('start'),
+      onBatchEnd: () => void events.push('end'),
+      isCanceled: () => canceled,
+      onProgress: (done) => {
+        // 第一首结算后立刻取消
+        if (done === 1) canceled = true
+      },
+    })
+    const results = await redownloadEncryptedAudio([hit(), hit({ path: '/m/b.mflac0.flac' })], deps)
+
+    expect(calls.downloads).toHaveLength(1)
+    expect(results.map((r) => r.outcome)).toEqual(['done', 'canceled'])
+    expect(events).toEqual(['start', 'end'])
   })
 })

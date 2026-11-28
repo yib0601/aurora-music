@@ -275,6 +275,14 @@ function AppLayout() {
     }
   }, [])
 
+  // 移动端没有目录 watcher，目录内的新增/改动只有启动与手动重扫两条路能被看见。
+  // 用户去别的 App 下载/整理完歌再切回来，看到的是旧曲库，只能自己去点重扫。
+  // 回到前台补扫一次即可，但要节流：一次热扫描对几千首的库是几千次 Capacitor 桥调用
+  // （walkDir + 逐文件查重），锁屏解锁都全量扫一遍是不可接受的。60 秒内只扫第一次，
+  // 已经足够覆盖「切出去下首歌再回来」这个真实场景。
+  const lastResumeScanAtRef = useRef(0)
+  const RESUME_SCAN_THROTTLE_MS = 60_000
+
   useEffect(() => {
     if (!nativeMobile) return
     // 监听 app resume：用户从系统设置授权后回到 App，重新检测；
@@ -300,10 +308,19 @@ function AppLayout() {
       })
       checkMediaPermissions().then((granted) => {
         if (cancelled) return
-        if (granted && needsPermissionRef.current) {
+        if (!granted) return
+        // 授权刚到手：立刻扫，并记下时刻（这条路径不该被节流吃掉）
+        if (needsPermissionRef.current) {
           setNeedsStoragePermission(false)
+          lastResumeScanAtRef.current = Date.now()
           triggerScanForConfiguredFolders()
+          return
         }
+        // 权限一直正常：回到前台也补扫一次，让「去别的 App 下完歌再切回来」能看到
+        const now = Date.now()
+        if (now - lastResumeScanAtRef.current < RESUME_SCAN_THROTTLE_MS) return
+        lastResumeScanAtRef.current = now
+        triggerScanForConfiguredFolders()
       }).catch(() => {})
     }).then((l) => { if (!cancelled) listener = l })
     return () => {
@@ -702,6 +719,17 @@ function AppLayout() {
         })
       )
     }
+    // 本轮扫描的加密文件全集：用来**对账**掉已不存在的待处理项。
+    // 没有这条，列表只增不减 —— 用户在文件管理器里删掉密文、或用别的工具转成明文后，
+    // 那条记录会永远挂着，点「替换」时服务层拿着已消失的路径去下载并清理，
+    // 表现是「替换成功、原件还在」或「白下了一遍本来就在库里的歌」。
+    if (platform.onEncryptedScanDone) {
+      unsubscribers.push(
+        platform.onEncryptedScanDone(({ folder, paths }) => {
+          useLibraryStore.getState().reconcileEncryptedFiles(folder, paths)
+        })
+      )
+    }
     // 扫描失败必须给用户明确提示：未授权时用户只会看到 0 首歌且无任何报错，
     // 极易误以为是软件本身的缺陷（而非缺少存储权限）
     if (platform.onScanError) {
@@ -772,25 +800,31 @@ function AppLayout() {
     // 用于同步移除已被删除的歌曲记录并纳入新增文件；扫描在后台执行不阻塞 UI、无任何提示，
     // 列表通过 onTracksScanned 事件自动刷新；平台已串行化扫描队列，失败仅记录日志
     if (platform.scanFolder && !initialScanTriggered) {
-      initialScanTriggered = true
       const folders = useLibraryStore.getState().scanFolders
-      const doScan = () => {
-        for (const folder of folders) {
-          platform.scanFolder!(folder).catch(() => {})
-        }
-      }
-      if (isMobile() && folders.length > 0) {
-        // 移动端：先申请存储权限再扫描。未授权时 readdir 会静默失败，
-        // 用户只会看到 0 首歌且无任何提示，会误以为是软件本身的缺陷
-        requestMediaPermissions().then((granted) => {
-          if (granted) {
-            doScan()
-          } else {
-            setNeedsStoragePermission(true)
+      // 守卫只在**确实要扫**时才消耗：没有配置目录时先占掉它，等于让「之后再加目录」
+      // 这条路径也失去启动扫描的兜底（现在靠 addScanFolder 后显式扫描，但那个约定
+      // 在任何一个新入口忘了调时就静默失效）。长度判断放在守卫之内、赋值之前，
+      // StrictMode 双挂载仍然只会扫一次。
+      if (folders.length > 0) {
+        initialScanTriggered = true
+        const doScan = () => {
+          for (const folder of folders) {
+            platform.scanFolder!(folder).catch(() => {})
           }
-        }).catch(doScan)
-      } else if (folders.length > 0) {
-        doScan()
+        }
+        if (isMobile()) {
+          // 移动端：先申请存储权限再扫描。未授权时 readdir 会静默失败，
+          // 用户只会看到 0 首歌且无任何提示，会误以为是软件本身的缺陷
+          requestMediaPermissions().then((granted) => {
+            if (granted) {
+              doScan()
+            } else {
+              setNeedsStoragePermission(true)
+            }
+          }).catch(doScan)
+        } else {
+          doScan()
+        }
       }
     }
 

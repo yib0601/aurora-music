@@ -1,6 +1,6 @@
 import { Filesystem, Directory, FileInfo as CapFileInfo } from '@capacitor/filesystem'
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
-import { setCustomFetch } from '@aurora/shared'
+import { setCustomFetch, createSettleRescanScheduler } from '@aurora/shared'
 import type { LanPairPeer, LanPairRequest, LanSyncBridge, SyncSnapshot } from '@aurora/shared'
 import { createNativeFetch } from './nativeFetch'
 import type {
@@ -58,6 +58,7 @@ import {
 } from './lxHost'
 import {
   sanitizeFileName,
+  isEncryptedAudioName,
   inferAudioExtFromUrl,
   embedCoverIntoAudio,
   detectImageMime,
@@ -155,6 +156,15 @@ class NoopWindowControls implements WindowControls {
  * 用户在「设置 → 下载 → 默认下载目录」里选择后即以此为准。
  */
 export const DEFAULT_MOBILE_DOWNLOAD_DIR = 'Music/Aurora Music'
+
+/**
+ * 「批量替换」时原加密文件的隔离目录（相对外部存储根）。
+ *
+ * 为什么不是直接删：Android 没有可用的系统回收站通道（见 trashEncryptedSource 的注释），
+ * 直接 deleteFile 是一次不可恢复的操作。移进这里等于给用户留了一个「后悔药」，
+ * 它在文件管理器里可见、也可以被第三方清理工具当作垃圾扫走。
+ */
+export const ENCRYPTED_TRASH_DIR = 'Music/Aurora Music/.encrypted-trash'
 
 /**
  * 规范化下载目录，得到 Directory.ExternalStorage 下的相对路径。
@@ -292,6 +302,8 @@ type MediaControlCb = (action: string) => void
 type TrackScannedCb = (track: Track) => void
 type FolderMissingCb = (e: { folder: string; removed: number }) => void
 type EncryptedFileCb = (file: EncryptedAudioFile) => void
+/** 一次扫描结束时，本轮上报过的加密文件路径全集（供渲染层对账待处理列表） */
+type EncryptedScanDoneCb = (payload: { folder: string; paths: string[] }) => void
 
 const scanCompleteCbs = new Set<ScanCompleteCb>()
 const scanErrorCbs = new Set<ScanErrorCb>()
@@ -299,6 +311,7 @@ const mediaControlCbs = new Set<MediaControlCb>()
 const trackScannedCbs = new Set<TrackScannedCb>()
 const folderMissingCbs = new Set<FolderMissingCb>()
 const encryptedFileCbs = new Set<EncryptedFileCb>()
+const encryptedScanDoneCbs = new Set<EncryptedScanDoneCb>()
 
 function emitScanComplete(tracks: Track[]) {
   scanCompleteCbs.forEach((cb) => cb(tracks))
@@ -314,6 +327,9 @@ function emitFolderMissing(e: { folder: string; removed: number }) {
 }
 function emitEncryptedFile(file: EncryptedAudioFile) {
   encryptedFileCbs.forEach((cb) => cb(file))
+}
+function emitEncryptedScanDone(payload: { folder: string; paths: string[] }) {
+  encryptedScanDoneCbs.forEach((cb) => cb(payload))
 }
 
 /**
@@ -341,6 +357,20 @@ function enqueueScan(folderPath: string): Promise<Track[]> {
   return task
 }
 
+/**
+ * 静默期补扫：本轮有加密文件因为「可能还在下载」被跳过时，等静默期过去再扫一次。
+ *
+ * 移动端比桌面端更需要它：这里**没有目录 watcher**，目录内的新增/改动只有三条路
+ * 能被看见——启动、用户手动重扫、或者回到前台（本来连这条都没有）。
+ * 刚下完的密文因此会长时间挂在「看不到」的状态，用户以为替换功能丢了文件。
+ */
+const settleRescan = createSettleRescanScheduler({
+  // 补扫直接进同一条扫描队列（enqueueScan 自带串行），不与用户手动触发的扫描打架
+  rescan: (folder) => {
+    enqueueScan(folder).catch(() => {})
+  },
+})
+
 async function runScan(folderPath: string): Promise<Track[]> {
   try {
     await ensureDbInited()
@@ -354,9 +384,13 @@ async function runScan(folderPath: string): Promise<Track[]> {
         .then(() => true)
         .catch(() => false)
       if (!exists) {
+        // 目录没了：待补扫也一并取消，否则几秒后还会白跑一次扫描
+        settleRescan.cancel(folderPath)
         const removed = await db.deleteTracksByFolder(folderPath)
         console.log('[Mobile] 扫描目录已不存在，清理其曲目:', folderPath, removed)
         const remaining = await db.getAllTracks()
+        // 目录没了 → 该目录下的待处理加密文件也不存在了（空集即全部对账掉）
+        emitEncryptedScanDone({ folder: folderPath, paths: [] })
         emitScanComplete(remaining)
         emitFolderMissing({ folder: folderPath, removed })
         return remaining
@@ -364,6 +398,8 @@ async function runScan(folderPath: string): Promise<Track[]> {
       throw auroraError('runtime.error.scanFolderMissing')
     }
     // 渐进式扫描：每解析完一首立即通知 UI 追加显示
+    const encryptedPaths: string[] = []
+    let deferred = 0
     await mobileScanFolder(
       folderPath,
       db,
@@ -373,9 +409,21 @@ async function runScan(folderPath: string): Promise<Track[]> {
       // 加密文件（平台下载的密文）解析必失败、永远进不了曲库：单独上报，
       // 由 UI 提供「用音源重下一份」。旧行为是静默丢弃
       (file) => {
+        encryptedPaths.push(file.path)
         emitEncryptedFile(file)
+      },
+      // 看起来是加密文件但可能还在写：本次不报，等静默期过去补扫一次
+      () => {
+        deferred += 1
       }
     )
+    // 移动端完全没有目录 watcher：不安排补扫的话，刚下完的密文要等用户手动重扫
+    // 或重启 App 才会出现在「待处理」里（桌面端至少还有写盘事件能顺手带出来）
+    if (deferred > 0) settleRescan.defer(folderPath)
+    else settleRescan.markClean(folderPath)
+    // 本轮上报的全集交给渲染层对账：列表只增不减的话，用户已删/已转码的密文
+    // 会永远留在「待处理」里（见 libraryStore.reconcileEncryptedFiles）
+    emitEncryptedScanDone({ folder: folderPath, paths: encryptedPaths })
     // 与桌面端对齐：扫描完成后从数据库读取全库再 emit，
     // 避免多次扫描不同目录时只 emit 本次结果导致前一次曲目被覆盖丢失
     const allTracks = await db.getAllTracks()
@@ -459,6 +507,8 @@ export function createMobilePlatform(): PlatformInterface & {
   onScanError: (cb: ScanErrorCb) => () => void
   onFolderMissing: (cb: FolderMissingCb) => () => void
   onEncryptedFile: (cb: EncryptedFileCb) => () => void
+  /** 一次扫描结束：本轮上报过的加密文件路径全集（渲染层据此对账待处理列表） */
+  onEncryptedScanDone: (cb: EncryptedScanDoneCb) => () => void
   onMediaControl: (cb: MediaControlCb) => () => void
   // 音频焦点：Android 没有「互斥」总开关，只有「丢了焦点要不要暂停」这一档，
   // 由原生播放引擎在 onAudioFocusChange 里执行（见 MediaPlaybackService.kt）
@@ -467,6 +517,9 @@ export function createMobilePlatform(): PlatformInterface & {
   // 单文件解析入库：「加密文件 → 按名重下」链路的收尾步骤，
   // 与桌面端 `library:importFile` 同一契约（下载目录未必在扫描目录里）
   importAudioFile: (filePath: string) => Promise<Track | null>
+  // 清理原加密文件（批量替换）：移动端没有系统回收站，改成移入隔离目录，
+  // 理由与目标目录见 trashEncryptedSource 的实现注释
+  trashEncryptedSource: (filePath: string) => Promise<void>
   getAllTracks: () => Promise<Track[]>
   removeFolder: (folderPath: string) => Promise<Track[]>
   // 单曲移除（只删记录 + 封面缓存，不删音频文件）。
@@ -1268,6 +1321,8 @@ export function createMobilePlatform(): PlatformInterface & {
     /** 移除扫描目录：删除该目录下的全部曲目，返回移除后的全库列表 */
     async removeFolder(folderPath: string) {
       await ensureDbInited()
+      // 待补扫一并取消：几秒后为一个用户已经不关心的目录再扫一遍毫无意义
+      settleRescan.cancel(folderPath)
       const removed = await db.deleteTracksByFolder(folderPath)
       if (removed > 0) console.log('[Mobile] 已移除扫描目录并清理曲目:', folderPath, removed)
       return db.getAllTracks()
@@ -1322,6 +1377,47 @@ export function createMobilePlatform(): PlatformInterface & {
       return mobileImportAudioFile(filePath, db)
     },
 
+    /**
+     * 清理原加密文件（批量替换的替换那一半）。
+     *
+     * 移动端**没有系统回收站可用**（Android 的 MediaStore.createTrashRequest 走的是
+     * 媒体库会话，Capacitor 这条链路上拿不到；直接 deleteFile 就是不可恢复的删除）。
+     * 因此改成**移入隔离目录**：`Music/Aurora Music/.encrypted-trash/`。
+     * 用户点错一次仍能在文件管理器里找回来，代价只是占一块磁盘；
+     * 清理这个目录的入口在设置页的下载目录旁边（与「重下一份」是同一批操作的心智）。
+     *
+     * 判据与桌面端对齐：只处理**文件名带平台加密标记**的文件。
+     * 路径形态是相对 ExternalStorage 的（见 scanner.ts 的 walkDir）。
+     */
+    async trashEncryptedSource(filePath: string) {
+      const base = filePath.split('/').pop() || ''
+      if (!isEncryptedAudioName(base)) {
+        throw auroraError('runtime.error.notEncryptedAudio')
+      }
+      const dir = ENCRYPTED_TRASH_DIR
+      try {
+        await Filesystem.mkdir({ path: dir, directory: Directory.ExternalStorage, recursive: true })
+      } catch (err: any) {
+        if (!err?.message || !/exist/i.test(err.message)) {
+          console.warn('[Mobile] 创建加密文件隔离目录失败:', err)
+          throw auroraError('runtime.error.downloadDirCreateFailed')
+        }
+      }
+      // 目标名带时间戳：同一首歌重复重下时不会互相覆盖掉上一次的原件
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      try {
+        await Filesystem.rename({
+          from: filePath,
+          to: `${dir}/${stamp}__${base}`,
+          directory: Directory.ExternalStorage,
+          toDirectory: Directory.ExternalStorage,
+        })
+      } catch (err) {
+        console.warn('[Mobile] 移动原加密文件失败:', filePath, err)
+        throw auroraError('runtime.error.downloadFailed', undefined, err instanceof Error ? err.message : String(err))
+      }
+    },
+
     onTracksScanned(cb: ScanCompleteCb) {
       scanCompleteCbs.add(cb)
       return () => scanCompleteCbs.delete(cb)
@@ -1345,6 +1441,11 @@ export function createMobilePlatform(): PlatformInterface & {
     onEncryptedFile(cb: EncryptedFileCb) {
       encryptedFileCbs.add(cb)
       return () => encryptedFileCbs.delete(cb)
+    },
+
+    onEncryptedScanDone(cb: EncryptedScanDoneCb) {
+      encryptedScanDoneCbs.add(cb)
+      return () => encryptedScanDoneCbs.delete(cb)
     },
 
     /**

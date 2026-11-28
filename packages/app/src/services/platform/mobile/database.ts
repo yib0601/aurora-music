@@ -472,7 +472,21 @@ export class MobileDatabase implements DatabaseAdapter {
       'SELECT id, path, cover_path FROM tracks WHERE path LIKE ?',
       [prefix + '%']
     )
-    const stale = rows.filter((r) => r.path.startsWith(prefix) && !existingPaths.has(r.path))
+    const candidates = rows.filter((r) => r.path.startsWith(prefix) && !existingPaths.has(r.path))
+    // 候选二次确认：`existingPaths` 是 walkDir 时的快照，从遍历到这里之间可能刚好
+    // 有一次「加密文件 → 重下一份」把新文件 commit 进目录并入库。只看快照就会把
+    // 刚入库的歌当「文件已不存在」删掉（用户看到替换成功、曲库里却没有）。
+    // 逐个 stat 的代价只在「真正消失的文件」上发生，正常扫描通常是零。
+    const stale: typeof candidates = []
+    for (const r of candidates) {
+      const exists = await Filesystem.stat({ path: r.path, directory: Directory.ExternalStorage })
+        .then(() => true)
+        .catch(() => false)
+      if (!exists) stale.push(r)
+    }
+    if (stale.length !== candidates.length) {
+      console.log('[Mobile] 缺失清理：快照里没有但磁盘上仍在的记录已保留:', candidates.length - stale.length)
+    }
     return this.deleteTrackRows(stale)
   }
 

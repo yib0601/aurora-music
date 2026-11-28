@@ -74,6 +74,8 @@ const runtime = {
     downloadDirCreateFailed: '无法创建下载目录（存储不可用或缺少权限），请检查存储权限后重试',
     downloadFailed: '下载失败，请检查网络连接或稍后重试',
     databaseNotInited: '数据库未初始化',
+    /** 批量替换时清理原加密文件的守卫：只允许动带平台加密标记的文件 */
+    notEncryptedAudio: '该文件不是平台加密音频，已跳过清理',
     scriptSourceUrlMissing: '音源未填写脚本地址',
     /**
      * 媒体库来源（网络存储）在**运行期**的失败结论。

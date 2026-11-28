@@ -31,6 +31,14 @@ const state = vi.hoisted(() => ({
   existingRecords: new Map<string, Track>(),
   /** 文件名 → 字节数（Filesystem.stat 返回），未列出的按 1024 */
   fileSizes: new Map<string, number>(),
+  /**
+   * 文件名 → mtime（毫秒）。未列出的按「很久以前」处理。
+   *
+   * 默认必须**不是**现在：静默期判据是 `Date.now() - mtime < ENCRYPTED_SETTLE_MS`，
+   * 若夹具默认给当前时刻，所有加密文件都会被当成「还在下载」，其他用例会莫名其妙地
+   * 什么都上报不出来（反过来也会让静默期用例失去区分度）。
+   */
+  mtimes: new Map<string, number>(),
   /** 模拟「无标签」的文件名集合：parseBlob 返回空 title/artist（下载来源常见） */
   untagged: new Set<string>(),
   /** 让指定 path 的 insertTrack 抛错 */
@@ -89,7 +97,11 @@ vi.mock('@capacitor/filesystem', () => ({
     },
     async stat({ path }: { path: string }) {
       const name = path.split('/').pop() || path
-      return { size: state.fileSizes.get(name) ?? 1024 }
+      return {
+        size: state.fileSizes.get(name) ?? 1024,
+        // 老 mtime：让「静默期」相关用例必须显式构造，而不是被夹具顺手安排
+        mtime: state.mtimes.get(name) ?? Date.now() - 60_000,
+      }
     },
     async writeFile({ path, data }: { path: string; data: string }) {
       state.coverWrites.push(path)
@@ -243,6 +255,7 @@ beforeEach(() => {
   state.existing = new Set()
   state.existingRecords = new Map()
   state.fileSizes = new Map()
+  state.mtimes = new Map()
   state.untagged = new Set()
   state.insertFails = new Set()
   state.lookupFails = new Set()
@@ -801,5 +814,79 @@ describe('移动端 scanFolder：裸加密扩展名', () => {
 
     expect(hits).toHaveLength(1)
     expect(hits[0]).toMatchObject({ family: 'qqmusic', token: 'mflac', title: '十年', artist: '陈奕迅' })
+  })
+})
+
+/**
+ * 「被静默期挡下的文件」必须能被调用方看见。
+ *
+ * 移动端比桌面端更依赖这条：这里**没有目录 watcher**，刚下完的密文如果只是被
+ * 静默期挡下、又没人安排补扫，它就会一直不出现在「待处理」里，直到用户手动重扫
+ * 或重启 App。而 `none`（真损坏）与 `deferred`（还在写）必须区分清楚——判反了
+ * 会让一批坏文件把补扫额度耗光，真正在下载的文件反而补不上。
+ */
+describe('移动端 scanFolder：静默期挡下的文件通过 onDeferredEncrypted 上报', () => {
+  const ENCRYPTED = '陈奕迅 - 十年 [mqms2].mflac0.flac'
+
+  it('刚写完的密文走 deferred，不进上报全集', async () => {
+    state.files = [`Music/${ENCRYPTED}`]
+    state.failParse.add(ENCRYPTED)
+    // mtime = 现在：处在静默期内
+    state.mtimes.set(ENCRYPTED, Date.now())
+
+    const scanner = await loadScanner()
+    const reported: unknown[] = []
+    const deferred: string[] = []
+    await scanner.scanFolder(
+      ROOT,
+      dbDouble,
+      undefined,
+      (file) => reported.push(file),
+      (p) => deferred.push(p)
+    )
+
+    expect(reported).toEqual([])
+    expect(deferred).toEqual([`Music/${ENCRYPTED}`])
+  })
+
+  it('真损坏的文件（认不出加密标记）走 none：既不上报也不推迟', async () => {
+    state.files = ['Music/bad.flac']
+    state.failParse.add('bad.flac')
+    state.mtimes.set('bad.flac', Date.now())
+
+    const scanner = await loadScanner()
+    const reported: unknown[] = []
+    const deferred: string[] = []
+    await scanner.scanFolder(
+      ROOT,
+      dbDouble,
+      undefined,
+      (file) => reported.push(file),
+      (p) => deferred.push(p)
+    )
+
+    expect(reported).toEqual([])
+    expect(deferred).toEqual([])
+  })
+
+  it('已过静默期的密文走 encrypted，两者互斥', async () => {
+    state.files = [`Music/${ENCRYPTED}`]
+    state.failParse.add(ENCRYPTED)
+    state.mtimes.set(ENCRYPTED, Date.now() - 60_000)
+
+    const scanner = await loadScanner()
+    const reported: Array<{ token: string }> = []
+    const deferred: string[] = []
+    await scanner.scanFolder(
+      ROOT,
+      dbDouble,
+      undefined,
+      (file) => reported.push(file),
+      (p) => deferred.push(p)
+    )
+
+    expect(reported).toHaveLength(1)
+    expect(reported[0].token).toBe('mflac0')
+    expect(deferred).toEqual([])
   })
 })

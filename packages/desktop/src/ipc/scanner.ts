@@ -7,7 +7,7 @@ import type { Track } from '../types'
 import { insertTracks, getTracksByPaths, deleteTracksWithMissingFiles, countTracksByFolder, updateTrack } from './database'
 import { registerCoverFile } from './mediaCache'
 import { isUsableCoverFile } from './coverFile'
-import { auroraError, searchOnlineTracks, fetchWithTimeout, isTimeoutError, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate, PLACEHOLDER_ARTISTS, parseEncryptedAudioName, isEncryptedAudioName, isIncompleteScanRecord } from '@aurora/shared'
+import { auroraError, searchOnlineTracks, fetchWithTimeout, isTimeoutError, firstArtistOf, cleanTitleForQuery, tradToSimp, pickCoverCandidate, PLACEHOLDER_ARTISTS, parseEncryptedAudioName, isEncryptedAudioName, isInProgressDownloadName, isIncompleteScanRecord, isStillDownloading } from '@aurora/shared'
 import type { OnlineSearchOptions, EncryptedAudioFile } from '@aurora/shared'
 
 /** 在线封面下载超时：封面是可选增强，等太久不如放着让下次重试 */
@@ -29,6 +29,9 @@ async function walkDir(dir: string, files: string[] = []): Promise<string[]> {
     if (entry.isDirectory() && !entry.name.startsWith('.')) {
       await walkDir(fullPath, files)
     } else if (entry.isFile()) {
+      // 下载器正在写的中间文件直接跳过：既别当曲目去解析，也别当加密文件上报
+      // （见 shared/encryptedAudio 的 isInProgressDownloadName）
+      if (isInProgressDownloadName(entry.name)) continue
       const ext = path.extname(entry.name).toLowerCase()
       // 平台的加密下载也可能是**裸加密扩展名**（PC 端 `.mflac` / `.mgg` / `.qmcflac`，
       // 没有安卓端那种追加的容器后缀）：这类文件同样要收进来，否则解析失败无从上报，
@@ -184,22 +187,46 @@ async function processFile(
 const PARSE_CONCURRENCY = 8
 
 /**
+ * 一个解析失败的文件，在「加密识别」这一步的三种归宿。
+ *
+ * 单独分出一个 `deferred` 而不是统一返回 null，是因为调用方需要区分
+ * 「这不是加密文件（真损坏）」与「看起来是加密文件但还在写」：
+ * 后者意味着**再等一会它就会变成一个待处理项**，值得安排一次补扫；
+ * 前者永远等不到，安排了只是白扫。
+ */
+type EncryptedFileProbe =
+  | { kind: 'none' }
+  | { kind: 'deferred' }
+  | { kind: 'encrypted'; file: EncryptedAudioFile }
+
+/**
  * 解析失败的文件里，认出「平台的加密下载」。
  *
  * 只在解析失败处判定：这类文件的扩展名合法（`.flac`）、内容不是音频容器，
  * 唯一可靠的线索是文件名里的平台标记（`[mqms2]` / `.mflac0` 等）。
- * 返回 null 表示不是加密文件（真损坏 / 冷门编码），维持旧行为——静默跳过不打扰用户。
+ * 返回 `none` 表示不是加密文件（真损坏 / 冷门编码），维持旧行为——静默跳过不打扰用户。
+ *
+ * **仍在下载的文件一律不上报**（`isStillDownloading`）：平台正在写盘时目录里已经
+ * 出现最终文件名，字节还没写完，而加密标记就在名字里。把它上报成「待处理」，
+ * 用户点「替换」就会把正在写的文件移进回收站。判据与移动端共用同一份实现。
  */
-function encryptedFileOf(filePath: string, size?: number): EncryptedAudioFile | null {
+function encryptedFileOf(filePath: string, stat: fs.Stats): EncryptedFileProbe {
   const parsed = parseEncryptedAudioName(path.basename(filePath))
-  if (!parsed) return null
+  if (!parsed) return { kind: 'none' }
+  // 静默期判定放在「确认是加密文件」之后：这样 `deferred` 只统计真正被静默期挡下的
+  // 加密文件，而不是目录里每一条解析失败的普通损坏文件。调用方据此决定要不要安排
+  // 补扫——判反了就会让一批坏文件把补扫额度耗光。
+  if (isStillDownloading(path.basename(filePath), stat.mtimeMs)) return { kind: 'deferred' }
   return {
-    path: filePath,
-    size,
-    family: parsed.family,
-    token: parsed.token,
-    title: parsed.title,
-    artist: parsed.artist,
+    kind: 'encrypted',
+    file: {
+      path: filePath,
+      size: stat.size,
+      family: parsed.family,
+      token: parsed.token,
+      title: parsed.title,
+      artist: parsed.artist,
+    },
   }
 }
 
@@ -227,12 +254,16 @@ export async function importAudioFile(filePath: string, userData: string): Promi
  * @param onEncryptedFile 可选回调：解析失败且文件名带平台加密标记时触发。
  *   这类文件**不会**进曲库（内容解不开，进了也播不了），只上报给 UI，
  *   由用户决定「用音源重下一份」还是忽略
+ * @param onDeferredEncrypted 可选回调：**看起来是加密文件、但还在静默期内**的路径。
+ *   它们本次不上报，等静默期过去再扫一次就会出现（调用方据此安排补扫）。
+ *   与 `onEncryptedFile` 互斥：一个文件要么被上报，要么被推迟。
  */
 export async function scanFolder(
   rootPath: string,
   userData: string,
   onTrack?: (track: Track) => void,
-  onEncryptedFile?: (file: EncryptedAudioFile) => void
+  onEncryptedFile?: (file: EncryptedAudioFile) => void,
+  onDeferredEncrypted?: (filePath: string) => void
 ): Promise<Track[]> {
   console.log('scanFolder starting:', rootPath)
   const files = await walkDir(rootPath)
@@ -283,8 +314,10 @@ export async function scanFolder(
       if (!stat) continue
       if (!track) {
         // 解析失败：可能是平台的加密下载。认出来就上报，认不出来维持旧行为（跳过）
-        const encrypted = encryptedFileOf(batch[j], stat.size)
-        if (encrypted) onEncryptedFile?.(encrypted)
+        const probe = encryptedFileOf(batch[j], stat)
+        if (probe.kind === 'encrypted') onEncryptedFile?.(probe.file)
+        // 还在静默期：本次不上报，但告诉调用方「等一会儿就该有结果了」
+        else if (probe.kind === 'deferred') onDeferredEncrypted?.(batch[j])
         continue
       }
       tracks.push(track)

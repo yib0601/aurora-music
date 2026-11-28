@@ -189,6 +189,29 @@ export interface PlatformExtension {
    */
   onEncryptedAudioFound?: (cb: (file: EncryptedAudioFile) => void) => () => void
   /**
+   * 一次扫描**结束**时，本轮上报过的加密文件路径全集。
+   *
+   * 存在的理由只有一个：让 UI 能对账。`onEncryptedAudioFound` 是纯增量事件，
+   * 没有「本轮全集」就没有任何依据删除待处理列表里的旧项 —— 用户在文件管理器里
+   * 删掉了密文、或用别的工具转成了明文，这条记录会永远留在列表里，点「替换」时
+   * 服务层拿着一个已不存在的路径去下载并清理，用户看到的是「替换成功、原件还在」。
+   *
+   * 每个扫描目录各发一次（多目录时按目录前缀分别对账，互不干扰）。
+   * Web 端不实现：File System Access 的目录扫描没有解析失败上报点。
+   */
+  onEncryptedScanDone?: (cb: (payload: { folder: string; paths: string[] }) => void) => () => void
+  /**
+   * 批量下载期间**挂起「文件变动触发的自动重扫」**。
+   *
+   * 桌面端 watcher 对扫描目录内任何变动都按 1.5s 防抖触发整库重扫。批量替换会连续
+   * 写几十个文件，于是整批期间重扫不停在跑，与下载抢磁盘 IO。挂起后变动只被记账，
+   * `false` 时对每个有变动的目录补扫一次（不是每次变动扫一次）。
+   *
+   * **可选**：移动端没有 watcher（扫描只在启动/手动触发），Web 端也没有。
+   * 能力缺失时调用方不挂起，功能照常，只是桌面端会慢一些。
+   */
+  setWatchSuspended?: (suspended: boolean) => Promise<void>
+  /**
    * 把单个已落盘的音频文件解析并入库，返回曲目记录（解析失败返回 null）。
    *
    * 供「加密音频 → 按名重下」链路收尾：下载目录未必在用户的扫描目录里，
@@ -196,6 +219,19 @@ export interface PlatformExtension {
    * 桌面端主进程会校验绝对路径 + 音频扩展名；移动端走本地 scanner。
    */
   importAudioFile?: (filePath: string) => Promise<Track | null>
+  /**
+   * 把「下载后已被替换掉」的原加密文件移入回收站（批量替换的收尾动作）。
+   *
+   * **刻意可选**：能力不存在时 UI 直接把「替换原文件」那一项藏起来，而不是给一个
+   * 点了没反应的开关。Web 端不实现（File System Access 的目录句柄拿不到可删句柄的
+   * 生命周期保证），Noop 不实现。
+   *
+   * 入参是**文件路径**而不是曲目 id：加密文件从来没有进过曲库（它解析不出来），
+   * 库里查不到它。作为交换，主进程自己复核边界（扫描目录内 + 文件名带加密标记），
+   * 见 desktop/ipc/encryptedSource.ts。失败必须**如实报错**而不是静默当作已删除 ——
+   * 那会让用户以为文件已经清掉了。
+   */
+  trashEncryptedSource?: (filePath: string) => Promise<void>
   /** 系统媒体键事件订阅（桌面端来自 globalShortcut/MPRIS，移动端来自 mediaSession） */
   onMediaControl?: (cb: (action: string) => void) => () => void
   /**
@@ -896,10 +932,37 @@ export function createDesktopPlatform(): Platform {
       if (!api?.onEncryptedFile) return () => {}
       return api.onEncryptedFile(cb)
     },
+    // 本轮扫描的加密文件全集（scan:encrypted-complete）：只用于对账待处理列表。
+    // 缺这条通道（老 preload）时退化成「列表只增不减」，功能仍可用，
+    // 因此这里静默返回空取消函数，而不是让调用方在 UI 上看到一条错误
+    onEncryptedScanDone(cb: (payload: { folder: string; paths: string[] }) => void) {
+      if (!api?.onEncryptedScanComplete) return () => {}
+      return api.onEncryptedScanComplete(cb)
+    },
+    // 挂起/恢复「文件变动触发的自动重扫」：只在批量写盘期间用。
+    // 缺这条通道（老 preload / 移动端 / Web）时整个方法不出现，调用方据此不挂起。
+    setWatchSuspended: api?.setWatchSuspended
+      ? async (suspended: boolean) => {
+          await api.setWatchSuspended(suspended)
+        }
+      : undefined,
     async importAudioFile(filePath: string) {
       if (!api?.importAudioFile) return null
       return api.importAudioFile(filePath)
     },
+    // 清理原加密文件：主进程复核「在扫描目录内 + 文件名带加密标记」后移入回收站。
+    // 缺这条通道（老 preload）时**整个方法不出现**，UI 据此隐藏「替换原文件」开关，
+    // 而不是让用户勾上一个永远失败的选项。
+    trashEncryptedSource: api?.trashEncryptedSource
+      ? async (filePath: string) => {
+          const result = await api.trashEncryptedSource(filePath)
+          // 主进程回结构而不是抛错：这里把结构翻回异常 —— 编排层只关心「成没成」，
+          // 失败原因原样带进 message，UI 才可能把它显示出来
+          if (result && result.ok === false) {
+            throw new Error(result.detail || result.reason || 'trash failed')
+          }
+        }
+      : undefined,
     onMediaControl(cb: (action: string) => void) {
       if (!api?.onMediaControl) return () => {}
       return api.onMediaControl(cb)

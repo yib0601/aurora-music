@@ -26,8 +26,19 @@ import {
   setCacheClearListener,
   setCacheEvictListener,
 } from './mediaCache'
-import { watchFolder, unwatchFolder } from './watcher'
+import { watchFolder, unwatchFolder, setWatchSuspended, isWatchSuspended } from './watcher'
+// 下载落盘的「预定最终名 + 写 .part + 完成后 rename」三件事整体在 ipc/downloadTarget.ts。
+// 旧的「先探测空名字、之后再往那个路径写」有两个在调用点修不掉的洞：探测与写入之间
+// 隔着 await，并发下载会探到同一个空名字互相覆盖；直接写最终路径时，落在扫描目录内的
+// 半截文件会被后台扫描读到，库里因此落下 0:00 记录。所以这里不再保留任何挑名字的逻辑。
+import {
+  reserveDownloadTarget,
+  commitDownloadTarget,
+  discardDownloadTarget,
+} from './downloadTarget'
 import { registerLibraryActionIpc } from './libraryActions'
+import { registerEncryptedSourceIpc } from './encryptedSource'
+import { isInsideScanRoot, registerScanRoot, unregisterScanRoot } from './scanRoots'
 import { registerSystemIpc } from './system'
 import { registerUpdaterIpc } from './updater'
 import { registerLxSourceIpc } from './lxSource'
@@ -56,6 +67,7 @@ import {
   recommendViaPlugin,
   toplistsViaPlugin,
   toplistDetailViaPlugin,
+  createSettleRescanScheduler,
 } from '@aurora/shared'
 
 let mainWindow: BrowserWindow | null = null
@@ -71,17 +83,10 @@ function sendToRenderer(channel: string, ...args: unknown[]) {
   }
 }
 
-// 已扫描过的目录白名单：fs:readFile 仅允许读取这些目录内的文件
-const allowedRoots = new Set<string>()
-
-function isPathAllowed(target: string): boolean {
-  const resolved = path.resolve(target)
-  for (const root of allowedRoots) {
-    const prefix = root.endsWith(path.sep) ? root : root + path.sep
-    if (resolved.startsWith(prefix)) return true
-  }
-  return false
-}
+// 已扫描过的目录白名单：fs:readFile 仅允许读取这些目录内的文件。
+// 白名单本体在 ipc/scanRoots.ts —— 「加密音频批量替换」要删/移原文件时用的是
+// **同一份**授权边界，两处各存一份迟早漂移成「读得到但碰不得」或反过来。
+const isPathAllowed = isInsideScanRoot
 
 /** trackId 仅允许字母数字与连字符（uuid / 源id-歌曲id），防止路径穿越 */
 function isValidTrackId(id: string): boolean {
@@ -99,95 +104,16 @@ function inferAudioExtension(url: string, contentType?: string): string {
   return audioExtFrom(contentType, url)
 }
 
-/** 去重名探测的最大尝试次数：超过则回退到时间戳后缀，避免目录内同名文件极多时死循环 */
-const UNIQUE_SAVE_MAX_PROBE = 9999
-
-/** Windows 单条路径总长上限（MAX_PATH），预留扩展名与 ` (n)` 后缀余量后取的保守阈值 */
-const MAX_PATH_SAFE_LENGTH = 240
-
 /**
- * 探测路径是否已存在（异步版）。
+ * 以 `O_EXCL` 创建一个空文件并立刻关闭 fd（`wx` = 存在即 EEXIST）。
  *
- * 用 fs.promises.access 而非同步 fs.existsSync：后者会阻塞主进程事件循环，
- * 而下载去重是在主进程 IPC 里执行，同名文件多时连续同步 stat 会卡住 UI。
- * 除 ENOENT 外的错误（如无权限访问该目录）也返回 false，即按「该路径可写」处理：
- * 去重阶段只负责挑一个「看起来没被占用」的名字，真正的写入失败会由
- * createWriteStream 阶段抛出并转成中文提示，不在此处静默吞掉真实故障。
+ * 只用于「用户手选路径」这一条分支：那条路不需要去重候选，但仍要原子地占住临时名，
+ * 否则同目录两个同名下载会写进同一个 `.part`。固定目录的候选名互斥在
+ * ipc/downloadTarget.ts 里（那边还要顺带生成候选序列），逻辑不同，所以没并过去。
  */
-async function pathExists(target: string): Promise<boolean> {
-  try {
-    await fs.promises.access(target, fs.constants.F_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * 大小写不敏感文件系统（Windows / macOS 默认）上的额外探测。
- *
- * Windows/macOS 上 `A.mp3` 与 `a.mp3` 指同一个文件，但 existsSync/access 只会
- * 命中「同名大小写」那一个；Linux 则区分大小写。若不处理，同一份代码跨平台
- * 行为不一致：Windows 上后下载的 `A.mp3` 会静默覆盖已有的 `a.mp3`。
- * 逐项比对同目录文件名（仅做一次 readdir，避免逐个大小写变体去 stat）。
- */
-async function hasCaseInsensitiveCollision(dir: string, name: string): Promise<boolean> {
-  try {
-    const entries = await fs.promises.readdir(dir)
-    const lower = name.toLowerCase()
-    return entries.some((entry) => entry.toLowerCase() === lower)
-  } catch {
-    // 目录不可读时不做额外判断，沿用精确匹配结果，避免误判导致重复去重
-    return false
-  }
-}
-
-/**
- * 生成不重名的保存路径：已存在同名文件时依次追加 " (1)" " (2)"…
- *
- * 健壮性约束：
- * - 上限定为 UNIQUE_SAVE_MAX_PROBE 次，超限不再无限循环，回退到「基名 + 时间戳」；
- * - access/readdir 失败（含无权限、目录不存在）一律按「不存在」处理，不在去重阶段
- *   抛错，真正的写盘错误由后续 createWriteStream 阶段报出并给出中文提示；
- * - 大小写不敏感平台上额外比对同目录文件名，避免大小写不同的同名互相覆盖；
- * - 对超长路径（Windows MAX_PATH 260）按需截断基名，保证加上后缀后仍可落盘。
- */
-async function uniqueSavePath(dir: string, fileName: string): Promise<string> {
-  const ext = path.extname(fileName)
-  const stem = fileName.slice(0, -ext.length)
-
-  // 组装候选名并按需截断基名，确保 `dir + 名字` 不突破 MAX_PATH 安全值。
-  // 截断按字符（非字节）进行，中文被截不会产生半个字符。
-  const buildCandidate = (suffix: string): string => {
-    const dirLen = dir.length + 1 // 分隔符
-    const maxStem = Math.max(1, MAX_PATH_SAFE_LENGTH - dirLen - ext.length - suffix.length)
-    const safeStem = stem.length > maxStem ? stem.slice(0, maxStem) : stem
-    return path.join(dir, `${safeStem}${suffix}${ext}`)
-  }
-
-  const caseInsensitive = process.platform === 'win32' || process.platform === 'darwin'
-
-  for (let i = 0; i <= UNIQUE_SAVE_MAX_PROBE; i++) {
-    const suffix = i === 0 ? '' : ` (${i})`
-    const candidate = buildCandidate(suffix)
-    if (!(await pathExists(candidate))) {
-      // 精确不存在：大小写不敏感平台上再排除「大小写不同的同名文件」
-      if (!caseInsensitive || !(await hasCaseInsensitiveCollision(dir, path.basename(candidate)))) {
-        return candidate
-      }
-    }
-  }
-
-  // 超限回退：时间戳 + 随机短串，几乎不可能再冲突；仍做一次探测，冲突则直接返回
-  const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const fallback = buildCandidate(` (${stamp})`)
-  if (!(await pathExists(fallback))) return fallback
-  // 极端情况下（同一毫秒、同一随机串）再叠加一次进程内单调序号，保证不返回已存在路径
-  for (let i = 1; i <= 10; i++) {
-    const extra = buildCandidate(` (${stamp}-${i})`)
-    if (!(await pathExists(extra))) return extra
-  }
-  return buildCandidate(` (${stamp}-x)`)
+async function claimEmptyFile(filePath: string): Promise<void> {
+  const handle = await fs.promises.open(filePath, 'wx')
+  await handle.close()
 }
 
 // 扫描队列：多个目录串行执行，避免并发写数据库、进度事件互相覆盖
@@ -200,6 +126,26 @@ function enqueueScan(folderPath: string): Promise<Track[]> {
   return task
 }
 
+/**
+ * 静默期补扫：本轮有加密文件因为「可能还在下载」被跳过时，等静默期过去再扫一次。
+ *
+ * 为什么需要：识别加密音频前有一道「仍在下载」闸门（shared/encryptedAudio 的
+ * `isStillDownloading`），刚写完的文件会被挡掉一次。桌面端多数时候能被后续写盘
+ * 带出来（watcher 的每一次触发都会重新判定），但**一批里的最后一首**写完就再没有
+ * 事件了，只能等下次启动或手动重扫——用户看到的是「替换完了，最后那首却还挂在
+ * 待处理列表里」。这里补上这一眼。
+ *
+ * 挂起期间不扫也不记账：批量替换正在跑的时候安排补扫毫无意义（那时文件本来就在写），
+ * 返回 false 让调度器保留额度，等恢复后的那次补扫说话。
+ */
+const settleRescan = createSettleRescanScheduler({
+  rescan: (folder) => {
+    if (isWatchSuspended()) return false
+    enqueueScan(folder).catch(() => {})
+    return true
+  },
+})
+
 async function runScan(folderPath: string): Promise<Track[]> {
   const userData = app.getPath('userData')
 
@@ -211,6 +157,8 @@ async function runScan(folderPath: string): Promise<Track[]> {
       // - 父目录也不在 → 更可能是外置盘未挂载，保留曲目记录，仅报错跳过，避免误删曲库
       if (fs.existsSync(path.dirname(folderPath))) {
         unwatchFolder(folderPath)
+        // 目录已经没了：待补扫也一并取消，否则几秒后还会白跑一次扫描
+        settleRescan.cancel(folderPath)
         const removed = deleteTracksByFolder(folderPath)
         console.log('扫描目录已不存在，清理其曲目:', folderPath, removed)
         const remaining = getAllTracks()
@@ -220,7 +168,11 @@ async function runScan(folderPath: string): Promise<Track[]> {
       }
       throw auroraError('desktop.error.scan.folderUnavailable')
     }
-    allowedRoots.add(path.resolve(folderPath))
+    registerScanRoot(folderPath)
+    // 本次扫描上报过的加密文件路径（逐条推给渲染层的同时攒一份清单）
+    const encryptedPaths: string[] = []
+    // 本次扫描有多少加密文件因为「可能还在下载」被静默期挡下
+    let deferred = 0
     // 渐进式扫描：每解析完一首立即推送到渲染进程，UI 端追加显示而非等全部完成
     await scanFolder(
       folderPath,
@@ -232,10 +184,24 @@ async function runScan(folderPath: string): Promise<Track[]> {
       // 单独上报给渲染层，让用户决定「用音源重下一份」——旧行为是静默丢弃，
       // 用户只看到「扫了但一首没进来」，完全猜不到原因
       (encrypted) => {
+        encryptedPaths.push(encrypted.path)
         sendToRenderer('scan:encrypted', encrypted)
+      },
+      // 看起来是加密文件但可能还在写：本次不报，等静默期过去补扫一次
+      () => {
+        deferred += 1
       }
     )
+    // 有被挡下的就安排一次补扫：一批下载里**最后一首**写完后再没有文件事件，
+    // 不补扫的话它要等到下次启动或手动重扫才会出现在「待处理」里。
+    // 用 markClean 清掉连续计数，否则额度只增不减，补扫会永久失效
+    if (deferred > 0) settleRescan.defer(folderPath)
+    else settleRescan.markClean(folderPath)
     const allTracks = getAllTracks()
+    // 先对账再发全量：渲染层的「待处理加密文件」列表是只增不减的，本次扫描没再上报的
+    // （已被替换掉、或被用户自己删了）必须能从这里销账，否则会留下「点替换却下了一遍
+    // 重复歌」的幽灵行 —— 那条路径对应的文件在磁盘上已经不存在了。
+    sendToRenderer('scan:encrypted-complete', { folder: folderPath, paths: encryptedPaths })
     sendToRenderer('scan:complete', allTracks)
     // 自动更新：监听扫描目录，文件增删后防抖触发增量重扫（经串行队列，
     // UI 走既有 track:scanned / scan:complete 事件无感刷新）。
@@ -285,6 +251,9 @@ export function registerIpcHandlers() {
   // 曲库级单条动作：从曲库移除单曲（只删记录，不删音频文件）、
   // 在文件管理器中定位单曲（只接受曲目 id，不接受路径 —— 理由见该文件顶部的信任边界说明）
   registerLibraryActionIpc()
+  // 「加密音频批量替换」：把原加密文件移入回收站（只接受扫描目录内的加密文件，
+  // 信任边界见该文件顶部说明；与上面两条曲库动作同属「单条不可回退决策」一类）
+  registerEncryptedSourceIpc()
   // 内置更新：安装包下载（进度事件）与安装（启动安装器 / 打开终端执行命令）
   registerUpdaterIpc(sendToRenderer)
   // 洛雪音源脚本宿主：脚本拉取 / 能力探测 / 自带搜索 / 取址四类 IPC。
@@ -415,6 +384,17 @@ export function registerIpcHandlers() {
     return enqueueScan(folderPath)
   })
 
+  // 挂起 / 恢复目录监听的自动重扫（批量替换加密音频期间用）。
+  //
+  // 为什么需要：一次替换 40 首，每个文件落盘都会让 watcher 按 1500ms 防抖触发一次
+  // **整库**重扫（walkDir + 全量 stat + 全量 getTracksByPaths），十几次全库扫描会和
+  // 下载抢磁盘 IO。挂起后这些变动只被记账，由 setWatchSuspended(false) 统一补一次扫描。
+  // 入参用 Boolean 兜底：这条通道是渲染层「顺手调」的，宁可把乱值当 false（恢复）处理，
+  // 也别让 watcher 因为一个 undefined 长期聋着。
+  ipcMain.handle('scan:setWatchSuspended', (_event, suspended: boolean) => {
+    setWatchSuspended(Boolean(suspended))
+  })
+
   ipcMain.handle('db:getAllTracks', () => {
     return getAllTracks()
   })
@@ -496,7 +476,9 @@ export function registerIpcHandlers() {
   ipcMain.handle('library:removeFolder', (_event, folderPath: string): Track[] => {
     if (typeof folderPath !== 'string' || !folderPath.trim()) return getAllTracks()
     unwatchFolder(folderPath)
-    allowedRoots.delete(path.resolve(folderPath))
+    unregisterScanRoot(folderPath)
+    // 用户主动移除目录：待补扫没意义了（几秒后扫一个用户不关心的目录）
+    settleRescan.cancel(folderPath)
     const removed = deleteTracksByFolder(folderPath)
     if (removed > 0) console.log('已移除扫描目录并清理曲目:', folderPath, removed)
     return getAllTracks()
@@ -736,24 +718,49 @@ export function registerIpcHandlers() {
 
       // 扩展名以实际响应的 Content-Type 为准（对话框时只能按 URL 猜测）
       const finalExt = inferAudioExtension(track.audioUrl, resp.headers.get('content-type') || undefined)
-      const savePath = fixedDir
-        ? await uniqueSavePath(fixedDir, `${baseName}${finalExt}`)
-        : path.extname(dialogFilePath!)
-          ? dialogFilePath!
-          : dialogFilePath! + finalExt
 
+      // 落盘坐标：
+      // - 直存目录（批量替换走这条）：由 reserveDownloadTarget 用 O_EXCL 原子占住
+      //   `名字.mp3.part`，最终名此刻**还不存在**；
+      // - 用户手选路径（对话框）：不再做去重（用户看到的就是他要的名字，覆盖是预期行为），
+      //   但同样先写 `.part` 再 rename —— 半截文件的危害与是否去重无关。
+      let finalPath: string
+      let partPath: string
+      if (fixedDir) {
+        const target = await reserveDownloadTarget(fixedDir, baseName, finalExt)
+        finalPath = target.finalPath
+        partPath = target.partPath
+      } else {
+        finalPath = path.extname(dialogFilePath!) ? dialogFilePath! : dialogFilePath! + finalExt
+        partPath = finalPath + '.part'
+        // 对话框路径不做去重（用户选的名字就是他要的），但 .part 仍要独占创建：
+        // 否则同目录另一个同名下载会写进同一个临时文件，最后互相 rename 出半截内容。
+        // 遇到 EEXIST 说明是上次崩溃留下的残骸（它不会被任何人 rename 走），先丢再试一次。
+        try {
+          await claimEmptyFile(partPath)
+        } catch (err: any) {
+          if (err?.code !== 'EEXIST') throw auroraError('desktop.error.download.writeFailed')
+          await discardDownloadTarget(partPath)
+          await claimEmptyFile(partPath).catch(() => {
+            throw auroraError('desktop.error.download.writeFailed')
+          })
+        }
+      }
+
+      // 从这一刻到 rename 之前，扫描永远看不到一个「半截的最终文件」：
+      // 名字里带 `.part` 的后缀不在扫描器的音频扩展名白名单里，最终名则根本不存在。
+      // 封面嵌入也因此不再有「写一半的窗口」——它写的是同一个 part 文件。
       try {
-        await pipeline(Readable.fromWeb(resp.body as any), fs.createWriteStream(savePath))
+        await pipeline(Readable.fromWeb(resp.body as any), fs.createWriteStream(partPath))
       } catch (err) {
-        // 写盘失败时清理残留的部分文件
-        try { fs.unlinkSync(savePath) } catch {}
+        await discardDownloadTarget(partPath)
         console.error('歌曲下载失败:', err)
         throw auroraError('desktop.error.download.writeFailed')
       }
 
       // 源直链的音频大多不带内嵌封面（实测仅有文本标签），下载后无封面可提取。
       // 用搜索结果里的 coverUrl 把封面嵌入文件（MP3 写 ID3v2 APIC，FLAC 写 PICTURE 块，
-      // M4A/MP4 写 ilst covr 并修正 stco 偏移）。嵌入失败只记日志、保留原文件，不影响下载结果。
+      // M4A/MP4 写 ilst covr 并修正 stco 偏移）。嵌入失败只记日志、保留文件，不影响下载结果。
       if (typeof track.coverUrl === 'string' && /^https?:\/\//i.test(track.coverUrl)) {
         try {
           const coverResp = await fetchWithTimeout(
@@ -770,24 +777,35 @@ export function registerIpcHandlers() {
           if (coverResp.ok) {
             const coverData = new Uint8Array(await coverResp.arrayBuffer())
             if (coverData.length >= 100) {
-              const fileData = new Uint8Array(await fs.promises.readFile(savePath))
+              // 读写的都是 part 文件：整文件重写在它身上做，最终名要等下面 rename 才出现
+              const fileData = new Uint8Array(await fs.promises.readFile(partPath))
               // 容器以真实字节为准、嗅探不出来才回退扩展名：扩展名来自 Content-Type 推断，
               // 与内容不符时按错容器写标签会静默丢封面，甚至给 FLAC 贴上 ID3v2 头
-              const container = sniffAudioContainer(fileData) ?? path.extname(savePath)
+              const container = sniffAudioContainer(fileData) ?? path.extname(finalPath)
               const embedded = embedCoverIntoAudio(
                 fileData,
                 container,
                 { title: track.title, artist: track.artist, album: track.album },
                 { data: coverData, mime: detectImageMime(coverData) }
               )
-              if (embedded) await fs.promises.writeFile(savePath, embedded)
+              if (embedded) await fs.promises.writeFile(partPath, embedded)
             }
           }
         } catch (err) {
           console.warn('封面嵌入失败（不影响下载）:', track.coverUrl, err)
         }
       }
-      return { savedPath: savePath }
+
+      // 提交：同目录 rename 原子替换。扫描此刻才第一次看见这个最终名，
+      // 且看到的一定是完整文件（下载 + 封面嵌入都已完成）。
+      try {
+        await commitDownloadTarget(partPath, finalPath)
+      } catch (err) {
+        await discardDownloadTarget(partPath)
+        console.error('下载文件提交失败:', finalPath, err)
+        throw auroraError('desktop.error.download.writeFailed')
+      }
+      return { savedPath: finalPath }
     }
   )
 

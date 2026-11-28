@@ -123,10 +123,19 @@ export { isIncompleteScanRecord, MIN_PLAUSIBLE_TRACK_SECONDS } from './scanRepai
 export {
   detectEncryptedAudioName,
   isEncryptedAudioName,
+  isInProgressDownloadName,
+  isStillDownloading,
+  ENCRYPTED_SETTLE_MS,
   parseEncryptedAudioName,
   encryptedAudioSearchQuery,
 } from './encryptedAudio'
 export type { EncryptedAudioFile, EncryptedAudioFamily } from './encryptedAudio'
+export {
+  SETTLE_RESCAN_DELAY_MS,
+  SETTLE_RESCAN_MAX_ROUNDS,
+  createSettleRescanScheduler,
+} from './settleRescan'
+export type { SettleRescanDeps, SettleRescanScheduler } from './settleRescan'
 export { fetchWithTimeout, setCustomFetch, TimeoutError, isTimeoutError } from './fetchWithTimeout'
 export type { FetchLike } from './fetchWithTimeout'
 // 音频焦点：其他应用出声时「暂停 / 继续播放」的跨端契约（桌面互斥状态机 + Android 原生引擎共用）

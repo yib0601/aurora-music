@@ -139,3 +139,88 @@ describe('promptEncryptedIfNew', () => {
     expect(persisted.encryptedPromptedPaths).toBeUndefined()
   })
 })
+
+/**
+ * `reconcileEncryptedFiles`：待处理列表的**对账**。
+ *
+ * 为什么要这一组：`encryptedFiles` 原本只增不减，于是任何「文件在磁盘上已经不在了，
+ * 但这次扫描没再上报它」的情形都会留下幽灵行（用户删了密文、用别的工具转成了明文、
+ * 目录被移走）。点「替换」时服务层拿着已消失的路径去下载并清理，用户看到
+ * 「替换成功、原件还在」，或白下一遍本来就在库里的歌。
+ */
+describe('reconcileEncryptedFiles', () => {
+  it('本轮没再上报的同目录条目被清掉，仍在上报的保留', async () => {
+    const { store } = await freshStore()
+    store.getState().addEncryptedFile(file('/m/a.mflac0.flac'))
+    store.getState().addEncryptedFile(file('/m/b.mflac0.flac', '富士山下'))
+
+    // 本轮只扫到 a：b 已被用户删掉
+    store.getState().reconcileEncryptedFiles('/m', ['/m/a.mflac0.flac'])
+
+    expect(store.getState().encryptedFiles.map((f) => f.path)).toEqual(['/m/a.mflac0.flac'])
+  })
+
+  it('不越过目录边界：扫 A 目录不会抹掉 B 目录尚未扫到的待处理项', async () => {
+    const { store } = await freshStore()
+    store.getState().addEncryptedFile(file('/a/x.mflac0.flac'))
+    store.getState().addEncryptedFile(file('/b/y.mflac0.flac', '别的歌'))
+
+    store.getState().reconcileEncryptedFiles('/a', ['/a/x.mflac0.flac'])
+
+    expect(store.getState().encryptedFiles.map((f) => f.path).sort()).toEqual([
+      '/a/x.mflac0.flac',
+      '/b/y.mflac0.flac',
+    ])
+  })
+
+  it('前缀不误匹配：/m 的对账不影响 /music 下的条目', async () => {
+    const { store } = await freshStore()
+    store.getState().addEncryptedFile(file('/m/a.mflac0.flac'))
+    store.getState().addEncryptedFile(file('/music/b.mflac0.flac', '另一首'))
+
+    store.getState().reconcileEncryptedFiles('/m', [])
+
+    expect(store.getState().encryptedFiles.map((f) => f.path)).toEqual(['/music/b.mflac0.flac'])
+  })
+
+  it('空集 = 该目录下一个都没有：全清', async () => {
+    const { store } = await freshStore()
+    store.getState().addEncryptedFile(file('/m/a.mflac0.flac'))
+    store.getState().reconcileEncryptedFiles('/m', [])
+    expect(store.getState().encryptedFiles).toEqual([])
+  })
+
+  it('「已提示」记账同步收敛：路径消失后不再永久占位', async () => {
+    const { store } = await freshStore()
+    store.getState().addEncryptedFile(file('/m/a.mflac0.flac'))
+    store.getState().promptEncryptedIfNew()
+    store.getState().closeEncryptedDialog()
+    expect(store.getState().encryptedPromptedPaths).toEqual(['/m/a.mflac0.flac'])
+
+    // 用户手工删掉了这个文件 → 本轮扫描不再上报它
+    store.getState().reconcileEncryptedFiles('/m', [])
+    expect(store.getState().encryptedPromptedPaths).toEqual([])
+
+    // 将来同一路径重新出现（用户又下了一份）时应该重新提示，而不是被记成「已提示过」
+    store.getState().addEncryptedFile(file('/m/a.mflac0.flac'))
+    store.getState().promptEncryptedIfNew()
+    expect(store.getState().encryptedDialogOpen).toBe(true)
+  })
+
+  it('内容没变时不写 state（避免每次扫描都触发一轮无谓重渲染）', async () => {
+    const { store } = await freshStore()
+    store.getState().addEncryptedFile(file('/m/a.mflac0.flac'))
+    const before = store.getState().encryptedFiles
+
+    store.getState().reconcileEncryptedFiles('/m', ['/m/a.mflac0.flac'])
+
+    expect(store.getState().encryptedFiles).toBe(before)
+  })
+
+  it('空前缀是 no-op（老调用点传空不该清空整个列表）', async () => {
+    const { store } = await freshStore()
+    store.getState().addEncryptedFile(file('/m/a.mflac0.flac'))
+    store.getState().reconcileEncryptedFiles('', [])
+    expect(store.getState().encryptedFiles).toHaveLength(1)
+  })
+})

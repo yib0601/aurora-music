@@ -287,6 +287,14 @@ export function countTracksByFolder(rootPath: string): number {
  * 清理扫描目录下已不存在的文件的曲目记录（歌曲被删除/移动后同步移除）。
  * 仅处理 rootPath 前缀范围内的记录，避免误删其他扫描目录的曲目。
  * 返回删除的曲目数量。
+ *
+ * **候选必须二次确认**：`existingPaths` 是调用方 walkDir 时的快照，从那次遍历到
+ * 这里执行之间隔着「批量替换下载」的整个链路 —— 下载把文件 commit 到目录里、
+ * `importAudioFile` 刚把记录写进库，而快照里没有这个新文件名。只看快照就会把
+ * 刚入库的歌当成「文件已不存在」删掉，用户看到「替换成功但曲库里没有」，
+ * 下一次扫描才又出现（甚至反复）。因此这里对候选逐个 stat：**文件还在就留下**。
+ *
+ * 代价可控：候选集本来就该是「极少数真正消失的文件」，正常扫描通常是空的。
  */
 export function deleteTracksWithMissingFiles(rootPath: string, existingPaths: ReadonlySet<string>): number {
   const d = getDb()
@@ -294,7 +302,11 @@ export function deleteTracksWithMissingFiles(rootPath: string, existingPaths: Re
   // 只取前缀范围内的记录，避免全表加载到 JS 层
   const rows = d.prepare('SELECT id, path, cover_path FROM tracks WHERE path LIKE ?').all(prefix + '%') as Array<{ id: string; path: string; cover_path?: string }>
   // LIKE 的通配符可能匹配到额外字符，用 startsWith 精确校验前缀
-  const stale = rows.filter((r) => r.path.startsWith(prefix) && !existingPaths.has(r.path))
+  const candidates = rows.filter((r) => r.path.startsWith(prefix) && !existingPaths.has(r.path))
+  const stale = candidates.filter((r) => !fs.existsSync(r.path))
+  if (stale.length !== candidates.length) {
+    console.log('缺失清理：快照里没有但磁盘上仍在的记录已保留:', candidates.length - stale.length)
+  }
   return deleteTrackRows(stale)
 }
 

@@ -235,6 +235,21 @@ interface LibraryState {
   /** 清空整个待处理列表（用户点「忽略」） */
   clearEncryptedFiles: () => void
   /**
+   * 用**本轮扫描上报的完整集合**对账待处理列表（扫描完成时调用，每目录一次）。
+   *
+   * 为什么必须对账：`encryptedFiles` 只增不减的话会出现「幽灵行」——
+   * 用户在文件管理器里删掉了密文、或用别的工具转成了明文，这次扫描没再上报它，
+   * 但列表里那条还在。用户点「替换」时服务层会拿一个已不存在的路径去下载+清理，
+   * 表现是「替换成功、原件没清掉」或「下了一遍本来就在库里的歌」。
+   *
+   * 只删**本次扫描覆盖范围内**（`prefix` 之下）且不在 `reported` 里的条目：
+   * 多扫描目录时，A 目录的扫描不该抹掉 B 目录尚未扫到的待处理项。
+   *
+   * `promptedPaths` 同步收敛，否则用户「忽略」过的路径会在文件被删掉后永久占着
+   * 记账位；同一路径将来重新出现时又该提示一次。
+   */
+  reconcileEncryptedFiles: (prefix: string, reported: readonly string[]) => void
+  /**
    * 加密音频对话框的开关。放在 store 而不是曲库页的局部 state：
    * 扫描完成时**自动弹窗**这条链路发生在 App 层（扫描事件订阅在那里），
    * 曲库页横幅也要能打开同一个对话框，局部 state 表达不了「全局唯一一个弹窗」。
@@ -549,6 +564,24 @@ export const useLibraryStore = create<LibraryState>()(
         set({ encryptedFiles: get().encryptedFiles.filter((f) => f.path !== path) })
       },
       clearEncryptedFiles: () => set({ encryptedFiles: [] }),
+      reconcileEncryptedFiles: (prefix, reported) => {
+        // 前缀归一化：桌面端传目录（可能是 `/m` 而文件在 `/m/...`），移动端传相对路径
+        // （`Music/X`）。补分隔符再比，避免 `/m` 误匹配 `/music`。
+        const raw = String(prefix || '')
+        if (!raw) return
+        const sep = raw.includes('\\') && !raw.includes('/') ? '\\' : '/'
+        const scope = raw.endsWith(sep) || raw.endsWith('/') ? raw : raw + sep
+        const keep = new Set(reported)
+        const inScope = (p: string) => p === raw || p.startsWith(scope)
+        const { encryptedFiles, encryptedPromptedPaths } = get()
+        const survivors = encryptedFiles.filter((f) => !inScope(f.path) || keep.has(f.path))
+        const keptPaths = new Set(survivors.map((f) => f.path))
+        const prompted = encryptedPromptedPaths.filter((p) => !inScope(p) || keptPaths.has(p))
+        if (survivors.length === encryptedFiles.length && prompted.length === encryptedPromptedPaths.length) {
+          return
+        }
+        set({ encryptedFiles: survivors, encryptedPromptedPaths: prompted })
+      },
       // 对话框开关与「已提示」记账：都不落盘（见 interface 里的说明）。
       // 忽略（清空列表）**不清** promptedPaths：用户明确表示不想处理这批文件，
       // 下次扫描重报同一批时不该再弹一次；新文件仍会照常提示

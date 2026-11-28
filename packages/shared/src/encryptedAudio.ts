@@ -114,6 +114,64 @@ export function isEncryptedAudioName(fileName: string): boolean {
 }
 
 /**
+ * 正在下载中的临时文件名后缀。
+ *
+ * 为什么必须显式排除：加密标记的判定里有一条「退一步认平台标记」
+ * （文件名含 `[mqms2]` 即认作 QQ 音乐），而平台/下载器写盘时的中间文件常常就是
+ * `陈奕迅 - 十年 [mqms2].mflac0.flac.part` 这种形状 —— 名字里的标记还在，只是
+ * 字节还没写完。若照常上报，用户会在「QQ 音乐正在下载」的那几秒里看到一批
+ * 「加密文件」，点「替换」就会把正在写的文件移进回收站，平台的下载直接报废。
+ *
+ * 应用自己的下载也走 `.part`（先写临时名再原子改名，见 desktop/ipc/downloadTarget.ts），
+ * 同一条判据顺带挡掉「本应用正在下载的明文副本」被误报成加密文件。
+ */
+const IN_PROGRESS_SUFFIXES = [
+  '.part',
+  '.partial',
+  '.crdownload',
+  '.download',
+  '.downloading',
+  '.opdownload',
+  '.tmp',
+  '.temp',
+  '.!qb', // qBittorrent
+  '.bc!', // BitComet
+  '.aria2',
+]
+
+/** 文件名是否属于「下载器正在写」的中间态（判据只看名字，不做 IO） */
+export function isInProgressDownloadName(fileName: string): boolean {
+  const base = baseNameOf(fileName).toLowerCase()
+  if (!base) return false
+  return IN_PROGRESS_SUFFIXES.some((suffix) => base.endsWith(suffix))
+}
+
+/**
+ * 判定「这个文件已经稳定落盘」的时间窗口（毫秒）。
+ *
+ * 只看名字挡不住**没有临时后缀**的写入方（平台的下载器常常直接写最终文件名，
+ * 字节流式追加）。这类文件在写入期间会被扫描认成加密文件——它的头本来就不是
+ * 音频容器，解析必失败。用 mtime 做静默期判定：最近 ENCRYPTED_SETTLE_MS 毫秒内
+ * 还被写过就当作「仍在下载」，本次不上报（下一次扫描/重启时会重新判定）。
+ *
+ * 取 5 秒而不是更短：一次扫描本身可能持续数十秒，若窗口过短，同一批文件会在
+ * 「扫到它时刚好停笔 1 秒」的情况下被误报。代价是刚下完的文件要等下一次扫描才
+ * 出现提示——这远好过把正在写的文件移进回收站。
+ */
+export const ENCRYPTED_SETTLE_MS = 5000
+
+/**
+ * 解密报与否的完整判据：名字带临时后缀、或 mtime 太新，都视为「仍在下载」。
+ *
+ * 两个扫描器（桌面 / 移动端）共用这一处实现，避免「桌面端挡了、移动端漏了」。
+ */
+export function isStillDownloading(fileName: string, mtimeMs?: number): boolean {
+  if (isInProgressDownloadName(fileName)) return true
+  if (typeof mtimeMs !== 'number' || !Number.isFinite(mtimeMs)) return false
+  return Date.now() - mtimeMs < ENCRYPTED_SETTLE_MS
+}
+
+/**
  * 把文件名还原成「歌名 + 歌手」。
  *
  * 处理链：去掉加密标记段与追加的容器后缀 → 去掉 `[...]` 平台标签 →

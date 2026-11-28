@@ -153,6 +153,12 @@ const electronAPI = {
   // 这首歌」；入参是路径而非曲目对象，绝对路径与扩展名白名单由主进程把关。
   importAudioFile: (filePath: string): Promise<any | null> =>
     ipcRenderer.invoke('library:importFile', filePath),
+  // 「加密音频批量替换」的替换那一半：把原加密文件移入回收站。
+  // 与 showItemInFolder 同一套信任边界思路 —— 主进程不按「渲染层说删就删」办事，
+  // 而是自己复核：路径在已扫描目录内、文件名带平台加密标记，才交给 shell.trashItem。
+  // 返回结构而不是抛错：批量场景要逐条记账，一条失败不该打断整批。
+  trashEncryptedSource: (filePath: string): Promise<{ ok: boolean; reason?: string; detail?: string }> =>
+    ipcRenderer.invoke('library:trashEncryptedSource', filePath),
   // 按需补齐封面（扫描时为提速跳过了嵌入图片，UI 需要时单独提取）；
   // fallback 为不在曲库的曲目（在线快照）的元信息兜底，见主进程 covers:ensure
   ensureCover: (id: string, fallback?: unknown): Promise<string | null> =>
@@ -349,6 +355,11 @@ const electronAPI = {
   ): Promise<{ savedPath: string }> => {
     return ipcRenderer.invoke('tracks:download', track, headers, downloadDir)
   },
+  // 挂起 / 恢复「目录监听 → 自动重扫」：批量替换加密音频期间调用，
+  // 否则每下载完一首都会让 watcher 触发一次整库重扫，与下载抢磁盘 IO。
+  // 恢复时主进程对挂起期间变动过的目录各补一次扫描，所以下载产物照样会进库。
+  setWatchSuspended: (suspended: boolean): Promise<void> =>
+    ipcRenderer.invoke('scan:setWatchSuspended', suspended),
   // 媒体缓存（音频 + 封面 + 歌词共用一份容量）：命中返回 aurora-cache:// 地址；
   // 未命中返回 null 并由主进程后台拉流写缓存（本次仍用原始地址，下次即命中）
   audioCache: {
@@ -432,6 +443,15 @@ const electronAPI = {
     const handler = (_event: unknown, file: any) => callback(file)
     ipcRenderer.on('scan:encrypted', handler)
     return () => ipcRenderer.removeListener('scan:encrypted', handler)
+  },
+  // 一次扫描结束时上报「本次仍然存在的加密文件全量清单」（scan:encrypted 是逐条增量，
+  // 这条是收尾对账）。渲染层的待处理列表只增不减：文件被替换掉或被用户自己删了以后，
+  // 逐条事件不会再来一条「它没了」，只能靠这份清单把幽灵行销掉 —— 否则点替换会为
+  // 一个已不存在的文件再下一次重复歌。按 folder 区分：一次扫一个目录。
+  onEncryptedScanComplete: (callback: (payload: { folder: string; paths: string[] }) => void) => {
+    const handler = (_event: unknown, payload: { folder: string; paths: string[] }) => callback(payload)
+    ipcRenderer.on('scan:encrypted-complete', handler)
+    return () => ipcRenderer.removeListener('scan:encrypted-complete', handler)
   },
   onMediaControl: (callback: (action: string) => void) => {
     const handler = (_event: unknown, action: string) => callback(action)

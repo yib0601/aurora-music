@@ -46,6 +46,7 @@ const en: LocalizedOf<typeof runtime> = {
       'Cannot create the download folder (storage unavailable or permission missing); check storage permission and try again',
     downloadFailed: 'Download failed; check your network connection or try again later',
     databaseNotInited: 'The database is not initialized',
+    notEncryptedAudio: 'This file is not a platform-encrypted audio file; cleanup skipped',
     scriptSourceUrlMissing: 'The source has no script URL',
     sourceNotFound: 'The source configuration does not exist',
     sourcePluginUnsupported: 'Unsupported media library source plugin: {pluginId}',
